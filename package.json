@@ -1,42 +1,31 @@
 {
-  "name": "houston-client-manager",
-  "version": "1.0.0",
-  "description": "",
-  "main": "dist/electron/main.js",
+  "name": "electron-vue-template",
+  "version": "0.1.0",
+  "description": "A minimal Electron + Vue application",
+  "main": "main/main.js",
   "scripts": {
-    "dev": "concurrently \"npm run serve\" \"npm run electron\"",
-    "serve": "vue-cli-service serve",
-    "build": "vue-cli-service build",
-    "electron": "electron .",
-    "lint": "vue-cli-service lint"
+    "dev": "node scripts/dev-server.js",
+    "build": "node scripts/build.js && electron-builder",
+    "build:win": "node scripts/build.js && electron-builder --win",
+    "build:mac": "node scripts/build.js && electron-builder --mac",
+    "build:linux": "node scripts/build.js && electron-builder --linux"
   },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/45Drives/houston-client-manager.git"
-  },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "type": "commonjs",
-  "bugs": {
-    "url": "https://github.com/45Drives/houston-client-manager/issues"
-  },
-  "homepage": "https://github.com/45Drives/houston-client-manager#readme",
-  "dependencies": {
-    "electron": "^34.0.0",
-    "multicast-dns": "^7.2.5",
-    "typescript": "^5.7.3",
-    "vue": "^3.5.13",
-    "vue-loader": "^17.4.2",
-    "vue-template-compiler": "^2.7.16"
+  "repository": "https://github.com/deluze/electron-vue-template",
+  "author": {
+    "name": "Deluze",
+    "url": "https://github.com/Deluze"
   },
   "devDependencies": {
-    "@types/multicast-dns": "^7.2.4",
-    "@types/node": "^22.10.7",
-    "concurrently": "^9.1.2",
-    "ts-loader": "^9.5.2",
-    "webpack": "^5.97.1",
-    "webpack-cli": "^6.0.1",
-    "webpack-dev-server": "^5.2.0"
+    "@vitejs/plugin-vue": "^4.4.1",
+    "chalk": "^4.1.2",
+    "chokidar": "^3.5.3",
+    "electron": "^32.1.2",
+    "electron-builder": "^25.1.6",
+    "typescript": "^5.2.2",
+    "vite": "^4.5.0"
+  },
+  "dependencies": {
+    "multicast-dns": "^7.2.5",
+    "vue": "^3.3.8"
   }
 }
