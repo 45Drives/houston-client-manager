@@ -1,0 +1,39 @@
+{
+  "name": "houston-client-manager",
+  "version": "1.0.0",
+  "description": "",
+  "main": "dist/main.js",
+  "scripts": {
+    "start": "electron --no-sandbox .",
+    "electron": "tsc && electron .",
+    "build": "tsc && vue-cli-service build"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/45Drives/houston-client-manager.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/45Drives/houston-client-manager/issues"
+  },
+  "homepage": "https://github.com/45Drives/houston-client-manager#readme",
+  "dependencies": {
+    "electron": "^34.0.0",
+    "multicast-dns": "^7.2.5",
+    "typescript": "^5.7.3",
+    "vue": "^3.5.13",
+    "vue-loader": "^17.4.2",
+    "vue-template-compiler": "^2.7.16"
+  },
+  "devDependencies": {
+    "@types/multicast-dns": "^7.2.4",
+    "@types/node": "^22.10.7",
+    "ts-loader": "^9.5.2",
+    "webpack": "^5.97.1",
+    "webpack-cli": "^6.0.1",
+    "webpack-dev-server": "^5.2.0"
+  }
+}
