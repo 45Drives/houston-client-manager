@@ -17,7 +17,7 @@
 
     <div class="webview-container">
 
-      <webview v-if="currentUrl" :src="currentUrl" style="width: 100%; height: 100%;" ref="webview" />
+      <webview title="test" :src="currentUrl" style="width: 100%; height: 100%;" ref="webview" />
 
     </div>
 
@@ -34,7 +34,7 @@ interface Server {
 
 const servers = ref<Server[]>([]);
 const currentServer = ref<Server | null>(null);
-const currentUrl = ref<string>('');
+const currentUrl = ref<string>('https://google.com');
 
 // Receive the discovered servers from the main process
 window.electron.ipcRenderer.on('discovered-servers', (_event, discoveredServers: Server[]) => {
