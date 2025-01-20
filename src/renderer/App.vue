@@ -15,11 +15,7 @@
       </ul>
     </div>
 
-    <div class="webview-container">
-
-      <webview title="test" :src="currentUrl" style="width: 100%; height: 100%;" ref="webview" />
-
-    </div>
+    <webview title="test" :src="currentUrl" allowpopups nodeintegration webpreferences="javascript=yes" ref="webview" />
 
   </div>
 </template>
@@ -34,17 +30,24 @@ interface Server {
 
 const servers = ref<Server[]>([]);
 const currentServer = ref<Server | null>(null);
-const currentUrl = ref<string>('https://google.com');
+const currentUrl = ref<string>('https://45drives.com');
 
 // Receive the discovered servers from the main process
 window.electron.ipcRenderer.on('discovered-servers', (_event, discoveredServers: Server[]) => {
+  
   servers.value = discoveredServers;
 });
 
 // Handle server click to open the website
 const openServerWebsite = (server: Server) => {
+  console.log("##########################opening serverip " + server.ip)
   currentServer.value = server;
-  currentUrl.value = `https://${server.ip}:9090/cockpit/@localhost/file-sharing/index.html `;
+  if (server.ip === "192.168.5.51") {
+    currentUrl.value = "https://192.168.207.44:9090/";
+  } else {
+
+    currentUrl.value = `https://${server.ip}:9090`;
+  }
 
 };
 
@@ -120,16 +123,13 @@ li:hover {
 }
 
 @keyframes spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
-}
+  0% {
+    transform: rotate(0deg);
+  }
 
-.webview-container {
-  display: flex;
-  flex-direction: column;
-  flex-grow: 1;
-  /* Takes the remaining space */
-  border: 1px solid #ccc;
+  100% {
+    transform: rotate(360deg);
+  }
 }
 
 webview {
