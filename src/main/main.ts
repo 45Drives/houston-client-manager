@@ -1,10 +1,15 @@
 import { app, BrowserWindow, ipcMain, session } from 'electron';
 import { join } from 'path';
 import mdns from 'multicast-dns';
+import { powerSaveBlocker } from "electron";
 
+const blockerId = powerSaveBlocker.start("prevent-app-suspension");
 
 app.commandLine.appendSwitch('ignore-certificate-errors', 'true');
-app.commandLine.appendSwitch('ignore-certificate-errors', 'true');
+
+app.commandLine.appendSwitch("disable-background-timer-throttling", 'true');
+app.commandLine.appendSwitch("disable-renderer-backgrounding", "true");
+app.commandLine.appendSwitch("disable-backgrounding-occluded-windows", 'true');
 
 // Timeout duration in milliseconds (e.g., 30 seconds)
 const TIMEOUT_DURATION = 10000;
@@ -21,17 +26,22 @@ function createWindow() {
       webviewTag: true,
       javascript: true,
       webSecurity: false,
-      sandbox: true
+      backgroundThrottling: false,  // Disable throttling
+      partition: 'persist:your-cookie-partition'
     }
   });
 
+  // mainWindow.setMenu(null);
 
   mainWindow.webContents.setUserAgent(
-    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/102.0.5005.63 Safari/537.36'
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36 Edg/131.0.0.0'
   );
 
+  
   if (process.env.NODE_ENV === 'development') {
+    mainWindow.webContents.openDevTools();
     const rendererPort = process.argv[2];
+
     mainWindow.loadURL(`http://localhost:${rendererPort}`);
   }
   else {
@@ -88,7 +98,7 @@ function createWindow() {
     const currentTime = Date.now();
 
     // Filter out inactive servers
-    discoveredServers = discoveredServers.filter((server) => {
+    const filterdDiscoveredServers = discoveredServers.filter((server) => {
       if (currentTime - server.lastSeen > TIMEOUT_DURATION) {
         console.log(`Removing inactive server: ${server}`);
         return false;
@@ -96,7 +106,10 @@ function createWindow() {
       return true;
     });
 
-    mainWindow.webContents.send('discovered-servers', discoveredServers);
+    if (filterdDiscoveredServers.length !== discoveredServers.length) {
+      discoveredServers = filterdDiscoveredServers;
+      mainWindow.webContents.send('discovered-servers', discoveredServers);
+    }
 
   }, 5000);
 }
@@ -104,29 +117,11 @@ function createWindow() {
 app.whenReady().then(() => {
   createWindow();
 
-  session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
-    callback({
-      responseHeaders: {
-        ...details.responseHeaders,
-        'Content-Security-Policy': ['script-src \'self\'']
-      }
-    })
-  })
-
   app.on('activate', function () {
     // On macOS it's common to re-create a window in the app when the
     // dock icon is clicked and there are no other windows open.
     if (BrowserWindow.getAllWindows().length === 0) {
       createWindow();
-    }
-  });
-
-
-  session.defaultSession.webRequest.onHeadersReceived((details: any, callback) => {
-    if (details) {
-
-      details.responseHeaders['Content-Security-Policy'] = ["script-src 'self' 'unsafe-inline'"];
-      callback({ cancel: false, responseHeaders: details.responseHeaders });
     }
   });
 

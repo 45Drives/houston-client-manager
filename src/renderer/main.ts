@@ -1,5 +1,5 @@
 import { createApp } from 'vue'
-import './style.css';
+import "@45drives/houston-common-css/src/index.css"; 
 import App from './App.vue'
 
 const app = createApp(App);
