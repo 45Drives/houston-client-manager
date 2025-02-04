@@ -42,6 +42,7 @@
       ref="webview" 
       @did-finish-load="onWebViewLoaded" />
 
+      <NotificationView />
   </div>
 </template>
 
@@ -50,6 +51,8 @@ import { ref, watch } from 'vue';
 import { useDarkModeState } from './composables/useDarkModeState';
 import { useAdvancedModeState } from './composables/useAdvancedState';
 import { Switch } from '@headlessui/vue';
+import { reportError, reportSuccess } from './components/NotificationView.vue';
+import NotificationView from './components/NotificationView.vue';
 
 const darkModeState = useDarkModeState();
 const advancedState = useAdvancedModeState();
@@ -60,6 +63,7 @@ interface Server {
 }
 
 const servers = ref<Server[]>([]);
+const clientip = ref<string>("");
 const webview = ref();
 const loadingWebview = ref(false);
 const currentServer = ref<Server | null>(null);
@@ -69,7 +73,19 @@ const currentUrl = ref<string>('https://45drives.com');
 window.electron.ipcRenderer.on('discovered-servers', (_event, discoveredServers: Server[]) => {
   servers.value = discoveredServers;
 });
+window.electron.ipcRenderer.on('client-ip', (_event, ip: string) => {
+  clientip.value = ip;
+});
+window.electron.ipcRenderer.on('notification', (_event, message: string) => {
+  if (message.startsWith("Error")) {
 
+    reportError(new Error(message))
+  } else {
+
+    reportSuccess(message);
+  }
+
+});
 // Handle server click to open the website
 const openServerWebsite = (server: Server | null) => {
   loadingWebview.value = false;
@@ -77,12 +93,9 @@ const openServerWebsite = (server: Server | null) => {
 
   currentServer.value = server;
   if (server) {
-    if (server.ip === "192.168.5.51") {
-      // currentUrl.value = `https://192.168.207.44:9090`;
-      currentUrl.value = `https://192.168.207.44:9090/super-simple-setup-test?dark=${darkModeState.value}&advanced=${advancedState.value}`;
-    } else {
-      currentUrl.value = `https://${server.ip}:9090/file-sharing?dark=${darkModeState.value}&advanced=${advancedState.value}`;
-    }
+
+    currentUrl.value = `https://${server.ip}:9090/super-simple-setup-test#dark=${darkModeState.value}&advanced=${advancedState.value}&client_ip=${clientip.value}&server_ip=${server.ip}`;
+    
   } else {
     currentUrl.value = "";
   }
@@ -122,6 +135,7 @@ const onWebViewLoaded = () => {
       `);
   webview.value.style.visibility = "visible";
   loadingWebview.value = true;
+  webview.value.openDevTools();
 }
 </script>
 
