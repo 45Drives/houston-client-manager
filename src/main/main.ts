@@ -174,9 +174,9 @@ function createWindow() {
     if (platform === "win32") {
       mountSambaClientWin(smb_path, smb_user, smb_pass);
     } else if (platform === "linux") {
-      console.log("Running on Linux");
+      mountSambaClientScript(smb_path, smb_user, smb_pass, path.join(__dirname, "static", "mount_smb_lin.sh"));
     } else if (platform === "darwin") {
-      console.log("Running on macOS");
+      mountSambaClientScript(smb_path, smb_user, smb_pass, path.join(__dirname, "static", "mount_smb_mac.sh"));
     } else {
       console.log("Unknown OS:", platform);
     }
@@ -198,7 +198,39 @@ function createWindow() {
         mainWindow.webContents.send('notification', `Error: failed to connect to ${smb_path}.`);
         return;
       }
-      mainWindow.webContents.send('notification', `Successfull connected to ${smb_path}.`);
+      
+      const result = JSON.parse(stdout);
+      if (result.message) {
+        mainWindow.webContents.send('notification', `S${result.message}.`);
+        return;
+      }
+
+      mainWindow.webContents.send('notification', `Successfull connected to ${result}.`);
+    });
+  }
+
+  function mountSambaClientScript(smb_path: string, smb_user: string, smb_pass: string, script: string) {
+
+    exec(`bash ""${script}" "${smb_path}" "${smb_user}" "${smb_pass}""`, (error, stdout, stderr) => {
+      console.log(`Stdout: ${stdout}`);
+      if (error) {
+        console.error(`Error: ${error.message}`);
+        mainWindow.webContents.send('notification', `Error: failed to connect to ${smb_path}.`);
+        return;
+      }
+      if (stderr) {
+        console.error(`Stderr: ${stderr}`);
+        mainWindow.webContents.send('notification', `Error: failed to connect to ${smb_path}.`);
+        return;
+      }
+      
+      const result = JSON.parse(stdout);
+      if (result.message) {
+        mainWindow.webContents.send('notification', `S${result.message}.`);
+        return;
+      }
+
+      mainWindow.webContents.send('notification', `Successfull connected to ${result}.`);
     });
   }
 
