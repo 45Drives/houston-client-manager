@@ -33,6 +33,7 @@
     "vite": "^4.5.0"
   },
   "dependencies": {
+    "asar": "^3.2.0",
     "express": "^4.21.2",
     "multicast-dns": "^7.2.5",
     "postcss": "^8.5.1",

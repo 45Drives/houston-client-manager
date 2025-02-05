@@ -48,8 +48,8 @@ net use !DRIVE_LETTER!: !NETWORK_PATH! /user:!USERNAME! "!PASSWORD!" /persistent
 
 :: Check if the mapping was successful
 if %ERRORLEVEL%==0 (
-    echo {"DriveLetter": "!DRIVE_LETTER!", "smb_server": "!SMB_SERVER!", "smb_user": "!USERNAME!"}
+    echo {"DriveLetter": "!DRIVE_LETTER!", "smb_server": "!SMB_SERVER!"}
     start explorer !DRIVE_LETTER!:  & exit /b 0
 ) else (
-    echo {"error": "Failed to map network drive", "drive": "!DRIVE_LETTER!", "path": "!NETWORK_PATH!", "user": "!USERNAME!"}
+    echo {"error": "Failed to map network drive", "drive": "!DRIVE_LETTER!", "path": "!NETWORK_PATH!"}
 )

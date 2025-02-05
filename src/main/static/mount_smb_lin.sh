@@ -49,7 +49,7 @@ sudo mount -t cifs "$SMB_PATH" "$MOUNT_POINT" -o username="$USERNAME",password="
 
 # Check if mounting was successful
 if [ $? -eq 0 ]; then
-    echo "{\"MountPoint\": \"$MOUNT_POINT\", \"smb_server\": \"$SMB_SERVER\", \"smb_user\": \"$USERNAME\"}"
+    echo "{\"MountPoint\": \"$MOUNT_POINT\", \"smb_server\": \"$SMB_SERVER\"}"
     
     # Open the mounted folder
     if command -v gio >/dev/null 2>&1; then

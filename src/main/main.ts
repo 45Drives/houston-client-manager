@@ -4,6 +4,8 @@ import mdns from 'multicast-dns';
 import { powerSaveBlocker } from "electron";
 import os from 'os';
 import { exec } from 'child_process';
+import fs from 'fs';
+import asar from 'asar';
 
 interface Server {
   ip: string;
@@ -140,7 +142,6 @@ function createWindow() {
 
   }, 5000);
 
-
   async function pollActions(server: Server) {
     try {
       const response = await fetch(`http://${server.ip}:9095/actions?client_ip=${getLocalIP()}`);
@@ -150,7 +151,7 @@ function createWindow() {
         console.log("New action received:", server, data);
 
         if (data.action === "mount_samba_client") {
-          mountSambaClient(server, data.smb_path, data.smb_user, data.smb_pass);
+          await mountSambaClient(server, data.smb_path, data.smb_user, data.smb_pass);
         } else {
           console.log("Unknown new actions.", server);
         }
@@ -161,32 +162,31 @@ function createWindow() {
   }
 
   // Poll every 5 seconds
-  setInterval(() => {
+  setInterval(async () => {
     for (let server of discoveredServers) {
-      pollActions(server)
+      await pollActions(server)
     }
   }, 5000);
 
-  function mountSambaClient(server: Server, smb_path: string, smb_user: string, smb_pass: string) {
+  async function mountSambaClient(server: Server, smb_path: string, smb_user: string, smb_pass: string) {
 
     const platform = os.platform();
 
     if (platform === "win32") {
       mountSambaClientWin(smb_path, smb_user, smb_pass);
     } else if (platform === "linux") {
-      mountSambaClientScript(smb_path, smb_user, smb_pass, path.join(__dirname, "static", "mount_smb_lin.sh"));
+      mountSambaClientScript(smb_path, smb_user, smb_pass, await getAsset("static", "mount_smb_lin.sh"));
     } else if (platform === "darwin") {
-      mountSambaClientScript(smb_path, smb_user, smb_pass, path.join(__dirname, "static", "mount_smb_mac.sh"));
+      mountSambaClientScript(smb_path, smb_user, smb_pass, await getAsset("static", "mount_smb_mac.sh"));
     } else {
       console.log("Unknown OS:", platform);
     }
 
   }
 
-  function mountSambaClientWin(smb_path: string, smb_user: string, smb_pass: string) {
-    let batFilePath = path.join(__dirname, "static", "mount_smb.bat"); // Path to .bat file
-
-    exec(`cmd /C ""${batFilePath}" "${smb_path}" "${smb_user}" "${smb_pass}""`, (error, stdout, stderr) => {
+  async function mountSambaClientWin(smb_path: string, smb_user: string, smb_pass: string) {
+    let batpath = await getAsset("static", "mount_smb.bat");
+    exec(`cmd /C ""${batpath}" "${smb_path}" "${smb_user}" "${smb_pass}""`, (error, stdout, stderr) => {
       console.log(`Stdout: ${stdout}`);
       if (error) {
         console.error(`Error: ${error.message}`);
@@ -198,7 +198,7 @@ function createWindow() {
         mainWindow.webContents.send('notification', `Error: failed to connect to ${smb_path}.`);
         return;
       }
-      
+
       const result = JSON.parse(stdout);
       if (result.message) {
         mainWindow.webContents.send('notification', `S${result.message}.`);
@@ -207,6 +207,40 @@ function createWindow() {
 
       mainWindow.webContents.send('notification', `Successfull connected to ${result}.`);
     });
+  }
+
+  async function getAsset(folder: string, fileName: string): Promise<string> {
+    const filePath = path.join(__dirname, folder, fileName);
+
+    // Check if running inside an ASAR package
+    let extractedFilepath = filePath;
+    if (__dirname.includes("app.asar")) {
+      // Path to the .asar file (usually in the dist folder after building)
+      const asarFile = path.join(__dirname).replace("\\main", "");
+
+      // Path to extract the file to
+      const tempPath = path.join(os.tmpdir(), "houston-manager", "main", folder, fileName);
+
+      await fs.promises.mkdir(path.join(os.tmpdir(), "houston-manager", "main", folder), { recursive: true });
+
+      // Extract the file from the asar archive
+      const extractFile = (source, destination) => {
+        try {
+          const fileData = asar.extractFile(source, `${folder}\\${fileName}`); // Path to the file inside the .asar archive
+          fs.writeFileSync(destination, fileData);
+          console.log('File extracted successfully to:', destination);
+        } catch (error) {
+          console.error('Error extracting file:', error);
+        }
+      };
+
+      // Extract `main.js` from the `app.asar` archive
+      extractFile(asarFile, tempPath);
+
+      extractedFilepath = tempPath;
+    }
+
+    return extractedFilepath;
   }
 
   function mountSambaClientScript(smb_path: string, smb_user: string, smb_pass: string, script: string) {
@@ -223,7 +257,7 @@ function createWindow() {
         mainWindow.webContents.send('notification', `Error: failed to connect to ${smb_path}.`);
         return;
       }
-      
+
       const result = JSON.parse(stdout);
       if (result.message) {
         mainWindow.webContents.send('notification', `S${result.message}.`);

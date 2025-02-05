@@ -43,7 +43,7 @@ mount_smbfs "//$USERNAME:$PASSWORD@$SMB_PATH" "$MOUNT_POINT"
 
 # Check if mounting was successful
 if [ $? -eq 0 ]; then
-    echo "{\"MountPoint\": \"$MOUNT_POINT\", \"smb_server\": \"$SMB_SERVER\", \"smb_user\": \"$USERNAME\"}"
+    echo "{\"MountPoint\": \"$MOUNT_POINT\", \"smb_server\": \"$SMB_SERVER\"}"
     
     # Open the mounted folder in Finder
     open "$MOUNT_POINT"
