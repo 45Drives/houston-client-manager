@@ -47,6 +47,7 @@ function createWindow() {
   const mainWindow = new BrowserWindow({
     width: 800,
     height: 600,
+    fullscreen: true,
     webPreferences: {
       preload: join(__dirname, 'preload.js'),
       nodeIntegration: false,
@@ -116,14 +117,14 @@ function createWindow() {
     }
   });
 
-  setInterval(() => {
+  const mdnsInterval = setInterval(() => {
     mDNSClient.query({
       questions: [{ name: '_houstonserver._tcp.local', type: 'PTR' }],
     })
   }, 5000);
 
   // Periodically check for inactive servers and remove them if necessary
-  setInterval(() => {
+  const clearInactiveServerInterval = setInterval(() => {
     const currentTime = Date.now();
 
     // Filter out inactive servers
@@ -162,7 +163,7 @@ function createWindow() {
   }
 
   // Poll every 5 seconds
-  setInterval(async () => {
+  const pollActionInterval = setInterval(async () => {
     for (let server of discoveredServers) {
       await pollActions(server)
     }
@@ -268,6 +269,20 @@ function createWindow() {
     });
   }
 
+  ipcMain.on('message', (event, message) => {
+    console.log(message);
+  })
+
+  app.on('window-all-closed', function () {
+    ipcMain.removeAllListeners('message')
+    clearInterval(pollActionInterval);
+    clearInterval(clearInactiveServerInterval);
+    clearInterval(mdnsInterval);
+    mDNSClient.destroy();
+    if (process.platform !== 'darwin') {
+      app.quit();
+    }
+  });
 }
 
 app.whenReady().then(() => {
@@ -281,13 +296,3 @@ app.whenReady().then(() => {
   });
 
 });
-
-app.on('window-all-closed', function () {
-  if (process.platform !== 'darwin') {
-    app.quit();
-  }
-});
-
-ipcMain.on('message', (event, message) => {
-  console.log(message);
-})

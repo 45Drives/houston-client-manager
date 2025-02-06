@@ -135,7 +135,7 @@ const onWebViewLoaded = () => {
       `);
   webview.value.style.visibility = "visible";
   loadingWebview.value = true;
-  webview.value.openDevTools();
+  // webview.value.openDevTools();
 }
 </script>
 
