@@ -207,7 +207,7 @@ function createWindow() {
         return;
       }
 
-      mainWindow.webContents.send('notification', `Successfull connected to ${result}.`);
+      mainWindow.webContents.send('notification', `Successfull connected to ${stdout}.`);
     });
   }
 

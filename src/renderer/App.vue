@@ -2,12 +2,12 @@
   <div class="flex flex-row h-full bg-default text-default">
 
     <!-- List of servers to click -->
-    <div class="flex flex-col h-full">
+    <div class="flex flex-col h-full flex-2">
       <div class="font-bold text-center border-b-2">
         Houston Servers
       </div>
 
-      <div class="flex p-2 space-x-1">
+      <!-- <div class="flex p-2 space-x-1">
 
         <span>Dark</span>
         <Switch v-model="darkModeState"
@@ -23,7 +23,7 @@
             :class="[advancedState ? 'translate-x-5' : 'translate-x-0', 'pointer-events-none inline-block h-5 w-5 rounded-full bg-default shadow-md transform transition-transform ease-in-out duration-200']" />
         </Switch>
 
-      </div>
+      </div> -->
 
       <div v-if="servers.length == 0" class="spinner"></div>
 
@@ -39,10 +39,9 @@
     <webview id="myWebview" :class="['h-[100vh] w-full']" title="test" :src="currentUrl" allowpopups nodeintegration
       allow-same-origin allow-scripts partition="persist:authSession"
       webpreferences="javascript=yes,webSecurity=no,enable-cookies=true,nodeIntegration=false,contextIsolation=true"
-      ref="webview" 
-      @did-finish-load="onWebViewLoaded" />
+      ref="webview" @did-finish-load="onWebViewLoaded" />
 
-      <NotificationView />
+    <NotificationView />
   </div>
 </template>
 
@@ -88,17 +87,23 @@ window.electron.ipcRenderer.on('notification', (_event, message: string) => {
 });
 // Handle server click to open the website
 const openServerWebsite = (server: Server | null) => {
-  loadingWebview.value = false;
-  webview.value.style.visibility = "hidden";
 
   currentServer.value = server;
+  let newUrl = "";
   if (server) {
 
-    currentUrl.value = `https://${server.ip}:9090/super-simple-setup-test#dark=${darkModeState.value}&advanced=${advancedState.value}&client_ip=${clientip.value}&server_ip=${server.ip}`;
-    
+    newUrl = `https://${server.ip}:9090/super-simple-setup-test#dark=${darkModeState.value}&advanced=${advancedState.value}&client_ip=${clientip.value}&server_ip=${server.ip}`;
+
   } else {
     currentUrl.value = "";
   }
+
+  if (newUrl !== currentUrl.value) {
+    loadingWebview.value = false;
+    webview.value.style.visibility = "hidden";
+    currentUrl.value = newUrl;
+  } 
+
 };
 
 watch(servers, () => {
@@ -135,7 +140,7 @@ const onWebViewLoaded = () => {
       `);
   webview.value.style.visibility = "visible";
   loadingWebview.value = true;
-  // webview.value.openDevTools();
+  webview.value.openDevTools();
 }
 </script>
 
