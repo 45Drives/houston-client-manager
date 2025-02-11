@@ -1,6 +1,6 @@
 <template>
   <!-- List of servers to click -->
-  <div class="flex flex-col h-full flex-2">
+  <div class="flex flex-col">
     <div class="font-bold text-center border-b-2">
       Houston Servers
     </div>
@@ -8,9 +8,23 @@
     <div v-if="servers.length == 0" class="spinner"></div>
 
     <div class="flex flex-col space-y-1 p-2">
-      <button class="btn btn-primary" v-for="server in servers" :key="server.ip" @click="handleSelection(server)">
+      <!-- <button class="btn btn-primary" v-for="server in servers" :key="server.ip" @click="handleSelection(server)">
         {{ server.name }} - {{ server.ip }}
-      </button>
+      </button> -->
+      <label
+      v-for="server in servers"
+      :key="server.ip"
+      class="flex items-center space-x-2 p-2"
+    >
+      <input
+        type="checkbox"
+        :checked="selectedServer?.ip === server.ip"
+        @change="handleSelection(server)"
+        class="form-checkbox h-5 w-5 text-blue-600"
+      />
+      <span>{{ server.name }} - {{ server.ip }}</span>
+    </label>
+
     </div>
   </div>
 
@@ -21,6 +35,7 @@ import { ref, watch } from 'vue';
 import { Server } from '../types'
 
 const servers = ref<Server[]>([]);
+const selectedServer = ref<Server | null>(null);
 
 // Receive the discovered servers from the main process
 window.electron.ipcRenderer.on('discovered-servers', (_event, discoveredServers: Server[]) => {
@@ -37,12 +52,21 @@ watch(servers, () => {
   });
 })
 
-const props = defineProps<{
-  onSelectedServerChange: (server: Server) => void;
+// Define event emitter
+const emit = defineEmits<{
+  (event: 'serverSelected', server: Server | null): void;
 }>();
 
+// Emit event when a server is selected
 const handleSelection = (server: Server) => {
-  props.onSelectedServerChange(server);
+  // If the same server is clicked again, toggle selection
+  if (selectedServer.value?.ip === server.ip) {
+    selectedServer.value = null;
+    emit('serverSelected', null);
+  } else {
+    selectedServer.value = server;
+    emit('serverSelected', server);
+  }
 };
 
 </script>

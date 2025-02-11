@@ -24,6 +24,7 @@ export type WizardState = {
   index: WritableComputedRef<number>;
   currentComponent: ComputedRef<Component>;
   completedSteps: Ref<boolean[]>;
+  data: any;
 };
 
 export const WizardStateInjectionKey = Symbol() as InjectionKey<WizardState>;
@@ -44,6 +45,7 @@ export function defineWizardSteps(steps: WizardStep[]): WizardState {
     index,
     currentComponent,
     completedSteps: ref(steps.map(() => false)),
+    data: {}
   };
 
   provide(WizardStateInjectionKey, state);
@@ -76,12 +78,13 @@ export function useWizardSteps() {
     state.index.value = newIndex;
   };
 
-  const completeCurrentStep = (gotoNext: boolean = true) => {
+  const completeCurrentStep = (gotoNext: boolean = true, data: any = {}) => {
     state.completedSteps.value = state.completedSteps.value.map((isComplete, index) =>
       index === state.index.value ? true : isComplete
     );
 
     if (gotoNext) {
+      state.data = data;
       nextStep();
     }
   };
@@ -89,6 +92,7 @@ export function useWizardSteps() {
   return {
     steps: state.labels,
     activeStepIndex: state.index,
+    wizardData: state.data,
     nextStep,
     prevStep,
     reset,

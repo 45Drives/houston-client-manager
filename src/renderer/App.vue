@@ -1,24 +1,19 @@
 <template>
 
-  <div class="w-screen h-screen overflow-hidden flex items-center justify-center text-default" >
+  <div class="w-screen h-screen overflow-hidden flex items-center justify-center text-default">
 
     <Wizard v-if="!welcomeWizardComplete" :steps="steps" :onComplete="onWelcomeWizardComplete" class="h-full flex-1" />
-  
-    <div v-else-if="welcomeWizardComplete">
-      Welcome Wizard Complate!!!
-    </div>
 
-    <NotificationView /> 
-
-  </div>
-    <!-- <div v-if="!loadingWebview" class="spinner"></div>
-
-    <webview id="myWebview" :class="['h-[100vh] w-full']" title="test" :src="currentUrl" allowpopups nodeintegration
+    <webview v-show="welcomeWizardComplete && !loadingWebview" id="myWebview" title="test" :src="currentUrl" allowpopups nodeintegration
       allow-same-origin allow-scripts partition="persist:authSession"
       webpreferences="javascript=yes,webSecurity=no,enable-cookies=true,nodeIntegration=false,contextIsolation=true"
       ref="webview" @did-finish-load="onWebViewLoaded" />
--->
 
+    <div v-if="loadingWebview" id="spinner" class="spinner"></div>
+
+    <NotificationView />
+
+  </div>
 </template>
 
 <script setup lang="ts">
@@ -30,9 +25,13 @@ import NotificationView from './components/NotificationView.vue';
 import { Server } from './types';
 import { Wizard } from './components/wizard';
 import WelcomeView from './views/WelcomeView.vue';
+import SettingUpHardwareView from './views/SettingUpHardwareView.vue';
+import DiscoveryNonSetupServersView from './views/DiscoveryNonSetupServersView.vue';
 
 const steps = [
   { label: "Welcome", component: WelcomeView },
+  { label: "Hardware Setup", component: SettingUpHardwareView },
+  { label: "Server Discovery", component: DiscoveryNonSetupServersView },
 ];
 
 const darkModeState = useDarkModeState();
@@ -44,7 +43,6 @@ const clientip = ref<string>("");
 const webview = ref();
 const loadingWebview = ref(false);
 const currentUrl = ref<string>('https://45drives.com');
-
 
 window.electron.ipcRenderer.on('client-ip', (_event, ip: string) => {
   clientip.value = ip;
@@ -64,6 +62,8 @@ window.electron.ipcRenderer.on('notification', (_event, message: string) => {
 // Handle server click to open the website
 const openServerWebsite = (server: Server | null) => {
 
+  console.log(server);
+
   currentServer.value = server;
   let newUrl = "";
   if (server) {
@@ -75,37 +75,80 @@ const openServerWebsite = (server: Server | null) => {
   }
 
   if (newUrl !== currentUrl.value) {
-    loadingWebview.value = false;
-    webview.value.style.visibility = "hidden";
+    loadingWebview.value = true;
     currentUrl.value = newUrl;
   }
 
 };
 
-const onWebViewLoaded = () => {
+const onWebViewLoaded = async () => {
   webview.value.executeJavaScript(`
-        if (!document.querySelector("#login")) {
-          [...document.querySelectorAll('#main > div')].forEach((e) => {
-            if (e.id !== 'content') e.style.display = 'none';
-          });
+        new Promise((resolve, reject) => {
 
-          [...document.querySelectorAll('#main > nav')].forEach((e) => {
-            if (e.id !== 'content') e.style.display = 'none';
-          });
+          if (!document.querySelector("#login")) {
+            setTimeout(() => {
+              [...document.querySelectorAll('#main > div')].forEach((e) => {
+                if (e.id !== 'content') e.style.display = 'none';
+              });
 
-          document.querySelector('#main').style.gridTemplateAreas = '"header" "main"';
-          document.querySelector('#main').style.gridTemplateColumns = '1fr';
-          document.body.style.visibility = 'visible';  // Show the page after modifications
-        }
-      `);
-  webview.value.style.visibility = "visible";
-  loadingWebview.value = true;
-  webview.value.openDevTools();
+              [...document.querySelectorAll('#main > nav')].forEach((e) => {
+                if (e.id !== 'content') e.style.display = 'none';
+              });
+
+              document.querySelector('#main').style.gridTemplateAreas = '"header" "main"';
+              document.querySelector('#main').style.gridTemplateColumns = '1fr';
+
+              resolve("View modified and visible.");
+            }, 500);
+          
+          } else {
+
+            console.log("Login UI showing")
+            const usernameField = document.querySelector("#login-user-input");
+            const passwordField = document.querySelector("#login-password-input");
+            const loginButton = document.querySelector("#login-button");
+            const loginForm  = document.querySelector("form");
+
+            if (usernameField && passwordField && loginButton) {
+              usernameField.value = "root";  // Insert your username
+              passwordField.value = "password";  // Insert your password
+
+              // Dispatch input events to ensure the values are recognized
+              usernameField.dispatchEvent(new Event("input", { bubbles: true }));
+              passwordField.dispatchEvent(new Event("input", { bubbles: true }));
+
+              setTimeout(() => {
+                loginButton.click();
+                loginForm.submit(); // Submit the form programmatically
+                // resolve("Login submitted.");
+              }, 500); // Small delay to ensure input is registered
+            } else {
+              console.error("Login fields or button not found.");
+            }
+          }
+        });
+      `)
+    .then((result: any) => {
+      console.log("result", result); 
+      loadingWebview.value = false;
+      webview.value.className = "h-[100vh] w-full";  
+    })
+    .catch((error: any) => {
+      console.error("Error:", error);
+      loadingWebview.value = false;
+    });
+
+    // webview.value.openDevTools();
 }
 
-const onWelcomeWizardComplete = () => {
+const onWelcomeWizardComplete = (server: Server) => {
+  loginRequest(server)
   welcomeWizardComplete.value = true;
 }
+
+const loginRequest = async (server: Server) => {
+  openServerWebsite(server);
+};
 
 </script>
 

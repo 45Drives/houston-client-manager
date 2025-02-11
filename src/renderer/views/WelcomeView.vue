@@ -1,14 +1,14 @@
 <template>
   <CardContainer>
     <template #header>
-      <p class="text-header text-center">
+      <p class="text-header text-center text-3xl">
         Welcome to the 45Drives Setup Wizard!
       </p>
     </template>
 
-    <div class="flex flex-col h-full justify-center">
+    <div class="flex flex-col h-full justify-center items-center">
 
-      <p class="text-center">
+      <p class="w-9/12 text-center text-2xl">
         With countless storage drive layout options, balancing capacity, performance, and redundancy can feel like a
         juggling act. Drawing from our years of experience configuring enterprise storage servers, we’ve identified best
         practices for optimizing drive layouts based on the quantity of drives you decide to install in this server.
@@ -16,32 +16,33 @@
 
       <br/>
 
-      <p class="text-center">
+      <p class="w-9/12 text-center text-2xl">
         This setup wizard will guide you through the steps to get your storage server up and running quickly.
       </p>
 
       <br/>
 
-      <p class="text-center">
+      <p class="w-9/12 text-center text-2xl">
         Our goal is to ensure a smooth setup you can start using your storage server as network attached storage (NAS)
         device with confidence.
       </p>
 
       <br/>
 
-      <p class="text-center">
-        To get started, simply click NEXT
+      <p class="w-9/12 text-center text-2xl">
+        To get started, simply click <b>NEXT</b>
       </p>
     </div>
 
     <!-- Buttons -->
     <template #footer>
       <div class="button-group-row justify-end">
-        <button @click="proceedToNextStep" class="btn btn-secondary w-40">
+        <button @click="proceedToNextStep" class="btn btn-secondary w-40 h-20">
           Next
         </button>
       </div>
     </template>
+
   </CardContainer>
 </template>
 
@@ -49,13 +50,11 @@
 import CardContainer from '../components/CardContainer.vue';
 import { useWizardSteps } from '../components/wizard';
 
-
 const { completeCurrentStep } = useWizardSteps();
 
 const proceedToNextStep = async () => {
   completeCurrentStep();
 };
-
 
 </script>
 
