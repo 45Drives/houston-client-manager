@@ -4,12 +4,17 @@
 
     <Wizard v-if="!welcomeWizardComplete" :steps="steps" :onComplete="onWelcomeWizardComplete" class="h-full flex-1" />
 
-    <webview v-show="welcomeWizardComplete && !loadingWebview" id="myWebview" title="test" :src="currentUrl" allowpopups nodeintegration
-      allow-same-origin allow-scripts partition="persist:authSession"
+    <webview v-show="welcomeWizardComplete && !loadingWebview" id="myWebview" title="test" :src="currentUrl" allowpopups
+      nodeintegration allow-same-origin allow-scripts partition="persist:authSession"
       webpreferences="javascript=yes,webSecurity=no,enable-cookies=true,nodeIntegration=false,contextIsolation=true"
       ref="webview" @did-finish-load="onWebViewLoaded" />
 
-    <div v-if="loadingWebview" id="spinner" class="spinner"></div>
+    <div v-if="loadingWebview">
+      <p class="w-3/4 text-2xl ">
+        Give us a few while we login.in
+      </p>
+      <div id="spinner" class="spinner"></div>
+    </div>
 
     <NotificationView />
 
@@ -49,6 +54,8 @@ window.electron.ipcRenderer.on('client-ip', (_event, ip: string) => {
 });
 
 window.electron.ipcRenderer.on('notification', (_event, message: string) => {
+  console.log(message)
+
   if (message.startsWith("Error")) {
 
     reportError(new Error(message))
@@ -57,6 +64,12 @@ window.electron.ipcRenderer.on('notification', (_event, message: string) => {
     reportSuccess(message);
   }
 
+});
+
+window.electron.ipcRenderer.on('webview-message', (_event, data: any) => {
+  if (data.action === "setup_wizard_go_back") {
+    welcomeWizardComplete.value = false;
+  }
 });
 
 // Handle server click to open the website
@@ -82,6 +95,7 @@ const openServerWebsite = (server: Server | null) => {
 };
 
 const onWebViewLoaded = async () => {
+
   webview.value.executeJavaScript(`
         new Promise((resolve, reject) => {
 
@@ -129,16 +143,16 @@ const onWebViewLoaded = async () => {
         });
       `)
     .then((result: any) => {
-      console.log("result", result); 
+      console.log("result", result);
       loadingWebview.value = false;
-      webview.value.className = "h-[100vh] w-full";  
+      webview.value.className = "h-[100vh] w-full";
     })
     .catch((error: any) => {
       console.error("Error:", error);
       loadingWebview.value = false;
     });
 
-    // webview.value.openDevTools();
+  webview.value.openDevTools();
 }
 
 const onWelcomeWizardComplete = (server: Server) => {

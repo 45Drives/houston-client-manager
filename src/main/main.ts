@@ -81,6 +81,11 @@ function createWindow() {
 
   mainWindow.webContents.send('client-ip', getLocalIP());
 
+  ipcMain.on("webview-message", (event, data) => {
+    console.log('[Main] Received from webview:', data);
+    mainWindow.webContents.send('webview-message', data);
+  });
+
   // Set up mDNS for service discovery
   const mDNSClient = mdns(); // Correctly call as a function
 
@@ -286,6 +291,14 @@ function createWindow() {
     }
   });
 }
+
+app.on('web-contents-created', (_event, contents) => {
+  contents.on('will-attach-webview', (_wawevent, webPreferences, _params) => {
+    console.log("webview attaching")
+    webPreferences.preload = `${__dirname}/webview-preload.js`;
+  });
+});
+
 
 app.whenReady().then(() => {
   createWindow();

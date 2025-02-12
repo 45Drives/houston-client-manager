@@ -1,0 +1,70 @@
+<template>
+  <CardContainer>
+    <template #header>
+      <p class="text-header text-center text-3xl">
+        Discovered 45Drives Storage Server
+      </p>
+    </template>
+
+    <div class="flex flex-col h-full justify-center items-center">
+
+      <p class="w-9/12 text-center text-2xl">
+        We noticed you have multiple 45Drives servers on your network that require setup. This setup wizard is designed to setup one server at a time. Click the box next to the server you would like to setup first. When you are finished setting the selected server up, simply re-run this program to start setting up the remaining server(s).
+      </p>
+
+      <br/>
+
+      <HoustonServerListView class="w-1/3 p-5 justify-center text-2xl" @serverSelected="handleServerSelected" />
+
+      <p class="w-9/12 text-center text-2xl">
+        If your storage server is not appearing in the list above, please return to the Hardware Setup and ensure all steps were completed.
+      </p>
+
+      <br/>
+
+      <p class="text-center text-2xl">
+        Once you have one of the boxes checked, click <b>NEXT</b>
+      </p>
+
+    </div>
+
+    <!-- Buttons -->
+    <template #footer>
+      <div class="button-group-row w-full justify-between">
+        <button @click="goBackStep" class="btn btn-secondary w-40 h-20">
+          Back
+        </button>
+
+        <button :disabled="selectedServer === null" @click="proceedToNextStep" class="btn btn-secondary w-40 h-20">
+          Next
+        </button>
+      </div>
+    </template>
+  </CardContainer>
+</template>
+
+<script setup lang="ts">
+import CardContainer from '../components/CardContainer.vue';
+import { useWizardSteps } from '../components/wizard';
+import HoustonServerListView from '../components/HoustonServerListView.vue'
+import { Server } from '../types';
+import { ref } from 'vue';
+
+const { completeCurrentStep, prevStep } = useWizardSteps();
+const selectedServer = ref<Server | null>(null);
+
+const goBackStep = async () => {
+  prevStep();
+};
+
+const proceedToNextStep = async () => {
+  completeCurrentStep(true, selectedServer.value);
+};
+
+const handleServerSelected = async (server: Server | null) => {
+  selectedServer.value = server;
+};
+
+</script>
+
+<style scoped></style>

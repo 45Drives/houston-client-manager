@@ -8,9 +8,6 @@
     <div v-if="servers.length == 0" class="spinner"></div>
 
     <div class="flex flex-col space-y-1 p-2">
-      <!-- <button class="btn btn-primary" v-for="server in servers" :key="server.ip" @click="handleSelection(server)">
-        {{ server.name }} - {{ server.ip }}
-      </button> -->
       <label
       v-for="server in servers"
       :key="server.ip"
