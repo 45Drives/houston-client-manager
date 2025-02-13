@@ -63,33 +63,25 @@ function createWindow() {
 
   mainWindow.maximize();
 
-  // mainWindow.setMenu(null);
+  mainWindow.setMenu(null);
 
   mainWindow.webContents.setUserAgent(
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36 Edg/131.0.0.0'
   );
-
 
   if (process.env.NODE_ENV === 'development') {
     mainWindow.webContents.openDevTools();
     const rendererPort = process.argv[2];
 
     mainWindow.loadURL(`http://localhost:${rendererPort}`);
-  }
-  else {
+  } else {
     mainWindow.loadFile(join(app.getAppPath(), 'renderer', 'index.html'));
   }
 
   mainWindow.webContents.send('client-ip', getLocalIP());
 
-  ipcMain.on("webview-message", (event, data) => {
-    console.log('[Main] Received from webview:', data);
-    mainWindow.webContents.send('webview-message', data);
-  });
-
   // Set up mDNS for service discovery
   const mDNSClient = mdns(); // Correctly call as a function
-
 
   // Start listening for devices
   mDNSClient.on('response', async (response) => {

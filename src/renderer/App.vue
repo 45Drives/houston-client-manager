@@ -74,7 +74,6 @@ window.electron.ipcRenderer.on('webview-message', (_event, data: any) => {
     welcomeWizardComplete.value = false;
     useWizardSteps().reset()
   }
-  
 });
 
 // Handle server click to open the website
