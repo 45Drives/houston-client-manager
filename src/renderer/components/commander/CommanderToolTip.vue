@@ -9,7 +9,7 @@
                 <CommanderPopup :message="message" :visible="showCommander"
                     @close="showCommander = false" :position="commanderPosition"
                     :arrow-offset="commanderPosition.arrowOffset" :placement="commanderPosition.placement" 
-                    :width="props.width"
+                    :width="width"
                     />
             </div>
         </teleport>
@@ -23,11 +23,11 @@ import CommanderPopup from "./CommanderPopup.vue";
 
 interface CommanderToolTipProps {
     message: string;
-    width: number;
+    width?: number;
 }
 
 const props = defineProps<CommanderToolTipProps>();
-const width = props.width || 500;
+const width = props.width || 700;
 const showCommander = ref(false);
 const triggerRef = ref<HTMLElement | null>(null);
 const commanderPosition = ref({
