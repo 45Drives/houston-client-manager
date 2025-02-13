@@ -29,6 +29,7 @@ import { reportError, reportSuccess } from './components/NotificationView.vue';
 import NotificationView from './components/NotificationView.vue';
 import { Server } from './types';
 import { Wizard } from './components/wizard';
+import { useWizardSteps } from './components/wizard'
 import WelcomeView from './views/WelcomeView.vue';
 import SettingUpHardwareView from './views/SettingUpHardwareView.vue';
 import DiscoveryNonSetupServersView from './views/DiscoveryNonSetupServersView.vue';
@@ -69,6 +70,9 @@ window.electron.ipcRenderer.on('notification', (_event, message: string) => {
 window.electron.ipcRenderer.on('webview-message', (_event, data: any) => {
   if (data.action === "setup_wizard_go_back") {
     welcomeWizardComplete.value = false;
+  } else if (data.action === "go_home") {
+    welcomeWizardComplete.value = false;
+    useWizardSteps().reset()
   }
 });
 

@@ -1,5 +1,5 @@
 @echo off
-setlocal enabledelayedexpansion
+setlocal DisableDelayedExpansion
 
 :: Check if network path, username, and password are provided
 if "%1"=="" (
@@ -18,9 +18,12 @@ if "%3"=="" (
 )
 
 :: Assign parameters to variables
-set "NETWORK_PATH=%1"
-set "USERNAME=%2"
-set "PASSWORD=%3"
+set "SMB_HOST=%1"
+set "SMB_SHARE=%2"
+set "USERNAME=%3"
+set "PASSWORD=%~4"
+
+set "NETWORK_PATH=\\%SMB_HOST%\%SMB_SHARE%"
 
 :: Extract SMB Server from NETWORK_PATH (e.g., \\192.168.1.100\share -> 192.168.1.100)
 for /f "tokens=2 delims=\\" %%A in ("%NETWORK_PATH%") do set "SMB_SERVER=%%A"
@@ -44,12 +47,12 @@ exit /b 1
 
 :MOUNT_SMB
 :: Map the network drive with credentials
-net use !DRIVE_LETTER!: !NETWORK_PATH! /user:!USERNAME! "!PASSWORD!" /persistent:yes >nul 2>&1
+net use %DRIVE_LETTER%: %NETWORK_PATH% /user:%USERNAME% "%PASSWORD%" /persistent:yes >nul 2>&1
 
 :: Check if the mapping was successful
 if %ERRORLEVEL%==0 (
-    echo {"DriveLetter": "!DRIVE_LETTER!", "smb_server": "!SMB_SERVER!"}
-    start explorer !DRIVE_LETTER!:  & exit /b 0
+    echo {"DriveLetter": "%DRIVE_LETTER%", "smb_server": "%SMB_SERVER%"}
+    start explorer %DRIVE_LETTER%:  & exit /b 0
 ) else (
-    echo {"error": "Failed to map network drive", "drive": "!DRIVE_LETTER!", "path": "!NETWORK_PATH!"}
+    echo {"error": "Failed to map network drive", "drive": "%DRIVE_LETTER%", "smb_host": "%SMB_HOST%", "smb_share": "%SMB_SHARE%", "smb_user": "%USERNAME%", "smb_pass": "%PASSWORD%"}
 )

@@ -11,6 +11,7 @@ interface Server {
   ip: string;
   name: string;
   lastSeen: number;
+  status: string | "unknown";
 }
 
 let discoveredServers: Server[] = [];
@@ -91,7 +92,7 @@ function createWindow() {
 
 
   // Start listening for devices
-  mDNSClient.on('response', (response) => {
+  mDNSClient.on('response', async (response) => {
 
     server_search:
     for (const answer1 of response.answers) {
@@ -102,16 +103,39 @@ function createWindow() {
           if (answer2.type === 'A') {
 
             const serverName = answer2.name;
-            const server = { ip: answer2?.data, name: serverName, lastSeen: Date.now() };
+            const server: Server = { ip: answer2?.data, name: serverName, status: "unknown", lastSeen: Date.now() };
 
             let existingServer = discoveredServers.find((eServer) => eServer.ip === server.ip && eServer.name === server.name);
 
-            if (!existingServer) {
+            try {
+              const response = await fetch(`http://${server.ip}:9095/setup-status`);
+              if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+              }
+              const setupStatusResponse = await response.json();
 
-              discoveredServers.push(server);
-            } else {
-              existingServer.lastSeen = Date.now();
+              if (!existingServer) {
+                
+                if (setupStatusResponse.err) {
+                  server.status = "unknown";
+                } else {
+                  server.status = setupStatusResponse.status;
+                }
+                discoveredServers.push(server);
+              } else {
+                existingServer.lastSeen = Date.now();
+                if (setupStatusResponse.err) {
+                  server.status = "unknown";
+                } else {
+                  server.status = setupStatusResponse.status;
+                }
+              }
+
+            } catch (error) {
+              console.error('Fetch error:', error);
             }
+
+           
             break server_search;
           }
         }
@@ -159,7 +183,7 @@ function createWindow() {
         console.log("New action received:", server, data);
 
         if (data.action === "mount_samba_client") {
-          await mountSambaClient(server, data.smb_path, data.smb_user, data.smb_pass);
+          await mountSambaClient(server, data.smb_host, data.smb_share, data.smb_user, data.smb_pass);
         } else {
           console.log("Unknown new actions.", server);
         }
@@ -176,34 +200,35 @@ function createWindow() {
     }
   }, 5000);
 
-  async function mountSambaClient(server: Server, smb_path: string, smb_user: string, smb_pass: string) {
+  async function mountSambaClient(server: Server, smb_host: string, smb_share: string, smb_user: string, smb_pass: string) {
 
     const platform = os.platform();
 
     if (platform === "win32") {
-      mountSambaClientWin(smb_path, smb_user, smb_pass);
+      mountSambaClientWin(smb_host, smb_share, smb_user, smb_pass);
     } else if (platform === "linux") {
-      mountSambaClientScript(smb_path, smb_user, smb_pass, await getAsset("static", "mount_smb_lin.sh"));
+      mountSambaClientScript(smb_host, smb_share, smb_user, smb_pass, await getAsset("static", "mount_smb_lin.sh"));
     } else if (platform === "darwin") {
-      mountSambaClientScript(smb_path, smb_user, smb_pass, await getAsset("static", "mount_smb_mac.sh"));
+      mountSambaClientScript(smb_host, smb_share, smb_user, smb_pass, await getAsset("static", "mount_smb_mac.sh"));
     } else {
       console.log("Unknown OS:", platform);
     }
 
   }
 
-  async function mountSambaClientWin(smb_path: string, smb_user: string, smb_pass: string) {
+  async function mountSambaClientWin(smb_host: string, smb_share: string, smb_user: string, smb_pass: string) {
     let batpath = await getAsset("static", "mount_smb.bat");
-    exec(`cmd /C ""${batpath}" "${smb_path}" "${smb_user}" "${smb_pass}""`, (error, stdout, stderr) => {
+
+    exec(`cmd /C ""${batpath}" ${smb_host} ${smb_share} ${smb_user} "${smb_pass}""`, (error, stdout, stderr) => {
       console.log(`Stdout: ${stdout}`);
       if (error) {
         console.error(`Error: ${error.message}`);
-        mainWindow.webContents.send('notification', `Error: failed to connect to ${smb_path}.`);
+        mainWindow.webContents.send('notification', `Error: failed to connect to \\\\${smb_host}\\${smb_share}.`);
         return;
       }
       if (stderr) {
         console.error(`Stderr: ${stderr}`);
-        mainWindow.webContents.send('notification', `Error: failed to connect to ${smb_path}.`);
+        mainWindow.webContents.send('notification', `Error: failed to connect to \\\\${smb_host}\\${smb_share}.`);
         return;
       }
 
@@ -213,6 +238,10 @@ function createWindow() {
         return;
       }
 
+      if (result.error) {
+        mainWindow.webContents.send('notification', `S${result.error}.`);
+        return;
+      }
       mainWindow.webContents.send('notification', `Successfull connected to ${stdout}.`);
     });
   }
@@ -251,18 +280,18 @@ function createWindow() {
     return extractedFilepath;
   }
 
-  function mountSambaClientScript(smb_path: string, smb_user: string, smb_pass: string, script: string) {
+  function mountSambaClientScript(smb_host: string, smb_share: string, smb_user: string, smb_pass: string, script: string) {
 
-    exec(`bash ""${script}" "${smb_path}" "${smb_user}" "${smb_pass}""`, (error, stdout, stderr) => {
+    exec(`bash ""${script}" ${smb_host} ${smb_share} ${smb_user} ${smb_pass}"`, (error, stdout, stderr) => {
       console.log(`Stdout: ${stdout}`);
       if (error) {
         console.error(`Error: ${error.message}`);
-        mainWindow.webContents.send('notification', `Error: failed to connect to ${smb_path}.`);
+        mainWindow.webContents.send('notification', `Error: failed to connect to host=${smb_host}, share=${smb_share}.`);
         return;
       }
       if (stderr) {
         console.error(`Stderr: ${stderr}`);
-        mainWindow.webContents.send('notification', `Error: failed to connect to ${smb_path}.`);
+        mainWindow.webContents.send('notification', `Error: failed to connect to host=${smb_host}, share=${smb_share}.`);
         return;
       }
 

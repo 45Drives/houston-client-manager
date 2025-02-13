@@ -15,9 +15,12 @@ if [ -z "$3" ]; then
 fi
 
 # Assign parameters
-SMB_PATH="$1"      # Example: //192.168.209.228/share
-USERNAME="$2"
-PASSWORD="$3"
+SMB_HOST="$1"      # Example: //192.168.209.228/share
+SMB_SHARE="$2"      
+USERNAME="$3"
+PASSWORD="$4"
+
+SMB_PATH="//$SMB_HOST/$SMB_SHARE"
 
 # Define the mount point
 MOUNT_POINT="/Volumes/SMB_Share"
