@@ -1,8 +1,8 @@
 <template>
 
-  <div class="w-screen h-screen overflow-hidden flex items-center justify-center text-default">
+  <div class="w-screen h-screen overflow-hidden flex items-center justify-center text-default bg-default">
 
-    <Wizard v-if="!welcomeWizardComplete" :steps="steps" :onComplete="onWelcomeWizardComplete" class="h-full flex-1" />
+    <Wizard v-if="!welcomeWizardComplete" :steps="steps" :onComplete="onWelcomeWizardComplete" class="h-full flex-1 text-default bg-default" />
 
     <webview v-show="welcomeWizardComplete && !loadingWebview" id="myWebview" title="test" :src="currentUrl" allowpopups
       nodeintegration allow-same-origin allow-scripts partition="persist:authSession"

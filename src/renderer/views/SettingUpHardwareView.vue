@@ -5,64 +5,45 @@
         SETTING UP YOUR HARDWARE
       </p>
     </template>
-
-    <div class="flex flex-col items-center justify-center w-full">
-
-      <div class="w-9/12">
-        <div class="flex flex-row">
-          <p class="w-3/4 text-left text-2xl ">
-            1. Let’s set up the storage server and drives. If you purchased drives from us, they will have arrived in a
-            separate, securely packaged box. If you're using your own drives, we recommend ensuring they all have the
-            same
-            capacity to optimize usable storage. 2.The storage bays are caddiless for 3.5” Drives. 2.5” Drives can be
-            used,
-            however caddies are required.
+    <div class="flex flex-col justify-center items-center h-full">
+      <div class="w-9/12 grid grid-cols-4 gap-x-6 gap-y-6 items-center">
+          <!-- Step 1 -->
+          <p class="col-span-3 text-left text-2xl">
+            <b>Let’s set up the storage server and drives.</b><br />
+            1. If you purchased drives from us, they will have arrived in a separate, securely packaged box.
+            If you're using your own drives, we recommend ensuring they all have the same capacity to optimize usable
+            storage.
+            <br />
+            <b>NOTE:</b> The storage bays are caddiless for 3.5” Drives.
+            2.5” Drives can be used, however caddies are required.
+            <CommanderToolTip
+              :message="`Get some caddies here at <a href='https://store.45homelab.com/products/11' target='_blank' class='text-link'>45HomeLab Store</a>, or 3D print your own with our <a href='https://www.printables.com/model/583544-45drives-ssd-caddies' target='_blank' class='text-link'>Printables</a> files!`" />
           </p>
-          <div class="w-1/4 p-2 flex">
-            <img class="" src="assets/unboxInsertDrives.png" alt="Bad" />
-          </div>
-        </div>
+          <img class="w-full" src="../assets/unboxInsertDrives.png" alt="Insert Drives" />
 
-        <br />
-
-        <div class="flex flex-row">
-          <p class="w-3/4 text-left text-2xl ">
-            2. Take the supplied power cord and plug it to the back of the server power port. Then, plug the other end
-            of
-            the power cord into a wall outlet.
+          <!-- Step 2 -->
+          <p class="col-span-3 text-left text-2xl">
+            2. Take the supplied power cord and plug it into the back of the server power port.
+            Then, plug the other end of the power cord into a wall outlet.
           </p>
-          <div class="w-1/4 p-2">
+          <img class="w-full" src="../assets/plugPower.png" alt="Plug Power" />
 
-            <img class="" src="assets/plugPower.png" alt="Bad" />
-          </div>
-        </div>
-
-        <br />
-
-        <div class="flex flex-row">
-          <p class="w-3/4 text-left text-2xl ">
-            3. Take the supplied ethernet cable and plug it to the back of the server power port. Then, plug it to
-            either a
-            router or network switch. Note, this is a Network Attached Server (NAS), not a Direct Attached Server (DAS).
+          <!-- Step 3 -->
+          <p class="col-span-3 text-left text-2xl">
+            3. Take the supplied ethernet cable and plug it into the back of the server.
+            Then, plug it into either a router or network switch.
+            <br />
+            <b>NOTE:</b> This is a Network Attached Server (NAS), not a Direct Attached Server (DAS).
             Connecting the server directly to a computer will not work.
           </p>
-          <div class="w-1/4 p-2">
+          <img class="w-full" src="../assets/plugEthernet.png" alt="Plug Ethernet" />
 
-            <img class="" src="assets/plugEthernet.png" alt="Bad" />
-          </div>
-        </div>
-
-        <br />
-
-        <div class="flex flex-row">
-          <p class="w-3/4 text-left text-2xl ">
+          <!-- Step 4 -->
+          <p class="col-span-3 text-left text-2xl">
             4. Press the Power button to turn on your storage server!
           </p>
-          <div class="w-1/4 p-2">
-            <img class="" src="assets/pressPower.png" alt="Bad" />
-          </div>
+          <img class="w-full" src="../assets/pressPower.png" alt="Press Power" />
         </div>
-      </div>
     </div>
 
     <!-- Buttons -->
@@ -83,7 +64,7 @@
 <script setup lang="ts">
 import CardContainer from '../components/CardContainer.vue';
 import { useWizardSteps } from '../components/wizard';
-
+import { CommanderToolTip } from '../components/commander';
 
 const { completeCurrentStep, prevStep } = useWizardSteps();
 
