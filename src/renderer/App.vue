@@ -7,11 +7,11 @@
     <webview v-show="welcomeWizardComplete && !loadingWebview" id="myWebview" title="test" :src="currentUrl" allowpopups
       nodeintegration allow-same-origin allow-scripts partition="persist:authSession"
       webpreferences="javascript=yes,webSecurity=no,enable-cookies=true,nodeIntegration=false,contextIsolation=true"
-      ref="webview" @did-finish-load="onWebViewLoaded" />
+      ref="webview" @did-finish-load="onWebViewLoaded"/>
 
     <div v-if="loadingWebview">
       <p class="w-3/4 text-2xl ">
-        Give us a few while we login.in
+        Give us a few while we login.
       </p>
       <div id="spinner" class="spinner"></div>
     </div>
@@ -70,6 +70,7 @@ window.electron.ipcRenderer.on('webview-message', (_event, data: any) => {
   if (data.action === "setup_wizard_go_back") {
     welcomeWizardComplete.value = false;
   }
+  
 });
 
 // Handle server click to open the website
@@ -95,7 +96,19 @@ const openServerWebsite = (server: Server | null) => {
 };
 
 const onWebViewLoaded = async () => {
+  webview.value.addEventListener('console-message', (event) => {
+    console.log('webview testing', event.message);
 
+    try {
+      const data = JSON.parse(event.message);
+      if (data.action === "setup_wizard_go_back") {
+        welcomeWizardComplete.value = false;
+      }
+    } catch (error) {
+    }
+   
+  });
+  
   webview.value.executeJavaScript(`
         new Promise((resolve, reject) => {
 
