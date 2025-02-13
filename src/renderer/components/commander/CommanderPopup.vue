@@ -1,7 +1,7 @@
 <template>
     <teleport to="body">
         <div v-if="visible" id="commander-popup"
-            class="absolute flex items-center text-left bg-slate-800/95 text-white p-6 min-h-[100px] rounded-md shadow-lg user-select-none"
+            class="absolute flex items-start text-left bg-slate-800/95 text-white p-6 min-h-[100px] rounded-md shadow-lg user-select-none"
             :style="{ width: width + 'px', top: position.top,left: position.left }">
 
             <div class="absolute w-0 h-0 border-l-[12px] border-r-[12px] border-transparent" :class="{
@@ -19,9 +19,6 @@
                 <p class="font-mono text-lg flex-1 overflow-auto max-h-[300px] pr-4 whitespace-normal break-words"
                     v-html="displayedText">
                 </p>
-                <!--  <p class="font-mono text-lg flex-1 overflow-auto max-h-[300px] pr-4 whitespace-normal break-words">
-                    {{ displayedText }}
-                </p> -->
             </div>
             <button
                 class="absolute top-2 right-2 text-white text-xl bg-transparent border-none cursor-pointer font-mono hover:text-red-500"
@@ -40,7 +37,7 @@ import { XMarkIcon } from "@heroicons/vue/20/solid";
 interface CommanderPopupProps {
     message: string;
     visible: boolean;
-    width: number;
+    width?: number;
     position: {
         top: string;
         left: string;
@@ -68,33 +65,37 @@ watch(() => props.position, (newPos) => {
 }, { immediate: true });
 
 
-// Typewriter effect for message
-// const typeMessage = async (newMessage: string) => {
-//     isTyping.value = true;
-//     displayedText.value = "";
-
-//     for (let i = 0; i < newMessage.length; i++) {
-//         displayedText.value += newMessage[i];
-//         await new Promise((resolve) => setTimeout(resolve, 20));
-//     }
-
-//     isTyping.value = false;
-// };
 const typeMessage = async (newMessage: string) => {
     isTyping.value = true;
     displayedText.value = "";
 
-    // Check if message contains an HTML tag
-    if (/<[^>]+>/.test(newMessage)) {
-        displayedText.value = newMessage; // Show immediately if there's HTML
-        isTyping.value = false;
-        return;
-    }
+    let i = 0;
+    while (i < newMessage.length) {
+        // 1) If an anchor tag starts here...
+        if (newMessage.substring(i).startsWith("<a")) {
+            // 2) Find the closing </a>
+            const anchorCloseIndex = newMessage.indexOf("</a>", i);
 
-    // Otherwise, do the typewriter effect
-    for (let i = 0; i < newMessage.length; i++) {
-        displayedText.value += newMessage[i];
-        await new Promise((resolve) => setTimeout(resolve, 20));
+            // If we find a valid </a>, insert the whole anchor at once
+            if (anchorCloseIndex !== -1) {
+                const anchorSubstring = newMessage.substring(i, anchorCloseIndex + 4);
+                displayedText.value += anchorSubstring;
+                i = anchorCloseIndex + 4;
+                continue;
+            }
+            // If there's a malformed anchor, just fall through to the normal typing below
+        }
+
+        // 3) If it's a newline, convert it to <br/> and skip the type delay for that 'character'
+        if (newMessage[i] === "\n") {
+            displayedText.value += "<br/>";
+        } else {
+            // 4) Otherwise, type the character and add a small delay
+            displayedText.value += newMessage[i];
+            await new Promise((resolve) => setTimeout(resolve, 20));
+        }
+
+        i++;
     }
 
     isTyping.value = false;

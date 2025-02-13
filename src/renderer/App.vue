@@ -67,15 +67,6 @@ window.electron.ipcRenderer.on('notification', (_event, message: string) => {
 
 });
 
-window.electron.ipcRenderer.on('webview-message', (_event, data: any) => {
-  if (data.action === "setup_wizard_go_back") {
-    welcomeWizardComplete.value = false;
-  } else if (data.action === "go_home") {
-    welcomeWizardComplete.value = false;
-    useWizardSteps().reset()
-  }
-});
-
 // Handle server click to open the website
 const openServerWebsite = (server: Server | null) => {
 
@@ -106,6 +97,10 @@ const onWebViewLoaded = async () => {
       const data = JSON.parse(event.message);
       if (data.action === "setup_wizard_go_back") {
         welcomeWizardComplete.value = false;
+      } else if (data.action === "go_home") {
+        console.log("Go_HOME")
+        welcomeWizardComplete.value = false;
+        useWizardSteps().reset()
       }
     } catch (error) {
     }
