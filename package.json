@@ -37,6 +37,7 @@
     "express": "^4.21.2",
     "multicast-dns": "^7.2.5",
     "postcss": "^8.5.1",
+    "sudo-prompt": "^9.2.1",
     "vue": "^3.3.8"
   }
 }

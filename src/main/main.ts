@@ -6,6 +6,7 @@ import os from 'os';
 import { exec } from 'child_process';
 import fs from 'fs';
 import asar from 'asar';
+import installDepPopup from './installDepsPopup';
 
 interface Server {
   ip: string;
@@ -273,6 +274,8 @@ function createWindow() {
   }
 
   function mountSambaClientScript(smb_host: string, smb_share: string, smb_user: string, smb_pass: string, script: string) {
+
+    installDepPopup();
 
     exec(`bash ""${script}" ${smb_host} ${smb_share} ${smb_user} ${smb_pass}"`, (error, stdout, stderr) => {
       console.log(`Stdout: ${stdout}`);
