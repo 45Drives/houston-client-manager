@@ -7,23 +7,28 @@
     </template>
 
     <div class="flex flex-col h-full justify-center items-center">
-
       <p class="w-9/12 text-center text-2xl">
-        We noticed you have multiple 45Drives servers on your network that require setup. This setup wizard is designed to setup one server at a time. Click the box next to the server you would like to setup first. When you are finished setting the selected server up, simply re-run this program to start setting up the remaining server(s).
+        You may have multiple 45Drives servers on your network that require setup. <br />
+        This setup wizard is designed to setup one server at a time. Click the box next to the server you would like to
+        setup first. When you are finished setting the selected server up, simply re-run this program to start setting
+        up the remaining server(s).
       </p>
 
-      <br/>
+      <br />
 
       <HoustonServerListView class="w-1/3 p-5 justify-center text-2xl" @serverSelected="handleServerSelected" />
 
       <p class="w-9/12 text-center text-2xl">
-        If your storage server is not appearing in the list above, please return to the Hardware Setup and ensure all steps were completed.
+        If your storage server is not appearing in the list above, please return to the Hardware Setup and ensure all
+        steps were completed.
+        <!-- <CommanderToolTip
+          :message="``" /> -->
       </p>
 
-      <br/>
+      <br />
 
       <p class="text-center text-2xl">
-        Once you have one of the boxes checked, click <b>NEXT</b>
+        Once you have one of the boxes checked, click <b>NEXT</b>.
       </p>
 
     </div>
@@ -49,6 +54,7 @@ import { useWizardSteps } from '../components/wizard';
 import HoustonServerListView from '../components/HoustonServerListView.vue'
 import { Server } from '../types';
 import { ref } from 'vue';
+// import { CommanderToolTip } from '../components/commander';
 
 const { completeCurrentStep, prevStep } = useWizardSteps();
 const selectedServer = ref<Server | null>(null);
