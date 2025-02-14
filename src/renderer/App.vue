@@ -90,7 +90,7 @@ const openServerWebsite = (server: Server | null) => {
 };
 
 const onWebViewLoaded = async () => {
-  webview.value.addEventListener('console-message', (event) => {
+  webview.value.addEventListener('console-message', (event: any) => {
     console.log('webview testing', event.message);
 
     try {
