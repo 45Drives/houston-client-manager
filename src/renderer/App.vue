@@ -10,8 +10,8 @@
       ref="webview" @did-finish-load="onWebViewLoaded"/>
 
     <div v-if="loadingWebview">
-      <p class="w-3/4 text-2xl ">
-        Give us a few while we login.
+      <p class="w-3/4 text-2xl">
+        Give us a few while we login...
       </p>
       <div id="spinner" class="spinner"></div>
     </div>
