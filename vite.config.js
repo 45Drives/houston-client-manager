@@ -1,6 +1,6 @@
 const Path = require('path');
 const vuePlugin = require('@vitejs/plugin-vue')
-import { fileURLToPath, URL } from "node:url";
+const { fileURLToPath, URL } = require("node:url");
 
 const { defineConfig } = require('vite');
 
