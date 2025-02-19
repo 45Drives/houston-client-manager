@@ -16,3 +16,18 @@ export interface BackUpTask {
   source: string          // client folder to backup
   target: string          // mount point for backup location(preappened clientID(client hostname))
 }
+
+/**
+ * WinBackUpManager
+ * * schtasks
+ * * robocopy
+ * 
+ * LinuxBackUpManager
+ * * systemd
+ * * rsync
+ * 
+ * MacBackUpManager
+ * * launchd
+ * * rsync
+ * 
+ */
