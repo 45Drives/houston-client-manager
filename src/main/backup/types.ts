@@ -1,21 +1,23 @@
 export interface BackUpManager {
   queryTasks(): BackUpTask[]
-  unschedual(task: BackUpTask): void
-  schedual(task: BackUpTask): void
+  unschedule(task: BackUpTask): void
+  schedule(task: BackUpTask): void
 }
 
-export interface TaskSchedual {
+export interface TaskSchedule {
   repeatFrequency: 'hour' | 'day' | 'week' | 'month'
   startDate: Date
 }
 
 export interface BackUpTask {
-  schedual: TaskSchedual
-  clientID: string
+  schedule: TaskSchedule
   description: string     // Unique description of the task. Also programatically add ID (Houston-backup-task) so we can query
   source: string          // client folder to backup
   target: string          // mount point for backup location(preappened clientID(client hostname))
+  mirror: boolean
 }
+
+export const backupTaskTag = "houston-client-manager-backup-task"
 
 /**
  * WinBackUpManager
