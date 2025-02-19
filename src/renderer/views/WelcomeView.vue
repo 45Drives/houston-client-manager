@@ -47,7 +47,7 @@
 
     <!-- Buttons -->
     <template #footer>
-      <div class="button-group-row justify-end">
+      <div class="button-group-row w-full justify-end">
         <button @click="proceedToNextStep" class="btn btn-secondary w-40 h-20">
           Next
         </button>
