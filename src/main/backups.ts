@@ -1,6 +1,6 @@
 export interface BackUpManager {
   queryTasks(): BackUpTask[]
-  removeTask(task: BackUpTask): void
+  unschedual(task: BackUpTask): void
   schedual(task: BackUpTask): void
 }
 
