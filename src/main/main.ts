@@ -197,7 +197,7 @@ function createWindow() {
   async function mountSambaClient(server: Server, smb_host: string, smb_share: string, smb_user: string, smb_pass: string) {
 
     const platform = os.platform();
-
+    // console.log('platform:', platform);
     if (platform === "win32") {
       mountSambaClientWin(smb_host, smb_share, smb_user, smb_pass);
     } else if (platform === "linux") {

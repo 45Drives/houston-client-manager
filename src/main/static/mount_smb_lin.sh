@@ -47,8 +47,8 @@ fi
 # Create mount point if it doesn't exist
 sudo mkdir -p "$MOUNT_POINT"
 
-# Mount the SMB share
-sudo mount -t cifs "$SMB_PATH" "$MOUNT_POINT" -o username="$USERNAME",password="$PASSWORD",vers=3.0
+sudo mount -t cifs "$SMB_PATH" "$MOUNT_POINT" \
+  -o username="$USERNAME",password="$PASSWORD",vers=3.0,uid=$(id -u),gid=$(id -g),dir_mode=0700,file_mode=0600,forceuid,forcegid
 
 # Check if mounting was successful
 if [ $? -eq 0 ]; then
