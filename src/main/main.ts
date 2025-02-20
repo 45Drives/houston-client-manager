@@ -24,6 +24,7 @@ app.commandLine.appendSwitch('ignore-certificate-errors', 'true');
 app.commandLine.appendSwitch("disable-background-timer-throttling", 'true');
 app.commandLine.appendSwitch("disable-renderer-backgrounding", "true");
 app.commandLine.appendSwitch("disable-backgrounding-occluded-windows", 'true');
+app.commandLine.appendSwitch("use-gl", "desktop");
 
 // Timeout duration in milliseconds (e.g., 30 seconds)
 const TIMEOUT_DURATION = 10000;
@@ -277,7 +278,7 @@ function createWindow() {
 
     installDepPopup();
 
-    exec(`bash ""${script}" ${smb_host} ${smb_share} ${smb_user} ${smb_pass}"`, (error, stdout, stderr) => {
+    exec(`bash "${script}" ${smb_host} ${smb_share} ${smb_user} ${smb_pass}`, (error, stdout, stderr) => {
       console.log(`Stdout: ${stdout}`);
       if (error) {
         console.error(`Error: ${error.message}`);

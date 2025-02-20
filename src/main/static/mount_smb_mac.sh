@@ -20,10 +20,10 @@ SMB_SHARE="$2"
 USERNAME="$3"
 PASSWORD="$4"
 
-SMB_PATH="//$SMB_HOST/$SMB_SHARE"
+SMB_PATH="$SMB_HOST/$SMB_SHARE"
 
 # Define the mount point
-MOUNT_POINT="/Volumes/SMB_Share"
+MOUNT_POINT="~/SMB_Share"
 
 # Extract SMB server IP
 SMB_SERVER=$(echo "$SMB_PATH" | awk -F'/' '{print $3}')
@@ -53,6 +53,7 @@ if [ $? -eq 0 ]; then
 
     exit 0
 else
-    echo '{"error": "Failed to mount SMB share"}'
+
+    echo '{"error": "Failed to mount SMB share", "args": "'$@'"}'
     exit 1
 fi
