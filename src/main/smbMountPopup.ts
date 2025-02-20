@@ -7,10 +7,14 @@ import fs from 'fs';
 import asar from 'asar';
 import { Server } from './types';
 
+const options = {
+  name: 'Houston Client Manager',
+};
+
 async function mountSambaClient(server: Server, smb_host: string, smb_share: string, smb_user: string, smb_pass: string, mainWindow: BrowserWindow) {
 
   const platform = os.platform();
-  // console.log('platform:', platform);
+  console.log('platform:', platform);
   if (platform === "win32") {
     mountSambaClientWin(smb_host, smb_share, smb_user, smb_pass, mainWindow);
   } else if (platform === "linux") {
@@ -26,7 +30,7 @@ async function mountSambaClient(server: Server, smb_host: string, smb_share: str
 async function mountSambaClientWin(smb_host: string, smb_share: string, smb_user: string, smb_pass: string, mainWindow: BrowserWindow) {
   let batpath = await getAsset("static", "mount_smb.bat");
 
-  sudo.exec(`cmd /C ""${batpath}" ${smb_host} ${smb_share} ${smb_user} "${smb_pass}""`, (error, stdout, stderr) => {
+  sudo.exec(`cmd /C ""${batpath}" ${smb_host} ${smb_share} ${smb_user} "${smb_pass}""`, options, (error, stdout, stderr) => {
     handleExecOutput(error, stdout, stderr, smb_host, smb_share, mainWindow);
   });
 }
@@ -69,7 +73,7 @@ function mountSambaClientScript(smb_host: string, smb_share: string, smb_user: s
 
   installDepPopup();
 
-  sudo.exec(`bash "${script}" ${smb_host} ${smb_share} ${smb_user} ${smb_pass}`, (error, stdout, stderr) => {
+  sudo.exec(`bash "${script}" ${smb_host} ${smb_share} ${smb_user} ${smb_pass}`, options, (error, stdout, stderr) => {
     handleExecOutput(error, stdout, stderr, smb_host, smb_share, mainWindow);
   });
 }
@@ -123,8 +127,6 @@ function handleExecOutput(
 // Main Logic
 export default function mountSmbPopup(server: Server, smb_host: string, smb_share: string, smb_user: string, smb_pass: string, mainWindow: BrowserWindow) {
 
-  const platform = os.platform();
-
   dialog
     .showMessageBox({
       type: 'info',
@@ -139,6 +141,5 @@ export default function mountSmbPopup(server: Server, smb_host: string, smb_shar
         mountSambaClient(server, smb_host, smb_share, smb_user, smb_pass, mainWindow);
       }
     });
-
 
 }
