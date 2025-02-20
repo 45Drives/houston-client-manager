@@ -23,7 +23,7 @@ PASSWORD="$4"
 SMB_PATH="$SMB_HOST/$SMB_SHARE"
 
 # Define the mount point
-MOUNT_POINT="/Volumes/share"
+MOUNT_POINT="/smb/$SMB_SHARE"
 
 # Extract SMB server IP
 SMB_SERVER=$(echo "$SMB_PATH" | awk -F'/' '{print $3}')
@@ -40,30 +40,29 @@ fi
 
 # Create the mount point if it doesn't exist
 mkdir -p "$MOUNT_POINT"
-chmod a+rw "$MOUNT_POINT"
+chmod a+rwx "$MOUNT_POINT"
 # chown -R $(whoami):staff "$MOUNT_POINT"
 # chmod -R 0777 "$MOUNT_POINT"
 
 # Mount the SMB share
-mount -t smbfs -o noowners "//$USERNAME:$PASSWORD@$SMB_PATH" "$MOUNT_POINT"
-
-# Check if mounting was successful
-if [ $? -eq 0 ]; then
-    echo "{\"MountPoint\": \"$MOUNT_POINT\", \"smb_server\": \"$SMB_SERVER\"}"
-    
-    # Open the mounted folder in Finder
-    open "$MOUNT_POINT"
-
-    # Make it permanent by adding to /etc/fstab
-    FSTAB_ENTRY="$SMB_PATH $MOUNT_POINT smbfs rw,auto 0 0"
-
-    if ! grep -q "$SMB_PATH" /etc/fstab; then
-        echo "$FSTAB_ENTRY" | sudo tee -a /etc/fstab
-    fi
-
-    exit 0
-else
-
-    echo '{"error": "Failed to mount SMB share", "args": "'$@'"}'
-    exit 1
+if ! mount -t smbfs -o noowners "//$USERNAME:$PASSWORD@$SMB_PATH" "$MOUNT_POINT"; then
+    EXIT=$?
+    echo '{"error": "Failed to mount SMB share", "args": "'"$*"'"}'
+    exit $EXIT
 fi
+
+ln -snf "$MOUNT_POINT" "/Volumes/$SMB_SHARE"
+
+echo "{\"MountPoint\": \"$MOUNT_POINT\", \"smb_server\": \"$SMB_SERVER\"}"
+
+# Open the mounted folder in Finder
+open "/Volumes/$SMB_SHARE"
+
+# Make it permanent by adding to /etc/fstab
+FSTAB_ENTRY="$SMB_PATH $MOUNT_POINT smbfs rw,auto 0 0"
+
+if ! grep -q "$SMB_PATH" /etc/fstab; then
+    echo "$FSTAB_ENTRY" | sudo tee -a /etc/fstab
+fi
+
+exit 0
