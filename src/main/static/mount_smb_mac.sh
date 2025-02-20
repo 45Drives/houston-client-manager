@@ -23,7 +23,7 @@ PASSWORD="$4"
 SMB_PATH="$SMB_HOST/$SMB_SHARE"
 
 # Define the mount point
-MOUNT_POINT="/Volumes/SMB_Share"
+MOUNT_POINT="/Volumes/share"
 
 # Extract SMB server IP
 SMB_SERVER=$(echo "$SMB_PATH" | awk -F'/' '{print $3}')
@@ -40,6 +40,8 @@ fi
 
 # Create the mount point if it doesn't exist
 mkdir -p "$MOUNT_POINT"
+chown -R $(whoami):staff "$MOUNT_POINT"
+chmod -R 0777 "$MOUNT_POINT"
 
 # Mount the SMB share
 mount_smbfs "//$USERNAME:$PASSWORD@$SMB_PATH" "$MOUNT_POINT"
