@@ -23,7 +23,7 @@ PASSWORD="$4"
 SMB_PATH="$SMB_HOST/$SMB_SHARE"
 
 # Define the mount point
-MOUNT_POINT="~/SMB_Share"
+MOUNT_POINT="/Volumes/SMB_Share"
 
 # Extract SMB server IP
 SMB_SERVER=$(echo "$SMB_PATH" | awk -F'/' '{print $3}')
@@ -50,6 +50,13 @@ if [ $? -eq 0 ]; then
     
     # Open the mounted folder in Finder
     open "$MOUNT_POINT"
+
+    # Make it permanent by adding to /etc/fstab
+    FSTAB_ENTRY="$SMB_PATH $MOUNT_POINT smbfs rw,auto 0 0"
+
+    if ! grep -q "$SMB_PATH" /etc/fstab; then
+        echo "$FSTAB_ENTRY" | sudo tee -a /etc/fstab
+    fi
 
     exit 0
 else

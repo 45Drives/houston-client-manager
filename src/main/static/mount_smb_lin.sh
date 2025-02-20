@@ -47,8 +47,21 @@ fi
 # Create mount point if it doesn't exist
 sudo mkdir -p "$MOUNT_POINT"
 
-sudo mount -t cifs "$SMB_PATH" "$MOUNT_POINT" \
-  -o username="$USERNAME",password="$PASSWORD",vers=3.0,uid=$(id -u),gid=$(id -g),dir_mode=0700,file_mode=0600,forceuid,forcegid
+# Store credentials securely
+CREDENTIALS_FILE="/etc/smbcredentials/$SMB_SERVER.cred"
+sudo mkdir -p /etc/smbcredentials
+echo -e "username=$USERNAME\npassword=$PASSWORD" | sudo tee "$CREDENTIALS_FILE" > /dev/null
+sudo chmod 600 "$CREDENTIALS_FILE"
+
+# Add entry to /etc/fstab if not present
+FSTAB_ENTRY="$SMB_PATH $MOUNT_POINT cifs credentials=$CREDENTIALS_FILE,vers=3.0,uid=$(id -u),gid=$(id -g),dir_mode=0700,file_mode=0600,forceuid,forcegid 0 0"
+
+if ! grep -q "$SMB_PATH" /etc/fstab; then
+    echo "$FSTAB_ENTRY" | sudo tee -a /etc/fstab
+fi
+
+# Mount the SMB share
+sudo mount -a
 
 # Check if mounting was successful
 if [ $? -eq 0 ]; then
