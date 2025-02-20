@@ -19,9 +19,9 @@ function getOS() {
   const platform = os.platform();
   if (platform === 'darwin') return 'mac';
   try {
-    const releaseInfo = execSync('cat /etc/os-release', { encoding: 'utf-8' });
-    if (releaseInfo.includes('Rocky Linux')) return 'rocky';
-    if (releaseInfo.includes('Debian') || releaseInfo.includes('Ubuntu')) return 'debian';
+    const releaseInfo = execSync('cat /etc/os-release', { encoding: 'utf-8' }).toLowerCase();
+    if (releaseInfo.toLocaleLowerCase().includes('rocky')) return 'rocky';
+    if (releaseInfo.includes('debian') || releaseInfo.includes('ubuntu')) return 'debian';
   } catch (error) {
     console.error('Error detecting OS:', error);
   }
