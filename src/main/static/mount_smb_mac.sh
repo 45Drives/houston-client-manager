@@ -40,11 +40,12 @@ fi
 
 # Create the mount point if it doesn't exist
 mkdir -p "$MOUNT_POINT"
+chmod a+rw "$MOUNT_POINT"
 # chown -R $(whoami):staff "$MOUNT_POINT"
 # chmod -R 0777 "$MOUNT_POINT"
 
 # Mount the SMB share
-mount_smbfs -u "$(id -u "$(logname)")" -g "$(id -g "$(logname)")" "//$USERNAME:$PASSWORD@$SMB_PATH" "$MOUNT_POINT"
+mount -t smbfs -o noowners "//$USERNAME:$PASSWORD@$SMB_PATH" "$MOUNT_POINT"
 
 # Check if mounting was successful
 if [ $? -eq 0 ]; then
