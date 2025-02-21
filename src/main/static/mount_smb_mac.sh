@@ -68,26 +68,26 @@ PLIST_FILE="/Library/LaunchDaemons/$PLIST_LABEL.plist"
 # Create the script that launchd will run
 tee "$LAUNCHD_SCRIPT" >/dev/null <<EOF
 #!/bin/bash
-exec > >(tee -a /tmp/mount_smb_boot_"$HOST"_"$SHARE_NAME".log) 2>&1
-echo "===============================" >> /tmp/mount_smb_boot_"$HOST"_"$SHARE_NAME".log
-echo "\$(date) - Starting SMB mount on boot" >> /tmp/mount_smb_boot_"$HOST"_"$SHARE_NAME".log
+exec > >(tee -a /tmp/mount_smb_boot_$HOST_$SHARE_NAME.log) 2>&1
+echo "===============================" >> /tmp/mount_smb_boot_$HOST_$SHARE_NAME.log
+echo "\$(date) - Starting SMB mount on boot" >> /tmp/mount_smb_boot_$HOST_$SHARE_NAME.log
 sleep 30
-echo "\$(date) - Checking if Samba server is up..." >> /tmp/mount_smb_boot_"$HOST"_"$SHARE_NAME".log
+echo "\$(date) - Checking if Samba server is up..." >> /tmp/mount_smb_boot_$HOST_$SHARE_NAME.log
 while ! ping -c 1 "$HOST" &>/dev/null; do
-    echo "\$(date) - Samba server is not reachable, retrying in 10 seconds..." >> /tmp/mount_smb_boot_"$HOST"_"$SHARE_NAME".log
+    echo "\$(date) - Samba server is not reachable, retrying in 10 seconds..." >> /tmp/mount_smb_boot_$HOST_$SHARE_NAME.log
     sleep 10
 done
-echo "\$(date) - Samba server is online, attempting to mount..." >> /tmp/mount_smb_boot_"$HOST"_"$SHARE_NAME".log
+echo "\$(date) - Samba server is online, attempting to mount..." >> /tmp/mount_smb_boot_$HOST_$SHARE_NAME".log
 osascript -e 'try' \
     -e 'mount volume "$SERVER" as user name "$USERNAME" with password "$PASSWORD"' \
     -e 'on error errMsg' \
-    -e 'do shell script "echo \"\$(date) - Failed to mount SMB share: \" & errMsg >> /tmp/mount_smb_boot_"$HOST"_"$SHARE_NAME".log"' \
+    -e 'do shell script "echo \"\$(date) - Failed to mount SMB share: \" & errMsg >> /tmp/mount_smb_boot_$HOST_$SHARE_NAME.log"' \
     -e 'return' \
     -e 'end try'
 if mount | grep -q "$MOUNTED_VOLUME"; then
-    echo "\$(date) - SMB share mounted successfully" >> /tmp/mount_smb_boot_"$HOST"_"$SHARE_NAME".log
+    echo "\$(date) - SMB share mounted successfully" >> /tmp/mount_smb_boot_$HOST_$SHARE_NAME.log
 else
-    echo "\$(date) - ERROR: Failed to mount SMB share" >> /tmp/mount_smb_boot_"$HOST"_"$SHARE_NAME".log
+    echo "\$(date) - ERROR: Failed to mount SMB share" >> /tmp/mount_smb_boot_$HOST_$SHARE_NAME.log
 fi
 EOF
 
@@ -117,7 +117,7 @@ tee "$PLIST_FILE" >/dev/null <<EOF
       <key>GROUP_ID</key>
       <string>your_group_id</string>  <!-- Replace with the correct group ID -->
     </dict>
-    
+
     <key>RunAtLoad</key>
     <true/>
 
