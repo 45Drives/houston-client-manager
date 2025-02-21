@@ -20,49 +20,42 @@ SMB_SHARE="$2"
 USERNAME="$3"
 PASSWORD="$4"
 
-SMB_PATH="$SMB_HOST/$SMB_SHARE"
+SERVER="smb://$SMB_HOST/$SMB_SHARE"
 
-# Define the mount point
-MOUNT_POINT="/smb/$SMB_SHARE"
+# Use AppleScript to mount the share
+osascript <<EOF
+try
+    mount volume "$SERVER" as user name "$USERNAME" with password "$PASSWORD"
+on error
+    do shell script "echo 'Failed to mount SMB share'"    
+    return
+end try
+EOF
 
-# Extract SMB server IP
-SMB_SERVER=$(echo "$SMB_PATH" | awk -F'/' '{print $3}')
+# Get the mounted volume name
+MOUNTED_VOLUME="/Volumes/$(basename "$SERVER")"
 
-# Check if the share is already mounted
-if mount | grep -q "$MOUNT_POINT"; then
-    echo '{"message": "SMB share is already mounted"}'
-    
-    # Open the already mounted folder in Finder
-    open "$MOUNT_POINT"
+# Check if the share was mounted successfully
+if mount | grep -q "$MOUNTED_VOLUME"; then
+    echo "Mounted successfully at $MOUNTED_VOLUME"
 
-    exit 0
-fi
+    # Define the cron job (Runs at reboot)
+    CRON_JOB="@reboot osascript -e 'mount volume \"$SERVER\" as user name \"$USERNAME\" with password \"$PASSWORD\"'"
 
-# Create the mount point if it doesn't exist
-mkdir -p "$MOUNT_POINT"
-chmod a+rwx "$MOUNT_POINT"
-# chown -R $(whoami):staff "$MOUNT_POINT"
-# chmod -R 0777 "$MOUNT_POINT"
+    CRON_JOB_ADDED="false"
+    # Check if the cron job already exists
+    (crontab -l 2>/dev/null | grep -qF "$CRON_JOB") || (
+        # Add the cron job if it doesn't exist
+        (crontab -l 2>/dev/null; echo "$CRON_JOB") | crontab -
+        CRON_JOB_ADDED="true"
+    )
 
-# Mount the SMB share
-if ! mount -t smbfs -o noowners "//$USERNAME:$PASSWORD@$SMB_PATH" "$MOUNT_POINT"; then
+    # Open the mounted folder in Finder
+    open $MOUNTED_VOLUME
+
+    echo '{"mountPoint":"'${MOUNTED_VOLUME}'", "cronJobAdded":"'${CRON_JOB_ADDED}'"}'
+else
     EXIT=$?
     echo '{"error": "Failed to mount SMB share", "args": "'"$*"'"}'
     exit $EXIT
 fi
-
-ln -snf "$MOUNT_POINT" "/Volumes/$SMB_SHARE"
-
-echo "{\"MountPoint\": \"$MOUNT_POINT\", \"smb_server\": \"$SMB_SERVER\"}"
-
-# Open the mounted folder in Finder
-open "/Volumes/$SMB_SHARE"
-
-# Make it permanent by adding to /etc/fstab
-FSTAB_ENTRY="$SMB_PATH $MOUNT_POINT smbfs rw,auto 0 0"
-
-if ! grep -q "$SMB_PATH" /etc/fstab; then
-    echo "$FSTAB_ENTRY" | sudo tee -a /etc/fstab
-fi
-
-exit 0
