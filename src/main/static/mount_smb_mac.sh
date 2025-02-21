@@ -93,6 +93,9 @@ EOF
 
 # Make the script executable
 chmod +x "$LAUNCHD_SCRIPT"
+USER_NAME=${SUDO_USER}
+USER_ID=$(id -u "$USER_NAME")
+GROUP_ID=$(id -g "$USER_NAME")
 
 # Create the launchd plist file
 tee "$PLIST_FILE" >/dev/null <<EOF
@@ -113,9 +116,9 @@ tee "$PLIST_FILE" >/dev/null <<EOF
     <key>EnvironmentVariables</key>
     <dict>
       <key>USER_ID</key>
-      <string>your_user_id</string>  <!-- Replace with the correct user ID -->
-      <key>GROUP_ID</key>
-      <string>your_group_id</string>  <!-- Replace with the correct group ID -->
+        <string>$USER_NAME</string>
+        <key>GroupName</key>
+        <string>staff</string>
     </dict>
 
     <key>RunAtLoad</key>
