@@ -113,6 +113,10 @@ tee "$PLIST_FILE" >/dev/null <<EOF
     </array>
 
     <!-- The user ID and group ID for mounting -->
+    <key>UserName</key>
+    <string>$USER_NAME</string>
+    <key>GroupName</key>
+    <string>staff</string>
     <key>EnvironmentVariables</key>
     <dict>
       <key>USER_ID</key>
