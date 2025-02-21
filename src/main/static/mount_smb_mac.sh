@@ -1,10 +1,5 @@
 #!/bin/bash
 
-
-echo "==============================="
-echo "$(date) - Running SMB Mount Script"
-echo "==============================="
-
 # Check if all arguments are provided
 if [ -z "$1" ]; then
     echo '{"error": "No network path provided"}'
