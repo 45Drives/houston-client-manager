@@ -61,7 +61,8 @@ fi
 
 # Create the LaunchDaemon plist
 echo "Creating LaunchDaemon for auto-mounting on boot..."
-LAUNCHD_SCRIPT="/usr/local/bin/mount_smb_$HOST_$SHARE_NAME.sh"
+LAUNCHD_SCRIPT="/usr/local/bin/mount_smb_"$HOST"_"$SHARE_NAME".sh"
+PLIST_FILE="/Library/LaunchDaemons/com.smb.mount."$HOST"."$SHARE_NAME".plist"
 
 # Create the script that launchd will run
 tee "$LAUNCHD_SCRIPT" >/dev/null <<EOF
