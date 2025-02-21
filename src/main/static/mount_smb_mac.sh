@@ -31,14 +31,10 @@ MOUNTED_VOLUME="/Volumes/$SHARE_NAME"
 
 JSON_OUTPUT+="\"server\": \"$SERVER\", \"share\": \"$SHARE_NAME\", "
 
-echo "Attempting to mount: $SERVER"
-echo "Target mount point: $MOUNTED_VOLUME"
-
 # Check if already mounted
 if mount | grep -q "$MOUNTED_VOLUME"; then
     JSON_OUTPUT+="\"status\": \"already mounted\", \"mount_point\": \"$MOUNTED_VOLUME\""
 else
-    echo "Mounting SMB share..."
 
     # Use AppleScript to mount the share
     osascript <<EOF
@@ -66,17 +62,16 @@ fi
 # Define the cron job to mount on reboot
 CRON_JOB="@reboot osascript -e 'mount volume \"$SERVER\" as user name \"$USERNAME\" with password \"$PASSWORD\"'"
 
-echo "Checking if cron job already exists..."
-
 # Check if the cron job already exists
 EXISTING_CRON=$(crontab -l 2>/dev/null | grep -F "$SERVER")
 if [ -z "$EXISTING_CRON" ]; then
-    echo "Adding cron job to mount on reboot..."
     (crontab -l 2>/dev/null; echo "$CRON_JOB") | crontab -
     JSON_OUTPUT+=", \"cron_status\": \"added\""
 else
     JSON_OUTPUT+=", \"cron_status\": \"exists\""
 fi
+
+open $MOUNTED_VOLUME
 
 # Close JSON output and print once
 JSON_OUTPUT+="}"
