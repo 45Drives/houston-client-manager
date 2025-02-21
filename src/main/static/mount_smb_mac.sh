@@ -60,8 +60,28 @@ EOF
 fi
 
 # Define the cron job to mount on reboot
-CRON_JOB="@reboot osascript -e 'mount volume \"$SERVER\" as user name \"$USERNAME\" with password \"$PASSWORD\"'"
-CRON_JOB="@reboot (sleep 5; while ! ping -c 1 \"$HOST\" &>/dev/null; do sleep 10; done; osascript -e 'try' -e 'mount volume \"$SERVER\" as user name \"$USERNAME\" with password \"$PASSWORD\"' -e 'on error errMsg' -e 'do shell script \"echo \\\"Failed to mount SMB share: \\\" & errMsg >> /tmp/mount_smb_boot.log\"' -e 'return' -e 'end try')"
+CRON_JOB="@reboot ( \
+    echo '==================================' >> /tmp/mount_smb_boot.log; \
+    echo \"\$(date) - Starting SMB mount on boot\" >> /tmp/mount_smb_boot.log; \
+    sleep 30; \
+    echo \"\$(date) - Checking if Samba server is up...\" >> /tmp/mount_smb_boot.log; \
+    while ! ping -c 1 \"$HOST\" &>/dev/null; do \
+        echo \"\$(date) - Samba server is not reachable, retrying in 10 seconds...\" >> /tmp/mount_smb_boot.log; \
+        sleep 10; \
+    done; \
+    echo \"\$(date) - Samba server is online, attempting to mount...\" >> /tmp/mount_smb_boot.log; \
+    osascript -e 'try' \
+        -e 'mount volume \"$SERVER\" as user name \"$USERNAME\" with password \"$PASSWORD\"' \
+        -e 'on error errMsg' \
+        -e 'do shell script \"echo \\\"\$(date) - Failed to mount SMB share: \\\" & errMsg >> /tmp/mount_smb_boot.log\"' \
+        -e 'return' \
+        -e 'end try'; \
+    if mount | grep -q \"$MOUNTED_VOLUME\"; then \
+        echo \"\$(date) - SMB share mounted successfully\" >> /tmp/mount_smb_boot.log; \
+    else \
+        echo \"\$(date) - ERROR: Failed to mount SMB share\" >> /tmp/mount_smb_boot.log; \
+    fi \
+)"
 
 # Check if the cron job already exists
 EXISTING_CRON=$(crontab -l 2>/dev/null | grep -F "$SERVER")
