@@ -18,12 +18,12 @@ fi
 JSON_OUTPUT="{"
 
 # Assign parameters
-SMB_HOST="$1"      # Example: //192.168.209.228/share
+HOST="$1"      # Example: //192.168.209.228/share
 SHARE_NAME="$2"      
 USERNAME="$3"
 PASSWORD="$4"
 
-SERVER="smb://$SMB_HOST/$SHARE_NAME"
+SERVER="smb://$HOST/$SHARE_NAME"
 
 # Extract the share name from the path
 SHARE_NAME=$(basename "$SERVER")
@@ -61,6 +61,7 @@ fi
 
 # Define the cron job to mount on reboot
 CRON_JOB="@reboot osascript -e 'mount volume \"$SERVER\" as user name \"$USERNAME\" with password \"$PASSWORD\"'"
+CRON_JOB="@reboot (sleep 5; while ! ping -c 1 \"$HOST\" &>/dev/null; do sleep 10; done; osascript -e 'try' -e 'mount volume \"$SERVER\" as user name \"$USERNAME\" with password \"$PASSWORD\"' -e 'on error errMsg' -e 'do shell script \"echo \\\"Failed to mount SMB share: \\\" & errMsg >> /tmp/mount_smb_boot.log\"' -e 'return' -e 'end try')"
 
 # Check if the cron job already exists
 EXISTING_CRON=$(crontab -l 2>/dev/null | grep -F "$SERVER")
