@@ -132,10 +132,10 @@ tee "$PLIST_FILE" >/dev/null <<EOF
     <true/>
 
     <key>StandardOutPath</key>
-    <string>/tmp/mount_smb_launchd_"$HOST"_"$SHARE_NAME".log</string>
+    <string>/tmp/mount_smb_launchd_${HOST}_${SHARE_NAME}.log</string>
 
     <key>StandardErrorPath</key>
-    <string>/tmp/mount_smb_launchd_error_"$HOST"_"$SHARE_NAME".log</string>
+    <string>/tmp/mount_smb_launchd_error_${HOST}_${SHARE_NAME}.log</string>
 </dict>
 </plist>
 EOF
