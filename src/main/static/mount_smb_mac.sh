@@ -77,7 +77,7 @@ while ! ping -c 1 "$HOST" &>/dev/null; do
     echo "\$(date) - Samba server is not reachable, retrying in 10 seconds..." >> /tmp/mount_smb_boot_${HOST}_${SHARE_NAME}.log
     sleep 10
 done
-echo "\$(date) - Samba server is online, attempting to mount..." >> /tmp/mount_smb_boot_${HOST}_${SHARE_NAME}".log
+echo "\$(date) - Samba server is online, attempting to mount..." >> /tmp/mount_smb_boot_${HOST}_${SHARE_NAME}.log
 osascript -e 'try' \
     -e 'mount volume "$SERVER" as user name "$USERNAME" with password "$PASSWORD"' \
     -e 'on error errMsg' \
