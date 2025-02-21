@@ -16,46 +16,61 @@ fi
 
 # Assign parameters
 SMB_HOST="$1"      # Example: //192.168.209.228/share
-SMB_SHARE="$2"      
+SHARE_NAME="$2"      
 USERNAME="$3"
 PASSWORD="$4"
 
-SERVER="smb://$SMB_HOST/$SMB_SHARE"
+SERVER="smb://$SMB_HOST/$SHARE_NAME"
 
-# Use AppleScript to mount the share
-osascript <<EOF
-try
-    mount volume "$SERVER" as user name "$USERNAME" with password "$PASSWORD"
-on error
-    do shell script "echo 'Failed to mount SMB share'"    
-    return
-end try
+
+# Extract the share name from the path
+SHARE_NAME=$(basename "$SERVER")
+MOUNTED_VOLUME="/Volumes/$SHARE_NAME"
+
+echo "Attempting to mount: $SERVER"
+echo "Target mount point: $MOUNTED_VOLUME"
+
+# Check if already mounted
+if mount | grep -q "$MOUNTED_VOLUME"; then
+    echo "SMB share is already mounted at $MOUNTED_VOLUME"
+else
+    echo "Mounting SMB share..."
+
+    # Use AppleScript to mount the share
+    osascript <<EOF
+    try
+        mount volume "$SERVER" as user name "$USERNAME" with password "$PASSWORD"
+    on error errMsg
+        do shell script "echo 'Failed to mount SMB share: ' & errMsg >> $LOG_FILE"
+        return
+    end try
 EOF
 
-# Get the mounted volume name
-MOUNTED_VOLUME="/Volumes/$(basename "$SERVER")"
+    # Wait a bit to allow the mount to complete
+    sleep 3
 
-# Check if the share was mounted successfully
-if mount | grep -q "$MOUNTED_VOLUME"; then
-    echo "Mounted successfully at $MOUNTED_VOLUME"
-
-    # Define the cron job (Runs at reboot)
-    CRON_JOB="@reboot osascript -e 'mount volume \"$SERVER\" as user name \"$USERNAME\" with password \"$PASSWORD\"'"
-
-    CRON_JOB_ADDED="false"
-    # Check if the cron job already exists
-    (crontab -l 2>/dev/null | grep -qF "$CRON_JOB") || (
-        # Add the cron job if it doesn't exist
-        (crontab -l 2>/dev/null; echo "$CRON_JOB") | crontab -
-        CRON_JOB_ADDED="true"
-    )
-
-    # Open the mounted folder in Finder
-    open $MOUNTED_VOLUME
-
-    echo '{"mountPoint":"'${MOUNTED_VOLUME}'", "cronJobAdded":"'${CRON_JOB_ADDED}'"}'
-else
-    EXIT=$?
-    echo '{"error": "Failed to mount SMB share", "args": "'"$*"'"}'
-    exit $EXIT
+    # Check if the share was mounted successfully
+    if mount | grep -q "$MOUNTED_VOLUME"; then
+        echo "Mounted successfully at $MOUNTED_VOLUME"
+    else
+        echo "Failed to mount the SMB share."
+        exit 1
+    fi
 fi
+
+# Define the cron job to mount on reboot
+CRON_JOB="@reboot osascript -e 'mount volume \"$SERVER\" as user name \"$USERNAME\" with password \"$PASSWORD\"'"
+
+echo "Checking if cron job already exists..."
+
+# Check if the cron job already exists
+EXISTING_CRON=$(crontab -l 2>/dev/null | grep -F "$SERVER")
+if [ -z "$EXISTING_CRON" ]; then
+    echo "Adding cron job to mount on reboot..."
+    (crontab -l 2>/dev/null; echo "$CRON_JOB") | crontab -
+    echo "Cron job added successfully."
+else
+    echo "Cron job already exists: $EXISTING_CRON"
+fi
+
+echo "SMB Mount Script finished."
