@@ -6,6 +6,7 @@ import path from 'path';
 import fs from 'fs';
 import asar from 'asar';
 import { Server } from './types';
+import { exec } from 'child_process';
 
 const options = {
   name: 'Houston Client Manager',
@@ -29,10 +30,29 @@ async function mountSambaClient(server: Server, smb_host: string, smb_share: str
 
 async function mountSambaClientWin(smb_host: string, smb_share: string, smb_user: string, smb_pass: string, mainWindow: BrowserWindow) {
   let batpath = await getAsset("static", "mount_smb.bat");
+  let addtasksPath = await getAsset("static", "windows_add_mount_smbd_task.ps1");
 
-  sudo.exec(`cmd /C ""${batpath}" ${smb_host} ${smb_share} ${smb_user} "${smb_pass}""`, options, (error, stdout, stderr) => {
+  exec(`cmd /C ""${batpath}" ${smb_host} ${smb_share} ${smb_user} "${smb_pass}""`, (error, stdout, stderr) => {
     handleExecOutput(error, stdout, stderr, smb_host, smb_share, mainWindow);
+
+    // If all works out try adding a schedualed task as admin 
+    if (!error && !stderr && stdout) {
+
+      const result = JSON.parse(stdout.toString());
+      if (!result.message) {
+
+        sudo.exec(`powershell -ExecutionPolicy Bypass -File "${addtasksPath}" \\\\${smb_host}\\${smb_share} ${smb_user} "${smb_pass}"`, options, (error, stdout, stderr) => {
+          if (error) {
+            console.error( error);
+            dialog.showErrorBox(error.name, error.message);
+            return;
+          }
+        });
+      }
+
+    }
   });
+
 }
 
 async function getAsset(folder: string, fileName: string): Promise<string> {
@@ -79,41 +99,18 @@ function mountSambaClientScript(smb_host: string, smb_share: string, smb_user: s
 }
 
 function handleExecOutput(
-  error: Error | undefined,
+  error: Error | undefined | null,
   stdout: string | any | undefined,
   stderr: string | any | undefined,
   smb_host: string,
   smb_share: string,
   mainWindow: BrowserWindow) {
-  console.log(`Stdout: ${stdout}`);
-  if (error) {
-    console.error(`Error: ${error.message}`);
-    mainWindow.webContents.send('notification', `Error: failed to connect to host=${smb_host}, share=${smb_share}.`);
-    return;
-  }
-  if (stderr) {
-    console.error(`Stderr: ${stderr}`);
-    mainWindow.webContents.send('notification', `Error: failed to connect to host=${smb_host}, share=${smb_share}.`);
-    return;
-  }
 
-  if (stdout) {
-
-    const result = JSON.parse(stdout.toString());
-    if (result.message) {
-      mainWindow.webContents.send('notification', `S${result.message}.`);
-      return;
-    }
-
-    mainWindow.webContents.send('notification', `Successfull connected to ${result}.`);
-  } else {
-
-    mainWindow.webContents.send('notification', `Error: failed to connect to host=${smb_host}, share=${smb_share}.`);
-  }
+  handleExecOutputWithOutPopup(error, stdout, stderr, smb_host, smb_share, mainWindow);
 
   if (error) {
-    console.error('Connection To Storage Error:', error);
-    dialog.showErrorBox('Failed', 'Could not install dependencies.');
+    console.error( error);
+    dialog.showErrorBox(error.name, error.message);
     return;
   }
   console.log('Mount samba Output:', stdout);
@@ -124,6 +121,42 @@ function handleExecOutput(
   });
 }
 
+function handleExecOutputWithOutPopup(
+  error: Error | undefined | null,
+  stdout: string | any | undefined,
+  stderr: string | any | undefined,
+  smb_host: string,
+  smb_share: string,
+  mainWindow: BrowserWindow
+) {
+  console.log(`Stdout: ${stdout}`);
+  if (error) {
+    console.error(`Error: ${error.message}`);
+    mainWindow.webContents.send('notification', `Error: failed to connect to host=${smb_host}, share=${smb_share}.`);
+    return false;
+  }
+  if (stderr) {
+    console.error(`Stderr: ${stderr}`);
+    mainWindow.webContents.send('notification', `Error: failed to connect to host=${smb_host}, share=${smb_share}.`);
+    return false;
+  }
+
+  if (stdout) {
+
+    const result = JSON.parse(stdout.toString());
+    if (result.message) {
+      mainWindow.webContents.send('notification', `S${result.message}.`);
+      return false;
+    }
+
+    mainWindow.webContents.send('notification', `Successfull connected to ${result}.`);
+  } else {
+
+    mainWindow.webContents.send('notification', `Error: failed to connect to host=${smb_host}, share=${smb_share}.`);
+  }
+  return true;
+}
+
 // Main Logic
 export default function mountSmbPopup(server: Server, smb_host: string, smb_share: string, smb_user: string, smb_pass: string, mainWindow: BrowserWindow) {
 
@@ -132,8 +165,8 @@ export default function mountSmbPopup(server: Server, smb_host: string, smb_shar
       type: 'info',
       title: 'Creating Connection To Storage',
       message: `Trying to setup connection to storage server:\n\n
-      host=${smb_host}\n
-      \n\nYou will need to enter your administrator password to install them.`,
+    host=${smb_host}\n
+    \n\nYou will need to enter your administrator password to install them.`,
       buttons: ['OK', 'Cancel'],
     })
     .then((result) => {
