@@ -70,7 +70,7 @@ if (-not $availableDrive) {
 }
 
 # Define Task Name
-$TaskName = "MountNetworkDrive_${networkPath}"
+$TaskName = "HoustonMountNetworkDrive_${networkPath}"
 
 # Define Task Action
 $Action = New-ScheduledTaskAction -Execute "cmd.exe" -Argument "/c net use ${availableDrive}: ${networkPath} /user:DOMAIN\${username} ${password} /persistent:yes"
