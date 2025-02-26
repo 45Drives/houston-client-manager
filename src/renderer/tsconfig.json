@@ -16,7 +16,7 @@
     "baseUrl": ".",
     "paths": {
       "@/*": ["./src/*"],
-      "@45drives/houston-common-css/*": ["../../houston-common/houston-common-css/*"]
+      "@45drives/houston-common-css/*": ["../../houston-common/houston-common-css/*"],
     },
   }
   

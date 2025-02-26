@@ -2,12 +2,13 @@
 
   <div class="w-screen h-screen overflow-hidden flex items-center justify-center text-default bg-default">
 
-    <Wizard v-if="!welcomeWizardComplete" :steps="steps" :onComplete="onWelcomeWizardComplete" class="h-full flex-1 text-default bg-default" />
+    <Wizard v-if="!welcomeWizardComplete" :steps="steps" :onComplete="onWelcomeWizardComplete"
+      class="h-full flex-1 text-default bg-default" />
 
     <webview v-show="welcomeWizardComplete && !loadingWebview" id="myWebview" title="test" :src="currentUrl" allowpopups
       nodeintegration allow-same-origin allow-scripts partition="persist:authSession"
       webpreferences="javascript=yes,webSecurity=no,enable-cookies=true,nodeIntegration=false,contextIsolation=true"
-      ref="webview" @did-finish-load="onWebViewLoaded"/>
+      ref="webview" @did-finish-load="onWebViewLoaded" />
 
     <div v-if="loadingWebview">
       <p class="w-3/4 text-2xl">
@@ -33,6 +34,7 @@ import { useWizardSteps } from './components/wizard'
 import WelcomeView from './views/WelcomeView.vue';
 import SettingUpHardwareView from './views/SettingUpHardwareView.vue';
 import DiscoveryNonSetupServersView from './views/DiscoveryNonSetupServersView.vue';
+import { IPCMessageRouterRenderer } from '@45drives/houston-common-lib/lib/electronIPC/IPCMessageRouterRenderer.js';
 
 const steps = [
   { label: "Welcome", component: WelcomeView },
@@ -49,6 +51,8 @@ const clientip = ref<string>("");
 const webview = ref();
 const loadingWebview = ref(false);
 const currentUrl = ref<string>('https://45drives.com');
+
+
 
 window.electron.ipcRenderer.on('client-ip', (_event, ip: string) => {
   clientip.value = ip;
@@ -90,23 +94,24 @@ const openServerWebsite = (server: Server | null) => {
 };
 
 const onWebViewLoaded = async () => {
-  webview.value.addEventListener('console-message', (event: any) => {
-    console.log('webview testing', event.message);
 
+  const ipcRouter = new IPCMessageRouterRenderer(webview.value);
+  ipcRouter.addEventListener("action", (data) => {
+    console.log(data)
     try {
-      const data = JSON.parse(event.message);
-      if (data.action === "setup_wizard_go_back") {
+      const json = JSON.parse(data);
+      if (json.action === "setup_wizard_go_back") {
         welcomeWizardComplete.value = false;
-      } else if (data.action === "go_home") {
+      } else if (json.action === "go_home") {
         console.log("Go_HOME")
         welcomeWizardComplete.value = false;
         useWizardSteps().reset()
       }
     } catch (error) {
     }
-   
   });
-  
+  ipcRouter.send('backend', 'action', "message from renderer");
+
   webview.value.executeJavaScript(`
         new Promise((resolve, reject) => {
 

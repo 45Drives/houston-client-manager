@@ -75,3 +75,12 @@ import {readFileSync} from 'fs';
 const path = join(app.getAppPath(), 'static', 'myFile.txt');
 const buffer = readFileSync(path);
 ```
+
+#### HOUSTON SPECIFIC ####
+have to build houston-common libraries before
+Repeat these steps to get new changes from common
+
+rm -rf node_modules/@45Drives
+npm --prefix .\houston-common\houston-common-lib\ run build
+npm --prefix .\houston-common\houston-common-ui\ run build
+npm install
