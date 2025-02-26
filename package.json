@@ -36,6 +36,7 @@
     "vitest": "^3.0.6"
   },
   "dependencies": {
+    "@45drives/houston-common-lib": "file:houston-common/houston-common-lib",
     "asar": "^3.2.0",
     "express": "^4.21.2",
     "multicast-dns": "^7.2.5",
