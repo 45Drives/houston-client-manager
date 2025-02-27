@@ -34,7 +34,7 @@ import { useWizardSteps } from './components/wizard'
 import WelcomeView from './views/WelcomeView.vue';
 import SettingUpHardwareView from './views/SettingUpHardwareView.vue';
 import DiscoveryNonSetupServersView from './views/DiscoveryNonSetupServersView.vue';
-import { IPCMessageRouterRenderer } from '@45drives/houston-common-lib/lib/electronIPC/IPCMessageRouterRenderer.js';
+import { IPCRouter } from '../../houston-common/houston-common-lib/lib/electronIPC/IPCRouter';
 
 const steps = [
   { label: "Welcome", component: WelcomeView },
@@ -95,14 +95,12 @@ const openServerWebsite = (server: Server | null) => {
 
 const onWebViewLoaded = async () => {
 
-  const ipcRouter = new IPCMessageRouterRenderer(webview.value);
-  ipcRouter.addEventListener("action", (data) => {
-    console.log(data)
+  IPCRouter.initRenderer(webview.value);
+  IPCRouter.getInstance().addEventListener("action", (data) => {
     try {
-      const json = JSON.parse(data);
-      if (json.action === "setup_wizard_go_back") {
+      if (data === "setup_wizard_go_back") {
         welcomeWizardComplete.value = false;
-      } else if (json.action === "go_home") {
+      } else if (data === "go_home") {
         console.log("Go_HOME")
         welcomeWizardComplete.value = false;
         useWizardSteps().reset()
@@ -110,7 +108,6 @@ const onWebViewLoaded = async () => {
     } catch (error) {
     }
   });
-  ipcRouter.send('backend', 'action', "message from renderer");
 
   webview.value.executeJavaScript(`
         new Promise((resolve, reject) => {

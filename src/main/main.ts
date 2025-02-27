@@ -5,8 +5,7 @@ import { powerSaveBlocker } from "electron";
 import os from 'os';
 import { Server } from './types';
 import mountSmbPopup from './smbMountPopup';
-import { IPCMessageRouterBackend } from '@45drives/houston-common-lib';
-
+import { IPCRouter } from '../../houston-common/houston-common-lib/lib/electronIPC/IPCRouter';
 
 let discoveredServers: Server[] = [];
 
@@ -187,11 +186,10 @@ function createWindow() {
     }
   }, 5000);
 
-  const ipcRouter = new IPCMessageRouterBackend(mainWindow.webContents, ipcMain);
-  ipcRouter.addEventListener("action", (data) => {
+  IPCRouter.initBackend(mainWindow.webContents, ipcMain);
+  IPCRouter.getInstance().addEventListener("action", (data) => {
     console.log(data)
   });
-  ipcRouter.send('renderer', 'action', "message from backend");
 
   ipcMain.on('message', (event, message) => {
     console.log(message);
