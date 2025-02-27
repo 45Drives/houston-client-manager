@@ -1,27 +1,33 @@
 import { suite, test, expect } from "vitest";
 
-import { BackUpManagerLin } from "./BackupManagerLin";
-import { BackUpTask, TaskSchedule, backupTaskTag } from "./types";
+import { BackUpManagerLin } from "./BackUpManagerLin";
+import { BackUpTask, backupTaskTag } from "./types";
 
-function expectTaskEqual(a: BackUpTask, b: BackUpTask) {
-  const { schedule: scheduleA, ...restA } = a;
-  const { schedule: scheduleB, ...restB } = b;
-  expect(restA).toEqual(restB);
-  expect(scheduleA.repeatFrequency).toEqual(scheduleB.repeatFrequency);
-  expect(scheduleA.startDate.getMinutes()).toEqual(
-    scheduleB.startDate.getMinutes()
-  );
-  if (scheduleA.repeatFrequency !== "hour") {
-    expect(scheduleA.startDate.getHours()).toEqual(
-      scheduleB.startDate.getHours()
+function expectTaskEqual(a: BackUpTask | null, b: BackUpTask | null) {
+  if (a === null || b === null) {
+    expect(a).toEqual(b)
+
+  } else {
+
+    const { schedule: scheduleA, ...restA } = a;
+    const { schedule: scheduleB, ...restB } = b;
+    expect(restA).toEqual(restB);
+    expect(scheduleA.repeatFrequency).toEqual(scheduleB.repeatFrequency);
+    expect(scheduleA.startDate.getMinutes()).toEqual(
+      scheduleB.startDate.getMinutes()
     );
-  }
-  if (scheduleA.repeatFrequency === "week") {
-    expect(scheduleA.startDate.getDay()).toEqual(scheduleB.startDate.getDay());
-  } else if (scheduleA.repeatFrequency === "month") {
-    expect(scheduleA.startDate.getDate()).toEqual(
-      scheduleB.startDate.getDate()
-    );
+    if (scheduleA.repeatFrequency !== "hour") {
+      expect(scheduleA.startDate.getHours()).toEqual(
+        scheduleB.startDate.getHours()
+      );
+    }
+    if (scheduleA.repeatFrequency === "week") {
+      expect(scheduleA.startDate.getDay()).toEqual(scheduleB.startDate.getDay());
+    } else if (scheduleA.repeatFrequency === "month") {
+      expect(scheduleA.startDate.getDate()).toEqual(
+        scheduleB.startDate.getDate()
+      );
+    }
   }
 }
 

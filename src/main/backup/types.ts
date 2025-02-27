@@ -17,19 +17,8 @@ export interface BackUpTask {
   mirror: boolean
 }
 
-export const backupTaskTag = "houston-client-manager-backup-task"
+export interface BackUpSetupConfig {
+  backUpTasks: BackUpTask[]
+}
 
-/**
- * WinBackUpManager
- * * schtasks
- * * robocopy
- * 
- * LinuxBackUpManager
- * * systemd
- * * rsync
- * 
- * MacBackUpManager
- * * launchd
- * * rsync
- * 
- */
+export const backupTaskTag = "houston-client-manager-backup-task"

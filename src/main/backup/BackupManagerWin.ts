@@ -44,7 +44,7 @@ export class BackUpManagerWin implements BackUpManager {
           target: actionDetails.target,
           mirror: actionDetails.mirror
         };
-      }).filter(task => task !== null)
+      }).filter(task => task !== null) as BackUpTask[];
 
     } catch (parseError) {
       console.error('Error parsing JSON:', parseError);
@@ -207,9 +207,12 @@ $taskTrigger.RepetitionInterval = (New-TimeSpan -Months 1)
     const match = command.match(regex);
 
     if (match && match.length > 2) {
-      const sourcePath = match[1];
-      const destinationPath = match[2];
+      const sourcePath = match[1]?.toString();
+      const destinationPath = match[2]?.toString();
 
+      if (!sourcePath || !destinationPath) {
+        return null;
+      }
       return {
         source: sourcePath,
         target: destinationPath,
