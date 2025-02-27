@@ -58,9 +58,9 @@
 </template>
 
 <script setup lang="ts">
-import CardContainer from '../components/CardContainer.vue';
-import { CommanderToolTip } from '../components/commander';
-import { useWizardSteps } from '../components/wizard';
+import CardContainer from '../../components/CardContainer.vue';
+import { CommanderToolTip } from '../../components/commander';
+import { useWizardSteps } from '../../components/wizard';
 
 const { completeCurrentStep } = useWizardSteps();
 
