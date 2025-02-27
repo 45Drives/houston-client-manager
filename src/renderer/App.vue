@@ -2,7 +2,10 @@
 
   <div class="w-screen h-screen overflow-hidden flex items-center justify-center text-default bg-default">
 
-    <Wizard v-if="!welcomeWizardComplete" :steps="steps" :onComplete="onWelcomeWizardComplete"
+    <!-- <StorageSetupWizard v-if="!welcomeWizardComplete" :onComplete="onWelcomeWizardComplete"
+      class="h-full flex-1 text-default bg-default" /> -->
+
+    <BackUpSetupWizard v-if="!welcomeWizardComplete" :onComplete="onWelcomeWizardComplete"
       class="h-full flex-1 text-default bg-default" />
 
     <webview v-show="welcomeWizardComplete && !loadingWebview" id="myWebview" title="test" :src="currentUrl" allowpopups
@@ -20,27 +23,21 @@
     <NotificationView />
 
   </div>
+
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue';
+import { ref } from 'vue';
 import { useDarkModeState } from './composables/useDarkModeState';
 import { useAdvancedModeState } from './composables/useAdvancedState';
 import { reportError, reportSuccess } from './components/NotificationView.vue';
 import NotificationView from './components/NotificationView.vue';
 import { Server } from './types';
-import { Wizard } from './components/wizard';
 import { useWizardSteps } from './components/wizard'
-import WelcomeView from './views/WelcomeView.vue';
-import SettingUpHardwareView from './views/SettingUpHardwareView.vue';
-import DiscoveryNonSetupServersView from './views/DiscoveryNonSetupServersView.vue';
 import { IPCRouter } from '../../houston-common/houston-common-lib/lib/electronIPC/IPCRouter';
+import StorageSetupWizard from './views/storageSetupWizard/Wizard.vue';
+import BackUpSetupWizard from './views/backupSetupWizard/Wizard.vue';
 
-const steps = [
-  { label: "Welcome", component: WelcomeView },
-  { label: "Hardware Setup", component: SettingUpHardwareView },
-  { label: "Server Discovery", component: DiscoveryNonSetupServersView },
-];
 
 const darkModeState = useDarkModeState();
 const advancedState = useAdvancedModeState();
@@ -51,7 +48,6 @@ const clientip = ref<string>("");
 const webview = ref();
 const loadingWebview = ref(false);
 const currentUrl = ref<string>('https://45drives.com');
-
 
 
 window.electron.ipcRenderer.on('client-ip', (_event, ip: string) => {
