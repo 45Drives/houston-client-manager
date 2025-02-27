@@ -4,10 +4,10 @@ export class BackUpManagerMac implements BackUpManager {
   queryTasks(): BackUpTask[] {
     throw new Error("not implemented");
   }
-  schedule(task: BackUpTask): void {
+  schedule(_task: BackUpTask): void {
     throw new Error("not implemented");
   }
-  unschedule(task: BackUpTask): void {
+  unschedule(_task: BackUpTask): void {
     throw new Error("not implemented");
   }
 }

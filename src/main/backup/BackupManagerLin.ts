@@ -18,7 +18,7 @@ export class BackUpManagerLin implements BackUpManager {
     }
     const cronFileContents = fs.readFileSync(this.cronFilePath, "utf-8");
     const cronEntries = cronFileContents.split(/[\r\n]+/);
-    return cronEntries.map((cron) => this.cronToBackupTask(cron));
+    return cronEntries.map((cron) => this.cronToBackupTask(cron)).filter(task => task !== null) as BackUpTask[];
   }
 
   schedule(task: BackUpTask) {
@@ -69,12 +69,11 @@ export class BackUpManagerLin implements BackUpManager {
     if (task.target.includes("'")) {
       throw new Error("Target cannot contain ' (single-quote)");
     }
-    return `${this.scheduleToCron(task.schedule)} rsync --archive${
-      task.mirror ? " --delete" : ""
-    } '${task.source}' '${task.target}' # ${backupTaskTag} ${task.description}`;
+    return `${this.scheduleToCron(task.schedule)} rsync --archive${task.mirror ? " --delete" : ""
+      } '${task.source}' '${task.target}' # ${backupTaskTag} ${task.description}`;
   }
 
-  protected cronToBackupTask(cron: string): BackUpTask {
+  protected cronToBackupTask(cron: string): BackUpTask | null {
     const hourRe = /^(\d+) \* \* \* \*/;
     const dayRe = /^(\d+) (\d+) \* \* \*/;
     const weekRe = /^(\d+) (\d+) \* \* (\d+)/;
@@ -84,7 +83,11 @@ export class BackUpManagerLin implements BackUpManager {
 
     let match: RegExpExecArray | null;
     if ((match = hourRe.exec(cron))) {
-      const [minutes] = match.slice(1).map((numStr) => parseInt(numStr));
+      let [minutes] = match.slice(1).map((numStr) => parseInt(numStr));
+
+      if (!minutes) {
+        return null;
+      }
       const startDate = new Date();
       startDate.setMinutes(minutes);
       schedule = {
@@ -93,6 +96,9 @@ export class BackUpManagerLin implements BackUpManager {
       };
     } else if ((match = dayRe.exec(cron))) {
       const [minutes, hours] = match.slice(1).map((numStr) => parseInt(numStr));
+      if (!minutes || !hours) {
+        return null;
+      }
       const startDate = new Date();
       startDate.setMinutes(minutes);
       startDate.setHours(hours);
@@ -104,6 +110,11 @@ export class BackUpManagerLin implements BackUpManager {
       const [minutes, hours, weekDay] = match
         .slice(1)
         .map((numStr) => parseInt(numStr));
+
+      if (!minutes || !hours || !weekDay) {
+        return null;
+      }
+
       const startDate = new Date();
       startDate.setMinutes(minutes);
       startDate.setHours(hours);
@@ -117,6 +128,11 @@ export class BackUpManagerLin implements BackUpManager {
       const [minutes, hours, dayOfMonth] = match
         .slice(1)
         .map((numStr) => parseInt(numStr));
+
+      if (!minutes || !hours || !dayOfMonth) {
+        return null;
+      }
+
       const startDate = new Date();
       startDate.setMinutes(minutes);
       startDate.setHours(hours);
@@ -131,8 +147,8 @@ export class BackUpManagerLin implements BackUpManager {
 
     const commandRe = new RegExp(
       /rsync [^']+'([^']+)' '([^']+)' # /.source +
-        backupTaskTag +
-        / (.*)$/.source
+      backupTaskTag +
+      / (.*)$/.source
     );
 
     if (!(match = commandRe.exec(cron))) {
@@ -140,7 +156,9 @@ export class BackUpManagerLin implements BackUpManager {
     }
 
     const [source, target, description] = match.slice(1);
-
+    if (!source || !target || !description) {
+      return null;
+    }
     return {
       schedule: schedule,
       mirror: cron.includes("--delete"),

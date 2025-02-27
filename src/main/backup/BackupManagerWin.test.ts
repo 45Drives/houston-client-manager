@@ -1,6 +1,6 @@
 import { suite, test, expect } from "vitest";
 
-import { BackUpManagerWin } from "./BackupManagerWin";
+import { BackUpManagerWin } from "./BackUpManagerWin";
 
 // using child class to expose protected methods
 class BackUpManagerWinTester extends BackUpManagerWin {
