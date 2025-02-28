@@ -5,10 +5,10 @@
 	</template>
 
 	<div class="w-9/12 mx-auto text-center">
-	  <div class="text-center">
-		<p class="mb-6 text-2xl">Select folders to backup, where to back them up to, and when to do it!</p>
-		  <CommanderToolTip
-			:message="``" />
+	  <div class="text-center flex flex-row">
+		<p class="mb-6 text-2xl mr-3">Select folders to backup, where to back them up to, and when to do it!</p>
+		  <!-- <CommanderToolTip
+			:message="``" class="mt-1.5" /> -->
 	  </div>
 
 	  <div class="flex flex-col space-y-4">
@@ -16,9 +16,9 @@
 		<div class="flex items-center">
 		  <div class="flex items-center w-[25%] flex-shrink-0 space-x-2">
 			<label class="text-default font-semibold text-left">Target Folder</label>
-			<CommanderToolTip :message="``" />
+			<CommanderToolTip :message="`This is the designated backup storage location. It is preconfigured and cannot be modified.`" />
 		  </div>
-		  <input v-model="globalConfig.srvrName"
+		  <input v-model=""
 			class="bg-default h-[3rem] text-default rounded-lg px-4 flex-1 border border-default">
 		</div>
 		<div class="flex py-2">
@@ -75,10 +75,10 @@
 	  <div>
 		<button @click="proceedToPreviousStep" class="btn btn-primary h-20 w-40">Back</button>
 
-		<button :disabled="!okToProceed"    @click="handleNextClick"  
+		<!-- <button :disabled="!okToProceed"    @click="handleNextClick"  
 		  class="absolute btn right-[1rem] btn-secondary h-20 w-40">
 		  FINISH
-		</button>
+		</button> -->
 	  </div>
 	</template>
 
@@ -87,12 +87,25 @@
 </template>
 
 <script setup lang="ts">
-import { CardContainer, CommanderToolTip, useWizardSteps, confirm } from "@45drives/houston-common-ui";
+import { CardContainer, CommanderToolTip } from "@45drives/houston-common-ui";
+import { useWizardSteps } from '../../components/wizard';
 import { inject, ref, computed, reactive } from "vue";
 import { PlusIcon, MinusIcon } from "@heroicons/vue/20/solid";
+import { backUpSetupConfigKey, serverInfoInjectionKey } from "../../keys/injection-keys";
 
-// const globalConfig = inject(backUpSetupConfigKey);
-// const globalConfig = reactive<
+const globalConfig = inject(backUpSetupConfigKey);
+const server = inject(serverInfoInjectionKey);
+const { completeCurrentStep, prevStep } = useWizardSteps("backup");
+
+const proceedToNextStep = async () => {
+  completeCurrentStep();
+};
+
+const proceedToPreviousStep = () => {
+  console.log("test go back");
+  prevStep();
+};
+
 const folderInput = ref<HTMLInputElement | null>(null);
 const selectedFolders = ref<{ name: string; path: string }[]>([]);
 
@@ -129,34 +142,5 @@ const removeFolder = (index: number) => {
 	selectedFolders.value.splice(index, 1);
 };
 
-// if (!globalConfig) {
-//   throw new Error("globalConfig is not provided. Ensure it is provided in App.vue");
-// }
 
-const okToProceed = computed(() => {
-
-});
-
-const { prevStep, completeCurrentStep } = useWizardSteps();
-
-const proceedToNextStep = async () => {
-  completeCurrentStep();
-};
-
-const proceedToPreviousStep = () => {
-  console.log("test go back");
-  prevStep();
-};
-
-
-// Function when user confirms credentials are saved
-const handleNextClick = async () => {
-//   const proceed = await confirm({body:'Please ensure you save your username and password in a secure location for future reference. You will not be able to retrieve them later. If you have already saved them, click "OK" to proceed. Otherwise, click "Back" to cancel and securely store your credentials.', 
-//   header:"Save Your Credentials", confirmButtonText:"OK, Proceed", cancelButtonText:"Back"}).unwrapOr(false);
-//   console.log("handleConfirm:", proceed); // Debugging log
-//   if (proceed === true) {
-//     proceedToNextStep();
-//   }
-//   // Proceed to next step logic here
-};
 </script>
