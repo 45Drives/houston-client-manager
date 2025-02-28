@@ -1,6 +1,6 @@
 <template>
 
-  <Wizard :steps="steps" :onComplete="data => props.onComplete(data)"
+  <Wizard :id="props.id" :steps="steps" :onComplete="data => props.onComplete(data)"
     class="h-full flex-1 text-default bg-default" />
 
 </template>
@@ -12,6 +12,7 @@ import SettingUpHardwareView from './SettingUpHardwareView.vue';
 import DiscoveryNonSetupServersView from './DiscoveryNonSetupServersView.vue';
 
 const props = defineProps<{
+  id: string,
   onComplete: (data: any) => void;
 }>();
 
