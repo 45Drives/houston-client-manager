@@ -38,7 +38,6 @@ import { IPCRouter } from '../../houston-common/houston-common-lib/lib/electronI
 import StorageSetupWizard from './views/storageSetupWizard/Wizard.vue';
 import BackUpSetupWizard from './views/backupSetupWizard/Wizard.vue';
 
-
 const darkModeState = useDarkModeState();
 const advancedState = useAdvancedModeState();
 const welcomeWizardComplete = ref(false);
@@ -48,7 +47,6 @@ const clientip = ref<string>("");
 const webview = ref();
 const loadingWebview = ref(false);
 const currentUrl = ref<string>('https://45drives.com');
-
 
 window.electron.ipcRenderer.on('client-ip', (_event, ip: string) => {
   clientip.value = ip;
