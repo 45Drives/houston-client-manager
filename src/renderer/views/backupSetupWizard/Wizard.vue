@@ -8,6 +8,7 @@
 <script setup lang="ts">
 import { Wizard } from '../../components/wizard';
 import ChooseManageView from './ChooseManageView.vue';
+import ChooseDifficultyView from './ChooseDifficultyView.vue';
 import WelcomeView from './WelcomeView.vue';
 
 const props = defineProps<{
@@ -17,6 +18,7 @@ const props = defineProps<{
 const steps = [
   { label: "Welcome", component: WelcomeView },
   { label: "Manage Backups", component: ChooseManageView },
+  { label: "Setup Option", component: ChooseDifficultyView },
 ];
 
 </script>
