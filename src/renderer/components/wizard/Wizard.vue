@@ -1,15 +1,19 @@
 <script setup lang="ts">
-import { defineWizardSteps, type WizardStep } from "./index";
+import { createWizardInjectionKey, defineWizardSteps, type WizardStep } from "./index";
 import WizardStepView from "./WizardStepView.vue";
 import StepsHeader from "./StepsHeader.vue";
 import { defineProps, watch } from "vue";
 
 const props = defineProps<{
+  id: string,
   steps: WizardStep[];
   onComplete: (data: any) => void;
 }>();
 
-const state = defineWizardSteps(props.steps);
+console.log(props.id);
+
+const state = defineWizardSteps(props.steps, createWizardInjectionKey(props.id));
+console.log("defined")
 
 watch(
   () => state.completedSteps,  // Watch only completedSteps

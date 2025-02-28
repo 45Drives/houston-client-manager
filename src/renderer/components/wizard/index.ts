@@ -1,34 +1,40 @@
-import {
-  ref,
-  type Component,
-  type Ref,
-  computed,
-  type ComputedRef,
-  type WritableComputedRef,
-  provide,
-  type InjectionKey,
-  inject,
-} from "vue";
-// export { default as TabSelector } from "./TabSelector.vue";
-export { default as Wizard } from "./Wizard.vue";
+import { InjectionKey, computed, ref, provide, inject, Ref, ComputedRef, WritableComputedRef, Component } from "vue";
 
-export type WizardStep = {
-  label: string;
-  component: Component;
-};
 
 export type WizardState = {
   labels: ComputedRef<string[]>;
   index: WritableComputedRef<number>;
   currentComponent: ComputedRef<Component>;
   completedSteps: Ref<boolean[]>;
-  data: any;
+  data: Record<string, any>;
+  determineNextStep: (data: Record<string, any>, currentIndex: number) => number;
 };
+
+export { default as Wizard } from "./Wizard.vue";
+
+export interface WizardStep {
+  label: string;
+  component: any;
+  nextStep?: (data: Record<string, any>) => number; // Function for branching logic
+}
+
+// Function to generate a unique injection key for each wizard
+const wizardKeys = new Map<string, InjectionKey<WizardState>>();
+
+export function createWizardInjectionKey(id: string): InjectionKey<WizardState> {
+  if (!wizardKeys.has(id)) {
+    wizardKeys.set(id, Symbol(id) as InjectionKey<WizardState>);
+  }
+  return wizardKeys.get(id)!;
+}
 
 export const WizardStateInjectionKey = Symbol() as InjectionKey<WizardState>;
 
-export function defineWizardSteps(steps: WizardStep[]): WizardState {
-  // const steps_ = Array.isArray(steps) ? computed(() => steps) : steps;
+// Updated wizard definition with branching logic
+export function defineWizardSteps(
+  steps: WizardStep[],
+  key: InjectionKey<WizardState>
+): WizardState {
   const index_ = ref(0);
   const index = computed({
     get: () => Math.min(Math.max(0, index_.value), Math.max(0, steps.length - 1)),
@@ -38,24 +44,31 @@ export function defineWizardSteps(steps: WizardStep[]): WizardState {
   });
   const currentComponent = computed(() => steps[index.value]!.component);
 
-  const state = {
+  const determineNextStep = (data: Record<string, any>, currentIndex: number) => {
+    const step = steps[currentIndex];
+    return step.nextStep ? step.nextStep(data) : currentIndex + 1;
+  };
+
+  const state: WizardState = {
     labels: computed(() => steps.map(({ label }) => label)),
     index,
     currentComponent,
     completedSteps: ref(steps.map(() => false)),
-    data: {}
+    data: {},
+    determineNextStep,
   };
 
-  provide(WizardStateInjectionKey, state);
+  provide(key, state);
 
   return state;
 }
 
-export function useWizardSteps() {
-  const state = inject(WizardStateInjectionKey);
+export function useWizardSteps(id: string) {
+  const state = inject(createWizardInjectionKey(id));
   if (!state) {
-    throw new Error("defineWizardSteps not called before useWizardSteps!");
+    throw new Error("defineWizardSteps must be called before useWizardSteps!");
   }
+
   const reset = () => {
     state.index.value = 0;
   };
@@ -65,7 +78,7 @@ export function useWizardSteps() {
   };
 
   const nextStep = () => {
-    state.index.value++;
+    state.index.value = state.determineNextStep(state.data, state.index.value);
   };
 
   const prevStep = () => {
@@ -76,13 +89,11 @@ export function useWizardSteps() {
     state.index.value = newIndex;
   };
 
-  const completeCurrentStep = (gotoNext: boolean = true, data: any = {}) => {
-    state.completedSteps.value = state.completedSteps.value.map((isComplete, index) =>
-      index === state.index.value ? true : isComplete
-    );
+  const completeCurrentStep = (gotoNext: boolean = true, data: Record<string, any> = {}) => {
+    state.completedSteps.value![state.index.value] = true;
+    state.data = { ...state.data, ...data }; // Store data for decision-making
 
     if (gotoNext) {
-      state.data = data;
       nextStep();
     }
   };

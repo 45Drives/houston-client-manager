@@ -59,7 +59,7 @@ import CardContainer from '../../components/CardContainer.vue';
 import { CommanderToolTip } from '../../components/commander';
 import { useWizardSteps } from '../../components/wizard';
 
-const { completeCurrentStep } = useWizardSteps();
+const { completeCurrentStep } = useWizardSteps("backup");
 
 const proceedToNextStep = async () => {
   completeCurrentStep();

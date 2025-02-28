@@ -56,7 +56,7 @@ import { Server } from '../../types';
 import { ref } from 'vue';
 // import { CommanderToolTip } from '../components/commander';
 
-const { completeCurrentStep, prevStep } = useWizardSteps();
+const { completeCurrentStep, prevStep } = useWizardSteps("setup");
 const selectedServer = ref<Server | null>(null);
 
 const goBackStep = async () => {

@@ -2,10 +2,10 @@
 
   <div class="w-screen h-screen overflow-hidden flex items-center justify-center text-default bg-default">
 
-    <!-- <StorageSetupWizard v-if="!welcomeWizardComplete" :onComplete="onWelcomeWizardComplete"
+    <!-- <StorageSetupWizard v-if="!welcomeWizardComplete" id="setup" :onComplete="onWelcomeWizardComplete"
       class="h-full flex-1 text-default bg-default" /> -->
 
-    <BackUpSetupWizard v-if="!welcomeWizardComplete" :onComplete="onWelcomeWizardComplete"
+    <BackUpSetupWizard v-if="!welcomeWizardComplete" id="backup" :onComplete="onWelcomeWizardComplete"
       class="h-full flex-1 text-default bg-default" />
 
     <webview v-show="welcomeWizardComplete && !loadingWebview" id="myWebview" title="test" :src="currentUrl" allowpopups
@@ -97,7 +97,7 @@ const onWebViewLoaded = async () => {
       } else if (data === "go_home") {
         console.log("Go_HOME")
         welcomeWizardComplete.value = false;
-        useWizardSteps().reset()
+        useWizardSteps("setupwizard").reset()
       }
     } catch (error) {
     }
