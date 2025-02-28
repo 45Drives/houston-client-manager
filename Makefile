@@ -47,6 +47,7 @@ houston-common/Makefile:
 
 houston-common: houston-common/Makefile
 	$(MAKE) -C houston-common
+	npm install
 
 houston-common-%:
 	$(MAKE) -C houston-common $*
