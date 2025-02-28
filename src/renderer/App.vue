@@ -27,7 +27,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue';
+import { onBeforeMount, onMounted, provide, ref } from 'vue';
 import { useDarkModeState } from './composables/useDarkModeState';
 import { useAdvancedModeState } from './composables/useAdvancedState';
 import { reportError, reportSuccess } from './components/NotificationView.vue';
@@ -37,12 +37,16 @@ import { useWizardSteps } from './components/wizard'
 import { IPCRouter } from '../../houston-common/houston-common-lib/lib/electronIPC/IPCRouter';
 import StorageSetupWizard from './views/storageSetupWizard/Wizard.vue';
 import BackUpSetupWizard from './views/backupSetupWizard/Wizard.vue';
+import { serverInfoInjectionKey } from './keys/injection-keys';
 
 const darkModeState = useDarkModeState();
 const advancedState = useAdvancedModeState();
 const welcomeWizardComplete = ref(false);
 
 const currentServer = ref<Server | null>(null);
+
+provide(currentServer, serverInfoInjectionKey);
+
 const clientip = ref<string>("");
 const webview = ref();
 const loadingWebview = ref(false);
@@ -64,6 +68,23 @@ window.electron.ipcRenderer.on('notification', (_event, message: string) => {
   }
 
 });
+
+IPCRouter.initRenderer(webview);
+IPCRouter.getInstance().addEventListener("action", (data) => {
+  try {
+    if (data === "setup_wizard_go_back") {
+      welcomeWizardComplete.value = false;
+    } else if (data === "go_home") {
+      console.log("Go_HOME")
+      welcomeWizardComplete.value = false;
+      useWizardSteps("setupwizard").reset()
+    }
+  } catch (error) {
+  }
+  
+});
+// Provide IPCRouter globally so all child components can access it safely
+provide('IPCRouter', IPCRouter.getInstance());
 
 // Handle server click to open the website
 const openServerWebsite = (server: Server | null) => {
@@ -88,21 +109,6 @@ const openServerWebsite = (server: Server | null) => {
 };
 
 const onWebViewLoaded = async () => {
-
-  IPCRouter.initRenderer(webview.value);
-  IPCRouter.getInstance().addEventListener("action", (data) => {
-    try {
-      if (data === "setup_wizard_go_back") {
-        welcomeWizardComplete.value = false;
-      } else if (data === "go_home") {
-        console.log("Go_HOME")
-        welcomeWizardComplete.value = false;
-        useWizardSteps("setupwizard").reset()
-      }
-    } catch (error) {
-    }
-  });
-
   webview.value.executeJavaScript(`
         new Promise((resolve, reject) => {
 

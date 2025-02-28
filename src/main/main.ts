@@ -6,6 +6,8 @@ import os from 'os';
 import { Server } from './types';
 import mountSmbPopup from './smbMountPopup';
 import { IPCRouter } from '../../houston-common/houston-common-lib/lib/electronIPC/IPCRouter';
+import { getOS } from './utils';
+import { BackUpManager, BackUpManagerLin, BackUpManagerMac, BackUpManagerWin } from './backup';
 
 let discoveredServers: Server[] = [];
 
@@ -188,7 +190,14 @@ function createWindow() {
 
   IPCRouter.initBackend(mainWindow.webContents, ipcMain);
   IPCRouter.getInstance().addEventListener("action", (data) => {
-    console.log(data)
+    console.log("$$$$$$$$$$$$$$$$$$$$$$$", data);
+    if (data === "requestBackUpTasks") {
+      let backUpManager: BackUpManager | null = getBackUpManager();
+
+      if (backUpManager !== null) {
+        IPCRouter.getInstance().send('renderer', 'sendBackupTasks', backUpManager.queryTasks())
+      }
+    }
   });
 
   ipcMain.on('message', (event, message) => {
@@ -226,3 +235,16 @@ app.whenReady().then(() => {
   });
 
 });
+function getBackUpManager() {
+  const os = getOS();
+  let backUpManager: BackUpManager | null = null;
+  if (os === "win") {
+    backUpManager = new BackUpManagerWin();
+  } else if (os === "debian" || os == "rocky") {
+    backUpManager = new BackUpManagerLin();
+  } else if (os === "mac") {
+    backUpManager = new BackUpManagerMac();
+  }
+  return backUpManager;
+}
+
