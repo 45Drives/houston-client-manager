@@ -33,11 +33,12 @@
     "tailwindcss": "^3.4.3",
     "typescript": "^5.2.2",
     "vite": "^4.5.0",
-    "vitest": "^3.0.6"
+    "vitest": "^3.0.7"
   },
   "dependencies": {
     "@45drives/houston-common-lib": "file:houston-common/houston-common-lib",
     "@45drives/houston-common-ui": "file:houston-common/houston-common-ui",
+    "@45drives/houston-common-css": "file:houston-common/houston-common-css",
     "asar": "^3.2.0",
     "express": "^4.21.2",
     "multicast-dns": "^7.2.5",

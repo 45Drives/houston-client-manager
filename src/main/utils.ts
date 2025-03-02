@@ -9,7 +9,6 @@ export function getOS(): 'mac' | 'rocky' | 'debian' | 'win' {
     if (releaseInfo.toLocaleLowerCase().includes('rocky')) return 'rocky';
     if (releaseInfo.includes('debian') || releaseInfo.includes('ubuntu')) return 'debian';
   } catch (error) {
-    console.error('Error detecting OS:', error);
   }
   return "win";
 }

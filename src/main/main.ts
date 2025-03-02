@@ -57,6 +57,20 @@ function createWindow() {
     }
   });
 
+  
+  IPCRouter.initBackend(mainWindow.webContents, ipcMain);
+  
+  IPCRouter.getInstance().addEventListener('action', (data) => {
+
+    if (data === "requestBackUpTasks") {
+      let backUpManager: BackUpManager | null = getBackUpManager();
+
+      if (backUpManager !== null) {
+        IPCRouter.getInstance().send('renderer', 'sendBackupTasks', backUpManager.queryTasks())
+      }
+    }
+  });
+
   mainWindow.maximize();
 
   mainWindow.setMenu(null);
@@ -188,22 +202,6 @@ function createWindow() {
     }
   }, 5000);
 
-  IPCRouter.initBackend(mainWindow.webContents, ipcMain);
-  IPCRouter.getInstance().addEventListener("action", (data) => {
-    console.log("$$$$$$$$$$$$$$$$$$$$$$$", data);
-    if (data === "requestBackUpTasks") {
-      let backUpManager: BackUpManager | null = getBackUpManager();
-
-      if (backUpManager !== null) {
-        IPCRouter.getInstance().send('renderer', 'sendBackupTasks', backUpManager.queryTasks())
-      }
-    }
-  });
-
-  ipcMain.on('message', (event, message) => {
-    console.log(message);
-  })
-
   app.on('window-all-closed', function () {
     ipcMain.removeAllListeners('message')
     clearInterval(pollActionInterval);
@@ -218,7 +216,6 @@ function createWindow() {
 
 app.on('web-contents-created', (_event, contents) => {
   contents.on('will-attach-webview', (_wawevent, webPreferences, _params) => {
-    console.log("webview attaching")
     webPreferences.preload = `${__dirname}/webview-preload.js`;
   });
 });
@@ -235,6 +232,7 @@ app.whenReady().then(() => {
   });
 
 });
+
 function getBackUpManager() {
   const os = getOS();
   let backUpManager: BackUpManager | null = null;
@@ -247,4 +245,3 @@ function getBackUpManager() {
   }
   return backUpManager;
 }
-

@@ -48,6 +48,7 @@ export class BackUpManagerWin implements BackUpManager {
 
     } catch (parseError) {
       console.error('Error parsing JSON:', parseError);
+      console.error('String value was:', result.stdout.toString());
       return [];
     }
 
