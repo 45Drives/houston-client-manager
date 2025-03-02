@@ -7,6 +7,7 @@ import fs from 'fs';
 import asar from 'asar';
 import { Server } from './types';
 import { exec } from 'child_process';
+import { getOS } from './utils';
 
 const options = {
   name: 'Houston Client Manager',
@@ -37,17 +38,30 @@ async function mountSambaClientWin(smb_host: string, smb_share: string, smb_user
 
     // If all works out try adding a schedualed task as admin 
     if (!error && !stderr && stdout) {
-
+     
       const result = JSON.parse(stdout.toString());
       if (!result.message) {
-
-        sudo.exec(`powershell -ExecutionPolicy Bypass -File "${addtasksPath}" \\\\${smb_host}\\${smb_share} ${smb_user} "${smb_pass}"`, options, (error, stdout, stderr) => {
-          if (error) {
-            console.error( error);
-            dialog.showErrorBox(error.name, error.message);
-            return;
+        dialog
+        .showMessageBox({
+          type: 'info',
+          title: 'Make Mount Persistent',
+          message: `Would like to make this persistent after reboots:\n\n
+        host=${smb_host}\n
+        \n\nYou will need to enter your administrator password to install them.`,
+          buttons: ['OK', 'Cancel'],
+        })
+        .then((result) => {
+          if (result.response === 0) {
+            sudo.exec(`powershell -ExecutionPolicy Bypass -File "${addtasksPath}" \\\\${smb_host}\\${smb_share} ${smb_user} "${smb_pass}"`, options, (error, stdout, stderr) => {
+              if (error) {
+                console.error( error);
+                dialog.showErrorBox(error.name, error.message);
+                return;
+              }
+            });
           }
         });
+       
       }
 
     }
@@ -162,7 +176,10 @@ function handleExecOutputWithOutPopup(
 // Main Logic
 export default function mountSmbPopup(smb_host: string, smb_share: string, smb_user: string, smb_pass: string, mainWindow: BrowserWindow) {
 
-  dialog
+  if ( getOS() === "win") {
+    mountSambaClient(smb_host, smb_share, smb_user, smb_pass, mainWindow);
+  } else {
+    dialog
     .showMessageBox({
       type: 'info',
       title: 'Creating Connection To Storage',
@@ -176,5 +193,6 @@ export default function mountSmbPopup(smb_host: string, smb_share: string, smb_u
         mountSambaClient(smb_host, smb_share, smb_user, smb_pass, mainWindow);
       }
     });
+  }
 
 }
