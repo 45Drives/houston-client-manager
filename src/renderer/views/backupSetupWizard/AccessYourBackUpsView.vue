@@ -13,6 +13,8 @@
 
       <br />
 
+      <BackUpListView class="w-1/3 p-5 justify-center text-2xl" @backUpTaskSelected="handleBackUpTaskSelected"/>
+ 
       <p class="w-9/12 text-center text-2xl">
         If your backup is not showing make sure you set it up correctly by going back and creating a backup plan.
         <!-- <CommanderToolTip
@@ -48,13 +50,25 @@
 </template>
 
 <script setup lang="ts">
+import { BackUpTask } from '@45drives/houston-common-lib';
 import CardContainer from '../../components/CardContainer.vue';
 import { useWizardSteps } from '../../components/wizard';
+import BackUpListView from './BackUpListView.vue';
+import { ref } from 'vue';
+
+const selectedBackUpTask = ref<BackUpTask | null>(null);
+const handleBackUpTaskSelected = (backUpTask: BackUpTask | null) => {
+  selectedBackUpTask.value = backUpTask;
+}
 
 const { completeCurrentStep, prevStep } = useWizardSteps("backup");
 
 const proceedToNextStep = async () => {
-  completeCurrentStep();
+  if (selectedBackUpTask.value) {
+    completeCurrentStep(true, selectedBackUpTask.value);
+  } else {
+    throw new Error("Should have selected a Back Up to access")
+  }
 };
 const proceedToPreviousStep = async () => {
   prevStep();

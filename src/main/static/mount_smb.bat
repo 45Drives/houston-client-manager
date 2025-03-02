@@ -8,11 +8,16 @@ if "%1"=="" (
 )
 
 if "%2"=="" (
-    echo {"error": "No username provided"}
+    echo {"error": "No share provided"}
     exit /b
 )
 
 if "%3"=="" (
+    echo {"error": "No username provided"}
+    exit /b
+)
+
+if "%4"=="" (
     echo {"error": "No password provided"}
     exit /b
 )

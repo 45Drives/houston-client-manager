@@ -12,7 +12,7 @@ const options = {
   name: 'Houston Client Manager',
 };
 
-async function mountSambaClient(server: Server, smb_host: string, smb_share: string, smb_user: string, smb_pass: string, mainWindow: BrowserWindow) {
+async function mountSambaClient(smb_host: string, smb_share: string, smb_user: string, smb_pass: string, mainWindow: BrowserWindow) {
 
   const platform = os.platform();
   console.log('platform:', platform);
@@ -56,7 +56,9 @@ async function mountSambaClientWin(smb_host: string, smb_share: string, smb_user
 }
 
 async function getAsset(folder: string, fileName: string): Promise<string> {
-  const filePath = path.join(__dirname, folder, fileName);
+  const filePath = path.join(__dirname, "..", "..", folder, fileName);
+
+  console.log("asset: ", filePath);
 
   // Check if running inside an ASAR package
   let extractedFilepath = filePath;
@@ -158,7 +160,7 @@ function handleExecOutputWithOutPopup(
 }
 
 // Main Logic
-export default function mountSmbPopup(server: Server, smb_host: string, smb_share: string, smb_user: string, smb_pass: string, mainWindow: BrowserWindow) {
+export default function mountSmbPopup(smb_host: string, smb_share: string, smb_user: string, smb_pass: string, mainWindow: BrowserWindow) {
 
   dialog
     .showMessageBox({
@@ -171,7 +173,7 @@ export default function mountSmbPopup(server: Server, smb_host: string, smb_shar
     })
     .then((result) => {
       if (result.response === 0) {
-        mountSambaClient(server, smb_host, smb_share, smb_user, smb_pass, mainWindow);
+        mountSambaClient(smb_host, smb_share, smb_user, smb_pass, mainWindow);
       }
     });
 

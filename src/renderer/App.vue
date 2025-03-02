@@ -27,7 +27,7 @@
 </template>
 
 <script setup lang="ts">
-import { onBeforeMount, onMounted, provide, ref, watch } from 'vue';
+import { onBeforeMount, onMounted, provide, reactive, ref, watch } from 'vue';
 import { useDarkModeState } from './composables/useDarkModeState';
 import { useAdvancedModeState } from './composables/useAdvancedState';
 import { reportError, reportSuccess } from './components/NotificationView.vue';
@@ -48,6 +48,7 @@ const welcomeWizardComplete = ref(false);
 const currentServer = ref<Server | null>(null);
 
 provide(currentServer, serverInfoInjectionKey);
+
 
 const clientip = ref<string>("");
 const webview = ref();
