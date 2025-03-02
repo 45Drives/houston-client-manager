@@ -66,7 +66,19 @@ function createWindow() {
       let backUpManager: BackUpManager | null = getBackUpManager();
 
       if (backUpManager !== null) {
-        IPCRouter.getInstance().send('renderer', 'sendBackupTasks', backUpManager.queryTasks())
+        IPCRouter.getInstance().send('renderer', 'sendBackupTasks', [
+          {
+            description: "test",
+            source: "C:/documents",
+            target: "hl4-test.local/backup",
+            mirror: false,
+            schedule: {
+              startDate: new Date(),
+              repeatFrequency: 'day'
+            }
+          }
+        ]);
+        //IPCRouter.getInstance().send('renderer', 'sendBackupTasks', backUpManager.queryTasks());
       }
     }
   });
@@ -185,7 +197,7 @@ function createWindow() {
         console.log("New action received:", server, data);
 
         if (data.action === "mount_samba_client") {
-          mountSmbPopup(server, data.smb_host, data.smb_share, data.smb_user, data.smb_pass, mainWindow);
+          mountSmbPopup(data.smb_host, data.smb_share, data.smb_user, data.smb_pass, mainWindow);
         } else {
           console.log("Unknown new actions.", server);
         }
@@ -194,6 +206,10 @@ function createWindow() {
       console.error("Error polling actions:", server, error);
     }
   }
+
+  IPCRouter.getInstance().addEventListener('mountSambaClient', (data) => {
+    mountSmbPopup(data.smb_host, data.smb_share, data.smb_user, data.smb_pass, mainWindow);
+  });
 
   // Poll every 5 seconds
   const pollActionInterval = setInterval(async () => {
