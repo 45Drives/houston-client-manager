@@ -27,17 +27,19 @@
 </template>
 
 <script setup lang="ts">
-import { onBeforeMount, onMounted, provide, ref } from 'vue';
+import { onBeforeMount, onMounted, provide, ref, watch } from 'vue';
 import { useDarkModeState } from './composables/useDarkModeState';
 import { useAdvancedModeState } from './composables/useAdvancedState';
 import { reportError, reportSuccess } from './components/NotificationView.vue';
 import NotificationView from './components/NotificationView.vue';
 import { Server } from './types';
 import { useWizardSteps } from './components/wizard'
-import { IPCRouter } from '../../houston-common/houston-common-lib/lib/electronIPC/IPCRouter';
 import StorageSetupWizard from './views/storageSetupWizard/Wizard.vue';
 import BackUpSetupWizard from './views/backupSetupWizard/Wizard.vue';
 import { serverInfoInjectionKey } from './keys/injection-keys';
+import { IPCMessageRouterRenderer, IPCRouter } from '@45drives/houston-common-lib';
+
+IPCRouter.initRenderer();
 
 const darkModeState = useDarkModeState();
 const advancedState = useAdvancedModeState();
@@ -57,7 +59,6 @@ window.electron.ipcRenderer.on('client-ip', (_event, ip: string) => {
 });
 
 window.electron.ipcRenderer.on('notification', (_event, message: string) => {
-  console.log(message)
 
   if (message.startsWith("Error")) {
 
@@ -68,23 +69,6 @@ window.electron.ipcRenderer.on('notification', (_event, message: string) => {
   }
 
 });
-
-IPCRouter.initRenderer(webview);
-IPCRouter.getInstance().addEventListener("action", (data) => {
-  try {
-    if (data === "setup_wizard_go_back") {
-      welcomeWizardComplete.value = false;
-    } else if (data === "go_home") {
-      console.log("Go_HOME")
-      welcomeWizardComplete.value = false;
-      useWizardSteps("setupwizard").reset()
-    }
-  } catch (error) {
-  }
-  
-});
-// Provide IPCRouter globally so all child components can access it safely
-provide('IPCRouter', IPCRouter.getInstance());
 
 // Handle server click to open the website
 const openServerWebsite = (server: Server | null) => {
@@ -109,6 +93,23 @@ const openServerWebsite = (server: Server | null) => {
 };
 
 const onWebViewLoaded = async () => {
+  
+  const routerREnderer = IPCRouter.getInstance() as IPCMessageRouterRenderer;
+
+  routerREnderer.setCockpitWebView(webview.value);
+  IPCRouter.getInstance().addEventListener("action", (data) => {
+    try {
+      if (data === "setup_wizard_go_back") {
+        welcomeWizardComplete.value = false;
+      } else if (data === "go_home") {
+        console.log("Go_HOME")
+        welcomeWizardComplete.value = false;
+        useWizardSteps("setupwizard").reset()
+      }
+    } catch (error) {
+    }
+  });
+  
   webview.value.executeJavaScript(`
         new Promise((resolve, reject) => {
 
