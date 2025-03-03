@@ -7,7 +7,8 @@ import { Server } from './types';
 import mountSmbPopup from './smbMountPopup';
 import { IPCRouter } from '../../houston-common/houston-common-lib/lib/electronIPC/IPCRouter';
 import { getOS } from './utils';
-import { BackUpManager, BackUpManagerLin, BackUpManagerMac, BackUpManagerWin, BackUpSetupConfig, BackUpSetupConfigurator } from './backup';
+import { BackUpManager, BackUpManagerLin, BackUpManagerMac, BackUpManagerWin, BackUpSetupConfigurator } from './backup';
+import { BackUpSetupConfig } from '@45drives/houston-common-lib';
 
 let discoveredServers: Server[] = [];
 
