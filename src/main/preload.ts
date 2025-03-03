@@ -6,4 +6,5 @@ contextBridge.exposeInMainWorld('electron', {
     on: (channel: string, callback: (...args: any[]) => void) =>
       ipcRenderer.on(channel, callback),
   },
+  selectFolder: () => ipcRenderer.invoke('dialog:openFolder'),
 });
