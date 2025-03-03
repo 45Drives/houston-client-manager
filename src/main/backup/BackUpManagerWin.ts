@@ -1,4 +1,5 @@
-import { BackUpManager, BackUpTask, TaskSchedule } from "./types";
+import { BackUpManager } from "./types";
+import { BackUpTask, TaskSchedule } from "@45drives/houston-common-lib";
 import { spawnSync } from "child_process";
 
 const TASK_ID = "HoustonBackUp";
