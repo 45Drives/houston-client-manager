@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, webContents } from 'electron';
+import { app, BrowserWindow, ipcMain, webContents, dialog } from 'electron';
 import { join } from 'path';
 import mdns from 'multicast-dns';
 import { powerSaveBlocker } from "electron";
@@ -238,6 +238,13 @@ app.on('web-contents-created', (_event, contents) => {
 
 
 app.whenReady().then(() => {
+  ipcMain.handle('dialog:openFolder', async () => {
+    const result = await dialog.showOpenDialog({
+      properties: ['openDirectory'], // Opens folder selection dialog
+    });
+
+    return result.canceled ? null : result.filePaths[0]; // Return full folder path
+  });
   createWindow();
   app.on('activate', function () {
     // On macOS it's common to re-create a window in the app when the

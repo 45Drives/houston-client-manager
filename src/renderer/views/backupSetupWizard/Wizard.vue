@@ -12,6 +12,7 @@ import ChooseManageView from './ChooseManageView.vue';
 import ChooseDifficultyView from './ChooseDifficultyView.vue';
 import AccessYourBackUpsView from './AccessYourBackUpsView.vue';
 import AccessBackUpView from './AccessBackUpView.vue';
+import CreateSimpleBackUpView from './CreateSimpleBackupView.vue'
 import WelcomeView from './WelcomeView.vue';
 import CustomizeBackupView from './CustomizeBackupView.vue';
 import { inject, onBeforeMount, onMounted, provide, reactive } from 'vue';
@@ -36,11 +37,15 @@ onMounted(() => {
 });
 
 const steps: WizardStep[] = [
-  { label: "Welcome", component: WelcomeView },
-  { label: "Manage Backups", component: ChooseManageView, nextStep: (data) => (data.choice === "createBackup" ? 2 : 3) },
-  { label: "BackUp Setup Option", component: ChooseDifficultyView, nextStep: () => 5 },
-  { label: "Access Backups", component: AccessYourBackUpsView, nextStep: () => 4 },
-  { label: "Access Backup", component: AccessBackUpView, nextStep: () => 5 },
+   { label: "Welcome", component: WelcomeView },
+
+
+  //{ label: "Manage Backups", component: ChooseManageView, nextStep: (data) => (data.choice === "createBackup" ? 2 : 3) },
+ // { label: "BackUp Setup Option", component: ChooseDifficultyView, nextStep: () => 5 },
+//{ label: "Access Backups", component: AccessYourBackUpsView, nextStep: () => 4 },
+{ label: "Create SImple BackUp", component: CreateSimpleBackUpView },
+
+//  { label: "Access Backup", component: AccessBackUpView, nextStep: () => 5 },
 ];
 
 </script>
