@@ -81,9 +81,14 @@ export function useWizardSteps(id: string) {
     state.index.value = state.determineNextStep(state.data, state.index.value);
   };
 
-  const prevStep = () => {
-    state.index.value--;
+  const prevStep = (targetStep?: number) => {
+    if (targetStep !== undefined) {
+      state.index.value = targetStep; // Go to specific step
+    } else {
+      state.index.value = Math.max(0, state.index.value - 1); // Default behavior
+    }
   };
+  
 
   const setStep = (newIndex: number) => {
     state.index.value = newIndex;
