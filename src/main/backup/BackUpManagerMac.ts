@@ -1,4 +1,5 @@
-import { BackUpManager, BackUpTask } from "./types";
+import { BackUpManager } from "./types";
+import { BackUpTask, TaskSchedule } from "@45drives/houston-common-lib";
 
 export class BackUpManagerMac implements BackUpManager {
   queryTasks(): BackUpTask[] {

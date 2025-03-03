@@ -1,4 +1,8 @@
-import { BackUpSetupConfig } from "./types";
+import { getOS } from "../utils";
+import { BackUpManagerLin } from "./BackUpManagerLin";
+import { BackUpManagerMac } from "./BackUpManagerMac";
+import { BackUpManagerWin } from "./BackUpManagerWin";
+import { BackUpManager, BackUpSetupConfig } from "./types";
 
 export interface BackUpSetupProgress {
   message: string;
@@ -17,9 +21,15 @@ export class BackUpSetupConfigurator {
   ) {
 
     try {
-      const total = 6;
+      const total = config.backUpTasks.length + 1;
       progressCallback({ message: "Initializing Backup Setup... please wait", step: 1, total });
 
+      const backUpManager = this.getBackUpManager();
+      for (let i = 0; i < config.backUpTasks.length; i++) {
+        backUpManager.schedule(config.backUpTasks[i]);
+        progressCallback({ message: "Back up task added for " + config.backUpTasks[i].source + " added.", step: i + 1, total});
+      }
+      
       console.log(config);
 
     } catch (error: any) {
@@ -29,4 +39,15 @@ export class BackUpSetupConfigurator {
 
   }
 
+  private getBackUpManager(): BackUpManager {
+    const os = getOS();
+
+    if (os === 'debian' || os == 'rocky') {
+      return new BackUpManagerLin();
+    } else if (os === 'win') {
+      return new BackUpManagerWin();
+    } else {
+      return new BackUpManagerMac();
+    }
+  }
 }

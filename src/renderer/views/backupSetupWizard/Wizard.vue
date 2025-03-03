@@ -19,6 +19,7 @@ import SummaryView from './SummaryView.vue';
 import CustomizeBackupView from './CustomizeBackupView.vue';
 import { inject, onBeforeMount, onMounted, provide, reactive } from 'vue';
 import { BackUpSetupConfigGlobal } from './BackUpSetupConfigGlobal';
+import CompleteBackUpCreationView from './CompleteBackUpCreationView.vue';
 
 const props = defineProps<{
   id: string,

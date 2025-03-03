@@ -7,7 +7,7 @@ import { Server } from './types';
 import mountSmbPopup from './smbMountPopup';
 import { IPCRouter } from '../../houston-common/houston-common-lib/lib/electronIPC/IPCRouter';
 import { getOS } from './utils';
-import { BackUpManager, BackUpManagerLin, BackUpManagerMac, BackUpManagerWin } from './backup';
+import { BackUpManager, BackUpManagerLin, BackUpManagerMac, BackUpManagerWin, BackUpSetupConfig, BackUpSetupConfigurator } from './backup';
 
 let discoveredServers: Server[] = [];
 
@@ -80,8 +80,25 @@ function createWindow() {
         ]);
         //IPCRouter.getInstance().send('renderer', 'sendBackupTasks', backUpManager.queryTasks());
       }
+    } else {
+      try {
+        const message = JSON.parse(data);
+        if (message.type === 'configurBackUp') {
+          const config: BackUpSetupConfig = message.config;
+
+          new BackUpSetupConfigurator().applyConfig(config, (progress) => {
+            IPCRouter.getInstance().send('renderer', 'action', JSON.stringify({
+              type: "backUpSetupStatus",
+              status: progress
+            }));
+          })
+        }
+      } catch(error) {
+
+      }
     }
   });
+  
 
   mainWindow.maximize();
 
