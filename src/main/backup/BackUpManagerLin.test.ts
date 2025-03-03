@@ -1,7 +1,8 @@
 import { suite, test, expect } from "vitest";
 
 import { BackUpManagerLin } from "./BackUpManagerLin";
-import { BackUpTask, backupTaskTag } from "./types";
+import {  backupTaskTag } from "./types";
+import { BackUpTask } from "@45drives/houston-common-lib";
 
 function expectTaskEqual(a: BackUpTask | null, b: BackUpTask | null) {
   if (a === null || b === null) {

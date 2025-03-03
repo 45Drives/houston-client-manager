@@ -1,5 +1,5 @@
 import { BackUpManager } from "./types";
-import { BackUpTask, TaskSchedule } from "@45drives/houston-common-lib";
+import { BackUpTask, backupTaskTag, TaskSchedule } from "@45drives/houston-common-lib";
 import * as fs from "fs";
 import { execSync } from "child_process";
 

@@ -1,8 +1,9 @@
+import { BackUpSetupConfig } from "@45drives/houston-common-lib";
 import { getOS } from "../utils";
 import { BackUpManagerLin } from "./BackUpManagerLin";
 import { BackUpManagerMac } from "./BackUpManagerMac";
 import { BackUpManagerWin } from "./BackUpManagerWin";
-import { BackUpManager, BackUpSetupConfig } from "./types";
+import { BackUpManager } from "./types";
 
 export interface BackUpSetupProgress {
   message: string;
