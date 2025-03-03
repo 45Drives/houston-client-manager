@@ -24,34 +24,29 @@
 
         <!-- Folder Selection -->
         <div class="flex flex-col space-y-4 mt-[2rem]">
-          <div v-for="(folder, index) in selectedFolders" :key="index" class="flex items-center">
-            <div class="text-start w-[50%]">
-              <label class="text-default font-semibold text-left">Folder:</label>
-              <input :value="folder.path"
-                class="bg-default h-[3rem] w-[70%] ml-[2rem] text-default rounded-lg px-4 flex-1 border border-default" 
-                disabled>
+            <div v-for="(task, index) in backUpTasks" :key="index" class="flex items-center">
+                <div class="text-start w-[50%]">
+                <label class="text-default font-semibold text-left">Folder:</label>
+                <input 
+                    :value="task.source"
+                    class="bg-default h-[3rem] w-[70%] ml-[2rem] text-default rounded-lg px-4 flex-1 border border-default"
+                    disabled
+                />
+                </div>
+                <div class="text-start w-[50%] flex items-center">
+                <label class="text-default font-semibold text-left">When:</label>
+                <input 
+                    disabled 
+                    :value="`Backup will happen ${task.schedule.repeatFrequency} at 9:00 AM`"
+                    class="bg-default h-[3rem] w-[70%] ml-[2rem] text-default rounded-lg px-4 flex-1 border border-default"
+                />
+                </div>
             </div>
-            <div class="text-start w-[50%] flex items-center">
-              <label class="text-default font-semibold text-left">When:</label>
-              <input disabled value="Backup will happen daily at 9:00 AM" 
-                class="bg-default h-[3rem] w-[70%] ml-[2rem] text-default rounded-lg px-4 flex-1 border border-default">
-              <button @click="removeFolder(index)" class="ml-4 btn btn-danger">
-                <MinusIcon class="w-5 h-5" />
-              </button>
-            </div>
-          </div>
         </div>
+    </div>
+    
 
-        <!-- Add Folder Button -->
-        <div class="flex items-center mt-[2rem]">
-          <button @click="selectFolder" class="btn btn-secondary h-10 w-15">
-            <PlusIcon class="w-6 h-6 text-white-500" />
-          </button>
-          <CommanderToolTip class="ml-[1rem]" :message="`Click the plus icon to select a folder for backup. You can add multiple locations by selecting them one at a time.`" />
-        </div>
 
-        <input ref="folderInput" type="file" webkitdirectory directory class="hidden" @change="handleFolderSelect" />
-      </div>
 
       <!-- Buttons -->
       <template #footer>
@@ -68,7 +63,12 @@
 import { CardContainer, CommanderToolTip, confirm } from "@45drives/houston-common-ui";
 import { ref } from "vue";
 import { PlusIcon, MinusIcon } from "@heroicons/vue/20/solid";
+import { BackUpSetupConfigGlobal } from './BackUpSetupConfigGlobal';
 import { useWizardSteps } from '../../components/wizard';
+
+const { completeCurrentStep, prevStep } = useWizardSteps("backup");
+
+const backUpTasks = ref<BackUpTask[]>(BackUpSetupConfigGlobal.getInstance().backUpTasks);
 
 const folderInput = ref<HTMLInputElement | null>(null);
 const selectedFolders = ref<{ name: string; path: string }[]>([]);
@@ -79,29 +79,6 @@ const selectFolder = () => {
   }
 };
 
-const handleFolderSelect = (event: Event) => {
-  const target = event.target as HTMLInputElement;
-  const files = target.files;
-
-  if (files && files.length > 0) {
-    const firstFile = files[0];
-    if (firstFile && firstFile.webkitRelativePath) {
-      const fullPath = firstFile.webkitRelativePath; 
-      const folderName = fullPath.split("/")[0] || "Unknown Folder";
-      const folderPath = `/hl4-test/backup/${folderName}`;
-
-      if (!selectedFolders.value.some(f => f.name === folderName)) {
-        selectedFolders.value.push({ name: folderName, path: folderPath });
-      }
-    }
-  }
-};
-
-const removeFolder = (index: number) => {
-  selectedFolders.value.splice(index, 1);
-};
-
-const { prevStep, completeCurrentStep } = useWizardSteps();
 
 const proceedToNextStep = async () => {
   completeCurrentStep();

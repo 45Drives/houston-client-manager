@@ -14,6 +14,8 @@ import AccessYourBackUpsView from './AccessYourBackUpsView.vue';
 import AccessBackUpView from './AccessBackUpView.vue';
 import CreateSimpleBackUpView from './CreateSimpleBackupView.vue'
 import WelcomeView from './WelcomeView.vue';
+
+import SummaryView from './SummaryView.vue';
 import CustomizeBackupView from './CustomizeBackupView.vue';
 import { inject, onBeforeMount, onMounted, provide, reactive } from 'vue';
 import { BackUpSetupConfigGlobal } from './BackUpSetupConfigGlobal';
@@ -44,6 +46,8 @@ const steps: WizardStep[] = [
  // { label: "BackUp Setup Option", component: ChooseDifficultyView, nextStep: () => 5 },
 //{ label: "Access Backups", component: AccessYourBackUpsView, nextStep: () => 4 },
 { label: "Create SImple BackUp", component: CreateSimpleBackUpView },
+{ label: "Summary", component: SummaryView },
+
 
 //  { label: "Access Backup", component: AccessBackUpView, nextStep: () => 5 },
 ];
