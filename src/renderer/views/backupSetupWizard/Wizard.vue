@@ -16,6 +16,7 @@ import WelcomeView from './WelcomeView.vue';
 import CustomizeBackupView from './CustomizeBackupView.vue';
 import { inject, onBeforeMount, onMounted, provide, reactive } from 'vue';
 import { BackUpSetupConfigGlobal } from './BackUpSetupConfigGlobal';
+import CompleteBackUpCreationView from './CompleteBackUpCreationView.vue';
 
 const props = defineProps<{
   id: string,
@@ -40,7 +41,8 @@ const steps: WizardStep[] = [
   { label: "Manage Backups", component: ChooseManageView, nextStep: (data) => (data.choice === "createBackup" ? 2 : 3) },
   { label: "BackUp Setup Option", component: ChooseDifficultyView, nextStep: () => 5 },
   { label: "Access Backups", component: AccessYourBackUpsView, nextStep: () => 4 },
-  { label: "Access Backup", component: AccessBackUpView, nextStep: () => 5 },
+  { label: "Access Backup", component: AccessBackUpView, nextStep: () => 4 },
+  { label: "Complete", component: CompleteBackUpCreationView, nextStep: () => 5 },
 ];
 
 </script>
