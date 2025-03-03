@@ -177,7 +177,7 @@
   
   // ✅ Proceed to Previous Step
   const proceedToPreviousStep = () => {
-    prevStep();
+    prevStep(2);
   };
   </script>
   

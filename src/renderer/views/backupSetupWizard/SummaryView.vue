@@ -1,7 +1,7 @@
 <template>
     <CardContainer>
       <template #header class="!text-center">
-        <div class="flex justify-center text-3xl">Create Simple Backup Plan!</div>
+        <div class="flex justify-center text-3xl">Summary</div>
       </template>
 
       <div class="w-9/12 mx-auto text-center">
