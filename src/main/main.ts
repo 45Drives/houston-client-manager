@@ -6,6 +6,8 @@ import os from 'os';
 import { Server } from './types';
 import mountSmbPopup from './smbMountPopup';
 import { IPCRouter } from '../../houston-common/houston-common-lib/lib/electronIPC/IPCRouter';
+import { getOS } from './utils';
+import { BackUpManager, BackUpManagerLin, BackUpManagerMac, BackUpManagerWin } from './backup';
 
 let discoveredServers: Server[] = [];
 
@@ -52,6 +54,32 @@ function createWindow() {
       webSecurity: false,
       backgroundThrottling: false,  // Disable throttling
       partition: 'persist:your-cookie-partition'
+    }
+  });
+
+  
+  IPCRouter.initBackend(mainWindow.webContents, ipcMain);
+  
+  IPCRouter.getInstance().addEventListener('action', (data) => {
+
+    if (data === "requestBackUpTasks") {
+      let backUpManager: BackUpManager | null = getBackUpManager();
+
+      if (backUpManager !== null) {
+        IPCRouter.getInstance().send('renderer', 'sendBackupTasks', [
+          {
+            description: "test",
+            source: "C:/documents",
+            target: "hl4-test.local/backup",
+            mirror: false,
+            schedule: {
+              startDate: new Date(),
+              repeatFrequency: 'day'
+            }
+          }
+        ]);
+        //IPCRouter.getInstance().send('renderer', 'sendBackupTasks', backUpManager.queryTasks());
+      }
     }
   });
 
@@ -169,7 +197,7 @@ function createWindow() {
         console.log("New action received:", server, data);
 
         if (data.action === "mount_samba_client") {
-          mountSmbPopup(server, data.smb_host, data.smb_share, data.smb_user, data.smb_pass, mainWindow);
+          mountSmbPopup(data.smb_host, data.smb_share, data.smb_user, data.smb_pass, mainWindow);
         } else {
           console.log("Unknown new actions.", server);
         }
@@ -179,21 +207,16 @@ function createWindow() {
     }
   }
 
+  IPCRouter.getInstance().addEventListener('mountSambaClient', (data) => {
+    mountSmbPopup(data.smb_host, data.smb_share, data.smb_user, data.smb_pass, mainWindow);
+  });
+
   // Poll every 5 seconds
   const pollActionInterval = setInterval(async () => {
     for (let server of discoveredServers) {
       await pollActions(server)
     }
   }, 5000);
-
-  IPCRouter.initBackend(mainWindow.webContents, ipcMain);
-  IPCRouter.getInstance().addEventListener("action", (data) => {
-    console.log(data)
-  });
-
-  ipcMain.on('message', (event, message) => {
-    console.log(message);
-  })
 
   app.on('window-all-closed', function () {
     ipcMain.removeAllListeners('message')
@@ -209,7 +232,6 @@ function createWindow() {
 
 app.on('web-contents-created', (_event, contents) => {
   contents.on('will-attach-webview', (_wawevent, webPreferences, _params) => {
-    console.log("webview attaching")
     webPreferences.preload = `${__dirname}/webview-preload.js`;
   });
 });
@@ -226,3 +248,16 @@ app.whenReady().then(() => {
   });
 
 });
+
+function getBackUpManager() {
+  const os = getOS();
+  let backUpManager: BackUpManager | null = null;
+  if (os === "win") {
+    backUpManager = new BackUpManagerWin();
+  } else if (os === "debian" || os == "rocky") {
+    backUpManager = new BackUpManagerLin();
+  } else if (os === "mac") {
+    backUpManager = new BackUpManagerMac();
+  }
+  return backUpManager;
+}

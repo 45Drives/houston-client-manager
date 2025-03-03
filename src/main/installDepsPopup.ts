@@ -1,7 +1,7 @@
 import { app, dialog } from 'electron';
 import sudo from 'sudo-prompt';
 import { execSync } from 'child_process';
-import os from 'os';
+import { getOS } from './utils';
 
 const options = {
   name: 'Houston Client Manager',
@@ -14,19 +14,6 @@ const dependencies = {
   mac: [], // macOS may not need these, but you can add specific ones
 };
 
-// Detect OS Type
-function getOS() {
-  const platform = os.platform();
-  if (platform === 'darwin') return 'mac';
-  try {
-    const releaseInfo = execSync('cat /etc/os-release', { encoding: 'utf-8' }).toLowerCase();
-    if (releaseInfo.toLocaleLowerCase().includes('rocky')) return 'rocky';
-    if (releaseInfo.includes('debian') || releaseInfo.includes('ubuntu')) return 'debian';
-  } catch (error) {
-    console.error('Error detecting OS:', error);
-  }
-  return null;
-}
 
 // Check if dependencies are installed
 function missingDependencies(osType) {

@@ -17,6 +17,9 @@ const config = defineConfig({
     build: {
         outDir: Path.join(__dirname, 'build', 'renderer'),
         emptyOutDir: true,
+        rollupOptions: {
+          external: ['vitest'], // Ensure vitest is not bundled
+        }
     },
     plugins: [vuePlugin({
         template: {
@@ -29,7 +32,6 @@ const config = defineConfig({
     resolve: {
         alias: {
             "@": fileURLToPath(new URL("./src", import.meta.url)),
-            "@45drives/houston-common-css": fileURLToPath(new URL("./houston-common/houston-common-css", import.meta.url)),
             "@45drives/houston-common-lib": fileURLToPath(new URL("./houston-common/houston-common-lib", import.meta.url)),
         },
     },

@@ -27,22 +27,29 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue';
+import { onBeforeMount, onMounted, provide, reactive, ref, watch } from 'vue';
 import { useDarkModeState } from './composables/useDarkModeState';
 import { useAdvancedModeState } from './composables/useAdvancedState';
 import { reportError, reportSuccess } from './components/NotificationView.vue';
 import NotificationView from './components/NotificationView.vue';
 import { Server } from './types';
 import { useWizardSteps } from './components/wizard'
-import { IPCRouter } from '../../houston-common/houston-common-lib/lib/electronIPC/IPCRouter';
 import StorageSetupWizard from './views/storageSetupWizard/Wizard.vue';
 import BackUpSetupWizard from './views/backupSetupWizard/Wizard.vue';
+import { serverInfoInjectionKey } from './keys/injection-keys';
+import { IPCMessageRouterRenderer, IPCRouter } from '@45drives/houston-common-lib';
+
+IPCRouter.initRenderer();
 
 const darkModeState = useDarkModeState();
 const advancedState = useAdvancedModeState();
 const welcomeWizardComplete = ref(false);
 
 const currentServer = ref<Server | null>(null);
+
+provide(currentServer, serverInfoInjectionKey);
+
+
 const clientip = ref<string>("");
 const webview = ref();
 const loadingWebview = ref(false);
@@ -53,7 +60,6 @@ window.electron.ipcRenderer.on('client-ip', (_event, ip: string) => {
 });
 
 window.electron.ipcRenderer.on('notification', (_event, message: string) => {
-  console.log(message)
 
   if (message.startsWith("Error")) {
 
@@ -88,8 +94,10 @@ const openServerWebsite = (server: Server | null) => {
 };
 
 const onWebViewLoaded = async () => {
+  
+  const routerREnderer = IPCRouter.getInstance() as IPCMessageRouterRenderer;
 
-  IPCRouter.initRenderer(webview.value);
+  routerREnderer.setCockpitWebView(webview.value);
   IPCRouter.getInstance().addEventListener("action", (data) => {
     try {
       if (data === "setup_wizard_go_back") {
@@ -102,7 +110,7 @@ const onWebViewLoaded = async () => {
     } catch (error) {
     }
   });
-
+  
   webview.value.executeJavaScript(`
         new Promise((resolve, reject) => {
 

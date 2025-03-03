@@ -12,7 +12,7 @@
       "lib": ["esnext", "dom"],
       "types": ["vite/client"]
     },
-    "include": ["./**/*.ts", "./**/*.d.ts", "./**/*.tsx", "./**/*.vue", "../../houston-common/houston-common-lib/lib/electronIPC/IPCRouter.ts"],
+    "include": ["./**/*.ts", "./**/*.d.ts", "./**/*.tsx", "./**/*.vue"],
     "baseUrl": ".",
     "paths": {
       "@/*": ["./src/*"],
