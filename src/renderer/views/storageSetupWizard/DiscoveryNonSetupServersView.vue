@@ -64,7 +64,7 @@ const goBackStep = async () => {
 };
 
 const proceedToNextStep = async () => {
-  completeCurrentStep(true, selectedServer.value);
+  completeCurrentStep(true, selectedServer.value as Record<string, any>);
 };
 
 const handleServerSelected = async (server: Server | null) => {
