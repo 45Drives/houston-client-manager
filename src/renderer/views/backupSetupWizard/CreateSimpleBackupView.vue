@@ -30,7 +30,7 @@
             <label class="w-[25%] py-2 text-default font-semibold text-start">
               Back Interval (Starts At 9:00 AM):
             </label>
-            <select v-model="schedule" class="bg-default h-[3rem] text-default rounded-lg px-4 flex-1 border border-default">
+            <select v-model="scheduleFrequency" class="bg-default h-[3rem] text-default rounded-lg px-4 flex-1 border border-default">
               <option value="hourly">Hourly</option>
               <option value="daily">Daily</option>
               <option value="weekly">Weekly</option>
@@ -38,8 +38,9 @@
             </select>
           </div>
   
+          <!-- Folder Selection Button -->
           <div class="flex items-center mt-[5rem]">
-            <button @click="selectFolder" class="absolute btn btn-secondary h-10 w-15">
+            <button @click="handleFolderSelect" class="relative btn btn-secondary h-10 w-15">
               <PlusIcon class="w-6 h-6 text-white-500" />
             </button>
             <CommanderToolTip 
@@ -50,16 +51,6 @@
               Select a folder to back up to the designated location.
             </p>
           </div>
-  
-          <!-- Hidden File Input -->
-          <input 
-            ref="folderInput" 
-            type="file" 
-            webkitdirectory 
-            directory 
-            class="hidden" 
-            @change="handleFolderSelect" 
-          />
   
           <!-- Selected Folders List -->
           <div v-if="selectedFolders.length > 0" class="space-y-2 border rounded-lg border-gray-500">
@@ -73,7 +64,7 @@
                   <label class="text-default font-semibold text-left">{{ folder.name }}</label>
                 </div>
                 <input 
-                  :value="folder.path"
+                  disabled :value="folder.path"
                   class="bg-default h-[3rem] mr-[1rem] text-default rounded-lg px-4 flex-1 border border-default"
                 />
                 <button @click="removeFolder(index)" class="btn btn-secondary">
@@ -91,107 +82,102 @@
           <button @click="proceedToPreviousStep" class="btn btn-primary h-20 w-40">
             Back
           </button>
-          <button class="absolute btn right-[1rem] btn-secondary h-20 w-40">
-            FINISH
+          <button @click="proceedToNextStep" class="absolute btn right-[1rem] btn-secondary h-20 w-40">
+            Next
           </button>
         </div>
       </template>
     </CardContainer>
   </template>
   
-  
   <script setup lang="ts">
-    import { CardContainer, CommanderToolTip,confirm } from "@45drives/houston-common-ui";
-    import { inject, ref, computed, reactive } from "vue";
-    import { PlusIcon, MinusIcon } from "@heroicons/vue/20/solid";
+  import { CardContainer, CommanderToolTip, confirm } from "@45drives/houston-common-ui";
+  import { ref, watch } from "vue";
+  import { PlusIcon, MinusIcon } from "@heroicons/vue/20/solid";
+  import { useWizardSteps } from '../../components/wizard';
+  import { BackUpSetupConfigGlobal } from './BackUpSetupConfigGlobal';
+  
+  // Wizard navigation
+  const { completeCurrentStep, prevStep } = useWizardSteps("backup");
+  
+  // Reactive State
+  const backUpTasks = ref<BackUpTask[]>(BackUpSetupConfigGlobal.getInstance().backUpTasks);
+  const selectedFolders = ref<{ name: string; path: string }[]>([]);
+  const backUpFolder = "/hl4-test/backup";
+  const scheduleFrequency = ref<string>("daily");
+  
+  // ✅ Watch and Update Tasks When Schedule Changes
+  watch(scheduleFrequency, (newSchedule) => {
+    backUpTasks.value.forEach((task) => {
+      task.schedule.repeatFrequency = newSchedule;
+    });
+  });
+  
+  const isSelectingFolder = ref(false); // ✅ Track if dialog is open
 
-    import { useWizardSteps } from '../../components/wizard';
-    import { BackUpSetupConfigGlobal } from './BackUpSetupConfigGlobal';
+    const handleFolderSelect = async () => {
+    if (!window.electron?.selectFolder) {
+        console.error("Electron API not available! Ensure preload script is loaded.");
+        return;
+    }
 
-    const { completeCurrentStep, prevStep } = useWizardSteps("backup");
+    if (isSelectingFolder.value) return; // ✅ Prevent multiple dialogs from opening
+    isSelectingFolder.value = true;
 
-    const backUpTasks = ref<BackUpTask[]>(BackUpSetupConfigGlobal.getInstance().backUpTasks);
+    try {
+        const folderPath = await window.electron.selectFolder();
+        if (folderPath) {
+        const folderName = folderPath.split("/").pop() ?? "Unknown Folder";
 
-    const folderInput = ref<HTMLInputElement | null>(null);
-    const selectedFolders = ref<{ name: string; path: string }[]>([]);
-    const backUpFolder = "/hl4-test/backup"
-    const schedule = ref<string>("daily")
-    const selectFolder = () => {
-    if(folderInput.value){
-        folderInput.value.click(); // Simulates a click on the hidden input
+        // ✅ Prevent duplicate folder selection
+        if (!backUpTasks.value.some(task => task.source === folderPath)) {
+            const newTask: BackUpTask = {
+            schedule:{startDate: new Date(),repeatFrequency: scheduleFrequency.value},
+            description: `Backup task for ${folderName}`,
+            source: folderPath, // ✅ Full Folder Path
+            target: backUpFolder,
+            mirror: false,
+            };
 
+            // ✅ Add to backup list
+            backUpTasks.value.push(newTask);
+            selectedFolders.value.push({ name: folderName, path: folderPath });
+
+            console.log("Backup Tasks:", backUpTasks.value);
+        } else {
+            console.warn(`Folder "${folderPath}" is already selected.`);
+        }
+        }
+    } catch (error) {
+        console.error("Error selecting folder:", error);
+    } finally {
+        isSelectingFolder.value = false; // ✅ Allow opening new dialogs
     }
     };
-    watch(schedule, (newSchedule) => {
-        backUpTasks.value.forEach((task) => {
-        task.schedule.frequency = newSchedule;
-        });
-    });
-    const handleFolderSelect = (event: Event) => {
-        const target = event.target as HTMLInputElement;
-        const files = target.files;
 
-        // ✅ Ensure files exist
-        if (files && files.length > 0) {
-            const firstFile = files[0];
-
-            if (firstFile && firstFile.webkitRelativePath) {
-                const fullPath = firstFile.webkitRelativePath;
-                const folderName = fullPath.split("/")[0] ?? "Unknown Folder"; // Extract folder name
-
-                // ✅ Compute `sourcePath` correctly (Real folder path)
-                const sourcePath = `${folderName}`; // Adjust as needed
-
-                // ✅ Compute `targetPath` dynamically based on Client ID
-                const targetPath = backUpFolder; 
-
-                // ✅ Prevent duplicate folder selection
-                if (!backUpTasks.value.some(task => task.source === sourcePath)) {
-                    // ✅ Create new backup task
-                    const newTask: BackUpTask = {
-                        schedule: schedule.value, 
-                        description: `Backup task for ${folderName}`,
-                        source: sourcePath,  
-                        target: targetPath,  
-                        mirror: false, 
-                    };
-
-                    // ✅ Add task to backup list
-                    backUpTasks.value.push(newTask);
-
-                    // ✅ Update UI: Add to selectedFolders for display
-                    selectedFolders.value.push({ name: folderName, path: sourcePath });
-                    console.log(backUpTasks)
-                }
-            }
-        }
-
-        // ✅ Reset input to allow selecting the same folder again
-        target.value = "";
-    };
-    const removeFolder = (index: number) => {
-        selectedFolders.value.splice(index, 1);
-    };
-
-    const proceedToNextStep = async () => {
+  
+  // ✅ Remove Folder from List
+  const removeFolder = (index: number) => {
+    const folderToRemove = selectedFolders.value[index];
+  
+    // Remove from selectedFolders (UI List)
+    selectedFolders.value.splice(index, 1);
+  
+    // Remove from backUpTasks (Backup Task List)
+    const taskIndex = backUpTasks.value.findIndex(task => task.source === folderToRemove.path);
+    if (taskIndex !== -1) {
+      backUpTasks.value.splice(taskIndex, 1);
+    }
+  };
+  
+  // ✅ Proceed to Next Step
+  const proceedToNextStep = async () => {
     completeCurrentStep();
-    };
-
-    const proceedToPreviousStep = () => {
-        console.log("test go back");
-        prevStep();
-    };
-
-
-    // Function when user confirms credentials are saved
-    const handleNextClick = async () => {
-        const proceed = await confirm({body:'Please ensure you save your username and password in a secure location for future reference. You will not be able to retrieve them later. If you have already saved them, click "OK" to proceed. Otherwise, click "Back" to cancel and securely store your credentials.', 
-        header:"Save Your Credentials", confirmButtonText:"OK, Proceed", cancelButtonText:"Back"}).unwrapOr(false);
-        console.log("handleConfirm:", proceed); // Debugging log
-        if (proceed === true) {
-            proceedToNextStep();
-        }
-    // Proceed to next step logic here
-    };
+  };
+  
+  // ✅ Proceed to Previous Step
+  const proceedToPreviousStep = () => {
+    prevStep();
+  };
   </script>
   
