@@ -15,10 +15,15 @@
           <div class="flex items-center">
             <div class="flex items-center w-[25%] flex-shrink-0 space-x-2">
               <label class="text-default font-semibold text-left">Back Up Location</label>
-              <CommanderToolTip :message="`This is the designated backup storage location. It is preconfigured and cannot be modified.`" />
+              <CommanderToolTip 
+                :message="`This is the designated backup storage location. It is preconfigured and cannot be modified.`" 
+              />
             </div>
-            <input disabled value="/hl4-test/backup"
-              class="bg-default h-[3rem] text-default rounded-lg px-4 flex-1 border border-default">
+            <input 
+              disabled 
+              :value=backUpTasks[0].target
+              class="bg-default h-[3rem] text-default rounded-lg px-4 flex-1 border border-default" 
+            />
           </div>
         </div>
 
@@ -36,10 +41,11 @@
                 <div class="text-start w-[50%] flex items-center">
                 <label class="text-default font-semibold text-left">When:</label>
                 <input 
-                    disabled 
-                    :value="`Backup will happen ${task.schedule.repeatFrequency} at 9:00 AM`"
-                    class="bg-default h-[3rem] w-[70%] ml-[2rem] text-default rounded-lg px-4 flex-1 border border-default"
+                  disabled 
+                  :value="`Backup will happen ${formatFrequency(task.schedule.repeatFrequency)} at 9:00 AM`"
+                  class="bg-default h-[3rem] w-[70%] ml-[2rem] text-default rounded-lg px-4 flex-1 border border-default"
                 />
+
                 </div>
             </div>
         </div>
@@ -62,23 +68,13 @@
 <script setup lang="ts">
 import { CardContainer, CommanderToolTip, confirm } from "@45drives/houston-common-ui";
 import { ref } from "vue";
-import { PlusIcon, MinusIcon } from "@heroicons/vue/20/solid";
 import { BackUpSetupConfigGlobal } from './BackUpSetupConfigGlobal';
 import { useWizardSteps } from '../../components/wizard';
+import { BackUpTask } from "@45drives/houston-common-lib";
 
 const { completeCurrentStep, prevStep } = useWizardSteps("backup");
 
-const backUpTasks = ref<BackUpTask[]>(BackUpSetupConfigGlobal.getInstance().backUpTasks);
-
-const folderInput = ref<HTMLInputElement | null>(null);
-const selectedFolders = ref<{ name: string; path: string }[]>([]);
-
-const selectFolder = () => {
-  if (folderInput.value) {
-    folderInput.value.click(); // Open the hidden input
-  }
-};
-
+const backUpTasks = ref<BackUpTask[]>(BackUpSetupConfigGlobal.getInstance().backUpTasks as BackUpTask[]);
 
 const proceedToNextStep = async () => {
   completeCurrentStep();
@@ -86,6 +82,16 @@ const proceedToNextStep = async () => {
 
 const proceedToPreviousStep = () => {
   prevStep();
+};
+
+const formatFrequency = (frequency: "hour" | "day" | "week" | "month") => {
+    const frequencyMap: Record<string, string> = {
+        hour: "hourly",
+        day: "daily",
+        week: "weekly",
+        month: "monthly"
+    };
+    return frequencyMap[frequency] || frequency; // Default to original if unknown
 };
 
 const handleNextClick = async () => {
