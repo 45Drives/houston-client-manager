@@ -112,6 +112,9 @@ Unregister-ScheduledTask -TaskName "${task.description}" -Confirm:$false
   }
 
   protected scheduleToTaskTrigger(sched: TaskSchedule): string {
+
+    console.log(sched);
+    
     const startDate = sched.startDate.toISOString().replace('T', ' ').split('.')[0]; // e.g., "2025-02-25 10:00:00"
 
     switch (sched.repeatFrequency) {

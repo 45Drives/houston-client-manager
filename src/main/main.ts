@@ -67,19 +67,7 @@ function createWindow() {
       let backUpManager: BackUpManager | null = getBackUpManager();
 
       if (backUpManager !== null) {
-        IPCRouter.getInstance().send('renderer', 'sendBackupTasks', [
-          {
-            description: "test",
-            source: "C:/documents",
-            target: "hl4-test.local/backup",
-            mirror: false,
-            schedule: {
-              startDate: new Date(),
-              repeatFrequency: 'day'
-            }
-          }
-        ]);
-        //IPCRouter.getInstance().send('renderer', 'sendBackupTasks', backUpManager.queryTasks());
+        IPCRouter.getInstance().send('renderer', 'sendBackupTasks', backUpManager.queryTasks());
       }
     } else {
       try {

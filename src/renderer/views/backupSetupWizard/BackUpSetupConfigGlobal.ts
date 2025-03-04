@@ -8,7 +8,7 @@ export class BackUpSetupConfigGlobal {
   public static getInstance(): BackUpSetupConfig {
     if (!BackUpSetupConfigGlobal.instance) {
       BackUpSetupConfigGlobal.instance = {
-        backUpTasks: []
+        backUpTasks: [],
       }
     }
     return BackUpSetupConfigGlobal.instance;
