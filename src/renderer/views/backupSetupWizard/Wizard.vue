@@ -17,42 +17,30 @@ import WelcomeView from './WelcomeView.vue';
 
 import SummaryView from './SummaryView.vue';
 import CustomizeBackupView from './CustomizeBackupView.vue';
-import { inject, onBeforeMount, onMounted, provide, reactive } from 'vue';
-import { BackUpSetupConfigGlobal } from './BackUpSetupConfigGlobal';
 import CompleteBackUpCreationView from './CompleteBackUpCreationView.vue';
+import { provide, reactive } from 'vue';
+import { backUpSetupConfigKey } from '../../keys/injection-keys';
 
 const props = defineProps<{
   id: string,
   onComplete: (data: any) => void;
 }>();
 
-
-
-onMounted(() => {
-
-  IPCRouter.getInstance().addEventListener('sendBackupTasks', (data: BackUpTask[]) => {
-    console.log("setting backups: ", data)
-    BackUpSetupConfigGlobal.getInstance().backUpTasks = data;
-  });
-
-  IPCRouter.getInstance().send('backend', 'action', 'requestBackUpTasks');
- 
-});
+provide(backUpSetupConfigKey, reactive({
+  backUpTasks: []
+}))
 
 const steps: WizardStep[] = [
-   { label: "Welcome", component: WelcomeView },
-
-
+  { label: "Welcome", component: WelcomeView },
   { label: "Manage Backups", component: ChooseManageView, nextStep: (data) => (data.choice === "createBackup" ? 2 : 3) },
-  { label: "BackUp Setup Option", component: ChooseDifficultyView, nextStep: (data) => (data.choice === "createBackup" ? 4 : 5)},
+  { label: "BackUp Setup Option", component: ChooseDifficultyView, nextStep: (data) => (data.choice === "simple" ? 5 : 6) },
   { label: "Access Backups", component: AccessYourBackUpsView },
-  { label: "Create Simple BackUp", component: CreateSimpleBackUpView, prevStep: () => 2 },
-//{ label: "Create Custom BackUp", component: CustomizeBackupView },
+  { label: "Access Backup", component: AccessBackUpView, nextStep: () => 7 },
+  { label: "Create Simple BackUp", component: CreateSimpleBackUpView },
+  //{ label: "Create Custom BackUp", component: CustomizeBackupView },
 
-{ label: "Summary", component: SummaryView },
-
-
-//  { label: "Access Backup", component: AccessBackUpView, nextStep: () => 5 },
+  { label: "Summary", component: SummaryView },
+  { label: "Complete", component: CompleteBackUpCreationView },
 ];
 
 </script>

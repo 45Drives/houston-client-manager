@@ -21,46 +21,35 @@
       <!-- Username and Password input fields -->
       <div class="flex flex-col gap-4">
         <label for="username" class="font-semibold text-gray-700">Username:</label>
-        <input
-          v-model="username"
-          type="text"
-          id="username"
+        <input v-model="username" type="text" id="username"
           class="p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-          placeholder="Enter your username"
-        />
+          placeholder="Enter your username" />
 
         <label for="password" class="font-semibold text-gray-700">Password:</label>
-        <input
-          v-model="password"
-          type="password"
-          id="password"
+        <input v-model="password" type="password" id="password"
           class="p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-          placeholder="Enter your password"
-        />
+          placeholder="Enter your password" />
       </div>
 
       <!-- "Open" button -->
       <div class="mt-4">
-        <button
-          @click="handleOpen"
-          :disabled="isButtonDisabled"
-          class="w-full p-3 bg-blue-600 text-white font-semibold rounded-md hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
-        >
+        <button @click="handleOpen" :disabled="isButtonDisabled"
+          class="w-full p-3 bg-blue-600 text-white font-semibold rounded-md hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed">
           Open
         </button>
       </div>
     </div>
-    
+
     <!-- Buttons -->
     <template #footer>
       <div class="button-group-row w-full justify-end">
 
         <div class="button-group-row w-full justify-between">
-        <button @click="prevStep" class="btn btn-secondary w-40 h-20">
-          Back
-        </button>
+          <button @click="proceedToPreviousStep" class="btn btn-secondary w-40 h-20">
+            Back
+          </button>
 
-      </div>
+        </div>
 
       </div>
     </template>
@@ -102,7 +91,7 @@ const handleOpen = () => {
     console.log("Host:", host);  // Output: "hl4-test.local"
     console.log("Share:", share); // Output: "backups"
 
-    IPCRouter.getInstance().send('backend', 'mountSambaClient', 
+    IPCRouter.getInstance().send('backend', 'mountSambaClient',
       {
         smb_host: host,
         smb_share: share,
@@ -112,6 +101,11 @@ const handleOpen = () => {
     );
   }
 };
+
+const proceedToPreviousStep = async () => {
+  prevStep();
+};
+
 </script>
 
 <style scoped>

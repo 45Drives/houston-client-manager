@@ -39,10 +39,11 @@
 
 <script setup lang="ts">
 import { CardContainer } from "@45drives/houston-common-ui";
-import { ref, onMounted, watch } from "vue";
+import { ref, onMounted, watch, inject } from "vue";
 import { useWizardSteps } from "../../components/wizard";
 import { BackUpSetupConfigGlobal } from "./BackUpSetupConfigGlobal";
 import { EasySetupProgress, IPCRouter } from "@45drives/houston-common-lib";
+import { backUpSetupConfigKey } from "../../keys/injection-keys";
 
 
 const { reset } = useWizardSteps('backup');
@@ -80,7 +81,7 @@ onMounted(() => {
       JSON.stringify(
         {
           type: 'configurBackUp',
-          config: BackUpSetupConfigGlobal.getInstance()
+          config: inject(backUpSetupConfigKey)
         })
     );
 

@@ -7,7 +7,7 @@
       <div class="w-9/12 mx-auto text-center">
         <p class="mb-6 text-2xl">
           You're almost finished! A summary of information can be found below. <br/>
-          If everything looks accurate, click <span class="font-bold">Next</span> to set up your storage server. <br/>
+          If everything looks accurate, click <span class="font-bold">Next</span> to set up your backups. <br/>
           If you'd like to make changes, click <span class="font-bold">Back.</span>
         </p>
 
@@ -21,7 +21,7 @@
             </div>
             <input 
               disabled 
-              :value=backUpTasks[0].target
+              :value=backUpSetupConfig?.backUpTasks[0].target
               class="bg-default h-[3rem] text-default rounded-lg px-4 flex-1 border border-default" 
             />
           </div>
@@ -29,7 +29,7 @@
 
         <!-- Folder Selection -->
         <div class="flex flex-col space-y-4 mt-[2rem]">
-            <div v-for="(task, index) in backUpTasks" :key="index" class="flex items-center">
+            <div v-for="(task, index) in backUpSetupConfig?.backUpTasks" :key="index" class="flex items-center">
                 <div class="text-start w-[50%]">
                 <label class="text-default font-semibold text-left">Folder:</label>
                 <input 
@@ -58,7 +58,7 @@
       <template #footer>
         <div>
           <button @click="proceedToPreviousStep" class="btn btn-primary h-20 w-40">Back</button>
-          <button @click="handleNextClick" class="absolute btn right-[1rem] btn-secondary h-20 w-40">FINISH</button>
+          <button @click="handleNextClick" class="absolute btn right-[1rem] btn-secondary h-20 w-40">Next</button>
         </div>
       </template>
 
@@ -67,14 +67,14 @@
 
 <script setup lang="ts">
 import { CardContainer, CommanderToolTip, confirm } from "@45drives/houston-common-ui";
-import { ref } from "vue";
-import { BackUpSetupConfigGlobal } from './BackUpSetupConfigGlobal';
+import { inject, ref } from "vue";
 import { useWizardSteps } from '../../components/wizard';
 import { BackUpTask } from "@45drives/houston-common-lib";
+import { backUpSetupConfigKey } from "../../keys/injection-keys";
 
 const { completeCurrentStep, prevStep } = useWizardSteps("backup");
 
-const backUpTasks = ref<BackUpTask[]>(BackUpSetupConfigGlobal.getInstance().backUpTasks as BackUpTask[]);
+const backUpSetupConfig = inject(backUpSetupConfigKey);//ref<BackUpTask[]>(BackUpSetupConfigGlobal.getInstance().backUpTasks as BackUpTask[]);
 
 const proceedToNextStep = async () => {
   completeCurrentStep();
@@ -95,15 +95,8 @@ const formatFrequency = (frequency: "hour" | "day" | "week" | "month") => {
 };
 
 const handleNextClick = async () => {
-  const proceed = await confirm({
-    body: 'Please ensure you save your username and password in a secure location for future reference. You will not be able to retrieve them later. If you have already saved them, click "OK" to proceed. Otherwise, click "Back" to cancel and securely store your credentials.',
-    header: "Save Your Credentials",
-    confirmButtonText: "OK, Proceed",
-    cancelButtonText: "Back"
-  }).unwrapOr(false);
 
-  if (proceed) {
-    proceedToNextStep();
-  }
+  proceedToNextStep();
+  
 };
 </script>

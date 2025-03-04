@@ -60,11 +60,11 @@ import { useWizardSteps } from '../../components/wizard';
 const { completeCurrentStep, prevStep } = useWizardSteps("backup");
 
 const startCreateBackupSchedualSetup = () => {
-  completeCurrentStep(true, { choice: "createBackup" });
+  completeCurrentStep(true, { choice: "simple" });
 };
 
 const startCustomSetup = () => {
-  completeCurrentStep(true, { choice: "accessBackups" });
+  completeCurrentStep(true, { choice: "custom" });
 
 };
 
