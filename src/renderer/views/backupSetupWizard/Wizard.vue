@@ -6,7 +6,6 @@
 </template>
 
 <script setup lang="ts">
-import { IPCMessageRouter, IPCRouter, type BackUpSetupConfig, type BackUpTask } from '@45drives/houston-common-lib';
 import { Wizard, WizardStep } from '../../components/wizard';
 import ChooseManageView from './ChooseManageView.vue';
 import ChooseDifficultyView from './ChooseDifficultyView.vue';
@@ -20,6 +19,7 @@ import CustomizeBackupView from './CustomizeBackupView.vue';
 import CompleteBackUpCreationView from './CompleteBackUpCreationView.vue';
 import { provide, reactive } from 'vue';
 import { backUpSetupConfigKey } from '../../keys/injection-keys';
+import ChooseOnPremOrCloadView from './ChooseOnPremOrCloadView.vue';
 
 const props = defineProps<{
   id: string,
@@ -36,7 +36,8 @@ const steps: WizardStep[] = [
   { label: "BackUp Setup Option", component: ChooseDifficultyView, nextStep: (data) => (data.choice === "simple" ? 5 : 6) },
   { label: "Access Backups", component: AccessYourBackUpsView },
   { label: "Access Backup", component: AccessBackUpView, nextStep: () => 7 },
-  { label: "Create Simple BackUp", component: CreateSimpleBackUpView },
+  { label: "Where To Store Backup", component: ChooseOnPremOrCloadView, nextStep: (data) => (data.choice === "onprem" ? 6 : 7) },
+  { label: "Create Simple Backup", component: CreateSimpleBackUpView },
   //{ label: "Create Custom BackUp", component: CustomizeBackupView },
 
   { label: "Summary", component: SummaryView },
