@@ -85,18 +85,34 @@
       </div>
 
     </template>
+    <MessageDialog ref="messageNoServersDialog" message="No servers detected. Ensure the plugin is powered and the network is connected for any servers you want to set up backups on." />
   </CardContainer>
 </template>
 
 <script setup lang="ts">
+import { ref } from 'vue';
 import CardContainer from '../../components/CardContainer.vue';
 import { CommanderToolTip } from '../../components/commander';
 import { useWizardSteps } from '../../components/wizard';
+import { Server } from '../../types';
+import MessageDialog from '../../components/MessageDialog.vue';
 
 const { completeCurrentStep, prevStep } = useWizardSteps("backup");
+const servers = ref<Server[]>([]);
+
+// Receive the discovered servers from the main process
+window.electron.ipcRenderer.on('discovered-servers', (_event, discoveredServers: Server[]) => {
+  servers.value = discoveredServers;
+});
+
+const messageNoServersDialog = ref<InstanceType<typeof MessageDialog> | null>(null);
 
 const startOnPremSetup = () => {
-  completeCurrentStep(true, { choice: "onprem" });
+  if (servers.value.length === 0) {
+    messageNoServersDialog.value?.show();
+  } else {
+    completeCurrentStep(true, { choice: "onprem" });
+  }
 };
 
 const startCloudSetup = () => {
