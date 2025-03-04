@@ -1,15 +1,16 @@
 /**
- * Should match main/preload.ts for typescript support in renderer
+ * Should match main/preload.ts for TypeScript support in renderer
  */
-export default interface ElectronApi {
+export interface ElectronApi {  // ✅ Use named export
   ipcRenderer: {
     send: (channel: string, data: any) => void;
     on: (channel: string, callback: (...args: any[]) => void) => void;
-  }
+  };
+  selectFolder?: () => Promise<string>;
 }
 
 declare global {
   interface Window {
-    electron: ElectronApi,
+    electron: ElectronApi; // ✅ Declare globally only once
   }
 }
