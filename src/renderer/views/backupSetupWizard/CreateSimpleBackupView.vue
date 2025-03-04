@@ -177,5 +177,5 @@ const removeFolder = (index: number) => {
 
 // Navigation
 const proceedToNextStep = () => completeCurrentStep();
-const proceedToPreviousStep = () => prevStep(2);
+const proceedToPreviousStep = () => prevStep();
 </script>
