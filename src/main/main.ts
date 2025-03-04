@@ -73,6 +73,11 @@ function createWindow() {
       try {
         const message = JSON.parse(data);
         if (message.type === 'configurBackUp') {
+
+          message.config.backUpTasks.forEach(backUpTask => {
+            backUpTask.schedule.startDate = new Date(backUpTask.schedule.startDate);
+          })
+
           const config: BackUpSetupConfig = message.config;
 
           new BackUpSetupConfigurator().applyConfig(config, (progress) => {
