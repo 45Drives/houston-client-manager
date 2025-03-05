@@ -36,7 +36,7 @@ export class BackUpManagerWin implements BackUpManager {
 
     try {
       const tasks = JSON.parse(result.stdout.toString());
-      const tasksShort = JSON.parse(resultShort.stdout.toString());
+      // const tasksShort = JSON.parse(resultShort.stdout.toString());
       const tasksAsArray = Array.isArray(tasks) ? tasks : [tasks];
 
       return tasksAsArray.map(task => {
@@ -55,14 +55,13 @@ export class BackUpManagerWin implements BackUpManager {
         }
         const actionDetails = this.parseRobocopyCommand(command)
         if (!actionDetails) {
-          console.log("task.Actions:", task.Actions)
-          console.log("Failed to parse action details:", actionProps)
+          console.log("task.Actions:", command)
           return null;
         }
-        const trigger = this.convertTriggersToTaskSchedule(tasksShort.Triggers);
+        const trigger = this.convertTriggersToTaskSchedule(task.Triggers);
 
         if (!trigger) {
-          console.log("Failed to parse Trigger:", tasksShort.Triggers);
+          console.log("Failed to parse Trigger:", task.Triggers);
           return null;
         }
 
@@ -77,7 +76,6 @@ export class BackUpManagerWin implements BackUpManager {
 
     } catch (parseError) {
       console.error('Error parsing JSON:', parseError);
-      console.error('String value was:', result.stdout.toString());
       return [];
     }
 
@@ -105,7 +103,7 @@ $taskTrigger = ${this.scheduleToTaskTrigger(task.schedule)}
 $action = New-ScheduledTaskAction -Execute "cmd.exe" -Argument "/C $robocopyCommand"
 
 # Register the scheduled task
-Register-ScheduledTask -Action $action -Trigger $taskTrigger -TaskName "${TASK_ID}_${task.source}_${task.target}" 
+Register-ScheduledTask -Action $action -Trigger $taskTrigger -TaskName "${TASK_ID}_${crypto.randomUUID()}" 
 `;
 
     // Run PowerShell command with spawnSync
@@ -114,6 +112,7 @@ Register-ScheduledTask -Action $action -Trigger $taskTrigger -TaskName "${TASK_I
     // Check if the process ran successfully
     if (result.error) {
       console.error(`Error executing PowerShell script: ${result.error.message}`);
+      console.error(`PowerShell script: ${powershellScript}`);
     } else {
       console.log('Backup task scheduled successfully.');
       console.log(`Standard Output: ${result.stdout.toString()}`);
@@ -139,18 +138,18 @@ Unregister-ScheduledTask -TaskName "${task.description}" -Confirm:$false
     }
   }
 
-  protected scheduleToTaskTrigger(sched: TaskSchedule): string {
+  protected scheduleToTaskTrigger(sched: TaskSchedule): string | undefined {
 
     console.log(sched);
 
     const startDate = sched.startDate.toISOString().replace('T', ' ').split('.')[0]; // e.g., "2025-02-25 10:00:00"
 
-    switch (sched.repeatFrequency) {
+    switch (sched.repeatFrequency.toLowerCase()) {
       case "hour":
         return `
 $startTime = "${startDate}"
 $taskTrigger = New-ScheduledTaskTrigger -At $startTime -Daily
-$taskTrigger.RepetitionInterval = (New-TimeSpan -Hours 1)
+$taskTrigger.Repetition = New-ScheduledTaskTrigger -Once -At $startTime -RepetitionInterval (New-TimeSpan -Hours 1)
 `;
       case "day":
         return `
@@ -170,66 +169,106 @@ $startTime = "${startDate}"
 $taskTrigger = New-ScheduledTaskTrigger -At $startTime -Monthly
 $taskTrigger.RepetitionInterval = (New-TimeSpan -Months 1)
 `;
+      default:
+        console.error("RepeatFrequency unknown", sched.repeatFrequency)
     }
   }
 
   protected convertTriggersToTaskSchedule(triggers: any[]): TaskSchedule | null {
-    const triggersArray = triggers.map(trigger => {
-      // Get the CimInstanceProperties string
-      const cimProperties = trigger.CimInstanceProperties;
+    try {
 
-      // Use regular expressions to extract the relevant properties
-      const startBoundaryMatch = cimProperties.match(/StartBoundary\s*=\s*"([^"]+)"/);
-      const hoursIntervalMatch = cimProperties.match(/HoursInterval\s*=\s*(\d+)/);
-      const daysIntervalMatch = cimProperties.match(/DaysInterval\s*=\s*(\d+)/);
-      const weeksIntervalMatch = cimProperties.match(/WeeksInterval\s*=\s*(\d+)/);
-      const monthsIntervalMatch = cimProperties.match(/MonthsInterval\s*=\s*(\d+)/);
+      const triggersArray = triggers.map(trigger => {
+        // Get the CimInstanceProperties string
+        const cimProperties = trigger.CimInstanceProperties;
 
-      // Check if the matches were found and extract values
-      if (startBoundaryMatch) {
-        if (hoursIntervalMatch) {
-
-          return {
-            repeatFrequency: 'hour',
-            startDate: new Date(startBoundaryMatch[1]),
-          };
-
-        } else if (daysIntervalMatch) {
-
-          return {
-            repeatFrequency: 'day',
-            startDate: new Date(startBoundaryMatch[1]),
-          };
-
-        } else if (weeksIntervalMatch) {
-
-          return {
-            repeatFrequency: 'week',
-            startDate: new Date(startBoundaryMatch[1]),
-          };
-
-        } else if (monthsIntervalMatch) {
-
-          return {
-            repeatFrequency: 'month',
-            startDate: new Date(startBoundaryMatch[1]),
-          };
-
+        // Use regular expressions to extract the relevant properties
+        let startBoundaryMatch;
+        let hoursIntervalMatch;
+        let daysIntervalMatch;
+        let weeksIntervalMatch;
+        let monthsIntervalMatch;
+        if (typeof cimProperties === 'string') {
+          startBoundaryMatch = cimProperties.match(/StartBoundary\s*=\s*"([^"]+)"/);
+          hoursIntervalMatch = cimProperties.match(/HoursInterval\s*=\s*(\d+)/);
+          daysIntervalMatch = cimProperties.match(/DaysInterval\s*=\s*(\d+)/);
+          weeksIntervalMatch = cimProperties.match(/WeeksInterval\s*=\s*(\d+)/);
+          monthsIntervalMatch = cimProperties.match(/MonthsInterval\s*=\s*(\d+)/);
+        } else if (Array.isArray(cimProperties)) {
+          for (let i = 0; i < cimProperties.length; i++) {
+            const prop = cimProperties[i];
+            if (prop.Name === "StartBoundary") {
+              startBoundaryMatch = prop.Value;
+            } else if (prop.Name === "HoursInterval") {
+              hoursIntervalMatch = prop.Value;
+            } else if (prop.Name === "DaysInterval") {
+              daysIntervalMatch = prop.Value;
+            }
+            else if (prop.Name === "WeeksInterval") {
+              weeksIntervalMatch = prop.Value;
+            }
+            else if (prop.Name === "MonthsInterval") {
+              monthsIntervalMatch = prop.Value;
+            }
+          }
         } else {
-          // Assuming it is done hourly. Based on testing.
-          return {
-            repeatFrequency: 'hour',
-            startDate: new Date(startBoundaryMatch[1]),
-          };
+          startBoundaryMatch = cimProperties.StartBoundary;
+          hoursIntervalMatch = cimProperties.HoursInterval;
+          daysIntervalMatch = cimProperties.DaysInterval;
+          weeksIntervalMatch = cimProperties.WeeksInterval;
+          monthsIntervalMatch = cimProperties.MonthsInterval;
         }
-      }
-      return null;
-    }).filter(trigger => trigger !== null);
 
-    if (triggersArray.length !== 1) {
+
+        // Check if the matches were found and extract values
+        if (startBoundaryMatch) {
+          if (hoursIntervalMatch) {
+
+            return {
+              repeatFrequency: 'hour',
+              startDate: new Date(startBoundaryMatch[1]),
+            };
+
+          } else if (daysIntervalMatch) {
+
+            return {
+              repeatFrequency: 'day',
+              startDate: new Date(startBoundaryMatch[1]),
+            };
+
+          } else if (weeksIntervalMatch) {
+
+            return {
+              repeatFrequency: 'week',
+              startDate: new Date(startBoundaryMatch[1]),
+            };
+
+          } else if (monthsIntervalMatch) {
+
+            return {
+              repeatFrequency: 'month',
+              startDate: new Date(startBoundaryMatch[1]),
+            };
+
+          } else {
+            // Assuming it is done hourly. Based on testing.
+            return {
+              repeatFrequency: 'hour',
+              startDate: new Date(startBoundaryMatch[1]),
+            };
+          }
+        }
+        return null;
+      }).filter(trigger => trigger !== null);
+
+      if (triggersArray.length !== 1) {
+        return null;
+      } else {
+        return triggersArray[0] as any;
+      }
+    } catch (error) {
+      console.error("failed to match Triggers:", triggers)
+      console.error(error)
       return null;
-    } else {
-      return triggersArray[0] as any;
     }
   }
 

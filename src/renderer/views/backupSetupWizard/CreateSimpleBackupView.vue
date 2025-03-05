@@ -22,7 +22,7 @@
           <select v-model="selectedServer"
             class="bg-default h-[3rem] text-default rounded-lg px-4 flex-1 border border-default">
             <option v-for="item in servers" :key="item.ip" :value="item">
-              {{ `\\\\${item.name}\\backup` }}
+              {{ `\\\\${item.name}.local\\backup` }}
             </option>
           </select>
         </div>

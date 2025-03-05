@@ -24,14 +24,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue';
+import { onActivated, onMounted, ref, watch } from 'vue';
 import { BackUpTask, IPCRouter } from '@45drives/houston-common-lib';
 
-IPCRouter.getInstance().send('backend', 'action', 'requestBackUpTasks');
-IPCRouter.getInstance().addEventListener('sendBackupTasks', (backUpTasks2) => {
-  console.log("tasks from backend:", backUpTasks2)
-  backUpTasks.value = backUpTasks2;
-})
 const backUpTasks = ref<BackUpTask[]>([]);
 
 const selectedBackUp = ref<BackUpTask | null>(null);
@@ -62,7 +57,16 @@ const handleSelection = (backUpTask: BackUpTask) => {
     emit('backUpTaskSelected', backUpTask);
   }
 };
+onActivated(fetchBackupTasks); // Runs when the component is displayed again
+onMounted(fetchBackupTasks);
 
+function fetchBackupTasks() {
+  IPCRouter.getInstance().send('backend', 'action', 'requestBackUpTasks');
+  IPCRouter.getInstance().addEventListener('sendBackupTasks', (backUpTasks2) => {
+    console.log("tasks from backend:", backUpTasks2);
+    backUpTasks.value = backUpTasks2;
+  });
+}
 </script>
 
 <style scoped></style>
