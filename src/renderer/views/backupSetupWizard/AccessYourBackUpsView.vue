@@ -13,7 +13,7 @@
 
       <br />
 
-      <BackUpListView class="w-1/3 p-5 justify-center text-2xl" @backUpTaskSelected="handleBackUpTaskSelected"/>
+      <BackUpListView class=" p-5 justify-center text-2xl" @backUpTaskSelected="handleBackUpTaskSelected"/>
  
       <p class="w-9/12 text-center text-2xl">
         If your backup is not showing make sure you set it up correctly by going back and creating a backup plan.
