@@ -19,7 +19,7 @@
         <div>
           <br>
           <p>
-            ✅ What It Is:
+             What It Is:
           </p>
           <p>
             A backup solution where your data is stored on your own servers, NAS, or external drives instead of the
@@ -27,7 +27,7 @@
           </p>
           <br>
           <p>
-            🔹 Why Choose It?
+            Why Choose It?
           </p>
           Faster Recovery – Local backups restore quickly.
           More Control – No reliance on third-party cloud providers.
@@ -47,10 +47,10 @@
           </button>
         </template>
 
-        <div class="text-muted">
+        <div>
           <br>
           <p>
-            ✅ What It Is:
+             What It Is:
           </p>
           <p>
 
@@ -60,7 +60,7 @@
           </p>
           <br>
           <p>
-            🔹 Why Choose It?
+             Why Choose It?
           </p>
           <p>
 

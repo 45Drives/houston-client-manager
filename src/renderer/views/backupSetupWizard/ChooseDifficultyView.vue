@@ -11,7 +11,7 @@
       <CardContainer class="col-span-1 bg-accent border-default rounded-md">
         <template #header>
           <button @click="startCreateBackupSchedualSetup" class="btn btn-secondary w-full h-40 text-6xl">
-            Simple
+            SIMPLE
           </button>
         </template>
         <div>
@@ -23,18 +23,15 @@
       </CardContainer>
 
       <CardContainer class="relative col-span-1 bg-accent border-default rounded-md overflow-hidden">
-        <div
-          class="text-center absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-7xl font-bold text-45d opacity-50 rotate-[-20deg] pointer-events-none">
-          CUSTOM
-        </div>
+
 
         <template #header>
-          <button disabled @click="startCustomSetup" class="btn btn-secondary w-full h-40 text-6xl">
+          <button @click="startCustomSetup" class="btn btn-secondary w-full h-40 text-6xl">
             CUSTOM
           </button>
         </template>
 
-        <div class="text-muted">
+        <div>
           <p>
             Full control and flexibility? Select <b>CUSTOM</b> and you’ll have the options to choose your configuration details such as time files
           </p>
