@@ -19,7 +19,7 @@ import CustomizeBackupView from './CustomizeBackupView.vue';
 import CompleteBackUpCreationView from './CompleteBackUpCreationView.vue';
 import { provide, reactive } from 'vue';
 import { backUpSetupConfigKey } from '../../keys/injection-keys';
-import ChooseOnPremOrCloadView from './ChooseOnPremOrCloadView.vue';
+import ChooseOnPremOrCloudView from './ChooseOnPremOrCloudView.vue';
 
 const props = defineProps<{
   id: string,
@@ -33,12 +33,12 @@ provide(backUpSetupConfigKey, reactive({
 const steps: WizardStep[] = [
   { label: "Welcome", component: WelcomeView },
   { label: "Manage Backups", component: ChooseManageView, nextStep: (data) => (data.choice === "createBackup" ? 2 : 3) },
-  { label: "BackUp Setup Option", component: ChooseDifficultyView, nextStep: (data) => (data.choice === "simple" ? 5 : 6) },
+  { label: "Backup Setup Option", component: ChooseDifficultyView, nextStep: (data) => (data.choice === "simple" ? 6 : 7) },
   { label: "Access Backups", component: AccessYourBackUpsView },
   { label: "Access Backup", component: AccessBackUpView, nextStep: () => 7 },
-  { label: "Where To Store Backup", component: ChooseOnPremOrCloadView, nextStep: (data) => (data.choice === "onprem" ? 6 : 7) },
+  { label: "Where To Store Backup", component: ChooseOnPremOrCloudView, nextStep: (data) => (data.choice === "onprem" ? 6 : 7) },
   { label: "Create Simple Backup", component: CreateSimpleBackUpView },
-  //{ label: "Create Custom BackUp", component: CustomizeBackupView },
+  { label: "Create Custom BackUp", component: CustomizeBackupView },
 
   { label: "Summary", component: SummaryView },
   { label: "Complete", component: CompleteBackUpCreationView },

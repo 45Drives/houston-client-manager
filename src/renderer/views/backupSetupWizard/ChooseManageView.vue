@@ -34,7 +34,7 @@
           </button>
         </template>
 
-        <div class="text-muted">
+        <div>
           <p>
             Take a look at backed-up data. Ensure everything is protected and up to date!
           </p>

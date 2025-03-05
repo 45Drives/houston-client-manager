@@ -5,134 +5,245 @@
 		</template>
 
 		<div class="w-9/12 mx-auto text-center">
-			<div class="text-center flex flex-row">
-				<p class="mb-6 text-2xl mr-3">Select folders to backup, where to back them up to, and when to do it!</p>
-				<!-- <CommanderToolTip
-			:message="``" class="mt-1.5" /> -->
+			<div class="text-center">
+				<p class="mb-6 text-2xl">
+					Choose the folders you want to back up and choose how often you want to back it up.
+				</p>
 			</div>
 
-			<div class="flex flex-col space-y-4">
-				<!-- Target Folder -->
+			<div class="flex flex-col space-y-4 mt-[5rem]">
 				<div class="flex items-center">
 					<div class="flex items-center w-[25%] flex-shrink-0 space-x-2">
-						<label class="text-default font-semibold text-left">Target Folder</label>
+						<label class="text-default font-semibold text-left">Back Up Location</label>
 						<CommanderToolTip
 							:message="`This is the designated backup storage location. It is preconfigured and cannot be modified.`" />
 					</div>
-					<input v-model="" class="bg-default h-[3rem] text-default rounded-lg px-4 flex-1 border border-default">
-				</div>
-				<div class="flex py-2">
-					<label class="w-[25%] py-2 text-default font-semibold text-start">Back Interval (starts At 9:00AM): </label>
-					<select class="bg-default h-[3rem] text-default rounded-lg px-4 flex-1 border border-default">
-						<option value="hourly">Hourly</option>
-						<option value="daily">Daily</option>
-						<option value="weekly">Weekly</option>
-						<option value="monthly">Monthly</option>
+					<select v-model="selectedServer"
+						class="bg-default h-[3rem] text-default rounded-lg px-4 flex-1 border border-default">
+						<option v-for="item in servers" :key="item.ip" :value="item">
+							{{ `\\\\${item.name}\\backup` }}
+						</option>
 					</select>
 				</div>
-				<div class="flex items-center mt-[5rem]">
-					<button @click="selectFolder" class="absolute btn btn-secondary h-10 w-15">
+
+				<!-- Folder Selection Button -->
+				<div class="flex items-center">
+					<button @click="handleFolderSelect" class="relative btn btn-secondary h-10 w-15">
 						<PlusIcon class="w-6 h-6 text-white-500" />
 					</button>
-					<CommanderToolTip class="ml-[4rem]"
+
+					<p class="mb-0.5 text-start ml-[1rem] px-4 py-4 font-semibold text-lg flex-shrink-0">
+						Select a folder to back up to the designated location.
+					</p>
+					<CommanderToolTip class="flex-1"
 						:message="`Click the plus icon to select a folder for backup. You can add multiple locations by selecting them one at a time.`" />
-					<p class=" h-[3rem] text-start ml-[1rem]  px-4 py-4 flex-1 font-semibold text-lg "> Select a folder to back up
-						to
-						the designated location.</p>
 				</div>
-				<!-- Hidden File Input -->
-				<input ref="folderInput" type="file" webkitdirectory directory class="hidden" @change="handleFolderSelect" />
+
 				<!-- Selected Folders List -->
 				<div v-if="selectedFolders.length > 0" class="space-y-2 border rounded-lg border-gray-500">
-					<div v-for="(folder, index) in selectedFolders" :key="index" class="p-2 ">
+					<div v-for="(folder, index) in selectedFolders" :key="index" class="p-2">
 						<div class="flex items-center m-[1rem]">
 							<div class="flex items-center w-[25%] flex-shrink-0 space-x-2">
 								<label class="text-default font-semibold text-left">{{ folder.name }}</label>
 							</div>
-							<input :value="folder.path"
-								class="bg-default h-[3rem] mr-[1rem] text-default rounded-lg px-4 flex-1 border border-default">
-							<button @click="removeFolder(index)" class="btn btn-secondary">
-								<MinusIcon class="w-6 h-6 text-white-500"></MinusIcon>
-							</button>
-
+							<input disabled :value="folder.path"
+								class="bg-default h-[3rem] mr-[1rem] text-default rounded-lg px-4 flex-1 border border-default" />
+							<!-- Wrapper for the buttons to keep them together -->
+							<div class="flex space-x-2">
+								<button @click="editSchedule(backUpSetupConfig!.backUpTasks[index].schedule)"
+									class="btn btn-secondary h-10 w-fit flex flex-row justify-between px-3 text-center items-center">
+									<CalendarIcon class="w-6 h-6 text-white-500" />
+									<span class="text-sm px-2">Edit Schedule</span>
+								</button>
+								<button @click="removeFolder(index)" class="btn btn-secondary">
+									<MinusIcon class="w-6 h-6 text-white-500"></MinusIcon>
+								</button>
+							</div>
 						</div>
 					</div>
 				</div>
 
-			</div>
 
+			</div>
 		</div>
+		<Modal :show="showCalendar" class="rounded-md" @clickOutside="">
+			<SimpleCalendar title="Schedule Your Backup" :taskSchedule="selectedTaskSchedule"
+				@close="handleCalendarClose(false)" @save="handleCalendarClose(true)"
+				class="border-2 border-default rounded-md w-full max-w-[800px]" />
+		</Modal>
+
 		<!-- Buttons -->
 		<template #footer>
 			<div>
-				<button @click="proceedToPreviousStep" class="btn btn-primary h-20 w-40">Back</button>
-
-				<!-- <button :disabled="!okToProceed"    @click="handleNextClick"  
-		  class="absolute btn right-[1rem] btn-secondary h-20 w-40">
-		  FINISH
-		</button> -->
+				<button @click="proceedToPreviousStep" class="btn btn-primary h-20 w-40">
+					Back
+				</button>
+				<button :disabled="backUpSetupConfig?.backUpTasks.length === 0" @click="proceedToNextStep"
+					class="absolute btn right-[1rem] btn-secondary h-20 w-40">
+					Next
+				</button>
 			</div>
 		</template>
 
 	</CardContainer>
-
 </template>
 
 <script setup lang="ts">
-import { CardContainer, CommanderToolTip } from "@45drives/houston-common-ui";
+import { CardContainer, CommanderToolTip, Modal } from "@45drives/houston-common-ui";
 import { useWizardSteps } from '../../components/wizard';
-import { inject, ref, computed, reactive } from "vue";
+import { inject, ref, reactive, watch, nextTick } from "vue";
 import { PlusIcon, MinusIcon } from "@heroicons/vue/20/solid";
-import { backUpSetupConfigKey, serverInfoInjectionKey } from "../../keys/injection-keys";
+import { backUpSetupConfigKey } from "../../keys/injection-keys";
+import { CalendarIcon } from "@heroicons/vue/24/outline";
+import { BackUpTask, TaskSchedule } from "@45drives/houston-common-lib";
+import { Server } from '../../types'
+import { SimpleCalendar } from "../../components/calendar";
 
-const globalConfig = inject(backUpSetupConfigKey);
-const server = inject(serverInfoInjectionKey);
+// Reactive State
+const backUpSetupConfig = inject(backUpSetupConfigKey);
+
+const selectedFolders = ref<{ name: string; path: string }[]>([]);
+const scheduleFrequency = ref<"hour" | "day" | "week" | "month">("hour");
+
+const servers = ref<Server[]>([]);
+const selectedServer = ref<Server | null>(null);
+
+const selectedTaskSchedule = ref<any>();
+
 const { completeCurrentStep, prevStep } = useWizardSteps("backup");
 
+const showCalendar = ref(false);
+let resolveCalendarPromise: ((value: boolean) => void) | null = null;
+
+function toggleCalendarComponent() {
+	showCalendar.value = true;
+
+	return new Promise<boolean>((resolve) => {
+		resolveCalendarPromise = resolve;
+	});
+}
+
+function handleCalendarClose(saved: boolean) {
+	showCalendar.value = false;
+	if (resolveCalendarPromise) {
+		resolveCalendarPromise(saved);
+		resolveCalendarPromise = null;
+	}
+}
+
+// Receive the discovered servers from the main process
+window.electron.ipcRenderer.on('discovered-servers', (_event, discoveredServers: Server[]) => {
+	servers.value = discoveredServers;
+	if (discoveredServers.length > 0) {
+
+		selectedServer.value = discoveredServers[0];
+	}
+});
+
+// Watch and Update Tasks When Schedule Changes
+watch(scheduleFrequency, (newSchedule) => {
+	if (backUpSetupConfig) {
+		backUpSetupConfig.backUpTasks = backUpSetupConfig.backUpTasks.map((task) => {
+			task.schedule.repeatFrequency = newSchedule;
+			return task;
+		});
+	}
+});
+
+
+// Folder Selection
+const handleFolderSelect = async () => {
+	if (!window.electron?.selectFolder) {
+		console.error("Electron API not available! Ensure preload script is loaded.");
+		return;
+	}
+
+	try {
+		const folderPath = await window.electron.selectFolder();
+		if (!folderPath) return;
+
+		const folderName = folderPath.split("/").pop() ?? "Unknown Folder";
+
+		if (backUpSetupConfig) {
+
+			// Prevent Duplicate Folder Selection (Case-Insensitive)
+			if (!backUpSetupConfig?.backUpTasks.some(task => task.source.trim().toLowerCase() === folderPath.trim().toLowerCase())) {
+				// Wait for the user to confirm schedule in CalendarConfig
+				selectedTaskSchedule.value = reactive<TaskSchedule>({
+					repeatFrequency: 'day',
+					startDate: new Date()
+				});
+
+				console.log('schedule pre-calendar:', selectedTaskSchedule.value);
+
+				const scheduleConfirmed = await toggleCalendarComponent();
+				if (!scheduleConfirmed) {
+					console.log("User cancelled scheduling, not adding task.");
+					return;
+				}
+
+				console.log('schedule post-calendar:', selectedTaskSchedule.value);
+
+				const newTask: BackUpTask = {
+					schedule: selectedTaskSchedule.value,
+					description: `Backup task for ${folderName}`,
+					source: folderPath,
+					target: `\\\\${selectedServer.value?.name}.local\\backup`,
+					mirror: false,
+				};
+
+				console.log('newTask:', newTask);
+
+				const newBackUpTasks = [...backUpSetupConfig?.backUpTasks];
+				newBackUpTasks.push(newTask);
+				backUpSetupConfig.backUpTasks = newBackUpTasks;
+				selectedFolders.value.push({ name: folderName, path: folderPath });
+			}
+		}
+	} catch (error) {
+		console.error("Error selecting folder:", error);
+	}
+};
+
+async function editSchedule(taskSchedule: TaskSchedule) {
+	// Set the selected schedule for editing
+	selectedTaskSchedule.value = reactive({
+		repeatFrequency: taskSchedule.repeatFrequency,
+		startDate: new Date(taskSchedule.startDate),
+	});
+
+	// Wait for Vue to update before showing the modal
+	await nextTick();
+
+	// Open the calendar modal
+	const scheduleConfirmed = await toggleCalendarComponent();
+
+	// If the user saves, update the task schedule
+	if (scheduleConfirmed) {
+		taskSchedule.repeatFrequency = selectedTaskSchedule.value.repeatFrequency;
+		taskSchedule.startDate = selectedTaskSchedule.value.startDate;
+	}
+}
+
+
+// Remove Folder from List
+const removeFolder = (index: number) => {
+	selectedFolders.value.splice(index, 1);
+	if (backUpSetupConfig) {
+		const newBackUpTasks = [...backUpSetupConfig?.backUpTasks];
+		newBackUpTasks.splice(index, 1);
+		backUpSetupConfig.backUpTasks = newBackUpTasks;
+	}
+};
+
+// Proceed to Next Step
 const proceedToNextStep = async () => {
 	completeCurrentStep();
 };
 
+// Proceed to Previous Step
 const proceedToPreviousStep = () => {
-	console.log("test go back");
 	prevStep();
 };
-
-const folderInput = ref<HTMLInputElement | null>(null);
-const selectedFolders = ref<{ name: string; path: string }[]>([]);
-
-const selectFolder = () => {
-	if (folderInput.value) {
-		folderInput.value.click(); // Simulates a click on the hidden input
-	}
-};
-
-const handleFolderSelect = (event: Event) => {
-	const target = event.target as HTMLInputElement; // ✅ Ensure event.target is an input element
-	const files = target.files;
-
-	// ✅ Ensure `files` exists and has at least one file
-	if (files && files.length > 0) {
-		const firstFile = files[0];
-		if (firstFile) {
-			// ✅ Ensure `webkitRelativePath` exists before accessing it
-			if (firstFile.webkitRelativePath) {
-				const fullPath = firstFile.webkitRelativePath; // Gets the full relative path
-				const folderName = fullPath.split("/")[0] ?? "Unknown Folder"; // ✅ Ensure it's always a stringh.split("/")[0]; // Extract folder name
-				const folderPath = `/path/to/${folderName}`; // Replace with actual path logic if needed
-				// Prevent duplicate folder selection
-				if (!selectedFolders.value.some(f => f.name === folderName)) {
-					selectedFolders.value.push({ name: folderName, path: folderPath });
-				}
-			}
-		}
-
-	}
-};
-
-const removeFolder = (index: number) => {
-	selectedFolders.value.splice(index, 1);
-};
-
 
 </script>

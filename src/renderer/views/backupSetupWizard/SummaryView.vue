@@ -22,7 +22,7 @@
             <input 
               disabled 
               :value=backUpSetupConfig?.backUpTasks[0].target
-              class="bg-default h-[3rem] text-default rounded-lg px-4 flex-1 border border-default" 
+              class="bg-default h-full text-default rounded-lg px-4 flex-1 border border-default" 
             />
           </div>
         </div>
@@ -34,7 +34,7 @@
                 <label class="text-default font-semibold text-left">Folder:</label>
                 <input 
                     :value="task.source"
-                    class="bg-default h-[3rem] w-[70%] ml-[2rem] text-default rounded-lg px-4 flex-1 border border-default"
+                    class="bg-default h-full w-[70%] ml-[2rem] text-default rounded-lg px-4 flex-1 border border-default"
                     disabled
                 />
                 </div>
@@ -42,8 +42,8 @@
                 <label class="text-default font-semibold text-left">When:</label>
                 <input 
                   disabled 
-                  :value="`Backup will happen ${formatFrequency(task.schedule.repeatFrequency)} at 9:00 AM`"
-                  class="bg-default h-[3rem] w-[70%] ml-[2rem] text-default rounded-lg px-4 flex-1 border border-default"
+                  :value="`Backup will happen ${formatFrequency(task.schedule.repeatFrequency)} at 9:00 AM starting ${task.schedule.startDate.toDateString()}`"
+                  class="bg-default h-full w-[70%] ml-[2rem] text-default rounded-lg flex-1 border border-default"
                 />
 
                 </div>
