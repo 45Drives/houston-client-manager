@@ -1,12 +1,12 @@
 <template>
 
-  <div class="w-screen h-screen overflow-hidden flex items-center justify-center text-default bg-default">
+  <div class="w-screen h-screen overflow-hidden flex flex-col items-center justify-center text-default bg-default">
 
-    <StorageSetupWizard v-if="showWelcomeSetupWizard" id="setup"
-      :onComplete="onWelcomeWizardComplete" class="h-full flex-1 text-default bg-default" />
+    <StorageSetupWizard v-if="showWelcomeSetupWizard" id="setup" :onComplete="onWelcomeWizardComplete"
+      class="h-full flex-1 text-default bg-default" />
 
-    <BackUpSetupWizard v-if="showBackUpSetupWizard" id="backup"
-      :onComplete="onBackUpWizardComplete" class="h-full flex-1 text-default bg-default" />
+    <BackUpSetupWizard v-if="showBackUpSetupWizard" id="backup" :onComplete="onBackUpWizardComplete"
+      class="h-full flex-1 text-default bg-default" />
 
     <webview v-show="showWebView && !loadingWebview" id="myWebview" title="test" :src="currentUrl" allowpopups
       nodeintegration allow-same-origin allow-scripts partition="persist:authSession"
