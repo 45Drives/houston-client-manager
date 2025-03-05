@@ -2,13 +2,13 @@
 
   <div class="w-screen h-screen overflow-hidden flex items-center justify-center text-default bg-default">
 
-    <!-- <StorageSetupWizard v-if="!welcomeWizardComplete" id="setup" :onComplete="onWelcomeWizardComplete"
-      class="h-full flex-1 text-default bg-default" /> -->
+    <StorageSetupWizard v-if="showWelcomeSetupWizard" id="setup"
+      :onComplete="onWelcomeWizardComplete" class="h-full flex-1 text-default bg-default" />
 
-    <BackUpSetupWizard v-if="!welcomeWizardComplete" id="backup" :onComplete="onWelcomeWizardComplete"
-      class="h-full flex-1 text-default bg-default" />
+    <BackUpSetupWizard v-if="showBackUpSetupWizard" id="backup"
+      :onComplete="onBackUpWizardComplete" class="h-full flex-1 text-default bg-default" />
 
-    <webview v-show="welcomeWizardComplete && !loadingWebview" id="myWebview" title="test" :src="currentUrl" allowpopups
+    <webview v-show="showWebView && !loadingWebview" id="myWebview" title="test" :src="currentUrl" allowpopups
       nodeintegration allow-same-origin allow-scripts partition="persist:authSession"
       webpreferences="javascript=yes,webSecurity=no,enable-cookies=true,nodeIntegration=false,contextIsolation=true"
       ref="webview" @did-finish-load="onWebViewLoaded" />
@@ -27,7 +27,7 @@
 </template>
 
 <script setup lang="ts">
-import { onBeforeMount, onMounted, provide, reactive, ref, watch } from 'vue';
+import { provide, ref, watch } from 'vue';
 import { useDarkModeState } from './composables/useDarkModeState';
 import { useAdvancedModeState } from './composables/useAdvancedState';
 import { reportError, reportSuccess } from './components/NotificationView.vue';
@@ -40,15 +40,37 @@ import { serverInfoInjectionKey } from './keys/injection-keys';
 import { IPCMessageRouterRenderer, IPCRouter } from '@45drives/houston-common-lib';
 
 IPCRouter.initRenderer();
+IPCRouter.getInstance().addEventListener("action", (data) => {
+  try {
+    if (data === "setup_wizard_go_back") {
+      showWelcomeSetupWizard.value = true;
+      showWebView.value = false;
+      showBackUpSetupWizard.value = false;
+
+    } else if (data === "go_home") {
+      console.log("Go_HOME")
+      showWelcomeSetupWizard.value = true;
+      showWebView.value = false;
+      showBackUpSetupWizard.value = false;
+
+      useWizardSteps("setupwizard").reset()
+    }
+  } catch (error) {
+  }
+});
 
 const darkModeState = useDarkModeState();
+darkModeState.value = true;
+
 const advancedState = useAdvancedModeState();
-const welcomeWizardComplete = ref(false);
 
 const currentServer = ref<Server | null>(null);
+const showBackUpSetupWizard = ref<boolean>(false);
+const showWelcomeSetupWizard = ref<boolean>(true);
+const showWebView = ref<boolean>(false);
+
 
 provide(currentServer, serverInfoInjectionKey);
-
 
 const clientip = ref<string>("");
 const webview = ref();
@@ -69,6 +91,20 @@ window.electron.ipcRenderer.on('notification', (_event, message: string) => {
     reportSuccess(message);
   }
 
+});
+
+// Receive the discovered servers from the main process
+window.electron.ipcRenderer.on('discovered-servers', (_event, discoveredServers: Server[]) => {
+  const anyServersNotSetup = discoveredServers.some((server, _index, _array) => server.status !== "complete");
+  if (anyServersNotSetup) {
+    showWelcomeSetupWizard.value = true;
+    showBackUpSetupWizard.value = false;
+    showWebView.value = false;
+  } else {
+    showWelcomeSetupWizard.value = false;
+    showBackUpSetupWizard.value = true;
+    showWebView.value = false;
+  }
 });
 
 // Handle server click to open the website
@@ -94,23 +130,12 @@ const openServerWebsite = (server: Server | null) => {
 };
 
 const onWebViewLoaded = async () => {
-  
+
   const routerREnderer = IPCRouter.getInstance() as IPCMessageRouterRenderer;
 
   routerREnderer.setCockpitWebView(webview.value);
-  IPCRouter.getInstance().addEventListener("action", (data) => {
-    try {
-      if (data === "setup_wizard_go_back") {
-        welcomeWizardComplete.value = false;
-      } else if (data === "go_home") {
-        console.log("Go_HOME")
-        welcomeWizardComplete.value = false;
-        useWizardSteps("setupwizard").reset()
-      }
-    } catch (error) {
-    }
-  });
-  
+
+
   webview.value.executeJavaScript(`
         new Promise((resolve, reject) => {
 
@@ -172,7 +197,17 @@ const onWebViewLoaded = async () => {
 
 const onWelcomeWizardComplete = (server: Server) => {
   loginRequest(server)
-  welcomeWizardComplete.value = true;
+  showWelcomeSetupWizard.value = false;
+  showWebView.value = true;
+  showBackUpSetupWizard.value = false;
+
+}
+
+const onBackUpWizardComplete = () => {
+  console.log("BackUp Wizard complete")
+  showBackUpSetupWizard.value = true;
+  showWelcomeSetupWizard.value = false;
+  showWebView.value = false;
 }
 
 const loginRequest = async (server: Server) => {
