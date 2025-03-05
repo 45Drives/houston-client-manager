@@ -41,7 +41,6 @@
 import { CardContainer } from "@45drives/houston-common-ui";
 import { ref, onMounted, watch, inject } from "vue";
 import { useWizardSteps } from "../../components/wizard";
-import { BackUpSetupConfigGlobal } from "./BackUpSetupConfigGlobal";
 import { EasySetupProgress, IPCRouter } from "@45drives/houston-common-lib";
 import { backUpSetupConfigKey } from "../../keys/injection-keys";
 
@@ -50,10 +49,12 @@ const { reset } = useWizardSteps('backup');
 
 const setupComplete = ref<string>("no");
 const completedSteps = ref<EasySetupProgress[]>([]);
-
+const backUpSetupConfig = inject(backUpSetupConfigKey);
 
 watch(setupComplete, (value) => {
-
+  if (value === "yes" && backUpSetupConfig) {
+    backUpSetupConfig.backUpTasks = []
+  }
 })
 
 function goHome(): void {
@@ -72,6 +73,10 @@ onMounted(() => {
           const newComplatedSteps = [...completedSteps.value];
           newComplatedSteps.push(status);
           completedSteps.value = newComplatedSteps;
+
+          if (status.step === status.total) {
+            setupComplete.value = "yes";
+          }
         }
       } catch (error) {
       }
@@ -81,7 +86,7 @@ onMounted(() => {
       JSON.stringify(
         {
           type: 'configurBackUp',
-          config: inject(backUpSetupConfigKey)
+          config: backUpSetupConfig
         })
     );
 

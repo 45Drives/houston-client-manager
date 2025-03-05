@@ -54,7 +54,7 @@ import { BackUpTask } from '@45drives/houston-common-lib';
 import CardContainer from '../../components/CardContainer.vue';
 import { useWizardSteps } from '../../components/wizard';
 import BackUpListView from './BackUpListView.vue';
-import { ref } from 'vue';
+import { onActivated, ref } from 'vue';
 
 const selectedBackUpTask = ref<BackUpTask | null>(null);
 const handleBackUpTaskSelected = (backUpTask: BackUpTask | null) => {
