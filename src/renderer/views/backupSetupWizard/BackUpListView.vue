@@ -7,19 +7,16 @@
     <div v-if="backUpTasks.length == 0" class="spinner"></div>
 
     <div class="flex flex-col space-y-1 p-2">
-      <label
-      v-for="backUpTask in backUpTasks"
-      :key="backUpTask.source + backUpTask.target"
-      class="flex items-center space-x-2 p-2"
-    >
-      <input
-        type="checkbox"
-        :checked="selectedBackUp?.source === backUpTask.source && selectedBackUp?.target === backUpTask.target"
-        @change="handleSelection(backUpTask)"
-        class="form-checkbox h-5 w-5 text-blue-600"
-      />
-      <span>{{ backUpTask.source }} - {{ backUpTask.target }}</span>
-    </label>
+      <label v-for="backUpTask in backUpTasks" :key="backUpTask.source + backUpTask.target"
+        class="flex items-center space-x-2 p-2">
+        <input type="checkbox"
+          :checked="selectedBackUp?.source === backUpTask.source && selectedBackUp?.target === backUpTask.target"
+          @change="handleSelection(backUpTask)" class="form-checkbox h-5 w-5 text-blue-600" />
+          <span>Folder:</span>
+          <div class="space-y-2 border rounded-lg border-gray-500 p-2"> {{ backUpTask.source }}</div>
+          <span>Backup Loation:</span>
+          <div class="space-y-2 border rounded-lg border-gray-500 p-2"> {{ backUpTask.target }}</div>
+      </label>
 
     </div>
   </div>
@@ -28,13 +25,19 @@
 
 <script setup lang="ts">
 import { ref, watch } from 'vue';
-import { BackUpSetupConfigGlobal } from './BackUpSetupConfigGlobal';
-import { BackUpTask } from '@45drives/houston-common-lib';
+import { BackUpTask, IPCRouter } from '@45drives/houston-common-lib';
 
-const backUpTasks = ref<BackUpTask[]>(BackUpSetupConfigGlobal.getInstance().backUpTasks);
+IPCRouter.getInstance().send('backend', 'action', 'requestBackUpTasks');
+IPCRouter.getInstance().addEventListener('sendBackupTasks', (backUpTasks2) => {
+  console.log("tasks from backend:", backUpTasks2)
+  backUpTasks.value = backUpTasks2;
+})
+const backUpTasks = ref<BackUpTask[]>([]);
+
 const selectedBackUp = ref<BackUpTask | null>(null);
 
 watch(backUpTasks, () => {
+
   const buttons = document.querySelectorAll('.btn');
   buttons.forEach(button => {
     button.addEventListener('click', () => {

@@ -10,31 +10,59 @@ export class BackUpManagerWin implements BackUpManager {
     const command = 'powershell';
     const args = [
       '-Command',
+      `Get-ScheduledTask | Where-Object {$_.TaskName -like '*${TASK_ID}*'} | Select-Object TaskName, Triggers, Actions, State | ConvertTo-Json -depth 10`
+    ];
+
+    const argsShort = [
+      '-Command',
       `Get-ScheduledTask | Where-Object {$_.TaskName -like '*${TASK_ID}*'} | Select-Object TaskName, Triggers, Actions, State | ConvertTo-Json`
     ];
 
+
     // Use spawnSync to run the command synchronously
     const result = spawnSync(command, args);
+    const resultShort = spawnSync(command, argsShort);
 
     if (result.error) {
       console.error('Error executing command:', result.error);
       return [];
     }
 
+
+    if (resultShort.error) {
+      console.error('Error executing command:', result.error);
+      return [];
+    }
+
     try {
       const tasks = JSON.parse(result.stdout.toString());
+      const tasksShort = JSON.parse(resultShort.stdout.toString());
       const tasksAsArray = Array.isArray(tasks) ? tasks : [tasks];
 
       return tasksAsArray.map(task => {
-        const actionDetails = this.parseRobocopyCommand(task.Actions.CimInstanceProperties)
-        if (!actionDetails) {
-          console.log("Failed to parse action details:", task.Actions.CimInstanceProperties)
+        const actionProps = task.Actions[0].CimInstanceProperties;
+        let command: string | null = null;
+        for (let i = 0; i < actionProps.length; i++) {
+          const prop = actionProps[i];
+          if (prop.Name === 'Arguments') {
+            command = prop.Value;
+            break;
+          }
+        }
+        if (!command) {
+          console.log("No Command:", actionProps)
           return null;
         }
-        const trigger = this.convertTriggersToTaskSchedule(task.Triggers);
+        const actionDetails = this.parseRobocopyCommand(command)
+        if (!actionDetails) {
+          console.log("task.Actions:", task.Actions)
+          console.log("Failed to parse action details:", actionProps)
+          return null;
+        }
+        const trigger = this.convertTriggersToTaskSchedule(tasksShort.Triggers);
 
         if (!trigger) {
-          console.log("Failed to parse Trigger:", task.Triggers);
+          console.log("Failed to parse Trigger:", tasksShort.Triggers);
           return null;
         }
 
@@ -206,24 +234,35 @@ $taskTrigger.RepetitionInterval = (New-TimeSpan -Months 1)
   }
 
   protected parseRobocopyCommand(command: string): { source: string, target: string, mirror: boolean } | null {
-    const regex = /^robocopy\s+([^ ]+)\s+([^ ]+)/;
+    try {
 
-    // Execute regex on the input command
-    const match = command.match(regex);
+      command = command.replace("/C robocopy", '').replace(" /Z /XA:H /R:3 /W:5", "").trim();
 
-    if (match && match.length > 2) {
-      const sourcePath = match[1]?.toString();
-      const destinationPath = match[2]?.toString();
+      console.log(command)
 
-      if (!sourcePath || !destinationPath) {
+      const regex = /([^\s]+(?:\s[^\s]+)*)\s+([^\s]+(?:\s[^\s]+)*)/;
+
+      // Execute regex on the input command
+      const match = command.match(regex);
+
+      if (match) {
+        const sourcePath = match[1]?.toString();
+        const destinationPath = match[2]?.toString();
+
+        if (!sourcePath || !destinationPath) {
+          return null;
+        }
+        return {
+          source: sourcePath,
+          target: destinationPath,
+          mirror: command.includes("/MIR")
+        };
+      } else {
         return null;
       }
-      return {
-        source: sourcePath,
-        target: destinationPath,
-        mirror: command.includes("/MIR")
-      };
-    } else {
+    } catch (parseError) {
+      console.error('Error regex:', parseError);
+      console.error('String value was:', command);
       return null;
     }
   }
