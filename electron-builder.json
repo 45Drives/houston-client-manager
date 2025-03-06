@@ -3,7 +3,6 @@
     "directories": {
         "output": "dist"
     },
-
     "nsis": {
         "oneClick": false,
         "perMachine": false,
@@ -13,27 +12,47 @@
     "win": {
         "target": "nsis"
     },
-    "linux":  {
-        "target": ["snap"]
+    "linux": {
+        "target": [
+            "snap"
+        ]
     },
     "files": [
         {
             "from": "build/main",
             "to": "main",
-            "filter": ["**/*"]
+            "filter": [
+                "**/*"
+            ]
         },
         {
             "from": "build/renderer",
             "to": "renderer",
-            "filter": ["**/*"]
+            "filter": [
+                "**/*"
+            ]
         },
         {
             "from": "src/main/static",
             "to": "static",
-            "filter": ["**/*"]
+            "filter": [
+                "**/*"
+            ]
         },
-	"!build",
-	"!dist",
-	"!scripts"
+        "!src",
+        "!build",
+        "!dist",
+        "!scripts",
+        "!**/*.test.js", 
+        "!**/*.test.ts"
+    ],
+    "extraResources": [
+        {
+            "from": "src/main/static/cwrsync",
+            "to": "cwrsync",
+            "filter": [
+                "**/*"
+            ]
+        }
     ]
 }

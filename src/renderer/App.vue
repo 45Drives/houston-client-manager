@@ -20,6 +20,13 @@
       <div id="spinner" class="spinner"></div>
     </div>
 
+    <div v-if="scanningNetworkForServers">
+      <p class="w-3/4 text-2xl">
+        Give us a few while we scan for connected servers...
+      </p>
+      <div id="spinner" class="spinner"></div>
+    </div>
+
     <NotificationView />
 
   </div>
@@ -27,7 +34,7 @@
 </template>
 
 <script setup lang="ts">
-import { provide, ref, watch } from 'vue';
+import { onMounted, provide, ref } from 'vue';
 import { useDarkModeState } from './composables/useDarkModeState';
 import { useAdvancedModeState } from './composables/useAdvancedState';
 import { reportError, reportSuccess } from './components/NotificationView.vue';
@@ -49,9 +56,9 @@ IPCRouter.getInstance().addEventListener("action", (data) => {
 
     } else if (data === "go_home") {
       console.log("Go_HOME")
-      showWelcomeSetupWizard.value = true;
+      showWelcomeSetupWizard.value = false;
       showWebView.value = false;
-      showBackUpSetupWizard.value = false;
+      showBackUpSetupWizard.value = true;
 
       useWizardSteps("setupwizard").reset()
     }
@@ -66,15 +73,15 @@ const advancedState = useAdvancedModeState();
 
 const currentServer = ref<Server | null>(null);
 const showBackUpSetupWizard = ref<boolean>(false);
-const showWelcomeSetupWizard = ref<boolean>(true);
+const showWelcomeSetupWizard = ref<boolean>(false);
 const showWebView = ref<boolean>(false);
-
 
 provide(currentServer, serverInfoInjectionKey);
 
 const clientip = ref<string>("");
 const webview = ref();
 const loadingWebview = ref(false);
+const scanningNetworkForServers = ref(true);
 const currentUrl = ref<string>('https://45drives.com');
 
 window.electron.ipcRenderer.on('client-ip', (_event, ip: string) => {
@@ -93,18 +100,29 @@ window.electron.ipcRenderer.on('notification', (_event, message: string) => {
 
 });
 
+onMounted(() => {
+  setTimeout(() => {
+    scanningNetworkForServers.value = false;
+  }, 5000);
+});
+
 // Receive the discovered servers from the main process
+let discoveredServersChecked = false;
 window.electron.ipcRenderer.on('discovered-servers', (_event, discoveredServers: Server[]) => {
-  const anyServersNotSetup = discoveredServers.some((server, _index, _array) => server.status !== "complete");
-  if (anyServersNotSetup) {
-    showWelcomeSetupWizard.value = true;
-    showBackUpSetupWizard.value = false;
-    showWebView.value = false;
-  } else {
-    showWelcomeSetupWizard.value = false;
-    showBackUpSetupWizard.value = true;
-    showWebView.value = false;
+  if (!scanningNetworkForServers.value && !discoveredServersChecked) {
+    discoveredServersChecked = true;
+    const anyServersNotSetup = discoveredServers.some((server, _index, _array) => server.status !== "complete");
+    if (anyServersNotSetup) {
+      showWelcomeSetupWizard.value = true;
+      showBackUpSetupWizard.value = false;
+      showWebView.value = false;
+    } else {
+      showWelcomeSetupWizard.value = false;
+      showBackUpSetupWizard.value = true;
+      showWebView.value = false;
+    }
   }
+  
 });
 
 // Handle server click to open the website
@@ -134,7 +152,6 @@ const onWebViewLoaded = async () => {
   const routerREnderer = IPCRouter.getInstance() as IPCMessageRouterRenderer;
 
   routerREnderer.setCockpitWebView(webview.value);
-
 
   webview.value.executeJavaScript(`
         new Promise((resolve, reject) => {
@@ -174,7 +191,6 @@ const onWebViewLoaded = async () => {
               setTimeout(() => {
                 loginButton.click();
                 loginForm.submit(); // Submit the form programmatically
-                // resolve("Login submitted.");
               }, 500); // Small delay to ensure input is registered
             } else {
               console.error("Login fields or button not found.");
@@ -200,7 +216,6 @@ const onWelcomeWizardComplete = (server: Server) => {
   showWelcomeSetupWizard.value = false;
   showWebView.value = true;
   showBackUpSetupWizard.value = false;
-
 }
 
 const onBackUpWizardComplete = () => {
