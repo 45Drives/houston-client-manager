@@ -1,6 +1,8 @@
 import { BackUpManager } from "./types";
 import { BackUpTask, TaskSchedule } from "@45drives/houston-common-lib";
 import { spawnSync } from "child_process";
+import { getAppPath } from "../utils";
+import path from "path";
 
 const TASK_ID = "HoustonBackUp";
 
@@ -53,7 +55,7 @@ export class BackUpManagerWin implements BackUpManager {
           console.log("No Command:", actionProps)
           return null;
         }
-        const actionDetails = this.parseRobocopyCommand(command)
+        const actionDetails = this.parseBackupCommand(command)
         if (!actionDetails) {
           console.log("task.Actions:", command)
           return null;
@@ -81,28 +83,36 @@ export class BackUpManagerWin implements BackUpManager {
 
   }
 
+  getRsync() {
+    let basePath = getAppPath();
+
+    const sshKeyPath = path.join(basePath,  ".ssh", "id_rsa");
+    const rsyncPath = path.join(basePath,  "cwrsync", "bin", "rsync.exe");
+    const sshWithKey = `ssh -i ${sshKeyPath}`;
+    const rsync = `${rsyncPath} -az -e "${sshWithKey}"`
+    return rsync;
+  }
+  
   schedule(task: BackUpTask): void {
+
+    const rsync = this.getRsync();
 
     // PowerShell script to create the task
     const powershellScript = `
 $sourcePath = "${task.source}"
-$destinationPath = "${task.target}"
+$destinationPath = "${getSSHTargetFromSmbTarget(task.target)}"
 $mirror = ${task.mirror ? "true" : "false"}  # Set to $true if you want to mirror the directories
 
-# Determine the robocopy command based on mirror flag
 if ($mirror) {
-    $robocopyCommand = "robocopy $sourcePath $destinationPath /MIR /Z /XA:H /R:3 /W:5"
+    $backupCommand = "${rsync} --delete $sourcePath root@$destinationPath"
 } else {
-    $robocopyCommand = "robocopy $sourcePath $destinationPath /Z /XA:H /R:3 /W:5"
+    $backupCommand = "${rsync} $sourcePath root@$destinationPath"
 }
 
-# Create task trigger to run immediately and daily
 $taskTrigger = ${this.scheduleToTaskTrigger(task.schedule)}
 
-# Create the robocopy action
-$action = New-ScheduledTaskAction -Execute "cmd.exe" -Argument "/C $robocopyCommand"
+$action = New-ScheduledTaskAction -Execute "cmd.exe" -Argument "/C $backupCommand"
 
-# Register the scheduled task
 Register-ScheduledTask -Action $action -Trigger $taskTrigger -TaskName "${TASK_ID}_${crypto.randomUUID()}" 
 `;
 
@@ -272,10 +282,12 @@ $taskTrigger.RepetitionInterval = (New-TimeSpan -Months 1)
     }
   }
 
-  protected parseRobocopyCommand(command: string): { source: string, target: string, mirror: boolean } | null {
+  protected parseBackupCommand(command: string): { source: string, target: string, mirror: boolean } | null {
     try {
 
-      command = command.replace("/C robocopy", '').replace(" /Z /XA:H /R:3 /W:5", "").trim();
+      //$backupCommand = "${rsync} --delete $sourcePath root@$destinationPath"
+      const mirror = command.includes("--delete");
+      command = command.replace("/C " + this.getRsync(), '').replace("--delete", "").replace("root@", "").trim();
 
       console.log(command)
 
@@ -286,7 +298,7 @@ $taskTrigger.RepetitionInterval = (New-TimeSpan -Months 1)
 
       if (match) {
         const sourcePath = match[1]?.toString();
-        const destinationPath = match[2]?.toString();
+        const destinationPath = getSmbTargetFromSSHTarget(match[2]?.toString());
 
         if (!sourcePath || !destinationPath) {
           return null;
@@ -294,7 +306,7 @@ $taskTrigger.RepetitionInterval = (New-TimeSpan -Months 1)
         return {
           source: sourcePath,
           target: destinationPath,
-          mirror: command.includes("/MIR")
+          mirror
         };
       } else {
         return null;
@@ -305,4 +317,11 @@ $taskTrigger.RepetitionInterval = (New-TimeSpan -Months 1)
       return null;
     }
   }
+}
+function getSSHTargetFromSmbTarget(target: string) {
+  return target.replace(":", ":/tank/");
+}
+
+function getSmbTargetFromSSHTarget(target: string) {
+  return target.replace(":/tank/", ":");
 }

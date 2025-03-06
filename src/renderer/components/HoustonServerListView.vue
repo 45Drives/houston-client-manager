@@ -36,7 +36,7 @@ const selectedServer = ref<Server | null>(null);
 
 // Receive the discovered servers from the main process
 window.electron.ipcRenderer.on('discovered-servers', (_event, discoveredServers: Server[]) => {
-  servers.value = discoveredServers;
+  servers.value = discoveredServers.filter(server => server.status !== "complete");
 });
 
 watch(servers, () => {

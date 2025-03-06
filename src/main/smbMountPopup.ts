@@ -2,12 +2,8 @@ import { BrowserWindow, dialog } from 'electron';
 import sudo from 'sudo-prompt';
 import os from 'os';
 import installDepPopup from './installDepsPopup';
-import path from 'path';
-import fs from 'fs';
-import asar from 'asar';
-import { Server } from './types';
 import { exec } from 'child_process';
-import { getOS } from './utils';
+import { getAsset, getOS } from './utils';
 
 const options = {
   name: 'Houston Client Manager',
@@ -67,42 +63,6 @@ async function mountSambaClientWin(smb_host: string, smb_share: string, smb_user
     }
   });
 
-}
-
-async function getAsset(folder: string, fileName: string): Promise<string> {
-  const filePath = path.join(__dirname, "..", "..", folder, fileName);
-
-  console.log("asset: ", filePath);
-
-  // Check if running inside an ASAR package
-  let extractedFilepath = filePath;
-  if (__dirname.includes("app.asar")) {
-    // Path to the .asar file (usually in the dist folder after building)
-    const asarFile = path.join(__dirname).replace("\\main", "");
-
-    // Path to extract the file to
-    const tempPath = path.join(os.tmpdir(), "houston-manager", "main", folder, fileName);
-
-    await fs.promises.mkdir(path.join(os.tmpdir(), "houston-manager", "main", folder), { recursive: true });
-
-    // Extract the file from the asar archive
-    const extractFile = (source, destination) => {
-      try {
-        const fileData = asar.extractFile(source, `${folder}\\${fileName}`); // Path to the file inside the .asar archive
-        fs.writeFileSync(destination, fileData);
-        console.log('File extracted successfully to:', destination);
-      } catch (error) {
-        console.error('Error extracting file:', error);
-      }
-    };
-
-    // Extract `main.js` from the `app.asar` archive
-    extractFile(asarFile, tempPath);
-
-    extractedFilepath = tempPath;
-  }
-
-  return extractedFilepath;
 }
 
 function mountSambaClientScript(smb_host: string, smb_share: string, smb_user: string, smb_pass: string, script: string, mainWindow: BrowserWindow) {

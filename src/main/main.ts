@@ -9,6 +9,7 @@ import { IPCRouter } from '../../houston-common/houston-common-lib/lib/electronI
 import { getOS } from './utils';
 import { BackUpManager, BackUpManagerLin, BackUpManagerMac, BackUpManagerWin, BackUpSetupConfigurator } from './backup';
 import { BackUpSetupConfig } from '@45drives/houston-common-lib';
+import { setupSsh } from './setupSsh';
 
 let discoveredServers: Server[] = [];
 
@@ -92,12 +93,9 @@ function createWindow() {
       }
     }
   });
-  
 
   mainWindow.maximize();
-
-  mainWindow.setMenu(null);
-
+  
   mainWindow.webContents.setUserAgent(
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36 Edg/131.0.0.0'
   );
@@ -108,6 +106,8 @@ function createWindow() {
 
     mainWindow.loadURL(`http://localhost:${rendererPort}`);
   } else {
+    mainWindow.setMenu(null);
+
     mainWindow.loadFile(join(app.getAppPath(), 'renderer', 'index.html'));
   }
 
@@ -146,6 +146,9 @@ function createWindow() {
                 } else {
                   server.status = setupStatusResponse.status;
                 }
+                // if (server.status === "complete") {
+                  setupSsh(server)
+                // }
                 discoveredServers.push(server);
               } else {
                 existingServer.lastSeen = Date.now();
