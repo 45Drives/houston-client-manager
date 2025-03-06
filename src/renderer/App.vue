@@ -48,6 +48,7 @@ import { IPCMessageRouterRenderer, IPCRouter } from '@45drives/houston-common-li
 
 IPCRouter.initRenderer();
 IPCRouter.getInstance().addEventListener("action", (data) => {
+  console.log("action in renderer: ", data);
   try {
     if (data === "setup_wizard_go_back") {
       showWelcomeSetupWizard.value = true;
@@ -67,7 +68,6 @@ IPCRouter.getInstance().addEventListener("action", (data) => {
 });
 
 const darkModeState = useDarkModeState();
-darkModeState.value = true;
 
 const advancedState = useAdvancedModeState();
 

@@ -37,7 +37,7 @@ const steps: WizardStep[] = [
   { label: "Access Backups", component: AccessYourBackUpsView },
   { label: "Access Backup", component: AccessBackUpView, nextStep: () => 7 },
   { label: "Where To Store Backup", component: ChooseOnPremOrCloudView, nextStep: (data) => (data.choice === "onprem" ? 6 : 7) },
-  { label: "Create Simple Backup", component: CreateSimpleBackUpView },
+  { label: "Create Simple Backup", component: CreateSimpleBackUpView,  nextStep: () => 8},
   { label: "Create Custom BackUp", component: CustomizeBackupView },
 
   { label: "Summary", component: SummaryView },
