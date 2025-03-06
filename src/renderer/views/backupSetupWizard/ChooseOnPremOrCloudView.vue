@@ -40,14 +40,18 @@
       </CardContainer>
 
       <CardContainer class="relative col-span-1 bg-accent border-default rounded-md overflow-hidden">
+        <div
+          class="text-center absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-7xl font-bold text-45d opacity-50 rotate-[-20deg] pointer-events-none">
+          COMING SOON
+        </div>
 
         <template #header>
-          <button @click="startCloudSetup" class="btn btn-secondary w-full h-40 text-6xl">
+          <button disabled @click="startCloudSetup" class="btn btn-secondary w-full h-40 text-6xl">
             Cloud
           </button>
         </template>
 
-        <div>
+        <div  class="text-muted">
           <br>
           <p>
              What It Is:

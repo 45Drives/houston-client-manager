@@ -203,7 +203,7 @@ const handleFolderSelect = async () => {
         schedule: { startDate: new Date(), repeatFrequency: scheduleFrequency.value },
         description: `Backup task for ${folderName}`,
         source: folderPath,
-        target: `\\\\${selectedServer.value?.name}.local\\backup`,
+        target: `${selectedServer.value?.name}.local:backup`,
         mirror: false,
       };
 
