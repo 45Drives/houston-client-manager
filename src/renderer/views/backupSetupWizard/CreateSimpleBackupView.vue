@@ -30,7 +30,7 @@
         <!-- Backup Frequency -->
         <div class="flex py-2">
           <label class="w-[25%] py-2 text-default font-semibold text-start">
-            Back Interval (Starts At 9:00 AM):
+            Backup Interval (Starts At 9:00 AM):
           </label>
           <select v-model="scheduleFrequency"
             class="bg-default h-[3rem] text-default rounded-lg px-4 flex-1 border border-default">
@@ -54,20 +54,20 @@
         </div>
 
         <!-- Selected Folders List -->
-          <div v-if="selectedFolders.length > 0" class="space-y-2 border rounded-lg border-gray-500">
-            <div v-for="(folder, index) in selectedFolders" :key="folder.path" class="p-2">
-              <div class="flex items-center m-[1rem]">
-                <div class="flex items-center w-[25%] flex-shrink-0 space-x-2">
-                  <label class="text-default font-semibold text-left">{{ folder.name }}</label>
-                </div>
-                <input disabled :value="folder.path"
-                  class="bg-default h-[3rem] mr-[1rem] text-default rounded-lg px-4 flex-1 border border-default" />
-                <button @click="removeFolder(index)" class="btn btn-secondary">
-                  <MinusIcon class="w-6 h-6 text-white-500"></MinusIcon>
-                </button>
+        <div v-if="selectedFolders.length > 0" class="space-y-2 border rounded-lg border-gray-500">
+          <div v-for="(folder, index) in selectedFolders" :key="folder.path" class="p-2">
+            <div class="flex items-center m-[1rem]">
+              <div class="flex items-center w-[25%] flex-shrink-0 space-x-2">
+                <label class="text-default font-semibold text-left">{{ folder.name }}</label>
               </div>
+              <input disabled :value="folder.path"
+                class="bg-default h-[3rem] mr-[1rem] text-default rounded-lg px-4 flex-1 border border-default" />
+              <button @click="removeFolder(index)" class="btn btn-secondary">
+                <MinusIcon class="w-6 h-6 text-white-500"></MinusIcon>
+              </button>
             </div>
-          </div>  
+          </div>
+        </div>
       </div>
     </div>
 
@@ -84,8 +84,10 @@
       </div>
     </template>
     <MessageDialog ref="messageFolderAlreadyAdded" message="⚠️ Folder is already added." />
-    <MessageDialog ref="messageSubFolderAlreadyAdded" message="⚠️ A subfolder of this folder is already added. Please remove it first." />
-    <MessageDialog ref="messageParentFolderAlreadyAdded" message="⚠️ A parent folder is already added. You cannot add a subfolder." />
+    <MessageDialog ref="messageSubFolderAlreadyAdded"
+      message="⚠️ A subfolder of this folder is already added. Please remove it first." />
+    <MessageDialog ref="messageParentFolderAlreadyAdded"
+      message="⚠️ A parent folder is already added. You cannot add a subfolder." />
 
   </CardContainer>
 </template>
@@ -95,7 +97,6 @@ import { CardContainer, CommanderToolTip } from "@45drives/houston-common-ui";
 import { inject, onMounted, ref, watch } from "vue";
 import { PlusIcon, MinusIcon } from "@heroicons/vue/20/solid";
 import { useWizardSteps } from '../../components/wizard';
-import { BackUpTask } from "@45drives/houston-common-lib";
 import { Server } from '../../types'
 import { backUpSetupConfigKey } from "../../keys/injection-keys";
 import MessageDialog from '../../components/MessageDialog.vue';
@@ -125,7 +126,7 @@ window.electron.ipcRenderer.on('discovered-servers', (_event, discoveredServers:
   }
 });
 
-// ✅ Watch and Update Tasks When Schedule Changes
+//  Watch and Update Tasks When Schedule Changes
 watch(scheduleFrequency, (newSchedule) => {
 
   if (backUpSetupConfig) {
@@ -138,7 +139,7 @@ watch(scheduleFrequency, (newSchedule) => {
 });
 
 
-// ✅ Sync `selectedFolders` with `backUpSetupConfig.backUpTasks`
+//  Sync `selectedFolders` with `backUpSetupConfig.backUpTasks`
 const loadExistingFolders = () => {
   selectedFolders.value = (backUpSetupConfig?.backUpTasks ?? []).map(task => ({
     name: task.source?.split("/").pop() ?? "Unknown Folder",
@@ -173,13 +174,13 @@ const handleFolderSelect = async () => {
         normalizePath(task.source.trim())
       );
 
-      // ✅ Prevent Duplicate Folder Selection (Case-Insensitive)
+      //  Prevent Duplicate Folder Selection (Case-Insensitive)
       if (existingFolders.includes(normalizedFolderPath)) {
         messageFolderAlreadyAdded.value?.show();
         return;
       }
 
-      // ✅ Prevent Adding a Child Folder if Parent is Already in the List
+      //  Prevent Adding a Child Folder if Parent is Already in the List
       if (existingFolders.some((existingPath: string) =>
         normalizedFolderPath.startsWith(existingPath + "/") || normalizedFolderPath.startsWith(existingPath + "\\")
       )) {
@@ -188,7 +189,7 @@ const handleFolderSelect = async () => {
         return;
       }
 
-      // ✅ Prevent Adding a Parent Folder if Any Child is Already in the List
+      //  Prevent Adding a Parent Folder if Any Child is Already in the List
       if (existingFolders.some((existingPath: string) =>
         existingPath.startsWith(normalizedFolderPath + "/") || existingPath.startsWith(normalizedFolderPath + "\\")
       )) {
@@ -197,7 +198,7 @@ const handleFolderSelect = async () => {
         return;
       }
 
-      // ✅ Add New Folder if No Conflicts
+      //  Add New Folder if No Conflicts
       const newTask = {
         schedule: { startDate: new Date(), repeatFrequency: scheduleFrequency.value },
         description: `Backup task for ${folderName}`,
@@ -215,7 +216,7 @@ const handleFolderSelect = async () => {
     isSelectingFolder.value = false; // Reset state after operation
   }
 };
-// ✅ Remove Folder from List
+//  Remove Folder from List
 const removeFolder = (index: number) => {
   selectedFolders.value.splice(index, 1);
   if (backUpSetupConfig) {
