@@ -13,17 +13,13 @@
 
         <div class="flex flex-col space-y-4 mt-[5rem]">
           <div class="flex items-center">
-            <div class="flex items-center w-[25%] flex-shrink-0 space-x-2">
-              <label class="text-default font-semibold text-left">Back Up Location</label>
+              <text class="text-default font-semibold text-left">Back Up Location</text>
               <CommanderToolTip 
                 :message="`This is the designated backup storage location. It is preconfigured and cannot be modified.`" 
               />
-            </div>
-            <input 
-              disabled 
-              :value=backUpSetupConfig?.backUpTasks[0].target
-              class="bg-default h-full text-default rounded-lg px-4 flex-1 border border-default" 
-            />
+            <text 
+              class="text-default font-semibold text-left px-4" 
+            >{{backUpSetupConfig?.backUpTasks[0].target}}</text>
           </div>
         </div>
 
@@ -31,21 +27,14 @@
         <div class="flex flex-col space-y-4 mt-[2rem]">
             <div v-for="(task, index) in backUpSetupConfig?.backUpTasks" :key="index" class="flex items-center">
                 <div class="text-start w-[50%]">
-                <label class="text-default font-semibold text-left">Folder:</label>
-                <input 
-                    :value="task.source"
-                    class="bg-default h-full w-[70%] ml-[2rem] text-default rounded-lg px-4 flex-1 border border-default"
-                    disabled
-                />
+                  <text class="text-default font-semibold text-left">Folder:</text>
+
+                  <text class="text-default font-semibold text-left px-4">{{task.source}}</text>
                 </div>
                 <div class="text-start w-[50%] flex items-center">
-                <label class="text-default font-semibold text-left">When:</label>
-                <input 
-                  disabled 
-                  :value="`Backup will happen ${formatFrequency(task.schedule.repeatFrequency)} at 9:00 AM starting ${task.schedule.startDate.toDateString()}`"
-                  class="bg-default h-full w-[70%] ml-[2rem] text-default rounded-lg flex-1 border border-default"
-                />
+                  <text class="text-default font-semibold text-left">When:</text>
 
+                  <text class="text-default font-semibold text-left px-4">{{`Backup will happen ${formatFrequency(task.schedule.repeatFrequency)} at 9:00 AM starting ${task.schedule.startDate.toDateString()}`}}</text>
                 </div>
             </div>
         </div>
