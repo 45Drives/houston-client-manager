@@ -3,6 +3,7 @@ import { BackUpTask, backupTaskTag, TaskSchedule } from "@45drives/houston-commo
 import * as fs from "fs";
 import { execSync } from "child_process";
 import { getRsync, getSmbTargetFromSSHTarget, getSSHTargetFromSmbTarget } from "../utils";
+import { getOS } from "../utils";
 
 export class BackUpManagerLin implements BackUpManager {
   protected cronFilePath: string = "/etc/cron.d/houston-backup-manager";
@@ -173,6 +174,14 @@ export class BackUpManagerLin implements BackUpManager {
   }
 
   protected reloadCron() {
-    execSync(`${this.pkexec} systemctl restart crond`);
+    const os = getOS();
+
+
+    let cron = "crond"
+    if (os === "debian") {
+      cron = "cron"
+    }
+
+    execSync(`${this.pkexec} systemctl restart ${cron}`);
   }
 }
