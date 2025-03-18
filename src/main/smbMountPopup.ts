@@ -67,6 +67,14 @@ async function mountSambaClientWin(smb_host: string, smb_share: string, smb_user
 
 function mountSambaClientScript(smb_host: string, smb_share: string, smb_user: string, smb_pass: string, script: string, mainWindow: BrowserWindow) {
 
+  console.log(`
+    Mounting Details:
+    SMB Host: ${smb_host}
+    SMB Share: ${smb_share}
+    SMB User: ${smb_user}
+    SMB Password: ${smb_pass}
+  `);
+
   installDepPopup();
 
   sudo.exec(`bash "${script}" ${smb_host} ${smb_share} ${smb_user} ${smb_pass}`, options, (error, stdout, stderr) => {
