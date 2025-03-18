@@ -49,8 +49,9 @@ export class BackUpManagerMac implements BackUpManager {
       this.runAsAdmin(command);
     }
   }
-
-  private runAsAdmin(command: string): void {
+  
+  private runAsAdmin(command: string, message: string = "This Houston Client Manager requires administrator privileges.") : void {
+    execSync(`osascript -e 'display dialog "${message.replace(/"/g, '\\"')}" with title "Backup Scheduler" buttons {"OK"} default button 1'`);
     execSync(`osascript -e 'do shell script "${this.escapeForAppleScript(command)}" with administrator privileges'`);
   }
 
