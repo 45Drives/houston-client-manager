@@ -34,30 +34,30 @@ async function mountSambaClientWin(smb_host: string, smb_share: string, smb_user
 
     // If all works out try adding a schedualed task as admin 
     if (!error && !stderr && stdout) {
-     
+
       const result = JSON.parse(stdout.toString());
       if (!result.message) {
         dialog
-        .showMessageBox({
-          type: 'info',
-          title: 'Make Mount Persistent',
-          message: `Would like to make this persistent after reboots:\n\n
+          .showMessageBox({
+            type: 'info',
+            title: 'Make Mount Persistent',
+            message: `Would like to make this persistent after reboots:\n\n
         host=${smb_host}\n
         \n\nYou will need to enter your administrator password to install them.`,
-          buttons: ['OK', 'Cancel'],
-        })
-        .then((result) => {
-          if (result.response === 0) {
-            sudo.exec(`powershell -ExecutionPolicy Bypass -File "${addtasksPath}" \\\\${smb_host}\\${smb_share} ${smb_user} "${smb_pass}"`, options, (error, stdout, stderr) => {
-              if (error) {
-                console.error( error);
-                dialog.showErrorBox(error.name, error.message);
-                return;
-              }
-            });
-          }
-        });
-       
+            buttons: ['OK', 'Cancel'],
+          })
+          .then((result) => {
+            if (result.response === 0) {
+              sudo.exec(`powershell -ExecutionPolicy Bypass -File "${addtasksPath}" \\\\${smb_host}\\${smb_share} ${smb_user} "${smb_pass}"`, options, (error, stdout, stderr) => {
+                if (error) {
+                  console.error(error);
+                  dialog.showErrorBox(error.name, error.message);
+                  return;
+                }
+              });
+            }
+          });
+
       }
 
     }
@@ -93,7 +93,7 @@ function handleExecOutput(
   handleExecOutputWithOutPopup(error, stdout, stderr, smb_host, smb_share, mainWindow);
 
   if (error) {
-    console.error( error);
+    console.error(error);
     dialog.showErrorBox(error.name, error.message);
     return;
   }
@@ -144,23 +144,23 @@ function handleExecOutputWithOutPopup(
 // Main Logic
 export default function mountSmbPopup(smb_host: string, smb_share: string, smb_user: string, smb_pass: string, mainWindow: BrowserWindow) {
 
-  if ( getOS() === "win") {
+  if (getOS() === "win") {
     mountSambaClient(smb_host, smb_share, smb_user, smb_pass, mainWindow);
   } else {
     dialog
-    .showMessageBox({
-      type: 'info',
-      title: 'Creating Connection To Storage',
-      message: `Trying to setup connection to storage server:\n\n
+      .showMessageBox({
+        type: 'info',
+        title: 'Creating Connection To Storage',
+        message: `Trying to setup connection to storage server:\n\n
     host=${smb_host}\n
     \n\nYou will need to enter your administrator password to install them.`,
-      buttons: ['OK', 'Cancel'],
-    })
-    .then((result) => {
-      if (result.response === 0) {
-        mountSambaClient(smb_host, smb_share, smb_user, smb_pass, mainWindow);
-      }
-    });
+        buttons: ['OK', 'Cancel'],
+      })
+      .then((result) => {
+        if (result.response === 0) {
+          mountSambaClient(smb_host, smb_share, smb_user, smb_pass, mainWindow);
+        }
+      });
   }
 
 }

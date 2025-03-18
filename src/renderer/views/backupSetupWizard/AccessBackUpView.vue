@@ -86,7 +86,7 @@ const handleOpen = () => {
       target: backupTask.target,
     });
 
-    const [host, share] = backupTask.target.split("/");
+    const [host, share] = backupTask.target.split(":");
 
     console.log("Host:", host);  // Output: "hl4-test.local"
     console.log("Share:", share); // Output: "backups"
