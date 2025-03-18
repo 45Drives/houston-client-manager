@@ -3,7 +3,7 @@ import path from "path";
 import fs from "fs";
 import { Server } from "./types";
 import { Client } from 'ssh2';
-import { getAppPath } from "./utils";
+import { getAppPath, getOS } from "./utils";
 
 const username = "root";
 const password = "password";
@@ -16,6 +16,7 @@ export async function setupSsh(server: Server) {
   const cwRsyncPath = path.join(basePath,  "cwrsync");
   const sshKeyPath = path.join(basePath,  ".ssh", "id_rsa");
   const sshKeyPubPath = path.join(basePath,  ".ssh", "id_rsa.pub");
+  const ssh_keygen = getOS() === "win" ? `"${path.join(cwRsyncPath, "bin", "ssh-keygen.exe")}"` : "ssh-keygen";
 
   // Ensure .ssh directory exists
   const sshDir = path.join(basePath,  ".ssh");
@@ -26,10 +27,7 @@ export async function setupSsh(server: Server) {
   // Generate SSH key if it doesn’t exist
   if (!fs.existsSync(sshKeyPath)) {
     console.log("Generating SSH Key...");
-
-    const ssh_keygen = `"${path.join(cwRsyncPath, "bin", "ssh-keygen.exe")}"`;
-
-    console.log("ssh_keygen:", ssh_keygen)
+    
     exec(
       `${ssh_keygen} -t rsa -b 4096 -f "${sshKeyPath}" -N ""`,
       { cwd: cwRsyncPath },

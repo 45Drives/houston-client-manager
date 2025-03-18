@@ -67,7 +67,25 @@ export function getAppPath() {
   const isDev = process.env.NODE_ENV === 'development';
   let basePath = process.resourcesPath || __dirname;
   if (isDev) {
-    basePath = __dirname  + "/../../static/"
+    basePath = __dirname + "/../../static/"
   }
-  return  basePath;
+  return basePath;
+}
+
+export function getSSHTargetFromSmbTarget(target: string) {
+  return target.replace(":", ":/tank/");
+}
+
+export function getSmbTargetFromSSHTarget(target: string) {
+  return target.replace(":/tank/", ":");
+}
+
+export function getRsync() {
+  let basePath = getAppPath();
+
+  const sshKeyPath = path.join(basePath, ".ssh", "id_rsa");
+  const rsyncPath = getOS() === "win" ? path.join(basePath, "cwrsync", "bin", "rsync.exe") : "rsync";
+  const sshWithKey = `ssh -i ${sshKeyPath}`;
+  const rsync = `${rsyncPath} -az -e "${sshWithKey}"`
+  return rsync;
 }
