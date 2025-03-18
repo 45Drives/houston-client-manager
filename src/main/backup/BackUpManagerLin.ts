@@ -2,6 +2,7 @@ import { BackUpManager } from "./types";
 import { BackUpTask, backupTaskTag, TaskSchedule } from "@45drives/houston-common-lib";
 import * as fs from "fs";
 import { execSync } from "child_process";
+import { getRsync, getSmbTargetFromSSHTarget, getSSHTargetFromSmbTarget } from "../utils";
 
 export class BackUpManagerLin implements BackUpManager {
   protected cronFilePath: string = "/etc/cron.d/houston-backup-manager";
@@ -64,8 +65,9 @@ export class BackUpManagerLin implements BackUpManager {
     if (task.target.includes("'")) {
       throw new Error("Target cannot contain ' (single-quote)");
     }
-    return `${this.scheduleToCron(task.schedule)} rsync --archive${task.mirror ? " --delete" : ""
-      } '${task.source}' '${task.target}' # ${backupTaskTag} ${task.description}`;
+    ;
+    return `${this.scheduleToCron(task.schedule)} ${getRsync()}${task.mirror ? " --delete" : ""
+      } '${task.source}' 'root@${getSSHTargetFromSmbTarget(task.target)}' # ${backupTaskTag} ${task.description}`;
   }
 
   protected cronToBackupTask(cron: string): BackUpTask | null {
@@ -140,27 +142,34 @@ export class BackUpManagerLin implements BackUpManager {
       throw new Error("Invalid cron format: " + cron);
     }
 
-    const commandRe = new RegExp(
-      /rsync [^']+'([^']+)' '([^']+)' # /.source +
-      backupTaskTag +
-      / (.*)$/.source
-    );
+    const mirror = cron.includes("--delete");
+    const description = cron.split("#")[1].trim();
 
-    if (!(match = commandRe.exec(cron))) {
-      throw new Error("Failed to extract backup task: " + cron);
-    }
+    cron = cron.split("#")[0];
+    cron = cron.replace("/C " + getRsync(), '').replace("--delete", "").replace("root@", "").trim();
 
-    const [source, target, description] = match.slice(1);
-    if (!source || !target || !description) {
+    const regex = /([^\s]+(?:\s[^\s]+)*)\s+([^\s]+(?:\s[^\s]+)*)/;
+
+    // Execute regex on the input command
+    const matchSourceTarget = cron.match(regex);
+
+    if (matchSourceTarget) {
+      const sourcePath = match[1]?.toString();
+      const destinationPath = getSmbTargetFromSSHTarget(match[2]?.toString());
+      if (!sourcePath || !destinationPath) {
+        return null;
+      }
+
+      return {
+        schedule: schedule,
+        mirror: mirror,
+        source: sourcePath,
+        target: destinationPath,
+        description
+      };
+    } else {
       return null;
     }
-    return {
-      schedule: schedule,
-      mirror: cron.includes("--delete"),
-      source,
-      target,
-      description,
-    };
   }
 
   protected reloadCron() {

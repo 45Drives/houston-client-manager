@@ -1,7 +1,7 @@
 import { BackUpManager } from "./types";
 import { BackUpTask, TaskSchedule } from "@45drives/houston-common-lib";
 import { spawnSync } from "child_process";
-import { getAppPath } from "../utils";
+import { getAppPath, getRsync, getSmbTargetFromSSHTarget, getSSHTargetFromSmbTarget } from "../utils";
 import path from "path";
 
 const TASK_ID = "HoustonBackUp";
@@ -82,20 +82,10 @@ export class BackUpManagerWin implements BackUpManager {
     }
 
   }
-
-  getRsync() {
-    let basePath = getAppPath();
-
-    const sshKeyPath = path.join(basePath,  ".ssh", "id_rsa");
-    const rsyncPath = path.join(basePath,  "cwrsync", "bin", "rsync.exe");
-    const sshWithKey = `ssh -i ${sshKeyPath}`;
-    const rsync = `${rsyncPath} -az -e "${sshWithKey}"`
-    return rsync;
-  }
   
   schedule(task: BackUpTask): void {
 
-    const rsync = this.getRsync();
+    const rsync = getRsync();
 
     // PowerShell script to create the task
     const powershellScript = `
@@ -287,7 +277,7 @@ $taskTrigger.RepetitionInterval = (New-TimeSpan -Months 1)
 
       //$backupCommand = "${rsync} --delete $sourcePath root@$destinationPath"
       const mirror = command.includes("--delete");
-      command = command.replace("/C " + this.getRsync(), '').replace("--delete", "").replace("root@", "").trim();
+      command = command.replace("/C " + getRsync(), '').replace("--delete", "").replace("root@", "").trim();
 
       console.log(command)
 
@@ -317,11 +307,4 @@ $taskTrigger.RepetitionInterval = (New-TimeSpan -Months 1)
       return null;
     }
   }
-}
-function getSSHTargetFromSmbTarget(target: string) {
-  return target.replace(":", ":/tank/");
-}
-
-function getSmbTargetFromSSHTarget(target: string) {
-  return target.replace(":/tank/", ":");
 }
