@@ -77,7 +77,7 @@ function mountSambaClientScript(smb_host: string, smb_share: string, smb_user: s
 
   installDepPopup();
 
-  sudo.exec(`bash "${script}" ${smb_host} ${smb_share} ${smb_user} ${smb_pass}`, options, (error, stdout, stderr) => {
+  exec(`bash "${script}" ${smb_host} ${smb_share} ${smb_user} ${smb_pass}`, (error, stdout, stderr) => {
     handleExecOutput(error, stdout, stderr, smb_host, smb_share, mainWindow);
   });
 }
@@ -147,20 +147,23 @@ export default function mountSmbPopup(smb_host: string, smb_share: string, smb_u
   if (getOS() === "win") {
     mountSambaClient(smb_host, smb_share, smb_user, smb_pass, mainWindow);
   } else {
-    dialog
-      .showMessageBox({
-        type: 'info',
-        title: 'Creating Connection To Storage',
-        message: `Trying to setup connection to storage server:\n\n
-    host=${smb_host}\n
-    \n\nYou will need to enter your administrator password to install them.`,
-        buttons: ['OK', 'Cancel'],
-      })
-      .then((result) => {
-        if (result.response === 0) {
-          mountSambaClient(smb_host, smb_share, smb_user, smb_pass, mainWindow);
-        }
-      });
+
+    mountSambaClient(smb_host, smb_share, smb_user, smb_pass, mainWindow);
+
+    // dialog
+    //   .showMessageBox({
+    //     type: 'info',
+    //     title: 'Creating Connection To Storage',
+    //     message: `Trying to setup connection to storage server:\n\n
+    // host=${smb_host}\n
+    // \n\nYou will need to enter your administrator password to install them.`,
+    //     buttons: ['OK', 'Cancel'],
+    //   })
+    //   .then((result) => {
+    //     if (result.response === 0) {
+    //       mountSambaClient(smb_host, smb_share, smb_user, smb_pass, mainWindow);
+    //     }
+    //   });
   }
 
 }
