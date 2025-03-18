@@ -24,14 +24,16 @@ export class BackUpManagerMac implements BackUpManager {
     // Write to a temp file first
     fs.writeFileSync(tempPlistPath, plist, "utf-8");
 
-    // Ensure launchd directory exists with correct permissions
-    this.ensureLaunchdDirectory();
+    const command = [
+      `mkdir -p "${this.launchdDirectory}"`,
+      `chmod 755 "${this.launchdDirectory}"`,
+      `cp "${tempPlistPath}" "${launchdPlistPath}"`,
+      `chmod 644 "${launchdPlistPath}"`,
+      `chown root:wheel "${launchdPlistPath}"`,
+      `launchctl load "${launchdPlistPath}"`
+    ].join(" && ");
 
-    // Move to LaunchDaemons with admin privileges
-    this.runAsAdmin(`cp "${tempPlistPath}" "${launchdPlistPath}"`);
-    this.runAsAdmin(`chmod 644 "${launchdPlistPath}"`);
-    this.runAsAdmin(`chown root:wheel "${launchdPlistPath}"`);
-    this.runAsAdmin(`launchctl load "${launchdPlistPath}"`);
+    this.runAsAdmin(command);
   }
 
   unschedule(task: BackUpTask): void {
@@ -39,15 +41,12 @@ export class BackUpManagerMac implements BackUpManager {
     const plistFilePath = path.join(this.launchdDirectory, plistFileName);
 
     if (fs.existsSync(plistFilePath)) {
-      this.runAsAdmin(`launchctl unload "${plistFilePath}"`);
-      this.runAsAdmin(`rm -f "${plistFilePath}"`);
-    }
-  }
-
-  private ensureLaunchdDirectory(): void {
-    if (!fs.existsSync(this.launchdDirectory)) {
-      this.runAsAdmin(`mkdir -p "${this.launchdDirectory}"`);
-      this.runAsAdmin(`chmod 755 "${this.launchdDirectory}"`);
+      const command = [
+        `launchctl unload "${plistFilePath}"`,
+        `rm -f "${plistFilePath}"`
+      ].join(" && ");
+  
+      this.runAsAdmin(command);
     }
   }
 
