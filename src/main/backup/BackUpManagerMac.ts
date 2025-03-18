@@ -6,10 +6,8 @@ import * as path from "path";
 
 export class BackUpManagerMac implements BackUpManager {
   protected launchdDirectory: string = "/Library/LaunchDaemons";
-  protected pkexec: string = "sudo";
 
   queryTasks(): BackUpTask[] {
-    // List files in the LaunchDaemons directory
     const launchdFiles = fs.readdirSync(this.launchdDirectory);
     return launchdFiles
       .filter(file => file.startsWith("com.backup-task"))
@@ -19,25 +17,50 @@ export class BackUpManagerMac implements BackUpManager {
 
   schedule(task: BackUpTask): void {
     const plist = this.backupTaskToPlist(task);
+    const plistFileName = `com.backup-task.${this.safeTaskName(task.description)}.plist`;
+    const tempPlistPath = path.join("/tmp", plistFileName);
+    const launchdPlistPath = path.join(this.launchdDirectory, plistFileName);
+
+    // Write to a temp file first
+    fs.writeFileSync(tempPlistPath, plist, "utf-8");
+
+    // Ensure launchd directory exists with correct permissions
     this.ensureLaunchdDirectory();
-    const plistFilePath = path.join(this.launchdDirectory, `com.backup-task.${task.description}.plist`);
-    fs.writeFileSync(plistFilePath, plist, "utf-8");
-    this.loadLaunchdJob(plistFilePath);
+
+    // Move to LaunchDaemons with admin privileges
+    this.runAsAdmin(`cp "${tempPlistPath}" "${launchdPlistPath}"`);
+    this.runAsAdmin(`chmod 644 "${launchdPlistPath}"`);
+    this.runAsAdmin(`chown root:wheel "${launchdPlistPath}"`);
+    this.runAsAdmin(`launchctl load "${launchdPlistPath}"`);
   }
 
   unschedule(task: BackUpTask): void {
-    const plistFilePath = path.join(this.launchdDirectory, `com.backup-task.${task.description}.plist`);
+    const plistFileName = `com.backup-task.${this.safeTaskName(task.description)}.plist`;
+    const plistFilePath = path.join(this.launchdDirectory, plistFileName);
+
     if (fs.existsSync(plistFilePath)) {
-      fs.unlinkSync(plistFilePath);
-      this.unloadLaunchdJob(plistFilePath);
+      this.runAsAdmin(`launchctl unload "${plistFilePath}"`);
+      this.runAsAdmin(`rm -f "${plistFilePath}"`);
     }
   }
 
   private ensureLaunchdDirectory(): void {
     if (!fs.existsSync(this.launchdDirectory)) {
-      execSync(`${this.pkexec} mkdir -p ${this.launchdDirectory}`);
-      execSync(`${this.pkexec} chmod 755 ${this.launchdDirectory}`);
+      this.runAsAdmin(`mkdir -p "${this.launchdDirectory}"`);
+      this.runAsAdmin(`chmod 755 "${this.launchdDirectory}"`);
     }
+  }
+
+  private runAsAdmin(command: string): void {
+    execSync(`osascript -e 'do shell script "${this.escapeForAppleScript(command)}" with administrator privileges'`);
+  }
+
+  private escapeForAppleScript(cmd: string): string {
+    return cmd.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+  }
+
+  private safeTaskName(description: string): string {
+    return description.replace(/[^a-zA-Z0-9.-]/g, "_");
   }
 
   private backupTaskToPlist(task: BackUpTask): string {
@@ -47,13 +70,13 @@ export class BackUpManagerMac implements BackUpManager {
     <plist version="1.0">
       <dict>
         <key>Label</key>
-        <string>com.backup-task.${task.description}</string>
+        <string>com.backup-task.${this.safeTaskName(task.description)}</string>
         <key>ProgramArguments</key>
         <array>
-          <string>rsync</string>
+          <string>/usr/bin/rsync</string>
           <string>--archive${task.mirror ? " --delete" : ""}</string>
-          <string>'${task.source}'</string>
-          <string>'${task.target}'</string>
+          <string>${task.source}</string>
+          <string>${task.target}</string>
         </array>
         <key>StartCalendarInterval</key>
         <dict>
@@ -65,9 +88,11 @@ export class BackUpManagerMac implements BackUpManager {
           <integer>${schedule.day}</integer>
         </dict>
         <key>StandardOutPath</key>
-        <string>/tmp/backup-task.${task.description}.log</string>
+        <string>/var/log/${this.safeTaskName(task.description)}.log</string>
         <key>StandardErrorPath</key>
-        <string>/tmp/backup-task.${task.description}.err</string>
+        <string>/var/log/${this.safeTaskName(task.description)}.err</string>
+        <key>RunAtLoad</key>
+        <true/>
       </dict>
     </plist>`;
   }
@@ -79,35 +104,18 @@ export class BackUpManagerMac implements BackUpManager {
       case "day":
         return { minute: sched.startDate.getMinutes(), hour: sched.startDate.getHours(), day: "*" };
       case "week":
-        return {
-          minute: sched.startDate.getMinutes(),
-          hour: sched.startDate.getHours(),
-          day: sched.startDate.getDay(),
-        };
+        return { minute: sched.startDate.getMinutes(), hour: sched.startDate.getHours(), day: sched.startDate.getDay() };
       case "month":
-        return {
-          minute: sched.startDate.getMinutes(),
-          hour: sched.startDate.getHours(),
-          day: sched.startDate.getDate(),
-        };
+        return { minute: sched.startDate.getMinutes(), hour: sched.startDate.getHours(), day: sched.startDate.getDate() };
       default:
-        return { minute: 0, hour: 0, day: 1 }; // Default to running daily
+        return { minute: 0, hour: 0, day: 1 };
     }
-  }
-
-  private loadLaunchdJob(plistFilePath: string): void {
-    execSync(`${this.pkexec} launchctl load ${plistFilePath}`);
-  }
-
-  private unloadLaunchdJob(plistFilePath: string): void {
-    execSync(`${this.pkexec} launchctl unload ${plistFilePath}`);
   }
 
   private launchdToBackupTask(fileName: string): BackUpTask | null {
     const plistFilePath = path.join(this.launchdDirectory, fileName);
     const plistContents = fs.readFileSync(plistFilePath, "utf-8");
 
-    // Regex to extract values from plist (simplified for example)
     const match = plistContents.match(/ProgramArguments.*'([^']+)' '([^']+)'/);
     if (!match) {
       return null;
@@ -116,13 +124,12 @@ export class BackUpManagerMac implements BackUpManager {
     const source = match[1];
     const target = match[2];
 
-    // Extract schedule data from the plist (you'll need to parse XML for more detailed data)
     const minuteMatch = plistContents.match(/<key>Minute<\/key>\s*<integer>(\d+)<\/integer>/);
     const hourMatch = plistContents.match(/<key>Hour<\/key>\s*<integer>(\d+)<\/integer>/);
     const dayMatch = plistContents.match(/<key>Day<\/key>\s*<integer>(\d+)<\/integer>/);
 
     const schedule: TaskSchedule = {
-      repeatFrequency: "hour", // Default, this should be parsed based on plist
+      repeatFrequency: "hour",
       startDate: new Date(),
     };
 
