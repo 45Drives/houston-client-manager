@@ -3,6 +3,7 @@ import { BackUpTask, TaskSchedule } from "@45drives/houston-common-lib";
 import * as fs from "fs";
 import { execSync } from "child_process";
 import * as path from "path";
+import * as plist from 'plist';
 
 export class BackUpManagerMac implements BackUpManager {
   protected launchdDirectory: string = "/Library/LaunchDaemons";
@@ -49,7 +50,7 @@ export class BackUpManagerMac implements BackUpManager {
       this.runAsAdmin(command);
     }
   }
-  
+
   private runAsAdmin(command: string, message: string = "This Houston Client Manager requires administrator privileges.") : void {
     execSync(`osascript -e 'display dialog "${message.replace(/"/g, '\\"')}" with title "Backup Scheduler" buttons {"OK"} default button 1'`);
     execSync(`osascript -e 'do shell script "${this.escapeForAppleScript(command)}" with administrator privileges'`);
@@ -115,30 +116,42 @@ export class BackUpManagerMac implements BackUpManager {
   private launchdToBackupTask(fileName: string): BackUpTask | null {
     const plistFilePath = path.join(this.launchdDirectory, fileName);
     const plistContents = fs.readFileSync(plistFilePath, "utf-8");
-
-    const match = plistContents.match(/ProgramArguments.*'([^']+)' '([^']+)'/);
-    if (!match) {
+  
+    let parsedPlist;
+    try {
+      parsedPlist = plist.parse(plistContents);
+    } catch (error) {
+      console.error(`Failed to parse plist: ${fileName}`, error);
       return null;
     }
-
-    const source = match[1];
-    const target = match[2];
-
-    const minuteMatch = plistContents.match(/<key>Minute<\/key>\s*<integer>(\d+)<\/integer>/);
-    const hourMatch = plistContents.match(/<key>Hour<\/key>\s*<integer>(\d+)<\/integer>/);
-    const dayMatch = plistContents.match(/<key>Day<\/key>\s*<integer>(\d+)<\/integer>/);
-
-    const schedule: TaskSchedule = {
-      repeatFrequency: "hour",
+  
+    // Extract ProgramArguments (source and target paths)
+    const programArguments = parsedPlist['ProgramArguments'];
+    if (!programArguments || programArguments.length < 4) {
+      console.error('ProgramArguments not found or malformed in plist');
+      return null;
+    }
+  
+    const source = programArguments[2]; // The third element in the array is the source path
+    const target = programArguments[3]; // The fourth element in the array is the target path
+  
+    // Extract schedule information from StartCalendarInterval
+    const schedule = parsedPlist['StartCalendarInterval'] || {};
+    const minute = schedule['Minute'] || 0;
+    const hour = schedule['Hour'] || 0;
+    const day = schedule['Day'] || 1; // Default to 1st day of the month
+  
+    const taskSchedule: TaskSchedule = {
+      repeatFrequency: "hour", // Default, adjust based on more complex logic if needed
       startDate: new Date(),
     };
-
-    schedule.startDate.setMinutes(minuteMatch ? parseInt(minuteMatch[1]) : 0);
-    schedule.startDate.setHours(hourMatch ? parseInt(hourMatch[1]) : 0);
-    schedule.startDate.setDate(dayMatch ? parseInt(dayMatch[1]) : 1);
-
+  
+    taskSchedule.startDate.setMinutes(minute);
+    taskSchedule.startDate.setHours(hour);
+    taskSchedule.startDate.setDate(day);
+  
     return {
-      schedule: schedule,
+      schedule: taskSchedule,
       source,
       target,
       description: fileName.replace("com.backup-task.", "").replace(".plist", ""),
