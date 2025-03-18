@@ -39,6 +39,8 @@ else
     # Use AppleScript to mount the share
     osascript <<EOF
     try
+        set currentUser to do shell script "whoami"
+
         mount volume "$SERVER" as user name "$USERNAME" with password "$PASSWORD"
     on error errMsg
         do shell script "echo 'Failed to mount SMB share: ' & errMsg >> $LOG_FILE"
