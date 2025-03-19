@@ -59,9 +59,9 @@ function createWindow() {
     }
   });
 
-  
+
   IPCRouter.initBackend(mainWindow.webContents, ipcMain);
-  
+
   IPCRouter.getInstance().addEventListener('action', (data) => {
 
     if (data === "requestBackUpTasks") {
@@ -88,14 +88,14 @@ function createWindow() {
             }));
           })
         }
-      } catch(error) {
+      } catch (error) {
 
       }
     }
   });
 
   mainWindow.maximize();
-  
+
   mainWindow.webContents.setUserAgent(
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36 Edg/131.0.0.0'
   );
@@ -140,14 +140,14 @@ function createWindow() {
               const setupStatusResponse = await response.json();
 
               if (!existingServer) {
-                
+
                 if (setupStatusResponse.err) {
                   server.status = "unknown";
                 } else {
                   server.status = setupStatusResponse.status;
                 }
                 // if (server.status === "complete") {
-                  setupSsh(server)
+                setupSsh(server)
                 // }
                 discoveredServers.push(server);
               } else {
@@ -163,7 +163,7 @@ function createWindow() {
               console.error('Fetch error:', error);
             }
 
-           
+
             break server_search;
           }
         }
@@ -252,6 +252,8 @@ app.on('web-contents-created', (_event, contents) => {
 
 
 app.whenReady().then(() => {
+  ipcMain.handle("is-dev", async () => process.env.NODE_ENV === 'development');
+
   ipcMain.handle('dialog:openFolder', async () => {
     const result = await dialog.showOpenDialog({
       properties: ['openDirectory'], // Opens folder selection dialog
