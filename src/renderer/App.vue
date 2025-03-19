@@ -67,6 +67,8 @@ IPCRouter.getInstance().addEventListener("action", (data) => {
   }
 });
 
+const isDev = await window.electron.ipcRenderer.invoke('is-dev');
+
 const darkModeState = useDarkModeState();
 
 const advancedState = useAdvancedModeState();
