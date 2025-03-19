@@ -4,6 +4,7 @@ import * as fs from "fs";
 import { execSync } from "child_process";
 import * as path from "path";
 import * as plist from 'plist';
+import { getRsync } from "../utils";
 
 export class BackUpManagerMac implements BackUpManager {
   protected launchdDirectory: string = "/Library/LaunchDaemons";
@@ -74,7 +75,7 @@ export class BackUpManagerMac implements BackUpManager {
         <string>com.backup-task.${this.safeTaskName(task.description)}</string>
         <key>ProgramArguments</key>
         <array>
-          <string>/usr/bin/rsync</string>
+          <string>${getRsync()}</string>
           <string>--archive${task.mirror ? " --delete" : ""}</string>
           <string>${task.source}</string>
           <string>${task.target}</string>
