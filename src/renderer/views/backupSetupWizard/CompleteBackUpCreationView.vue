@@ -39,7 +39,7 @@
 
 <script setup lang="ts">
 import { CardContainer } from "@45drives/houston-common-ui";
-import { ref, onMounted, watch, inject } from "vue";
+import { ref, onMounted, watch, inject, onUpdated, onActivated } from "vue";
 import { useWizardSteps } from "../../components/wizard";
 import { EasySetupProgress, IPCRouter } from "@45drives/houston-common-lib";
 import { backUpSetupConfigKey } from "../../keys/injection-keys";
@@ -61,7 +61,7 @@ function goHome(): void {
   reset();
 }
 
-onMounted(() => {
+onActivated(() => {
   try {
     IPCRouter.getInstance().addEventListener('action', (data) => {
 

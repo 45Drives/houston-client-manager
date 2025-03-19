@@ -117,12 +117,29 @@ const messageFolderAlreadyAdded = ref<InstanceType<typeof MessageDialog> | null>
 const messageSubFolderAlreadyAdded = ref<InstanceType<typeof MessageDialog> | null>(null);
 const messageParentFolderAlreadyAdded = ref<InstanceType<typeof MessageDialog> | null>(null);
 
+function areArraysEqual(arr1: Server[], arr2: Server[]): boolean {
+  if (arr1.length !== arr2.length) {
+    return false; // Arrays have different lengths
+  }
+
+  return arr1.every((value, index) => {
+    const server1: Server = value;
+    const server2: Server = arr2[index];
+
+    return server1.ip === server2.ip;
+
+  });
+}
+
 // Receive the discovered servers from the main process
 window.electron.ipcRenderer.on('discovered-servers', (_event, discoveredServers: Server[]) => {
-  servers.value = discoveredServers;
-  if (discoveredServers.length > 0) {
+  if (!areArraysEqual(discoveredServers, servers.value)) {
+    console.log("Discovered servers")
+    servers.value = discoveredServers;
+    if (discoveredServers.length > 0) {
 
-    selectedServer.value = discoveredServers[0];
+      selectedServer.value = discoveredServers[0];
+    }
   }
 });
 

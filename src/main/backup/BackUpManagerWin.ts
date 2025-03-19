@@ -1,7 +1,7 @@
 import { BackUpManager } from "./types";
 import { BackUpTask, TaskSchedule } from "@45drives/houston-common-lib";
 import { spawnSync } from "child_process";
-import { getRsync, getSmbTargetFromSSHTarget, getSSHTargetFromSmbTarget } from "../utils";
+import { getScp, getSmbTargetFromSSHTarget, getSSHTargetFromSmbTarget } from "../utils";
 
 const TASK_ID = "HoustonBackUp";
 
@@ -84,7 +84,7 @@ export class BackUpManagerWin implements BackUpManager {
   
   schedule(task: BackUpTask): void {
 
-    const rsync = getRsync();
+    const scp = getScp();
 
     // PowerShell script to create the task
     const powershellScript = `
@@ -93,9 +93,9 @@ $destinationPath = "${getSSHTargetFromSmbTarget(task.target)}"
 $mirror = ${task.mirror ? "true" : "false"}  # Set to $true if you want to mirror the directories
 
 if ($mirror) {
-    $backupCommand = "${rsync} --delete $sourcePath root@$destinationPath"
+    $backupCommand = "${scp} ""$sourcePath"" root@$destinationPath"
 } else {
-    $backupCommand = "${rsync} $sourcePath root@$destinationPath"
+    $backupCommand = "${scp} ""$sourcePath"" root@$destinationPath"
 }
 
 $taskTrigger = ${this.scheduleToTaskTrigger(task.schedule)}
@@ -276,12 +276,12 @@ $taskTrigger.RepetitionInterval = (New-TimeSpan -Months 1)
 
       //$backupCommand = "${rsync} --delete $sourcePath root@$destinationPath"
 
-      if (!command.includes(getRsync())) {
+      if (!command.includes(getScp())) {
         return null;
       }
-      
+
       const mirror = command.includes("--delete");
-      command = command.replace("/C " + getRsync(), '').replace("--delete", "").replace("root@", "").trim();
+      command = command.replace("/C " + getScp(), '').replace("--delete", "").replace("root@", "").trim();
 
       console.log(command)
 
@@ -291,7 +291,7 @@ $taskTrigger.RepetitionInterval = (New-TimeSpan -Months 1)
       const match = command.match(regex);
 
       if (match) {
-        const sourcePath = match[1]?.toString();
+        const sourcePath = match[1]?.toString().replace('\'', "").replace('\'', "");
         const destinationPath = getSmbTargetFromSSHTarget(match[2]?.toString());
 
         if (!sourcePath || !destinationPath) {
