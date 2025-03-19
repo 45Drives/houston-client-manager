@@ -85,7 +85,17 @@ export function getRsync() {
 
   const sshKeyPath = path.join(basePath, ".ssh", "id_rsa");
   const rsyncPath = getOS() === "win" ? path.join(basePath, "cwrsync", "bin", "rsync.exe") : "rsync";
-  const sshWithKey = `ssh -i ${sshKeyPath}`;
-  const rsync = `${rsyncPath} -az -e ${sshWithKey}`
+  const sshWithKey = `ssh -i '${sshKeyPath}'`;
+  const rsync = `${rsyncPath} -az -e "${sshWithKey}"`
   return rsync;
+}
+
+
+export function getScp() {
+  let basePath = getAppPath();
+
+  const sshKeyPath = path.join(basePath, ".ssh", "id_rsa");
+  const scpPath = getOS() === "win" ? "scp" : "scp";
+  const scp = `${scpPath} -i ""${sshKeyPath}"" -r`
+  return scp;
 }
