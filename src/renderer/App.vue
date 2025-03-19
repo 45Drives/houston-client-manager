@@ -2,6 +2,16 @@
 
   <div class="w-screen h-screen overflow-hidden flex flex-col items-center justify-center text-default bg-default">
 
+    <div v-if="isDev">
+      <button @click="showWelcomeSetupWizard = !showWelcomeSetupWizard" class="btn btn-secondary w-40 h-20">
+        Storage Setup
+      </button>
+
+      <button @click="showBackUpSetupWizard = !showBackUpSetupWizard" class="btn btn-secondary w-40 h-20">
+        Backup Setup
+      </button>
+    </div>
+
     <StorageSetupWizard v-if="showWelcomeSetupWizard" id="setup" :onComplete="onWelcomeWizardComplete"
       class="h-full flex-1 text-default bg-default" />
 
@@ -67,7 +77,10 @@ IPCRouter.getInstance().addEventListener("action", (data) => {
   }
 });
 
-const isDev = await window.electron.ipcRenderer.invoke('is-dev');
+const isDev = ref(false);
+
+window.electron.ipcRenderer.invoke('is-dev').then(value => isDev.value = value);
+console.log(window.electron.ipcRenderer); 
 
 const darkModeState = useDarkModeState();
 
@@ -124,7 +137,7 @@ window.electron.ipcRenderer.on('discovered-servers', (_event, discoveredServers:
       showWebView.value = false;
     }
   }
-  
+
 });
 
 // Handle server click to open the website
