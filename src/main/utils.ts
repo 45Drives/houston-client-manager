@@ -99,3 +99,12 @@ export function getScp() {
   const scp = `${scpPath} -i ""${sshKeyPath}"" -r`
   return scp;
 }
+
+export function getNoneQuotedScp() {
+  let basePath = getAppPath();
+
+  const sshKeyPath = path.join(basePath, ".ssh", "id_rsa");
+  const scpPath = getOS() === "win" ? "scp" : "scp";
+  const scp = `${scpPath} -i "${sshKeyPath}" -r`
+  return scp;
+}
