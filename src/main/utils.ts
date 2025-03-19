@@ -86,6 +86,6 @@ export function getRsync() {
   const sshKeyPath = path.join(basePath, ".ssh", "id_rsa");
   const rsyncPath = getOS() === "win" ? path.join(basePath, "cwrsync", "bin", "rsync.exe") : "rsync";
   const sshWithKey = `ssh -i ${sshKeyPath}`;
-  const rsync = `${rsyncPath} -az -e "${sshWithKey}"`
+  const rsync = `${rsyncPath} -az -e ${sshWithKey}`
   return rsync;
 }

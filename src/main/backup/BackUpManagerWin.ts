@@ -1,8 +1,7 @@
 import { BackUpManager } from "./types";
 import { BackUpTask, TaskSchedule } from "@45drives/houston-common-lib";
 import { spawnSync } from "child_process";
-import { getAppPath, getRsync, getSmbTargetFromSSHTarget, getSSHTargetFromSmbTarget } from "../utils";
-import path from "path";
+import { getRsync, getSmbTargetFromSSHTarget, getSSHTargetFromSmbTarget } from "../utils";
 
 const TASK_ID = "HoustonBackUp";
 
@@ -276,6 +275,11 @@ $taskTrigger.RepetitionInterval = (New-TimeSpan -Months 1)
     try {
 
       //$backupCommand = "${rsync} --delete $sourcePath root@$destinationPath"
+
+      if (!command.includes(getRsync())) {
+        return null;
+      }
+      
       const mirror = command.includes("--delete");
       command = command.replace("/C " + getRsync(), '').replace("--delete", "").replace("root@", "").trim();
 
