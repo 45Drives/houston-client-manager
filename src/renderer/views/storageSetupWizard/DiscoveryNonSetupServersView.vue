@@ -50,7 +50,7 @@
 
 <script setup lang="ts">
 import CardContainer from '../../components/CardContainer.vue';
-import { useWizardSteps } from '../../components/wizard';
+import { useWizardSteps } from '@45drives/houston-common-ui';
 import HoustonServerListView from '../../components/HoustonServerListView.vue'
 import { Server } from '../../types';
 import { ref } from 'vue';

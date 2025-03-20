@@ -58,7 +58,7 @@
 <script setup lang="ts">
 import { CardContainer, CommanderToolTip, confirm } from "@45drives/houston-common-ui";
 import { inject, ref } from "vue";
-import { useWizardSteps } from '../../components/wizard';
+import { useWizardSteps } from '@45drives/houston-common-ui';
 import { BackUpTask } from "@45drives/houston-common-lib";
 import { backUpSetupConfigKey } from "../../keys/injection-keys";
 

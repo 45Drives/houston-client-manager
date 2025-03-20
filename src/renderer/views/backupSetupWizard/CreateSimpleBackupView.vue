@@ -96,7 +96,7 @@
 import { CardContainer, CommanderToolTip } from "@45drives/houston-common-ui";
 import { inject, onMounted, ref, watch } from "vue";
 import { PlusIcon, MinusIcon } from "@heroicons/vue/20/solid";
-import { useWizardSteps } from '../../components/wizard';
+import { useWizardSteps } from '@45drives/houston-common-ui';
 import { Server } from '../../types'
 import { backUpSetupConfigKey } from "../../keys/injection-keys";
 import MessageDialog from '../../components/MessageDialog.vue';

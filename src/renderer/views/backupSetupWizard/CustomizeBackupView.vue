@@ -90,7 +90,7 @@
 
 <script setup lang="ts">
 import { CardContainer, CommanderToolTip, Modal } from "@45drives/houston-common-ui";
-import { useWizardSteps } from '../../components/wizard';
+import { useWizardSteps } from '@45drives/houston-common-ui';
 import { inject, ref, reactive, watch, nextTick } from "vue";
 import { PlusIcon, MinusIcon } from "@heroicons/vue/20/solid";
 import { backUpSetupConfigKey } from "../../keys/injection-keys";

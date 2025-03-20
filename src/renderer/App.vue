@@ -52,7 +52,8 @@ import { useAdvancedModeState } from './composables/useAdvancedState';
 import { reportError, reportSuccess } from './components/NotificationView.vue';
 import NotificationView from './components/NotificationView.vue';
 import { Server } from './types';
-import { useWizardSteps } from './components/wizard'
+import { useWizardSteps } from '@45drives/houston-common-ui'
+
 import StorageSetupWizard from './views/storageSetupWizard/Wizard.vue';
 import BackUpSetupWizard from './views/backupSetupWizard/Wizard.vue';
 import { serverInfoInjectionKey } from './keys/injection-keys';

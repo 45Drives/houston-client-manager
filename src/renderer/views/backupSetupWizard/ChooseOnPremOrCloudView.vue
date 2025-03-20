@@ -97,7 +97,7 @@
 import { ref } from 'vue';
 import CardContainer from '../../components/CardContainer.vue';
 import { CommanderToolTip } from '../../components/commander';
-import { useWizardSteps } from '../../components/wizard';
+import { useWizardSteps } from '@45drives/houston-common-ui';
 import { Server } from '../../types';
 import MessageDialog from '../../components/MessageDialog.vue';
 
