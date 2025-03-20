@@ -14,7 +14,7 @@
           @change="handleSelection(backUpTask)" class="form-checkbox h-5 w-5 text-blue-600" />
           <span>Folder:</span>
           <div class="space-y-2 border rounded-lg border-gray-500 p-2"> {{ backUpTask.source }}</div>
-          <span>Backup Loation:</span>
+          <span>Backup Location:</span>
           <div class="space-y-2 border rounded-lg border-gray-500 p-2"> {{ backUpTask.target }}</div>
       </label>
 
@@ -49,11 +49,15 @@ const emit = defineEmits<{
 
 // Emit event when a backUpTask is selected
 const handleSelection = (backUpTask: BackUpTask) => {
+  console.log("selectedBackUp.value" +selectedBackUp)
+
   if (selectedBackUp.value?.source === backUpTask.source && selectedBackUp.value?.target === backUpTask.target) {
     selectedBackUp.value = null;
+
     emit('backUpTaskSelected', null);
   } else {
     selectedBackUp.value = backUpTask;
+    console.log("selectedBackUp.value" +selectedBackUp.value.target)
     emit('backUpTaskSelected', backUpTask);
   }
 };
