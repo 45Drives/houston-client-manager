@@ -46,7 +46,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, provide, ref } from 'vue';
+import { onMounted, provide, ref, unref } from 'vue';
 import { useDarkModeState } from './composables/useDarkModeState';
 import { useAdvancedModeState } from './composables/useAdvancedState';
 import { reportError, reportSuccess } from './components/NotificationView.vue';
@@ -152,12 +152,11 @@ window.electron.ipcRenderer.on('discovered-servers', (_event, discoveredServers:
 // Handle server click to open the website
 const openServerWebsite = (server: Server | null) => {
 
-  console.log(server);
-
   currentServer.value = server;
   let newUrl = "";
   if (server) {
-
+    console.log('server:', server);
+    console.log('server.ip:', server.ip);
     newUrl = `https://${server.ip}:9090/super-simple-setup-test#dark=${darkModeState.value}&advanced=${advancedState.value}&client_ip=${clientip.value}&server_ip=${server.ip}`;
 
   } else {
@@ -236,7 +235,10 @@ const onWebViewLoaded = async () => {
 }
 
 const onWelcomeWizardComplete = (server: Server) => {
-  loginRequest(server)
+  console.log("server before unref:", server);
+  const realServer = unref(server);
+  console.log("server after unref:", realServer);
+  loginRequest(realServer)
   showWelcomeSetupWizard.value = false;
   showWebView.value = true;
   showBackUpSetupWizard.value = false;

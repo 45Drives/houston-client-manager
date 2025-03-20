@@ -33,8 +33,9 @@
                 </div>
                 <div class="text-start w-[50%] flex items-center">
                   <text class="text-default font-semibold text-left">When:</text>
+                  <text v-if="task.schedule.repeatFrequency=='hour'" class="text-default font-semibold text-left px-4">{{`Backup will run ${formatFrequency(task.schedule.repeatFrequency)} starting on ${task.schedule.startDate.toDateString()}`}}</text>
 
-                  <text class="text-default font-semibold text-left px-4">{{`Backup will happen ${formatFrequency(task.schedule.repeatFrequency)} at 9:00 AM starting ${task.schedule.startDate.toDateString()}`}}</text>
+                  <text v-else class="text-default font-semibold text-left px-4">{{`Backup will happen ${formatFrequency(task.schedule.repeatFrequency)} at 9:00 AM starting ${task.schedule.startDate.toDateString()}`}}</text>
                 </div>
             </div>
         </div>
