@@ -1,4 +1,4 @@
-import { InjectionKey, computed, ref, provide, inject, Ref, ComputedRef, WritableComputedRef, Component, reactive } from "vue";
+import { InjectionKey, computed, ref, provide, inject, Ref, ComputedRef, WritableComputedRef, Component } from "vue";
 
 
 export type WizardState = {
@@ -8,6 +8,7 @@ export type WizardState = {
   completedSteps: Ref<boolean[]>;
   data: Record<string, any>;
   determineNextStep: (data: Record<string, any>, currentIndex: number) => number;
+  determinePreviousStep: (currentIndex: number) => number;
 };
 
 export { default as Wizard } from "./Wizard.vue";
@@ -16,6 +17,7 @@ export interface WizardStep {
   label: string;
   component: any;
   nextStep?: (data: Record<string, any>) => number; // Function for branching logic
+  previousStepIndex?: number; // Function for branching logic
 }
 
 // Function to generate a unique injection key for each wizard
@@ -44,9 +46,27 @@ export function defineWizardSteps(
   });
   const currentComponent = computed(() => steps[index.value]!.component);
 
-  const determineNextStep = (data: Record<string, any>, currentIndex: number) => {
+  const determineNextStep = (data: any, currentIndex: number) => {
     const step = steps[currentIndex];
-    return step.nextStep ? step.nextStep(data) : currentIndex + 1;
+    if (data.value) {
+      data = data.value;
+    }
+    const nextStepIndex = step.nextStep ? step.nextStep(data) : currentIndex + 1;
+    console.log(nextStepIndex)
+    console.log(data)
+    const nextStep = steps[nextStepIndex];
+
+    nextStep.previousStepIndex = currentIndex;
+
+    return nextStepIndex;
+  };
+
+  const determinePreviousStep = (currentIndex: number) => {
+    const step = steps[currentIndex];
+    if (step.previousStepIndex) {
+      return step.previousStepIndex;
+    }
+    return Math.max(0, currentIndex - 1);
   };
 
   const state: WizardState = {
@@ -56,6 +76,7 @@ export function defineWizardSteps(
     completedSteps: ref(steps.map(() => false)),
     data: ref<Record<string, any>>({}),
     determineNextStep,
+    determinePreviousStep,
   };
 
   provide(key, state);
@@ -85,7 +106,7 @@ export function useWizardSteps(id: string) {
     if (targetStep !== undefined) {
       state.index.value = targetStep; // Go to specific step
     } else {
-      state.index.value = Math.max(0, state.index.value - 1); // Default behavior
+      state.index.value = state.determinePreviousStep(state.index.value)
     }
   };
   

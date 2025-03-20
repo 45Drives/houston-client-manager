@@ -1,6 +1,6 @@
 <template>
 
-  <Wizard :id="props.id" :steps="steps" :onComplete="data => props.onComplete(data)"
+  <Wizard :id="props.id" :steps="steps" :onComplete="data => props.onComplete(data)" :hideHeader="true"
     class="h-full flex-1 text-default bg-default" />
 
 </template>
@@ -31,17 +31,15 @@ provide(backUpSetupConfigKey, reactive({
 }))
 
 const steps: WizardStep[] = [
-  { label: "Welcome", component: WelcomeView },
-  { label: "Manage Backups", component: ChooseManageView, nextStep: (data) => (data.choice === "createBackup" ? 2 : 3) },
-  { label: "Backup Setup Option", component: ChooseDifficultyView, nextStep: (data) => (data.choice === "simple" ? 6 : 7) },
-  { label: "Access Backups", component: AccessYourBackUpsView },
-  { label: "Access Backup", component: AccessBackUpView, nextStep: () => 7 },
-  { label: "Where To Store Backup", component: ChooseOnPremOrCloudView, nextStep: (data) => (data.choice === "onprem" ? 6 : 7) },
-  { label: "Create Simple Backup", component: CreateSimpleBackUpView,  nextStep: () => 8},
-  { label: "Create Custom BackUp", component: CustomizeBackupView },
-
-  { label: "Summary", component: SummaryView },
-  { label: "Complete", component: CompleteBackUpCreationView },
+  { label: "Welcome", component: WelcomeView }, //0
+  { label: "Manage Backups", component: ChooseManageView, nextStep: (data) => (data.choice === "createBackup" ? 2 : 3) }, //1
+  { label: "Backup Setup Option", component: ChooseDifficultyView, nextStep: (data) => (data.choice === "simple" ? 5 : 6)},//2
+  { label: "Access Backups", component: AccessYourBackUpsView, previousStepIndex: 2},//3
+  { label: "Access Backup", component: AccessBackUpView, nextStep: () => 7, previousStepIndex: 3},//4
+  { label: "Create Simple Backup", component: CreateSimpleBackUpView, nextStep: () => 8 },//5
+  { label: "Create Custom BackUp", component: CustomizeBackupView },//6
+  { label: "Summary", component: SummaryView },//7
+  { label: "Complete", component: CompleteBackUpCreationView },//8
 ];
 
 </script>
