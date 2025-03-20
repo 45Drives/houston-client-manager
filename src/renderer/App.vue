@@ -3,11 +3,11 @@
   <div class="w-screen h-screen overflow-hidden flex flex-col items-center justify-center text-default bg-default">
 
     <div v-if="isDev">
-      <button @click="showWelcomeSetupWizard = !showWelcomeSetupWizard" class="btn btn-secondary w-40 h-20">
+      <button @click="showWelcomeSetupWizard = !showWelcomeSetupWizard" class="btn btn-secondary">
         Storage Setup
       </button>
 
-      <button @click="showBackUpSetupWizard = !showBackUpSetupWizard" class="btn btn-secondary w-40 h-20">
+      <button @click="showBackUpSetupWizard = !showBackUpSetupWizard" class="btn btn-secondary">
         Backup Setup
       </button>
     </div>
