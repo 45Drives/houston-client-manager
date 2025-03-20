@@ -40,7 +40,7 @@
 <script setup lang="ts">
 import { CardContainer } from "@45drives/houston-common-ui";
 import { ref, onMounted, watch, inject, onUpdated, onActivated } from "vue";
-import { useWizardSteps } from "../../components/wizard";
+import { useWizardSteps } from "@45drives/houston-common-ui";
 import { EasySetupProgress, IPCRouter } from "@45drives/houston-common-lib";
 import { backUpSetupConfigKey } from "../../keys/injection-keys";
 

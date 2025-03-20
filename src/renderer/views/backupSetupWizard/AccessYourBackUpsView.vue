@@ -52,7 +52,7 @@
 <script setup lang="ts">
 import { BackUpTask } from '@45drives/houston-common-lib';
 import CardContainer from '../../components/CardContainer.vue';
-import { useWizardSteps } from '../../components/wizard';
+import { useWizardSteps } from '@45drives/houston-common-ui';
 import BackUpListView from './BackUpListView.vue';
 import { onActivated, ref } from 'vue';
 

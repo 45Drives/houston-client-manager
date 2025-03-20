@@ -59,7 +59,7 @@
 <script setup lang="ts">
 import CardContainer from '../../components/CardContainer.vue';
 import { ref, computed, watch } from 'vue';
-import { useWizardSteps } from '../../components/wizard';
+import { useWizardSteps } from '@45drives/houston-common-ui';
 import { IPCRouter } from '@45drives/houston-common-lib';
 
 const { completeCurrentStep, prevStep, wizardData } = useWizardSteps("backup");
