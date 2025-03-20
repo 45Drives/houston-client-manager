@@ -138,7 +138,26 @@ window.electron.ipcRenderer.on('discovered-servers', (_event, discoveredServers:
     servers.value = discoveredServers;
     if (discoveredServers.length > 0) {
 
-      selectedServer.value = discoveredServers[0];
+			const tasks = backUpSetupConfig?.backUpTasks;
+			if (tasks && tasks.length > 0) {
+
+				const task = tasks[0];
+				const target = task.target;
+
+				const potentialServer = discoveredServers.find(server => target.includes(server.ip));
+
+				if (potentialServer) {
+
+					selectedServer.value = potentialServer;
+				} else {
+					selectedServer.value = discoveredServers[0];
+				}
+
+			} else {
+
+				selectedServer.value = discoveredServers[0];
+			}
+
     }
   }
 });
@@ -244,6 +263,9 @@ const removeFolder = (index: number) => {
 };
 
 // Navigation
-const proceedToNextStep = () => completeCurrentStep();
+const proceedToNextStep = () => {
+  backUpSetupConfig?.backUpTasks.forEach(task => task.target = `${selectedServer.value?.name}.local:backup`)
+  completeCurrentStep();
+}
 const proceedToPreviousStep = () => prevStep();
 </script>

@@ -1,5 +1,5 @@
 {
-  "name": "electron-vue-template",
+  "name": "houston_client_manager",
   "version": "0.1.0",
   "description": "A minimal Electron + Vue application",
   "main": "main/src/main/main.js",
@@ -11,7 +11,7 @@
     "build:linux": "node scripts/build.js && electron-builder --linux",
     "test": "vitest run"
   },
-  "repository": "https://github.com/deluze/electron-vue-template",
+  "repository": "https://github.com/45Drives/houston-client-manager",
   "author": {
     "name": "Matt"
   },
