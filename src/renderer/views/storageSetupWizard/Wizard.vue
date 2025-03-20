@@ -1,12 +1,12 @@
 <template>
 
-  <Wizard :id="props.id" :steps="steps" :onComplete="data => props.onComplete(data)" :hideHeader="true"
+  <Wizard :id="props.id" :steps="steps" :onComplete="(data: any) => props.onComplete(data)" :hideHeader="true"
     class="h-full flex-1 text-default bg-default" />
 
 </template>
 
 <script setup lang="ts">
-import { Wizard } from '../../components/wizard';
+import { Wizard } from '@45drives/houston-common-ui';
 import WelcomeView from './WelcomeView.vue';
 import SettingUpHardwareView from './SettingUpHardwareView.vue';
 import DiscoveryNonSetupServersView from './DiscoveryNonSetupServersView.vue';
