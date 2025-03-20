@@ -35,9 +35,17 @@ const servers = ref<Server[]>([]);
 const selectedServer = ref<Server | null>(null);
 
 // Receive the discovered servers from the main process
-window.electron.ipcRenderer.on('discovered-servers', (_event, discoveredServers: Server[]) => {
-  // servers.value = discoveredServers;
-  servers.value = discoveredServers.filter(server => server.status !== "complete");
+window.electron.ipcRenderer.on('discovered-servers', async (_event, discoveredServers: Server[]) => {
+  const isDev = await window.electron.ipcRenderer.invoke("is-dev")
+
+  if (isDev) {
+
+    servers.value = discoveredServers;
+  } else {
+
+    servers.value = discoveredServers.filter(server => server.status !== "complete");
+  } 
+
 });
 
 watch(servers, () => {

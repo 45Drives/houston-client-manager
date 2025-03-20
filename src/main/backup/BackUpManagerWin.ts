@@ -2,6 +2,9 @@ import { BackUpManager } from "./types";
 import { BackUpTask, TaskSchedule } from "@45drives/houston-common-lib";
 import { spawnSync } from "child_process";
 import { getNoneQuotedScp, getScp, getSmbTargetFromSSHTarget, getSSHTargetFromSmbTarget } from "../utils";
+import sudo from 'sudo-prompt';
+import path from "path";
+import fs from 'fs';
 
 const TASK_ID = "HoustonBackUp";
 
@@ -81,7 +84,7 @@ export class BackUpManagerWin implements BackUpManager {
     }
 
   }
-  
+
   schedule(task: BackUpTask): void {
 
     const scp = getScp();
@@ -90,7 +93,7 @@ export class BackUpManagerWin implements BackUpManager {
     const powershellScript = `
 $sourcePath = "${task.source}"
 $destinationPath = "${getSSHTargetFromSmbTarget(task.target)}"
-$mirror = ${task.mirror ? "true" : "false"}  # Set to $true if you want to mirror the directories
+$mirror = ${task.mirror ? "$true" : "$false"}  # Set to $true if you want to mirror the directories
 
 if ($mirror) {
     $backupCommand = "${scp} ""$sourcePath"" root@$destinationPath"
@@ -98,26 +101,38 @@ if ($mirror) {
     $backupCommand = "${scp} ""$sourcePath"" root@$destinationPath"
 }
 
-$taskTrigger = ${this.scheduleToTaskTrigger(task.schedule)}
+${this.scheduleToTaskTrigger(task.schedule)}
 
 $action = New-ScheduledTaskAction -Execute "cmd.exe" -Argument "/C $backupCommand"
 
-Register-ScheduledTask -Action $action -Trigger $taskTrigger -TaskName "${TASK_ID}_${crypto.randomUUID()}" 
+# Use SYSTEM account (runs always, no login required)
+$principal = New-ScheduledTaskPrincipal -UserId "SYSTEM" -LogonType ServiceAccount -RunLevel Highest
+
+$task = Register-ScheduledTask -Action $action -Trigger $taskTrigger -Principal $principal -TaskName "${TASK_ID}_${crypto.randomUUID()}"
+
+${this.dailyTaskTriggerUpdate(task.schedule)}
+
 `;
 
-    // Run PowerShell command with spawnSync
-    const result = spawnSync('powershell', ['-Command', powershellScript]);
+    const options = {
+      name: 'Houston Client Manager'
+    };
 
-    // Check if the process ran successfully
-    if (result.error) {
-      console.error(`Error executing PowerShell script: ${result.error.message}`);
-      console.error(`PowerShell script: ${powershellScript}`);
-    } else {
-      console.log('Backup task scheduled successfully.');
-      console.log(`Standard Output: ${result.stdout.toString()}`);
-      console.log(`Standard Error: ${result.stderr.toString()}`);
-    }
+    // Save to file
+    const scriptPath = path.join(__dirname, 'create_task.ps1');
+    fs.writeFileSync(scriptPath, powershellScript);
+
+    sudo.exec(`powershell -ExecutionPolicy Bypass -File "${scriptPath}"`, options, (error, stdout, stderr) => {
+      if (error) {
+        console.error(`Error: ${error}`);
+        return;
+      }
+      console.log(`stdout: ${stdout}`);
+      console.log(`stderr: ${stderr}`);
+    });
+
   }
+
 
   unschedule(task: BackUpTask): void {
     const powershellScript = `
@@ -137,6 +152,20 @@ Unregister-ScheduledTask -TaskName "${task.description}" -Confirm:$false
     }
   }
 
+  protected  dailyTaskTriggerUpdate(schedule: TaskSchedule) {
+    const dailyTaskTriggerUpdate =`
+$task.Triggers.Repetition.Duration = "P1D"
+$task.Triggers.Repetition.Interval = "PT1H"
+$task | Set-ScheduledTask
+`;
+    if (schedule.repeatFrequency.toLocaleLowerCase() === "hour") {
+
+      return dailyTaskTriggerUpdate;
+    } else {
+      return ""
+    }
+  }
+
   protected scheduleToTaskTrigger(sched: TaskSchedule): string | undefined {
 
     console.log(sched);
@@ -147,26 +176,22 @@ Unregister-ScheduledTask -TaskName "${task.description}" -Confirm:$false
       case "hour":
         return `
 $startTime = "${startDate}"
-$taskTrigger = New-ScheduledTaskTrigger -At $startTime -Daily
-$taskTrigger.Repetition = New-ScheduledTaskTrigger -Once -At $startTime -RepetitionInterval (New-TimeSpan -Hours 1)
+$taskTrigger = New-ScheduledTaskTrigger -Daily -At $startTime
 `;
       case "day":
         return `
 $startTime = "${startDate}"
 $taskTrigger = New-ScheduledTaskTrigger -At $startTime -Daily
-$taskTrigger.RepetitionInterval = (New-TimeSpan -Days 1)
 `;
       case "week":
         return `
 $startTime = "${startDate}"
 $taskTrigger = New-ScheduledTaskTrigger -At $startTime -Weekly
-$taskTrigger.RepetitionInterval = (New-TimeSpan -Weeks 1)
 `;
       case "month":
         return `
 $startTime = "${startDate}"
 $taskTrigger = New-ScheduledTaskTrigger -At $startTime -Monthly
-$taskTrigger.RepetitionInterval = (New-TimeSpan -Months 1)
 `;
       default:
         console.error("RepeatFrequency unknown", sched.repeatFrequency)
@@ -282,10 +307,10 @@ $taskTrigger.RepetitionInterval = (New-TimeSpan -Months 1)
 
       const mirror = command.includes("--delete");
       command = command.replace("/C " + getNoneQuotedScp(), '')
-      .replace("--delete", "")
-      .replace("\"", "")
-      .replace("\"", "")
-      .replace("root@", "").trim();
+        .replace("--delete", "")
+        .replace("\"", "")
+        .replace("\"", "")
+        .replace("root@", "").trim();
 
       console.log(command)
 

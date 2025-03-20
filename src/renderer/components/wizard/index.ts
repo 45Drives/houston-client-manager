@@ -48,9 +48,7 @@ export function defineWizardSteps(
 
   const determineNextStep = (data: any, currentIndex: number) => {
     const step = steps[currentIndex];
-    if (data.value) {
-      data = data.value;
-    }
+
     const nextStepIndex = step.nextStep ? step.nextStep(data) : currentIndex + 1;
     console.log(nextStepIndex)
     console.log(data)
@@ -74,7 +72,7 @@ export function defineWizardSteps(
     index,
     currentComponent,
     completedSteps: ref(steps.map(() => false)),
-    data: ref<Record<string, any>>({}),
+    data: {},
     determineNextStep,
     determinePreviousStep,
   };
@@ -117,7 +115,7 @@ export function useWizardSteps(id: string) {
 
   const completeCurrentStep = (gotoNext: boolean = true, data: Record<string, any> = {}) => {
     state.completedSteps.value![state.index.value] = true;
-    state.data.value = { ...state.data, ...data }; // Store data for decision-making
+    state.data = data; // Store data for decision-making
     if (gotoNext) {
       nextStep();
     }
