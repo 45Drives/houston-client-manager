@@ -3,34 +3,36 @@
   <div class="w-screen h-screen overflow-hidden flex flex-col items-center justify-center text-default bg-default">
 
     <div v-if="isDev">
-      <button @click="showWelcomeSetupWizard = !showWelcomeSetupWizard" class="btn btn-secondary w-40 h-20">
+      <button @click="showWizard('storage')" class="btn btn-secondary w-40 h-min p-2 mx-2">
         Storage Setup
       </button>
 
-      <button @click="showBackUpSetupWizard = !showBackUpSetupWizard" class="btn btn-secondary w-40 h-20">
+      <button @click="showWizard('backup')" class="btn btn-secondary w-40 h-min p-2 mx-2">
         Backup Setup
       </button>
     </div>
 
-    <StorageSetupWizard v-if="showWelcomeSetupWizard" id="setup" :onComplete="onWelcomeWizardComplete"
-      class="h-full flex-1 text-default bg-default" />
+    <div class="w-full h-full" v-show="showWelcomeSetupWizard">
+      <StorageSetupWizard id="setup" :onComplete="onWelcomeWizardComplete" />
+    </div>
+    <div class="w-full h-full" v-show="showBackUpSetupWizard">
+      <BackUpSetupWizard id="backup" :onComplete="onBackUpWizardComplete" />
+    </div>
 
-    <BackUpSetupWizard v-if="showBackUpSetupWizard" id="backup" :onComplete="onBackUpWizardComplete"
-      class="h-full flex-1 text-default bg-default" />
 
     <webview v-show="showWebView && !loadingWebview" id="myWebview" title="test" :src="currentUrl" allowpopups
       nodeintegration allow-same-origin allow-scripts partition="persist:authSession"
       webpreferences="javascript=yes,webSecurity=no,enable-cookies=true,nodeIntegration=false,contextIsolation=true"
       ref="webview" @did-finish-load="onWebViewLoaded" />
 
-    <div v-if="loadingWebview">
+    <div v-if="loadingWebview" class="p-4">
       <p class="w-3/4 text-2xl">
         Give us a few while we login...
       </p>
       <div id="spinner" class="spinner"></div>
     </div>
 
-    <div v-if="scanningNetworkForServers">
+    <div v-if="scanningNetworkForServers" class="p-4">
       <p class="w-3/4 text-2xl">
         Give us a few while we scan for connected servers...
       </p>
@@ -80,7 +82,7 @@ IPCRouter.getInstance().addEventListener("action", (data) => {
 const isDev = ref(false);
 
 window.electron.ipcRenderer.invoke('is-dev').then(value => isDev.value = value);
-console.log(window.electron.ipcRenderer); 
+console.log(window.electron.ipcRenderer);
 
 const darkModeState = useDarkModeState();
 
@@ -114,6 +116,13 @@ window.electron.ipcRenderer.on('notification', (_event, message: string) => {
   }
 
 });
+
+const showWizard = (type: 'storage' | 'backup') => {
+  showWelcomeSetupWizard.value = type === 'storage';
+  showBackUpSetupWizard.value = type === 'backup';
+  showWebView.value = false;
+};
+
 
 onMounted(() => {
   setTimeout(() => {
