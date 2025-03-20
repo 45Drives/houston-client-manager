@@ -30,7 +30,7 @@
         <!-- Backup Frequency -->
         <div class="flex py-2">
           <label class="w-[25%] py-2 text-default font-semibold text-start">
-            Backup Interval (Starts At 9:00 AM):
+            Backup Interval <span v-if="scheduleFrequency!='hour'">(Starts At 9:00 AM):</span>
           </label>
           <select v-model="scheduleFrequency"
             class="bg-default h-[3rem] text-default rounded-lg px-4 flex-1 border border-default">
@@ -169,6 +169,7 @@ watch(scheduleFrequency, (newSchedule) => {
 
     backUpSetupConfig.backUpTasks = backUpSetupConfig.backUpTasks.map((task) => {
       task.schedule.repeatFrequency = newSchedule;
+      task.schedule.startDate = getNextScheduleDate(newSchedule)
       return task;
     });
   }
@@ -236,7 +237,7 @@ const handleFolderSelect = async () => {
 
       //  Add New Folder if No Conflicts
       const newTask = {
-        schedule: { startDate: new Date(), repeatFrequency: scheduleFrequency.value },
+        schedule: { startDate: getNextScheduleDate(scheduleFrequency.value), repeatFrequency: scheduleFrequency.value },
         description: `Backup task for ${folderName}`,
         source: folderPath,
         target: `${selectedServer.value?.name}.local:backup`,
@@ -261,6 +262,43 @@ const removeFolder = (index: number) => {
     backUpSetupConfig.backUpTasks = newBackUpTasks;
   }
 };
+
+function getNextScheduleDate(frequency: 'hour' | 'day' | 'week' | 'month'): Date {
+  const now = new Date();
+  const nextDate = new Date(now);
+
+  switch (frequency) {
+    case 'hour':
+      nextDate.setMinutes(0, 0, 0);
+      nextDate.setHours(now.getHours() + 1);
+      break;
+
+    case 'day':
+      nextDate.setHours(9, 0, 0, 0);
+      if (now >= nextDate) {
+        nextDate.setDate(nextDate.getDate() + 1);
+      }
+      break;
+
+    case 'week':
+      nextDate.setHours(9, 0, 0, 0);
+      nextDate.setDate(now.getDate() + 7);
+      break;
+
+    case 'month':
+      nextDate.setHours(9, 0, 0, 0);
+      const currentDay = now.getDate();
+      nextDate.setDate(currentDay);
+      nextDate.setMonth(now.getMonth() + 1);
+      if (nextDate.getDate() < currentDay) {
+        nextDate.setDate(0); // fallback to end of month
+      }
+      break;
+  }
+  console.log("nextDate ", nextDate)
+  
+  return nextDate;
+}
 
 // Navigation
 const proceedToNextStep = () => {
