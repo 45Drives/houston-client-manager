@@ -124,7 +124,7 @@ const startCloudSetup = () => {
 };
 
 const proceedToPreviousStep = () => {
-  prevStep(2);
+  prevStep();
 };
 
 </script>
