@@ -10,7 +10,6 @@
       <button @click="showWizard('backup')" class="btn btn-secondary w-40 h-min p-2 mx-2">
         Backup Setup
       </button>
-
     </div>
 
     <div class="w-full h-full" v-show="showWelcomeSetupWizard">
@@ -26,14 +25,14 @@
       webpreferences="javascript=yes,webSecurity=no,enable-cookies=true,nodeIntegration=false,contextIsolation=true"
       ref="webview" @did-finish-load="onWebViewLoaded" />
 
-    <div v-if="loadingWebview">
+    <div v-if="loadingWebview" class="p-4">
       <p class="w-3/4 text-2xl">
         Give us a few while we login...
       </p>
       <div id="spinner" class="spinner"></div>
     </div>
 
-    <div v-if="scanningNetworkForServers">
+    <div v-if="scanningNetworkForServers" class="p-4">
       <p class="w-3/4 text-2xl">
         Give us a few while we scan for connected servers...
       </p>
@@ -83,7 +82,7 @@ IPCRouter.getInstance().addEventListener("action", (data) => {
 const isDev = ref(false);
 
 window.electron.ipcRenderer.invoke('is-dev').then(value => isDev.value = value);
-console.log(window.electron.ipcRenderer); 
+console.log(window.electron.ipcRenderer);
 
 const darkModeState = useDarkModeState();
 
