@@ -11,7 +11,7 @@
       <div>
         <p class="text-gray-700 text-lg">
           Please provide your username and password to access the backup folder on the server at
-          <strong class="text-blue-600">{{ backupTask.target }}</strong>.
+          <strong class="text-blue-600">{{ backupTask.target }}</strong>
         </p>
         <p class="text-gray-700 text-lg mt-2">
           We will automatically open the backup folder once you provide your credentials.
@@ -59,20 +59,18 @@
 
 <script setup lang="ts">
 import CardContainer from '../../components/CardContainer.vue';
-import { ref, computed } from 'vue';
+import { ref, computed, watch } from 'vue';
 import { useWizardSteps } from '../../components/wizard';
 import { IPCRouter } from '@45drives/houston-common-lib';
 
 const { completeCurrentStep, prevStep, wizardData } = useWizardSteps("backup");
 
-// Reactive variables for username and password
+const backupTask = computed(() => wizardData.value);  // if wizardData is a ref// Reactive variables for username and password
 const username = ref('');
 const password = ref('');
 
 // Check if the "Open" button should be disabled
 const isButtonDisabled = computed(() => !username.value || !password.value);
-const backupTask = wizardData;
-console.log(wizardData);
 
 // Method to handle the "Open" button action
 const handleOpen = () => {
@@ -83,10 +81,10 @@ const handleOpen = () => {
     console.log('Attempting to open server with:', {
       username: username.value,
       password: password.value,
-      target: backupTask.target,
+      target: backupTask.value?.target,
     });
 
-    const [host, share] = backupTask.target.split(":");
+    const [host, share] = backupTask.value?.target.split(":");
 
     console.log("Host:", host);  // Output: "hl4-test.local"
     console.log("Share:", share); // Output: "backups"

@@ -14,8 +14,11 @@ export class BackUpManagerLin implements BackUpManager {
       return [];
     }
     const cronFileContents = fs.readFileSync(this.cronFilePath, "utf-8");
-    const cronEntries = cronFileContents.split(/[\r\n]+/);
-    return cronEntries.map((cron) => this.cronToBackupTask(cron)).filter(task => task !== null) as BackUpTask[];
+    const cronEntries = cronFileContents
+    .split(/[\r\n]+/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0 && !line.startsWith('#'));
+      return cronEntries.map((cron) => this.cronToBackupTask(cron)).filter(task => task !== null) as BackUpTask[];
   }
 
   schedule(task: BackUpTask) {
@@ -76,7 +79,6 @@ export class BackUpManagerLin implements BackUpManager {
     const dayRe = /^(\d+) (\d+) \* \* \*/;
     const weekRe = /^(\d+) (\d+) \* \* (\d+)/;
     const monthRe = /^(\d+) (\d+) (\d+) \* \*/;
-
     let schedule: TaskSchedule;
 
     let match: RegExpExecArray | null;
@@ -140,14 +142,13 @@ export class BackUpManagerLin implements BackUpManager {
         startDate,
       };
     } else {
-      throw new Error("Invalid cron format: " + cron);
-    }
+      return null;    }
 
     const mirror = cron.includes("--delete");
     const description = cron.split("#")[1].trim();
 
     cron = cron.split("#")[0];
-    cron = cron.replace("/C " + getRsync(), '').replace("--delete", "").replace("root@", "").trim();
+    //cron = cron.replace("/C " + getRsync(), '').replace("--delete", "").replace("root@", "").trim();
 
     const regex = /([^\s]+(?:\s[^\s]+)*)\s+([^\s]+(?:\s[^\s]+)*)/;
 
@@ -155,12 +156,21 @@ export class BackUpManagerLin implements BackUpManager {
     const matchSourceTarget = cron.match(regex);
 
     if (matchSourceTarget) {
-      const sourcePath = match[1]?.toString();
-      const destinationPath = getSmbTargetFromSSHTarget(match[2]?.toString());
-      if (!sourcePath || !destinationPath) {
+      
+      const sourceLine = matchSourceTarget[1]?.toString();
+      const pathMatch = sourceLine.match(/['"]\/([^'"]+)['"]/);
+      const sourcePath = pathMatch ? pathMatch[1] : null;
+      const rawDestination = matchSourceTarget[2]?.toString();
+      const rawDestinationClean = rawDestination.trim().replace(/^['"]|['"]$/g, '');
+      const destinationPath = rawDestinationClean.replace(/^[^@]+@/, '');
+            if (!sourcePath || !destinationPath) {
         return null;
       }
-
+      const sourceMatch = cron.match(/['"]([^'"]+)['"]\s*$/) || cron.match(/(\S+)\s*$/);
+     if (!sourcePath) {
+      console.warn("⚠️ Could not extract source folder from cron line:", cron);
+      return null;
+    }
       return {
         schedule: schedule,
         mirror: mirror,
