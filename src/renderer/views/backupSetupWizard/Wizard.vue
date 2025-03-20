@@ -6,7 +6,7 @@
 </template>
 
 <script setup lang="ts">
-import { Wizard, WizardStep } from '../../components/wizard';
+import { Wizard, WizardStep } from '@45drives/houston-common-ui';
 import ChooseManageView from './ChooseManageView.vue';
 import ChooseDifficultyView from './ChooseDifficultyView.vue';
 import AccessYourBackUpsView from './AccessYourBackUpsView.vue';
@@ -19,7 +19,6 @@ import CustomizeBackupView from './CustomizeBackupView.vue';
 import CompleteBackUpCreationView from './CompleteBackUpCreationView.vue';
 import { provide, reactive } from 'vue';
 import { backUpSetupConfigKey } from '../../keys/injection-keys';
-import ChooseOnPremOrCloudView from './ChooseOnPremOrCloudView.vue';
 
 const props = defineProps<{
   id: string,
