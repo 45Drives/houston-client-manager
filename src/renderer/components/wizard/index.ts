@@ -97,7 +97,6 @@ export function useWizardSteps(id: string) {
   const completeCurrentStep = (gotoNext: boolean = true, data: Record<string, any> = {}) => {
     state.completedSteps.value![state.index.value] = true;
     state.data.value = { ...state.data, ...data }; // Store data for decision-making
-    console.log("nextStep ",data )
     if (gotoNext) {
       nextStep();
     }
