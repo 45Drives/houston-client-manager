@@ -79,7 +79,6 @@ export class BackUpManagerLin implements BackUpManager {
     const dayRe = /^(\d+) (\d+) \* \* \*/;
     const weekRe = /^(\d+) (\d+) \* \* (\d+)/;
     const monthRe = /^(\d+) (\d+) (\d+) \* \*/;
-    console.log("cron " + cron)
     let schedule: TaskSchedule;
 
     let match: RegExpExecArray | null;
@@ -143,7 +142,6 @@ export class BackUpManagerLin implements BackUpManager {
         startDate,
       };
     } else {
-      console.warn("⚠️ Skipping invalid cron line:", cron);
       return null;    }
 
     const mirror = cron.includes("--delete");
@@ -156,7 +154,6 @@ export class BackUpManagerLin implements BackUpManager {
 
     // Execute regex on the input command
     const matchSourceTarget = cron.match(regex);
-    console.log("matchSourceTarget  "+ matchSourceTarget)
 
     if (matchSourceTarget) {
       
