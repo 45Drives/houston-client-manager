@@ -1,4 +1,4 @@
-import { InjectionKey, computed, ref, provide, inject, Ref, ComputedRef, WritableComputedRef, Component } from "vue";
+import { InjectionKey, computed, ref, provide, inject, Ref, ComputedRef, WritableComputedRef, Component, reactive } from "vue";
 
 
 export type WizardState = {
@@ -54,7 +54,7 @@ export function defineWizardSteps(
     index,
     currentComponent,
     completedSteps: ref(steps.map(() => false)),
-    data: {},
+    data: ref<Record<string, any>>({}),
     determineNextStep,
   };
 
@@ -96,8 +96,7 @@ export function useWizardSteps(id: string) {
 
   const completeCurrentStep = (gotoNext: boolean = true, data: Record<string, any> = {}) => {
     state.completedSteps.value![state.index.value] = true;
-    state.data = { ...state.data, ...data }; // Store data for decision-making
-
+    state.data.value = { ...state.data, ...data }; // Store data for decision-making
     if (gotoNext) {
       nextStep();
     }
