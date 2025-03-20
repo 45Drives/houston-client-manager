@@ -25,7 +25,7 @@ PASSWORD="$4"
 SMB_PATH="//$SMB_HOST/$SMB_SHARE"
 
 # Define the mount point
-MOUNT_POINT="/mnt/smb_share"
+MOUNT_POINT="/mnt/$SMB_SHARE"
 
 # Extract SMB server IP
 SMB_SERVER=$(echo "$SMB_PATH" | awk -F'/' '{print $3}')
@@ -54,11 +54,11 @@ echo -e "username=$USERNAME\npassword=$PASSWORD" | sudo tee "$CREDENTIALS_FILE" 
 sudo chmod 600 "$CREDENTIALS_FILE"
 
 # Add entry to /etc/fstab if not present
-FSTAB_ENTRY="$SMB_PATH $MOUNT_POINT cifs credentials=$CREDENTIALS_FILE,vers=3.0,uid=$(id -u),gid=$(id -g),dir_mode=0700,file_mode=0600,forceuid,forcegid 0 0"
+# FSTAB_ENTRY="$SMB_PATH $MOUNT_POINT cifs credentials=$CREDENTIALS_FILE,vers=3.0,uid=$(id -u),gid=$(id -g),dir_mode=0700,file_mode=0600,forceuid,forcegid 0 0"
 
-if ! grep -q "$SMB_PATH" /etc/fstab; then
-    echo "$FSTAB_ENTRY" | sudo tee -a /etc/fstab
-fi
+# if ! grep -q "$SMB_PATH" /etc/fstab; then
+#     echo "$FSTAB_ENTRY" | sudo tee -a /etc/fstab
+# fi
 
 # Mount the SMB share
 sudo mount -a

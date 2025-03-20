@@ -71,7 +71,7 @@ const proceedToNextStep = async () => {
   }
 };
 const proceedToPreviousStep = async () => {
-  prevStep(1);
+  prevStep();
 };
 
 </script>
