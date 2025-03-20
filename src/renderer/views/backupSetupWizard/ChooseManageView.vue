@@ -61,7 +61,7 @@ import CardContainer from '../../components/CardContainer.vue';
 import { CommanderToolTip } from '../../components/commander';
 import { useWizardSteps } from '../../components/wizard';
 
-const { completeCurrentStep, prevStep, steps, activeStepIndex } = useWizardSteps("backup");
+const { completeCurrentStep, prevStep } = useWizardSteps("backup");
 
 const startCreateBackupSchedualSetup = () => {
   completeCurrentStep(true, { choice: "createBackup" });
