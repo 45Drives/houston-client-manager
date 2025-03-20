@@ -8,6 +8,7 @@ const props = defineProps<{
   id: string,
   steps: WizardStep[];
   onComplete: (data: any) => void;
+  hideHeader?: boolean;
 }>();
 
 console.log(props.id);
@@ -30,7 +31,7 @@ watch(
 
 <template>
   <div class="flex flex-col">
-    <StepsHeader v-bind="state" />
+    <StepsHeader v-if="!hideHeader" v-bind="state" />
     <WizardStepView v-bind="state" class="grow" />
   </div>
 </template>
