@@ -2,7 +2,8 @@
 import { createWizardInjectionKey, defineWizardSteps, type WizardStep } from "./index";
 import WizardStepView from "./WizardStepView.vue";
 import StepsHeader from "./StepsHeader.vue";
-import { defineProps, watch } from "vue";
+import { computed, defineProps, ref, watch } from "vue";
+import ProgressBar from "./ProgressBar.vue";
 
 const props = defineProps<{
   id: string,
@@ -27,11 +28,19 @@ watch(
   },
   { deep: true } // Ensure it tracks changes inside the array
 );
+
+const progress = computed(() => {
+  const total = props.steps.length;
+  const current = state.index.value;
+  return Math.round((current / total) * 100);
+})
+
 </script>
 
 <template>
   <div class="flex flex-col">
     <StepsHeader v-if="!hideHeader" v-bind="state" />
+    <ProgressBar v-if="hideHeader" :percent="progress" />
     <WizardStepView v-bind="state" class="grow" />
   </div>
 </template>

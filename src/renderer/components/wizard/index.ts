@@ -1,4 +1,4 @@
-import { InjectionKey, computed, ref, provide, inject, Ref, ComputedRef, WritableComputedRef, Component, reactive } from "vue";
+import { InjectionKey, computed, ref, provide, inject, Ref, ComputedRef, WritableComputedRef, Component } from "vue";
 
 
 export type WizardState = {
@@ -46,13 +46,17 @@ export function defineWizardSteps(
   });
   const currentComponent = computed(() => steps[index.value]!.component);
 
-  const determineNextStep = (data: Record<string, any>, currentIndex: number) => {
+  const determineNextStep = (data: any, currentIndex: number) => {
     const step = steps[currentIndex];
+    if (data.value) {
+      data = data.value;
+    }
     const nextStepIndex = step.nextStep ? step.nextStep(data) : currentIndex + 1;
+    console.log(nextStepIndex)
+    console.log(data)
     const nextStep = steps[nextStepIndex];
 
     nextStep.previousStepIndex = currentIndex;
-    console.log("previous step: ", currentIndex)
 
     return nextStepIndex;
   };
@@ -99,11 +103,11 @@ export function useWizardSteps(id: string) {
   };
 
   const prevStep = (targetStep?: number) => {
-    // if (targetStep !== undefined) {
-    //   state.index.value = targetStep; // Go to specific step
-    // } else {
+    if (targetStep !== undefined) {
+      state.index.value = targetStep; // Go to specific step
+    } else {
       state.index.value = state.determinePreviousStep(state.index.value)
-    // }
+    }
   };
   
 
