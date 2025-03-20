@@ -234,6 +234,7 @@ const handleFolderSelect = async () => {
         return;
       }
 
+      
       //  Add New Folder if No Conflicts
       const newTask = {
         schedule: { startDate: new Date(), repeatFrequency: scheduleFrequency.value },

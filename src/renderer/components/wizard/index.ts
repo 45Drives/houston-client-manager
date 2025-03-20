@@ -8,6 +8,7 @@ export type WizardState = {
   completedSteps: Ref<boolean[]>;
   data: Record<string, any>;
   determineNextStep: (data: Record<string, any>, currentIndex: number) => number;
+  determinePreviousStep: (currentIndex: number) => number;
 };
 
 export { default as Wizard } from "./Wizard.vue";
@@ -16,6 +17,7 @@ export interface WizardStep {
   label: string;
   component: any;
   nextStep?: (data: Record<string, any>) => number; // Function for branching logic
+  previousStepIndex?: number; // Function for branching logic
 }
 
 // Function to generate a unique injection key for each wizard
@@ -46,7 +48,21 @@ export function defineWizardSteps(
 
   const determineNextStep = (data: Record<string, any>, currentIndex: number) => {
     const step = steps[currentIndex];
-    return step.nextStep ? step.nextStep(data) : currentIndex + 1;
+    const nextStepIndex = step.nextStep ? step.nextStep(data) : currentIndex + 1;
+    const nextStep = steps[nextStepIndex];
+
+    nextStep.previousStepIndex = currentIndex;
+    console.log("previous step: ", currentIndex)
+
+    return nextStepIndex;
+  };
+
+  const determinePreviousStep = (currentIndex: number) => {
+    const step = steps[currentIndex];
+    if (step.previousStepIndex) {
+      return step.previousStepIndex;
+    }
+    return Math.max(0, currentIndex - 1);
   };
 
   const state: WizardState = {
@@ -56,6 +72,7 @@ export function defineWizardSteps(
     completedSteps: ref(steps.map(() => false)),
     data: {},
     determineNextStep,
+    determinePreviousStep,
   };
 
   provide(key, state);
@@ -82,11 +99,11 @@ export function useWizardSteps(id: string) {
   };
 
   const prevStep = (targetStep?: number) => {
-    if (targetStep !== undefined) {
-      state.index.value = targetStep; // Go to specific step
-    } else {
-      state.index.value = Math.max(0, state.index.value - 1); // Default behavior
-    }
+    // if (targetStep !== undefined) {
+    //   state.index.value = targetStep; // Go to specific step
+    // } else {
+      state.index.value = state.determinePreviousStep(state.index.value)
+    // }
   };
   
 
