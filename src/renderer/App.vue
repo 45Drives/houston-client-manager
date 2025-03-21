@@ -231,8 +231,7 @@ const onWebViewLoaded = async () => {
       console.error("Error:", error);
       loadingWebview.value = false;
     });
-
-  webview.value.openDevTools();
+    
 }
 
 const onWelcomeWizardComplete = (server: Server) => {

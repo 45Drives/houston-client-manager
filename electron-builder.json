@@ -1,5 +1,5 @@
 {
-    "appId": "com.electron.app",
+    "appId": "Houston Client Manager",
     "directories": {
         "output": "dist"
     },
@@ -7,10 +7,11 @@
         "oneClick": false,
         "perMachine": false,
         "allowToChangeInstallationDirectory": true,
-        "shortcutName": "Electron App"
+        "shortcutName": "Houston Client Manager"
     },
     "win": {
-        "target": "nsis"
+        "target": "nsis",
+        "compression": "maximum"
     },
     "linux": {
         "target": [
@@ -43,8 +44,36 @@
         "!build",
         "!dist",
         "!scripts",
-        "!**/*.test.js", 
-        "!**/*.test.ts"
+        "!houston-common",
+        "!**/*.test.js",
+        "!**/*.test.ts",
+        "!**/*.md",
+        "!**/*.config.js",
+        "!**/*.config.ts",
+        "!**/*.config.cjs",
+        "!**/package-lock.json",
+        "!**/.git*",
+        "!**/__tests__/**",
+        "!**/*.map",
+        "!**/MakeFile",
+        "!**/.yarn/**",
+        "!**/node_modules/**/.cache",
+        "!**/node_modules/**/.vscode",
+        "!**/node_modules/**/src/**",
+        "!**/node_modules/**/docs/**",
+        "!**/node_modules/**/example*/**",
+        "!**/node_modules/**/@esbuild",
+        "!**/node_modules/**/@rollup",
+        "!**/node_modules/*/test/**",
+        "!**/node_modules/*/.git/**",
+        "!**/node_modules/rollup/**",
+        "!**/node_modules/webpack/**",
+        "!**/node_modules/esbuild/**",
+        "!**/node_modules/vite/**",
+        "!**/node_modules/@vue/**",
+        "!**/node_modules/typescript/**",
+        "!**/node_modules/vue/**",
+        "!**/node_modules/@types/**"
     ],
     "extraResources": [
         {
@@ -54,5 +83,7 @@
                 "**/*"
             ]
         }
-    ]
+    ],
+    "asar": true,
+    "compression": "maximum"
 }

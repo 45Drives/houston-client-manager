@@ -33,19 +33,17 @@
     "tailwindcss": "^3.4.3",
     "typescript": "^5.2.2",
     "vite": "^4.5.0",
-    "vitest": "^3.0.7"
+    "vitest": "^3.0.7",
+    "esbuild": "^0.25.1"
   },
   "dependencies": {
     "@45drives/houston-common-css": "file:houston-common/houston-common-css",
     "@45drives/houston-common-lib": "file:houston-common/houston-common-lib",
     "@45drives/houston-common-ui": "file:houston-common/houston-common-ui",
     "asar": "^3.2.0",
-    "esbuild": "^0.25.1",
-    "express": "^4.21.2",
     "multicast-dns": "^7.2.5",
     "node-localstorage": "^3.0.5",
     "plist": "^3.1.0",
-    "postcss": "^8.5.1",
     "ssh2": "^1.16.0",
     "sudo-prompt": "^9.2.1",
     "vue": "^3.3.8"

@@ -1,12 +1,11 @@
-import { app, BrowserWindow, ipcMain, webContents, dialog } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, powerSaveBlocker } from 'electron';
 import { join } from 'path';
 import mdns from 'multicast-dns';
-import { powerSaveBlocker } from "electron";
 import os from 'os';
 import { Server } from './types';
 import mountSmbPopup from './smbMountPopup';
 import { IPCRouter } from '../../houston-common/houston-common-lib/lib/electronIPC/IPCRouter';
-import { formatDateForTask, getOS } from './utils';
+import { getOS } from './utils';
 import { BackUpManager, BackUpManagerLin, BackUpManagerMac, BackUpManagerWin, BackUpSetupConfigurator } from './backup';
 import { BackUpSetupConfig } from '@45drives/houston-common-lib';
 import { setupSsh } from './setupSsh';

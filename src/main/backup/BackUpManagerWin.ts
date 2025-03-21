@@ -4,6 +4,7 @@ import { formatDateForTask, getNoneQuotedScp, getScp, getSmbTargetFromSSHTarget,
 import sudo from 'sudo-prompt';
 import path from "path";
 import fs from 'fs';
+import os from 'os';
 
 const TASK_ID = "HoustonBackUp";
 
@@ -15,7 +16,8 @@ export class BackUpManagerWin implements BackUpManager {
     };
 
     // Save to file
-    const scriptPath = path.join(__dirname, `${scriptName}.ps1`);
+    const tempDir = os.tmpdir();
+    const scriptPath = path.join(tempDir, `${scriptName}.ps1`);
     fs.writeFileSync(scriptPath, powershellScript);
 
     return new Promise((resolve, reject) => {
