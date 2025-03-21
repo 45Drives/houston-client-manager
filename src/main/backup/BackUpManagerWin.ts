@@ -1,6 +1,6 @@
 import { BackUpManager } from "./types";
 import { BackUpTask, TaskSchedule } from "@45drives/houston-common-lib";
-import { getNoneQuotedScp, getScp, getSmbTargetFromSSHTarget, getSSHTargetFromSmbTarget } from "../utils";
+import { formatDateForTask, getNoneQuotedScp, getScp, getSmbTargetFromSSHTarget, getSSHTargetFromSmbTarget } from "../utils";
 import sudo from 'sudo-prompt';
 import path from "path";
 import fs from 'fs';
@@ -136,12 +136,13 @@ $task | Set-ScheduledTask
     }
   }
 
+
+  
   protected scheduleToTaskTrigger(sched: TaskSchedule): string | undefined {
 
     console.log(sched);
 
-    const startDate = sched.startDate.toISOString().replace('T', ' ').split('.')[0]; // e.g., "2025-02-25 10:00:00"
-
+    const startDate = formatDateForTask(sched.startDate); // e.g., "2025-02-25 10:00:00"
     switch (sched.repeatFrequency.toLowerCase()) {
       case "hour":
         return `

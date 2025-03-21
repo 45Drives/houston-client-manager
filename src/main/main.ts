@@ -6,7 +6,7 @@ import os from 'os';
 import { Server } from './types';
 import mountSmbPopup from './smbMountPopup';
 import { IPCRouter } from '../../houston-common/houston-common-lib/lib/electronIPC/IPCRouter';
-import { getOS } from './utils';
+import { formatDateForTask, getOS } from './utils';
 import { BackUpManager, BackUpManagerLin, BackUpManagerMac, BackUpManagerWin, BackUpSetupConfigurator } from './backup';
 import { BackUpSetupConfig } from '@45drives/houston-common-lib';
 import { setupSsh } from './setupSsh';
@@ -76,6 +76,7 @@ function createWindow() {
         if (message.type === 'configurBackUp') {
 
           message.config.backUpTasks.forEach(backUpTask => {
+
             backUpTask.schedule.startDate = new Date(backUpTask.schedule.startDate);
           })
 
