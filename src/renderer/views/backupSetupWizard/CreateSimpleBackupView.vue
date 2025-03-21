@@ -30,7 +30,7 @@
         <!-- Backup Frequency -->
         <div class="flex py-2">
           <label class="w-[25%] py-2 text-default font-semibold text-start">
-            Backup Interval <span v-if="scheduleFrequency!='hour'">(Starts At 9:00 AM):</span>
+            Backup Interval <span v-if="scheduleFrequency != 'hour'">(Starts At 9:00 AM):</span>
           </label>
           <select v-model="scheduleFrequency"
             class="bg-default h-[3rem] text-default rounded-lg px-4 flex-1 border border-default">
@@ -138,25 +138,25 @@ window.electron.ipcRenderer.on('discovered-servers', (_event, discoveredServers:
     servers.value = discoveredServers;
     if (discoveredServers.length > 0) {
 
-			const tasks = backUpSetupConfig?.backUpTasks;
-			if (tasks && tasks.length > 0) {
+      const tasks = backUpSetupConfig?.backUpTasks;
+      if (tasks && tasks.length > 0) {
 
-				const task = tasks[0];
-				const target = task.target;
+        const task = tasks[0];
+        const target = task.target;
 
-				const potentialServer = discoveredServers.find(server => target.includes(server.ip));
+        const potentialServer = discoveredServers.find(server => target.includes(server.ip));
 
-				if (potentialServer) {
+        if (potentialServer) {
 
-					selectedServer.value = potentialServer;
-				} else {
-					selectedServer.value = discoveredServers[0];
-				}
+          selectedServer.value = potentialServer;
+        } else {
+          selectedServer.value = discoveredServers[0];
+        }
 
-			} else {
+      } else {
 
-				selectedServer.value = discoveredServers[0];
-			}
+        selectedServer.value = discoveredServers[0];
+      }
 
     }
   }
@@ -170,6 +170,7 @@ watch(scheduleFrequency, (newSchedule) => {
     backUpSetupConfig.backUpTasks = backUpSetupConfig.backUpTasks.map((task) => {
       task.schedule.repeatFrequency = newSchedule;
       task.schedule.startDate = getNextScheduleDate(newSchedule)
+      console.log("some update task.startDate:", task.schedule.startDate);
       return task;
     });
   }
@@ -235,7 +236,7 @@ const handleFolderSelect = async () => {
         return;
       }
 
-      
+
       //  Add New Folder if No Conflicts
       const newTask = {
         schedule: { startDate: getNextScheduleDate(scheduleFrequency.value), repeatFrequency: scheduleFrequency.value },
@@ -244,6 +245,8 @@ const handleFolderSelect = async () => {
         target: `${selectedServer.value?.name}.local:backup`,
         mirror: false,
       };
+
+      console.log("NewTask.Startdate:", newTask.schedule.startDate);
 
       backUpSetupConfig.backUpTasks.push(newTask);
       selectedFolders.value.push({ name: folderName, path: folderPath });
@@ -297,7 +300,7 @@ function getNextScheduleDate(frequency: 'hour' | 'day' | 'week' | 'month'): Date
       break;
   }
   console.log("nextDate ", nextDate)
-  
+
   return nextDate;
 }
 
