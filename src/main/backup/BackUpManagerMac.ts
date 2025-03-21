@@ -9,15 +9,19 @@ import { getRsync } from "../utils";
 export class BackUpManagerMac implements BackUpManager {
   protected launchdDirectory: string = "/Library/LaunchDaemons";
 
-  queryTasks(): BackUpTask[] {
+  queryTasks(): Promise<BackUpTask[]> {
     const launchdFiles = fs.readdirSync(this.launchdDirectory);
-    return launchdFiles
+    const tasks = launchdFiles
       .filter(file => file.startsWith("com.backup-task"))
       .map(file => this.launchdToBackupTask(file))
       .filter(task => task !== null) as BackUpTask[];
+
+    return new Promise((resolve, _rejest) => {
+      resolve(tasks)
+    });
   }
 
-  schedule(task: BackUpTask): void {
+  schedule(task: BackUpTask): Promise<{ stdout: string, stderr: string }> {
     const plist = this.backupTaskToPlist(task);
     const plistFileName = `com.backup-task.${this.safeTaskName(task.description)}.plist`;
     const tempPlistPath = path.join("/tmp", plistFileName);
@@ -35,7 +39,10 @@ export class BackUpManagerMac implements BackUpManager {
       `launchctl load "${launchdPlistPath}"`
     ].join(" && ");
 
-    this.runAsAdmin(command);
+    return new Promise((resolve, reject) => {
+      this.runAsAdmin(command)
+      resolve({ stdout: "", stderr: "" });
+    });
   }
 
   unschedule(task: BackUpTask): void {
@@ -47,12 +54,12 @@ export class BackUpManagerMac implements BackUpManager {
         `launchctl unload "${plistFilePath}"`,
         `rm -f "${plistFilePath}"`
       ].join(" && ");
-  
+
       this.runAsAdmin(command);
     }
   }
 
-  private runAsAdmin(command: string, message: string = "This Houston Client Manager requires administrator privileges.") : void {
+  private runAsAdmin(command: string, message: string = "This Houston Client Manager requires administrator privileges."): void {
     execSync(`osascript -e 'display dialog "${message.replace(/"/g, '\\"')}" with title "Backup Scheduler" buttons {"OK"} default button 1'`);
     execSync(`osascript -e 'do shell script "${this.escapeForAppleScript(command)}" with administrator privileges'`);
   }
@@ -117,7 +124,7 @@ export class BackUpManagerMac implements BackUpManager {
   private launchdToBackupTask(fileName: string): BackUpTask | null {
     const plistFilePath = path.join(this.launchdDirectory, fileName);
     const plistContents = fs.readFileSync(plistFilePath, "utf-8");
-  
+
     let parsedPlist;
     try {
       parsedPlist = plist.parse(plistContents);
@@ -125,32 +132,32 @@ export class BackUpManagerMac implements BackUpManager {
       console.error(`Failed to parse plist: ${fileName}`, error);
       return null;
     }
-  
+
     // Extract ProgramArguments (source and target paths)
     const programArguments = parsedPlist['ProgramArguments'];
     if (!programArguments || programArguments.length < 4) {
       console.error('ProgramArguments not found or malformed in plist');
       return null;
     }
-  
+
     const source = programArguments[2]; // The third element in the array is the source path
     const target = programArguments[3]; // The fourth element in the array is the target path
-  
+
     // Extract schedule information from StartCalendarInterval
     const schedule = parsedPlist['StartCalendarInterval'] || {};
     const minute = schedule['Minute'] || 0;
     const hour = schedule['Hour'] || 0;
     const day = schedule['Day'] || 1; // Default to 1st day of the month
-  
+
     const taskSchedule: TaskSchedule = {
       repeatFrequency: "hour", // Default, adjust based on more complex logic if needed
       startDate: new Date(),
     };
-  
+
     taskSchedule.startDate.setMinutes(minute);
     taskSchedule.startDate.setHours(hour);
     taskSchedule.startDate.setDate(day);
-  
+
     return {
       schedule: taskSchedule,
       source,

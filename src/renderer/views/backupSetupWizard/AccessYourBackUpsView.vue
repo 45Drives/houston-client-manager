@@ -8,7 +8,7 @@
 
     <div class="flex flex-col h-full justify-center items-center">
       <p class="w-9/12 text-center text-2xl">
-        Select a backup from the list to view. You may need to log in—use the username and password from the initial setup.
+        Select a backup from the list to view. You may be prompted for password.
       </p>
 
       <br />
@@ -17,8 +17,6 @@
  
       <p class="w-9/12 text-center text-2xl">
         If your backup is not showing make sure you set it up correctly by going back and creating a backup plan.
-        <!-- <CommanderToolTip
-          :message="``" /> -->
       </p>
 
       <br />
@@ -54,7 +52,7 @@ import { BackUpTask } from '@45drives/houston-common-lib';
 import CardContainer from '../../components/CardContainer.vue';
 import { useWizardSteps } from '@45drives/houston-common-ui';
 import BackUpListView from './BackUpListView.vue';
-import { onActivated, ref } from 'vue';
+import { ref } from 'vue';
 
 const selectedBackUpTask = ref<BackUpTask | null>(null);
 const handleBackUpTaskSelected = (backUpTask: BackUpTask | null) => {

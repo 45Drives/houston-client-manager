@@ -62,7 +62,6 @@ const handleSelection = (backUpTask: BackUpTask) => {
   }
 };
 onActivated(fetchBackupTasks); // Runs when the component is displayed again
-onMounted(fetchBackupTasks);
 
 function fetchBackupTasks() {
   IPCRouter.getInstance().send('backend', 'action', 'requestBackUpTasks');

@@ -9,23 +9,33 @@ export class BackUpManagerLin implements BackUpManager {
   protected cronFilePath: string = "/etc/cron.d/houston-backup-manager";
   protected pkexec: string = "pkexec";
 
-  queryTasks(): BackUpTask[] {
+  queryTasks(): Promise<BackUpTask[]> {
     if (!fs.existsSync(this.cronFilePath)) {
-      return [];
+      return new Promise((resolve, _rejest) => {
+        resolve([])
+      });
     }
     const cronFileContents = fs.readFileSync(this.cronFilePath, "utf-8");
     const cronEntries = cronFileContents
-    .split(/[\r\n]+/)
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0 && !line.startsWith('#'));
-      return cronEntries.map((cron) => this.cronToBackupTask(cron)).filter(task => task !== null) as BackUpTask[];
+      .split(/[\r\n]+/)
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0 && !line.startsWith('#'));
+
+    const tasks = cronEntries.map((cron) => this.cronToBackupTask(cron)).filter(task => task !== null) as BackUpTask[];
+
+    return new Promise((resolve, _rejest) => {
+      resolve(tasks)
+    });
   }
 
-  schedule(task: BackUpTask) {
-    const cron = this.backupTaskToCron(task);
-    this.ensureCronFile();
-    fs.appendFileSync(this.cronFilePath, cron + "\n", "utf-8");
-    this.reloadCron();
+  schedule(task: BackUpTask): Promise<{ stdout: string, stderr: string }> {
+    return new Promise((resolve, reject) => {
+      const cron = this.backupTaskToCron(task);
+      this.ensureCronFile();
+      fs.appendFileSync(this.cronFilePath, cron + "\n", "utf-8");
+      this.reloadCron();
+      resolve({ stdout: "", stderr: "" });
+    });
   }
 
   unschedule(task: BackUpTask): void {
@@ -142,7 +152,8 @@ export class BackUpManagerLin implements BackUpManager {
         startDate,
       };
     } else {
-      return null;    }
+      return null;
+    }
 
     const mirror = cron.includes("--delete");
     const description = cron.split("#")[1].trim();
@@ -156,21 +167,21 @@ export class BackUpManagerLin implements BackUpManager {
     const matchSourceTarget = cron.match(regex);
 
     if (matchSourceTarget) {
-      
+
       const sourceLine = matchSourceTarget[1]?.toString();
       const pathMatch = sourceLine.match(/['"]\/([^'"]+)['"]/);
       const sourcePath = pathMatch ? pathMatch[1] : null;
       const rawDestination = matchSourceTarget[2]?.toString();
       const rawDestinationClean = rawDestination.trim().replace(/^['"]|['"]$/g, '');
       const destinationPath = rawDestinationClean.replace(/^[^@]+@/, '');
-            if (!sourcePath || !destinationPath) {
+      if (!sourcePath || !destinationPath) {
         return null;
       }
       const sourceMatch = cron.match(/['"]([^'"]+)['"]\s*$/) || cron.match(/(\S+)\s*$/);
-     if (!sourcePath) {
-      console.warn("⚠️ Could not extract source folder from cron line:", cron);
-      return null;
-    }
+      if (!sourcePath) {
+        console.warn("⚠️ Could not extract source folder from cron line:", cron);
+        return null;
+      }
       return {
         schedule: schedule,
         mirror: mirror,

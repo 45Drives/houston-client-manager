@@ -62,13 +62,13 @@ function createWindow() {
 
   IPCRouter.initBackend(mainWindow.webContents, ipcMain);
 
-  IPCRouter.getInstance().addEventListener('action', (data) => {
+  IPCRouter.getInstance().addEventListener('action', async (data) => {
 
     if (data === "requestBackUpTasks") {
       let backUpManager: BackUpManager | null = getBackUpManager();
 
       if (backUpManager !== null) {
-        IPCRouter.getInstance().send('renderer', 'sendBackupTasks', backUpManager.queryTasks());
+        IPCRouter.getInstance().send('renderer', 'sendBackupTasks', await backUpManager.queryTasks());
       }
     } else {
       try {

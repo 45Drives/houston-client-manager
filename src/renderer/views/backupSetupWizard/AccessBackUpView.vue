@@ -62,7 +62,7 @@ import { ref, computed, watch } from 'vue';
 import { useWizardSteps } from '@45drives/houston-common-ui';
 import { IPCRouter } from '@45drives/houston-common-lib';
 
-const { completeCurrentStep, prevStep, wizardData } = useWizardSteps("backup");
+const { prevStep, wizardData } = useWizardSteps("backup");
 
 const backupTask = computed(() => wizardData.value);  // if wizardData is a ref// Reactive variables for username and password
 const username = ref('');

@@ -1,9 +1,9 @@
 import { BackUpTask } from "@45drives/houston-common-lib"
 
 export interface BackUpManager {
-  queryTasks(): BackUpTask[]
+  queryTasks(): Promise<BackUpTask[]>
   unschedule(task: BackUpTask): void
-  schedule(task: BackUpTask): void
+  schedule(task: BackUpTask): Promise<{stdout: string, stderr: string}>
 }
 
 export const backupTaskTag = "houston-client-manager-backup-task"

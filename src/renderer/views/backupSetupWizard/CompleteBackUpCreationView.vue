@@ -4,32 +4,34 @@
       <div class="flex justify-center text-3xl">Congratulations</div>
     </template>
 
-    <div class="flex flex-row">
+    <!-- Complete Section -->
+    <div class="complete-section text-center">
 
-      <!-- Complete Section -->
-      <div class="complete-section">
-
-        <div v-for="completedStep in completedSteps">
-          <div class="smallcheckmark">✔ - {{ completedStep.message }}</div>
-        </div>
-
-        <div v-if="setupComplete === 'yes'">
-          <div class="checkmark">✔ - DONE! </div>
-        </div>
-
-        <p class="mb-6 text-center text-2xl">🎉 Congratulations! Your Backup Plan is Set! 🚀</p>
-        <p class="mb-6 text-center text-2xl">Great job! Your data is now protected with an automatic backup plan. No more worries—your files are safe and secure. Sit back, relax, and let the backups run!</p>
-        <p class="mb-6 text-center text-2xl">🔄 Your backups will run as scheduled—keeping your important files safe!</p>
-        <p class="mb-6 text-center text-2xl">Just click FINISH!</p>
+      <div v-for="completedStep in completedSteps">
+        <div class="smallcheckmark ">✔ - {{ completedStep.message }}</div>
       </div>
 
+      <div v-if="error" class="text-red-500">
+        🔴 {{ error }}
+      </div>
+
+      <div v-if="setupComplete === 'yes' && !error">
+        <div class="checkmark">✔ - DONE! </div>
+        <p class="mb-6 text-center text-2xl">🎉 Congratulations! Your Backup Plan is Set! 🚀</p>
+        <p class="mb-6 text-center text-2xl">Great job! Your data is now protected with an automatic backup plan. No
+          more
+          worries—your files are safe and secure. Sit back, relax, and let the backups run!</p>
+        <p class="mb-6 text-center text-2xl">🔄 Your backups will run as scheduled—keeping your important files safe!
+        </p>
+        <p class="mb-6 text-center text-2xl">Just click FINISH!</p>
+      </div>
     </div>
 
     <!-- Go to Home Button (visible once complete) -->
     <template #footer>
       <div class="button-group-row justify-end">
-        <button :disabled="setupComplete !== 'no'" class="btn btn-primary w-40 h-20"
-          @click="goHome">{{ "Finish!" }}</button>
+        <button :disabled="setupComplete !== 'yes'" class="btn btn-primary w-40 h-20" @click="goHome">{{ "Finish!"
+          }}</button>
       </div>
     </template>
 
@@ -39,15 +41,15 @@
 
 <script setup lang="ts">
 import { CardContainer } from "@45drives/houston-common-ui";
-import { ref, onMounted, watch, inject, onUpdated, onActivated } from "vue";
+import { ref, watch, inject, onActivated } from "vue";
 import { useWizardSteps } from "@45drives/houston-common-ui";
 import { EasySetupProgress, IPCRouter } from "@45drives/houston-common-lib";
 import { backUpSetupConfigKey } from "../../keys/injection-keys";
 
-
 const { reset } = useWizardSteps('backup');
 
 const setupComplete = ref<string>("no");
+const error = ref<string>();
 const completedSteps = ref<EasySetupProgress[]>([]);
 const backUpSetupConfig = inject(backUpSetupConfigKey);
 
@@ -62,6 +64,10 @@ function goHome(): void {
 }
 
 onActivated(() => {
+  completedSteps.value = [];
+  error.value = undefined;
+  setupComplete.value = 'no';
+  
   try {
     IPCRouter.getInstance().addEventListener('action', (data) => {
 
@@ -71,10 +77,20 @@ onActivated(() => {
         if (backUpSetupStatus.type === "backUpSetupStatus") {
           const status: EasySetupProgress = backUpSetupStatus.status;
           const newComplatedSteps = [...completedSteps.value];
-          newComplatedSteps.push(status);
+
+          if (status.message.startsWith("Error")) {
+
+            error.value = status.message;
+          } else {
+
+            newComplatedSteps.push(status);
+          }
+
           completedSteps.value = newComplatedSteps;
 
-          if (status.step === status.total) {
+          if (error.value) {
+            setupComplete.value = "yes";
+          } else if (status.step === status.total) {
             setupComplete.value = "yes";
           }
         }

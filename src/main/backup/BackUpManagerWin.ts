@@ -1,6 +1,5 @@
 import { BackUpManager } from "./types";
 import { BackUpTask, TaskSchedule } from "@45drives/houston-common-lib";
-import { spawnSync } from "child_process";
 import { getNoneQuotedScp, getScp, getSmbTargetFromSSHTarget, getSSHTargetFromSmbTarget } from "../utils";
 import sudo from 'sudo-prompt';
 import path from "path";
@@ -10,82 +9,78 @@ const TASK_ID = "HoustonBackUp";
 
 export class BackUpManagerWin implements BackUpManager {
 
-  queryTasks(): BackUpTask[] {
-    const command = 'powershell';
-    const args = [
-      '-Command',
-      `Get-ScheduledTask | Where-Object {$_.TaskName -like '*${TASK_ID}*'} | Select-Object TaskName, Triggers, Actions, State | ConvertTo-Json -depth 10`
-    ];
+  protected runScriptAdmin(powershellScript: string, scriptName: string): Promise<{ stdout: string, stderr: string }> {
+    const options = {
+      name: 'Houston Client Manager'
+    };
 
-    const argsShort = [
-      '-Command',
-      `Get-ScheduledTask | Where-Object {$_.TaskName -like '*${TASK_ID}*'} | Select-Object TaskName, Triggers, Actions, State | ConvertTo-Json`
-    ];
+    // Save to file
+    const scriptPath = path.join(__dirname, `${scriptName}.ps1`);
+    fs.writeFileSync(scriptPath, powershellScript);
 
-
-    // Use spawnSync to run the command synchronously
-    const result = spawnSync(command, args);
-    const resultShort = spawnSync(command, argsShort);
-
-    if (result.error) {
-      console.error('Error executing command:', result.error);
-      return [];
-    }
-
-
-    if (resultShort.error) {
-      console.error('Error executing command:', result.error);
-      return [];
-    }
-
-    try {
-      const tasks = JSON.parse(result.stdout.toString());
-      // const tasksShort = JSON.parse(resultShort.stdout.toString());
-      const tasksAsArray = Array.isArray(tasks) ? tasks : [tasks];
-
-      return tasksAsArray.map(task => {
-        const actionProps = task.Actions[0].CimInstanceProperties;
-        let command: string | null = null;
-        for (let i = 0; i < actionProps.length; i++) {
-          const prop = actionProps[i];
-          if (prop.Name === 'Arguments') {
-            command = prop.Value;
-            break;
-          }
-        }
-        if (!command) {
-          console.log("No Command:", actionProps)
-          return null;
-        }
-        const actionDetails = this.parseBackupCommand(command)
-        if (!actionDetails) {
-          console.log("task.Actions:", command)
-          return null;
-        }
-        const trigger = this.convertTriggersToTaskSchedule(task.Triggers);
-
-        if (!trigger) {
-          console.log("Failed to parse Trigger:", task.Triggers);
-          return null;
-        }
-
-        return {
-          description: task.TaskName as string,
-          schedule: trigger,
-          source: actionDetails.source,
-          target: actionDetails.target,
-          mirror: actionDetails.mirror
-        };
-      }).filter(task => task !== null) as BackUpTask[];
-
-    } catch (parseError) {
-      console.error('Error parsing JSON:', parseError);
-      return [];
-    }
+    return new Promise((resolve, reject) => {
+      sudo.exec(`powershell -ExecutionPolicy Bypass -File "${scriptPath}"`, options, (error, stdout, stderr) => {
+        if (error) return reject(error);
+        resolve({ stdout: stdout === undefined ? "" : stdout.toString(), stderr: stderr === undefined ? "" : stderr.toString() });
+      });
+    });
 
   }
 
-  schedule(task: BackUpTask): void {
+  queryTasks(): Promise<BackUpTask[]> {
+    const powerShellScript = `Get-ScheduledTask | Where-Object {$_.TaskName -like '*${TASK_ID}*'} | Select-Object TaskName, Triggers, Actions, State | ConvertTo-Json -depth 10`
+
+    return this.runScriptAdmin(powerShellScript, "query_tasks")
+      .then(result => {
+        try {
+          const tasks = JSON.parse(result.stdout.toString());
+          const tasksAsArray = Array.isArray(tasks) ? tasks : [tasks];
+
+          return tasksAsArray.map(task => {
+            const actionProps = task.Actions[0].CimInstanceProperties;
+            let command: string | null = null;
+            for (let i = 0; i < actionProps.length; i++) {
+              const prop = actionProps[i];
+              if (prop.Name === 'Arguments') {
+                command = prop.Value;
+                break;
+              }
+            }
+            if (!command) {
+              console.log("No Command:", actionProps)
+              return null;
+            }
+            const actionDetails = this.parseBackupCommand(command)
+            if (!actionDetails) {
+              console.log("task.Actions:", command)
+              return null;
+            }
+            const trigger = this.convertTriggersToTaskSchedule(task.Triggers);
+
+            if (!trigger) {
+              console.log("Failed to parse Trigger:", task.Triggers);
+              return null;
+            }
+
+            return {
+              description: task.TaskName as string,
+              schedule: trigger,
+              source: actionDetails.source,
+              target: actionDetails.target,
+              mirror: actionDetails.mirror
+            };
+          }).filter(task => task !== null) as BackUpTask[];
+
+        } catch (parseError) {
+          console.error('Error parsing JSON:', parseError);
+          return [];
+        }
+
+      });
+
+  }
+
+  schedule(task: BackUpTask): Promise<{ stdout: string, stderr: string }> {
 
     const scp = getScp();
 
@@ -114,23 +109,7 @@ ${this.dailyTaskTriggerUpdate(task.schedule)}
 
 `;
 
-    const options = {
-      name: 'Houston Client Manager'
-    };
-
-    // Save to file
-    const scriptPath = path.join(__dirname, 'create_task.ps1');
-    fs.writeFileSync(scriptPath, powershellScript);
-
-    sudo.exec(`powershell -ExecutionPolicy Bypass -File "${scriptPath}"`, options, (error, stdout, stderr) => {
-      if (error) {
-        console.error(`Error: ${error}`);
-        return;
-      }
-      console.log(`stdout: ${stdout}`);
-      console.log(`stderr: ${stderr}`);
-    });
-
+    return this.runScriptAdmin(powershellScript, "create_task");
   }
 
 
@@ -139,21 +118,12 @@ ${this.dailyTaskTriggerUpdate(task.schedule)}
 Unregister-ScheduledTask -TaskName "${task.description}" -Confirm:$false
 `;
 
-    // Run PowerShell command with spawnSync
-    const result = spawnSync('powershell', ['-Command', powershellScript]);
+    this.runScriptAdmin(powershellScript, "unchedule_task");
 
-    // Check if the process ran successfully
-    if (result.error) {
-      console.error(`Error executing PowerShell script: ${result.error.message}`);
-    } else {
-      console.log(`Task "${task.description}" removed successfully.`);
-      console.log(`Standard Output: ${result.stdout.toString()}`);
-      console.log(`Standard Error: ${result.stderr.toString()}`);
-    }
   }
 
-  protected  dailyTaskTriggerUpdate(schedule: TaskSchedule) {
-    const dailyTaskTriggerUpdate =`
+  protected dailyTaskTriggerUpdate(schedule: TaskSchedule) {
+    const dailyTaskTriggerUpdate = `
 $task.Triggers.Repetition.Duration = "P1D"
 $task.Triggers.Repetition.Interval = "PT1H"
 $task | Set-ScheduledTask
