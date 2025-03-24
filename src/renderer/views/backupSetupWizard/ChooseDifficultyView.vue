@@ -16,7 +16,7 @@
         </template>
         <div>
           <p>
-            Quick and effortless method to setup your backup plan 45Drives Best Practice. Select <b>SIMPLE</b> and we will configure the good backup plan. 
+            Quick and effortless method to setup your backup plan 45Drives Best Practice. Select <b>SIMPLE</b> and we will configure the backup plan for you. 
           </p>
         </div>
 
@@ -33,7 +33,7 @@
 
         <div>
           <p>
-            Full control and flexibility? Select <b>CUSTOM</b> and you’ll have the options to choose your configuration details such as time files
+            Full control and flexibility? Select <b>CUSTOM</b> and you’ll have the options to choose your configuration details such as what time to run the backup.
           </p>
         </div>
 

@@ -21,19 +21,37 @@
                     <div>
                         <label class="block text-sm">Start Day</label>
                         <input type="number" v-model="dayValue" @input="updateStartDate" min="1" max="31"
-                            class="input-textlike w-full" />
+                            :disabled="schedule.repeatFrequency === 'hour'" class="input-textlike w-full"
+                            placeholder="Day" />
                     </div>
                     <!-- Month Input -->
                     <div>
                         <label class="block text-sm">Start Month</label>
                         <input type="number" v-model="monthValue" @input="updateStartDate" min="1" max="12"
-                            class="input-textlike w-full" />
+                            :disabled="schedule.repeatFrequency === 'hour'" class="input-textlike w-full"
+                            placeholder="Month" />
+                    </div>
+
+                    <!-- Hour Input -->
+                    <div>
+                        <label class="block text-sm">Start Hour</label>
+                        <input type="number" v-model="hourValue" @input="updateStartDate" min="0" max="23"
+                            class="input-textlike w-full" placeholder="Hour" />
+                    </div>
+                    <!-- Minute Input -->
+                    <div>
+                        <label class="block text-sm">Start Minute</label>
+                        <input type="number" v-model="minuteValue" @input="updateStartDate" min="0" max="59"
+                            :disabled="schedule.repeatFrequency === 'hour'" class="input-textlike w-full"
+                            placeholder="Minute" />
                     </div>
                 </div>
             </div>
 
             <div :title="parsedIntervalString"
                 class="col-span-1 mt-2 text-base text-default bg-well p-2 rounded-md text-center w-full max-w-[600px] mx-auto">
+                <p class="mt-1 text-sm text-default">Start date/time: {{ schedule.startDate.toLocaleString() }}</p>
+
                 <p><strong>Will run backup {{ parsedIntervalString }}.</strong> </p>
             </div>
 
@@ -78,7 +96,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue';
+import { ref, computed, watch } from 'vue';
 import { CardContainer } from '@45drives/houston-common-ui';
 import { CommanderToolTip } from '../commander';
 import { type TaskSchedule, parseTaskScheduleIntoString } from "@45drives/houston-common-lib";
@@ -102,6 +120,8 @@ const schedule = ref<TaskSchedule>(
 // Extract day/month values from startDate
 const dayValue = ref(schedule.value.startDate.getDate());
 const monthValue = ref(schedule.value.startDate.getMonth() + 1);
+const hourValue = ref(schedule.value.startDate.getHours());
+const minuteValue = ref(schedule.value.startDate.getMinutes());
 
 /// Calendar logic
 const today = new Date();
@@ -110,8 +130,15 @@ const currentYear = ref(today.getFullYear());
 
 // Update startDate when inputs change
 const updateStartDate = () => {
-    schedule.value.startDate = new Date(schedule.value.startDate.getFullYear(), monthValue.value - 1, dayValue.value);
+    schedule.value.startDate = new Date(schedule.value.startDate.getFullYear(), monthValue.value - 1, dayValue.value, hourValue.value, minuteValue.value);
 };
+
+watch(() => schedule.value.repeatFrequency, (newFrequency) => {
+    if (newFrequency === 'hour') {
+        minuteValue.value = 0;
+        updateStartDate();
+    }
+});
 
 const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 const weekDays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
