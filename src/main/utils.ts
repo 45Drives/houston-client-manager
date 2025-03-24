@@ -91,24 +91,24 @@ export function getRsync() {
 }
 
 
-export function getScp(user: string) {
-  const sshKeyPath = getSSHKey(user);
-  const scpPath = getOS() === "win" ? "scp" : "scp";
-  const scp = `${scpPath} -o StrictHostKeyChecking=no -i ""${sshKeyPath}"" -r`
+export function getScp() {
+  const sshKeyPath = getSSHKey();
+  const scpPath = "scp";
+  const scp = `${scpPath} -o StrictHostKeyChecking=no -o PasswordAuthentication=no -i ""${sshKeyPath}"" -r`
   return scp;
 }
 
-export function getSSHKey(user: string) {
+export function getSSHKey() {
   let basePath = getAppPath();
 
-  const sshKeyPath = path.join(basePath, ".ssh", "id_rsa_" + user);
+  const sshKeyPath = path.join(basePath, ".ssh", "id_rsa" );
   return sshKeyPath; 
 }
 
-export function getNoneQuotedScp(user: string) {
-  const sshKeyPath = getSSHKey(user);
-  const scpPath = getOS() === "win" ? "scp" : "scp";
-  const scp = `${scpPath} -i "${sshKeyPath}" -r`
+export function getNoneQuotedScp() {
+  const sshKeyPath = getSSHKey();
+  const scpPath = "scp";
+  const scp = `${scpPath} -o StrictHostKeyChecking=no -o PasswordAuthentication=no -i "${sshKeyPath}" -r`
   return scp;
 }
 

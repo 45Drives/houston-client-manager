@@ -20,14 +20,21 @@
     </div>
 
 
-    <webview v-show="showWebView && !loadingWebview" id="myWebview" title="test" :src="currentUrl" allowpopups
-      nodeintegration allow-same-origin allow-scripts partition="persist:authSession"
+    <webview v-show="showWebView && !loadingWebview && !waitingForServerReboot" id="myWebview" title="test"
+      :src="currentUrl" allowpopups nodeintegration allow-same-origin allow-scripts partition="persist:authSession"
       webpreferences="javascript=yes,webSecurity=no,enable-cookies=true,nodeIntegration=false,contextIsolation=true"
       ref="webview" @did-finish-load="onWebViewLoaded" />
 
     <div v-if="loadingWebview" class="p-4">
       <p class="w-3/4 text-2xl">
         Give us a few while we login...
+      </p>
+      <div id="spinner" class="spinner"></div>
+    </div>
+
+    <div v-if="waitingForServerReboot" class="p-4">
+      <p class="w-3/4 text-2xl">
+        Waiting for {{ currentServer!.ip }} to reboot...
       </p>
       <div id="spinner" class="spinner"></div>
     </div>
@@ -60,7 +67,7 @@ import { serverInfoInjectionKey } from './keys/injection-keys';
 import { IPCMessageRouterRenderer, IPCRouter } from '@45drives/houston-common-lib';
 
 IPCRouter.initRenderer();
-IPCRouter.getInstance().addEventListener("action", (data) => {
+IPCRouter.getInstance().addEventListener("action", async (data) => {
   console.log("action in renderer: ", data);
   try {
     if (data === "setup_wizard_go_back") {
@@ -72,13 +79,61 @@ IPCRouter.getInstance().addEventListener("action", (data) => {
       console.log("Go_HOME")
       showWelcomeSetupWizard.value = false;
       showWebView.value = false;
-      showBackUpSetupWizard.value = true;
+      waitingForServerReboot.value = true;
 
-      useWizardSteps("setupwizard").reset()
+      await waitForServerRebootAndShowWizard();
+
+      // showBackUpSetupWizard.value = true;
+      // useWizardSteps("setupwizard").reset()
     }
   } catch (error) {
   }
 });
+
+const waitingForServerReboot = ref(false);
+
+async function waitForServerRebootAndShowWizard() {
+  const serverIp = currentServer.value?.ip;
+  if (!serverIp) {
+    console.error("No current server IP found!");
+    waitingForServerReboot.value = false;
+    return;
+  }
+
+  const pingUrl = `https://${serverIp}:9090/`;
+  const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+  console.log(`Waiting for server at ${pingUrl} to reboot...`);
+
+  let serverUp = false;
+  const startTime = Date.now();
+  const timeout = 5 * 60 * 1000; // 5 minutes max wait
+
+  while (!serverUp && (Date.now() - startTime) < timeout) {
+    try {
+      const res = await fetch(pingUrl, { method: 'GET' });
+      if (res.ok) {
+        serverUp = true;
+        console.log("✅ Server is back online!");
+      } else {
+        console.log("Server not ready yet. Retrying...");
+      }
+    } catch {
+      console.log("Server still down, retrying...");
+    }
+    if (!serverUp) await sleep(5000);
+  }
+
+  if (serverUp) {
+    waitingForServerReboot.value = false;
+    showBackUpSetupWizard.value = true;
+    useWizardSteps("setupwizard").reset();
+  } else {
+    waitingForServerReboot.value = false;
+    reportError(new Error("Server did not come back online within timeout."));
+    showWelcomeSetupWizard.value = true;
+  }
+}
 
 const isDev = ref(false);
 
@@ -173,9 +228,9 @@ const openServerWebsite = (server: Server | null) => {
 
 const onWebViewLoaded = async () => {
 
-  const routerREnderer = IPCRouter.getInstance() as IPCMessageRouterRenderer;
+  const routerRenderer = IPCRouter.getInstance() as IPCMessageRouterRenderer;
 
-  routerREnderer.setCockpitWebView(webview.value);
+  routerRenderer.setCockpitWebView(webview.value);
 
   webview.value.executeJavaScript(`
         new Promise((resolve, reject) => {
@@ -231,7 +286,8 @@ const onWebViewLoaded = async () => {
       console.error("Error:", error);
       loadingWebview.value = false;
     });
-    
+
+  webview.value.openDevTools();
 }
 
 const onWelcomeWizardComplete = (server: Server) => {

@@ -1,5 +1,5 @@
 {
-  "name": "houston_client_manager",
+  "name": "houston-client-manager",
   "version": "0.1.0",
   "description": "Create backups to any houston servers on your local network",
   "main": "main/src/main/main.js",
@@ -13,7 +13,8 @@
   },
   "repository": "https://github.com/45Drives/houston-client-manager",
   "author": {
-    "name": "Matt"
+    "name": "Matt Pyne",
+    "email": "mpyne@45drives.com"
   },
   "devDependencies": {
     "@fontsource/red-hat-text": "^5.0.18",
@@ -47,5 +48,8 @@
     "ssh2": "^1.16.0",
     "sudo-prompt": "^9.2.1",
     "vue": "^3.3.8"
+  },
+  "optionalDependencies": {
+    "dmg-license": "^1.0.9"
   }
 }

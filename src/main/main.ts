@@ -123,49 +123,65 @@ function createWindow() {
     for (const answer1 of response.answers) {
       if (answer1.type === 'SRV' && answer1.name.includes(serviceType)) {
 
-        for (const answer2 of response.answers) {
+        // Find related 'A' and 'TXT' records in the same response
+        const ipAnswer = response.answers.find(a => a.type === 'A');
+        const txtAnswer = response.answers.find(a => a.type === 'TXT');
 
-          if (answer2.type === 'A') {
+        if (ipAnswer && ipAnswer.data) {
+          const serverIp = ipAnswer.data;
+          const serverName = ipAnswer.name;
 
-            const serverName = answer2.name;
-            const server: Server = { ip: answer2?.data, name: serverName, status: "unknown", lastSeen: Date.now() };
+          // Parse txt record fields if present
+          const txtRecord: Record<string, string> = {};
+          if (txtAnswer && txtAnswer.data) {
+            txtAnswer.data.forEach((entry: Buffer) => {
+              const entryStr = entry.toString();
+              const [key, value] = entryStr.split('=');
+              txtRecord[key] = value;
+            });
+          }
 
-            let existingServer = discoveredServers.find((eServer) => eServer.ip === server.ip && eServer.name === server.name);
+          // console.log('Discovered server TXT:', txtRecord);
 
-            try {
-              const response = await fetch(`http://${server.ip}:9095/setup-status`);
-              if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
-              }
-              const setupStatusResponse = await response.json();
+          const server: Server = {
+            ip: serverIp,
+            name: serverName,
+            status: "unknown",
+            lastSeen: Date.now(),
+            setupComplete: txtRecord.setupComplete === 'true',
+            serverName: txtRecord.serverName || serverName,
+            shareName: txtRecord.shareName,
+            setupTime: txtRecord.setupTime,
+          };
 
-              if (!existingServer) {
+          let existingServer = discoveredServers.find((eServer) => eServer.ip === server.ip && eServer.name === server.name);
 
-                if (setupStatusResponse.err) {
-                  server.status = "unknown";
-                } else {
-                  server.status = setupStatusResponse.status;
-                }
-                // if (server.status === "complete") {
-                setupSsh(server)
-                // }
-                discoveredServers.push(server);
-              } else {
-                existingServer.lastSeen = Date.now();
-                if (setupStatusResponse.err) {
-                  server.status = "unknown";
-                } else {
-                  server.status = setupStatusResponse.status;
-                }
-              }
-
-            } catch (error) {
-              console.error('Fetch error:', error);
+          try {
+            const fetchResponse = await fetch(`http://${server.ip}:9095/setup-status`);
+            if (fetchResponse.ok) {
+              const setupStatusResponse = await fetchResponse.json();
+              server.status = setupStatusResponse.status ?? "unknown";
+            } else {
+              console.warn(`HTTP error! status: ${fetchResponse.status}`);
             }
 
+            if (!existingServer) {
+              setupSsh(server);
+              discoveredServers.push(server);
+            } else {
+              existingServer.lastSeen = Date.now();
+              existingServer.status = server.status;
+              existingServer.setupComplete = server.status == 'complete' ? true : false;
+              existingServer.serverName = server.serverName;
+              existingServer.shareName = server.shareName;
+              existingServer.setupTime = server.setupTime;
+            }
 
-            break server_search;
+          } catch (error) {
+            console.error('Fetch error:', error);
           }
+
+          break server_search;
         }
       }
     }

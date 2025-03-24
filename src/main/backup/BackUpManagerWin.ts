@@ -30,7 +30,7 @@ export class BackUpManagerWin implements BackUpManager {
 
   }
 
-  
+
   protected runScript(powershellScript: string, scriptName: string): Promise<{ stdout: string, stderr: string }> {
     // Save to file
     const tempDir = os.tmpdir();
@@ -101,17 +101,14 @@ export class BackUpManagerWin implements BackUpManager {
 
   async schedule(task: BackUpTask): Promise<{ stdout: string, stderr: string }> {
 
-    const scp = getScp("");
+    const scp = getScp();
 
     // PowerShell script to create the task
     const powershellScript = `
 
-$user = $env:USERNAME
-# Check if the user is already a member
-if ($groupMembers.Name -notcontains $user) {
-    Write-Host "user is being adding to Backup Operators: $user"
-    Add-LocalGroupMember -Group "Backup Operators" -Member $user
-}
+$user = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
+
+${this.addUserToBackupOperatorsGroup()}
 
 ${this.getAddBackupGroupsToLogOnBatchAndService()}
 
@@ -143,10 +140,26 @@ ${this.dailyTaskTriggerUpdate(task.schedule)}
 
     return this.runScriptAdmin(powershellScript, "create_task");
   }
-  
+
+  addUserToBackupOperatorsGroup() {
+    return `
+# Get current members of Backup Operators
+$groupMembers = Get-LocalGroupMember -Group "Backup Operators" | Select-Object -ExpandProperty Name
+Write-Output "Group Members: $groupMembers"
+
+# Check if user is already a member before adding
+if ($groupMembers -notcontains $user) {
+    Add-LocalGroupMember -Group "Backup Operators" -Member $user
+    Write-Output "$user added to Backup Operators."
+} else {
+    Write-Output "$user is already a member of Backup Operators."
+}    
+`
+  }
+
   chanagePrivilagesOnSSHKey() {
     return `
-$privateKey = "${getSSHKey("")}"
+$privateKey = "${getSSHKey()}"
 
 # Ensure the file exists
 if (!(Test-Path $privateKey)) {
@@ -191,8 +204,8 @@ $batchLogonRight = ($content | Select-String "SeBatchLogonRight").Line
 $serviceLogonRight = ($content | Select-String "SeServiceLogonRight").Line
 
 # Check if Backup Operators already have the rights
-$hasBatchLogon = $batchLogonRight -match "*S-1-5-32-551"
-$hasServiceLogon = $serviceLogonRight -match "*S-1-5-32-551"
+$hasBatchLogon = $batchLogonRight -like "*S-1-5-32-551"
+$hasServiceLogon = $serviceLogonRight -like "*S-1-5-32-551"
 
 # If Backup Operators do not have the required rights, modify the policy
 if (-not $hasBatchLogon -or -not $hasServiceLogon) {
@@ -241,7 +254,7 @@ $task | Set-ScheduledTask
   }
 
 
-  
+
   protected scheduleToTaskTrigger(sched: TaskSchedule): string | undefined {
 
     console.log(sched);

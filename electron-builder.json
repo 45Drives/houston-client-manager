@@ -15,10 +15,22 @@
     },
     "linux": {
         "target": [
-            "snap"
-        ]
+            "snap",
+            "deb",
+            "rpm",
+            "pacman"
+        ],
+        "vendor": "45Drives",
+        "maintainer": "Matt Pyne <mpyne@45drives.com>"
     },
     "files": [
+        {
+            "from": "node_modules/@45drives",
+            "to": "node_modules/@45drives",
+            "filter": [
+                "**/*"
+            ]
+        },
         {
             "from": "build/main",
             "to": "main",
@@ -42,6 +54,7 @@
         },
         "!src",
         "!build",
+        "!builds",
         "!dist",
         "!scripts",
         "!houston-common",
@@ -57,13 +70,6 @@
         "!**/*.map",
         "!**/MakeFile",
         "!**/.yarn/**",
-        "!**/node_modules/**/.cache",
-        "!**/node_modules/**/.vscode",
-        "!**/node_modules/**/src/**",
-        "!**/node_modules/**/docs/**",
-        "!**/node_modules/**/example*/**",
-        "!**/node_modules/**/@esbuild",
-        "!**/node_modules/**/@rollup",
         "!**/node_modules/*/test/**",
         "!**/node_modules/*/.git/**",
         "!**/node_modules/rollup/**",
@@ -82,10 +88,6 @@
             "filter": [
                 "**/*"
             ]
-        },
-        {
-            "from": "node_modules/@45drives",
-            "to": "node_modules/@45drives"
         }
     ],
     "asar": true,
