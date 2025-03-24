@@ -34,7 +34,7 @@
           </label>
           <select v-model="scheduleFrequency"
             class="bg-default h-[3rem] text-default rounded-lg px-4 flex-1 border border-default">
-            <option value="hour">Hourly</option>
+            <!-- <option value="hour">Hourly</option> -->
             <option value="day">Daily</option>
             <option value="week">Weekly</option>
             <option value="month">Monthly</option>
