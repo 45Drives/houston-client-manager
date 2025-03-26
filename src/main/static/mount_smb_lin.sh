@@ -26,6 +26,7 @@ SMB_PATH="//$SMB_HOST/$SMB_SHARE"
 
 # Define the mount point
 MOUNT_POINT="/mnt/$SMB_SHARE"
+# MOUNT_POINT="/mnt/backup"
 
 # Extract SMB server IP
 SMB_SERVER=$(echo "$SMB_PATH" | awk -F'/' '{print $3}')
@@ -61,7 +62,8 @@ sudo chmod 600 "$CREDENTIALS_FILE"
 # fi
 
 # Mount the SMB share
-sudo mount -a
+# sudo mount -a
+sudo mount -t cifs "$SMB_PATH" "$MOUNT_POINT" -o credentials=$CREDENTIALS_FILE,vers=3.0,uid=$(id -u),gid=$(id -g),dir_mode=0700,file_mode=0600
 
 # Check if mounting was successful
 if [ $? -eq 0 ]; then
