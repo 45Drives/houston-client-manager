@@ -22,7 +22,7 @@
           <select v-model="selectedServer"
             class="bg-default h-[3rem] text-default rounded-lg px-4 flex-1 border border-default">
             <option v-for="item in servers" :key="item.ip" :value="item">
-              {{ `\\\\${item.name}.local\\backup` }}
+              {{ `\\\\${item.name}\\${item.shareName}` }}
             </option>
           </select>
         </div>
@@ -34,7 +34,7 @@
           </label>
           <select v-model="scheduleFrequency"
             class="bg-default h-[3rem] text-default rounded-lg px-4 flex-1 border border-default">
-            <!-- <option value="hour">Hourly</option> -->
+            <option value="hour">Hourly</option>
             <option value="day">Daily</option>
             <option value="week">Weekly</option>
             <option value="month">Monthly</option>
@@ -98,7 +98,7 @@ import { inject, onMounted, ref, watch } from "vue";
 import { PlusIcon, MinusIcon } from "@heroicons/vue/20/solid";
 import { useWizardSteps } from '@45drives/houston-common-ui';
 import { Server } from '../../types'
-import { backUpSetupConfigKey } from "../../keys/injection-keys";
+import { backUpSetupConfigKey  } from "../../keys/injection-keys";
 import MessageDialog from '../../components/MessageDialog.vue';
 
 // Wizard navigation
@@ -134,7 +134,7 @@ function areArraysEqual(arr1: Server[], arr2: Server[]): boolean {
 // Receive the discovered servers from the main process
 window.electron.ipcRenderer.on('discovered-servers', (_event, discoveredServers: Server[]) => {
   if (!areArraysEqual(discoveredServers, servers.value)) {
-    console.log("Discovered servers")
+    console.log("Discovered servers:", discoveredServers)
     servers.value = discoveredServers;
     if (discoveredServers.length > 0) {
 
@@ -145,7 +145,6 @@ window.electron.ipcRenderer.on('discovered-servers', (_event, discoveredServers:
         const target = task.target;
 
         const potentialServer = discoveredServers.find(server => target.includes(server.ip));
-
         if (potentialServer) {
 
           selectedServer.value = potentialServer;
@@ -242,7 +241,7 @@ const handleFolderSelect = async () => {
         schedule: { startDate: getNextScheduleDate(scheduleFrequency.value), repeatFrequency: scheduleFrequency.value },
         description: `Backup task for ${folderName}`,
         source: folderPath,
-        target: `${selectedServer.value?.name}.local:backup`,
+        target: `\\\\${selectedServer.value?.name}.local\\${selectedServer.value?.shareName}`,
         mirror: false,
       };
 

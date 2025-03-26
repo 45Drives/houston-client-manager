@@ -21,7 +21,7 @@
 					<select v-model="selectedServer"
 						class="bg-default h-[3rem] text-default rounded-lg px-4 flex-1 border border-default">
 						<option v-for="item in servers" :key="item.ip" :value="item">
-							{{ `\\\\${item.name}\\backup` }}
+							{{ `\\\\${item.name}\\${item.shareName}` }}
 						</option>
 					</select>
 				</div>
@@ -149,8 +149,10 @@ function areArraysEqual(arr1: Server[], arr2: Server[]): boolean {
 // Receive the discovered servers from the main process
 window.electron.ipcRenderer.on('discovered-servers', (_event, discoveredServers: Server[]) => {
   if (!areArraysEqual(discoveredServers, servers.value)) {
-    console.log("Discovered servers")
+	  console.log("Discovered servers:", discoveredServers)
     servers.value = discoveredServers;
+	selectedServer.value = discoveredServers[0];
+	
     if (discoveredServers.length > 0) {
 
 			const tasks = backUpSetupConfig?.backUpTasks;
@@ -226,7 +228,7 @@ const handleFolderSelect = async () => {
 					schedule: selectedTaskSchedule.value,
 					description: `Backup task for ${folderName}`,
 					source: folderPath,
-					target: `\\\\${selectedServer.value?.name}.local\\backup`,
+					target: `\\\\${selectedServer.value?.name}.local\\${selectedServer.value?.shareName}`,
 					mirror: false,
 				};
 
