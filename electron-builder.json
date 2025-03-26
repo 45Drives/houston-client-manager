@@ -1,5 +1,5 @@
 {
-    "appId": "Houston Client Manager",
+    "appId": "com.protocase.houstonclientmanager",
     "directories": {
         "output": "dist"
     },
@@ -82,6 +82,10 @@
             "filter": [
                 "**/*"
             ]
+        },
+        {
+            "from": "node_modules/@45drives",
+            "to": "node_modules/@45drives"
         }
     ],
     "asar": true,

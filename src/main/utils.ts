@@ -91,23 +91,27 @@ export function getRsync() {
 }
 
 
-export function getScp() {
-  let basePath = getAppPath();
-
-  const sshKeyPath = path.join(basePath, ".ssh", "id_rsa");
+export function getScp(user: string) {
+  const sshKeyPath = getSSHKey(user);
   const scpPath = getOS() === "win" ? "scp" : "scp";
-  const scp = `${scpPath} -i ""${sshKeyPath}"" -r`
+  const scp = `${scpPath} -o StrictHostKeyChecking=no -i ""${sshKeyPath}"" -r`
   return scp;
 }
 
-export function getNoneQuotedScp() {
+export function getSSHKey(user: string) {
   let basePath = getAppPath();
 
-  const sshKeyPath = path.join(basePath, ".ssh", "id_rsa");
+  const sshKeyPath = path.join(basePath, ".ssh", "id_rsa_" + user);
+  return sshKeyPath; 
+}
+
+export function getNoneQuotedScp(user: string) {
+  const sshKeyPath = getSSHKey(user);
   const scpPath = getOS() === "win" ? "scp" : "scp";
   const scp = `${scpPath} -i "${sshKeyPath}" -r`
   return scp;
 }
+
 export function formatDateForTask(date) {
   const pad = (n) => String(n).padStart(2, '0');
 

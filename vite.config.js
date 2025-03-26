@@ -32,7 +32,8 @@ const config = defineConfig({
     resolve: {
         alias: {
             "@": fileURLToPath(new URL("./src", import.meta.url)),
-            "@45drives/houston-common-lib": fileURLToPath(new URL("./houston-common/houston-common-lib", import.meta.url)),
+            "@45drives/houston-common-lib": fileURLToPath(new URL("./node_modules/@45drives/houston-common-lib/dist", import.meta.url)),
+            "@45drives/houston-common-ui": fileURLToPath(new URL("./node_modules/@45drives/houston-common-ui/dist", import.meta.url)),
         },
     },
 });
