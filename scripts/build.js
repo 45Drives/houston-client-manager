@@ -22,6 +22,10 @@ FileSystem.rmSync(Path.join(__dirname, '..', 'build'), {
     force: true,
 })
 
+console.log(Chalk.blueBright('Fixing common css error'));
+const fix_css = require('./fix-css');
+fix_css();
+
 console.log(Chalk.blueBright('Transpiling renderer & main...'));
 
 Promise.allSettled([
