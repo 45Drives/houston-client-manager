@@ -58,13 +58,17 @@
 
 <script setup lang="ts">
 import CardContainer from '../../components/CardContainer.vue';
-import { ref, computed, watch } from 'vue';
+import { ref, computed } from 'vue';
 import { useWizardSteps } from '@45drives/houston-common-ui';
 import { IPCRouter } from '@45drives/houston-common-lib';
 
 const { prevStep, wizardData } = useWizardSteps("backup");
 
-const backupTask = computed(() => wizardData.value);  // if wizardData is a ref// Reactive variables for username and password
+const backupTask = computed(() => {
+
+  console.log(wizardData)
+  return wizardData;
+});  // if wizardData is a ref// Reactive variables for username and password
 const username = ref('');
 const password = ref('');
 
