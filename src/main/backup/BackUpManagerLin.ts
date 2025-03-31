@@ -89,109 +89,78 @@ export class BackUpManagerLin implements BackUpManager {
     const dayRe = /^(\d+) (\d+) \* \* \*/;
     const weekRe = /^(\d+) (\d+) \* \* (\d+)/;
     const monthRe = /^(\d+) (\d+) (\d+) \* \*/;
+
     let schedule: TaskSchedule;
-
     let match: RegExpExecArray | null;
-    if ((match = hourRe.exec(cron))) {
-      let [minutes] = match.slice(1).map((numStr) => parseInt(numStr));
 
-      if (!minutes) {
-        return null;
-      }
+    if ((match = hourRe.exec(cron))) {
+      let [minutes] = match.slice(1).map(Number);
+      if (isNaN(minutes)) return null;
       const startDate = new Date();
       startDate.setMinutes(minutes);
-      schedule = {
-        repeatFrequency: "hour",
-        startDate,
-      };
+      schedule = { repeatFrequency: "hour", startDate };
     } else if ((match = dayRe.exec(cron))) {
-      const [minutes, hours] = match.slice(1).map((numStr) => parseInt(numStr));
-      if (!minutes || !hours) {
-        return null;
-      }
+      const [minutes, hours] = match.slice(1).map(Number);
+      if (isNaN(minutes) || isNaN(hours)) return null;
       const startDate = new Date();
       startDate.setMinutes(minutes);
       startDate.setHours(hours);
-      schedule = {
-        repeatFrequency: "day",
-        startDate,
-      };
+      schedule = { repeatFrequency: "day", startDate };
     } else if ((match = weekRe.exec(cron))) {
-      const [minutes, hours, weekDay] = match
-        .slice(1)
-        .map((numStr) => parseInt(numStr));
-
-      if (!minutes || !hours || !weekDay) {
-        return null;
-      }
-
+      const [minutes, hours, weekDay] = match.slice(1).map(Number);
+      if (isNaN(minutes) || isNaN(hours) || isNaN(weekDay)) return null;
       const startDate = new Date();
       startDate.setMinutes(minutes);
       startDate.setHours(hours);
       const currentWeekDay = startDate.getDay();
       startDate.setDate(startDate.getDate() + (weekDay - currentWeekDay));
-      schedule = {
-        repeatFrequency: "week",
-        startDate,
-      };
+      schedule = { repeatFrequency: "week", startDate };
     } else if ((match = monthRe.exec(cron))) {
-      const [minutes, hours, dayOfMonth] = match
-        .slice(1)
-        .map((numStr) => parseInt(numStr));
-
-      if (!minutes || !hours || !dayOfMonth) {
-        return null;
-      }
-
+      const [minutes, hours, dayOfMonth] = match.slice(1).map(Number);
+      if (isNaN(minutes) || isNaN(hours) || isNaN(dayOfMonth)) return null;
       const startDate = new Date();
       startDate.setMinutes(minutes);
       startDate.setHours(hours);
       startDate.setDate(dayOfMonth);
-      schedule = {
-        repeatFrequency: "month",
-        startDate,
-      };
+      schedule = { repeatFrequency: "month", startDate };
     } else {
       return null;
     }
 
     const mirror = cron.includes("--delete");
-    const description = cron.split("#")[1].trim();
+    const commentMatch = cron.match(/#\s*(.*)$/);
+    const description = commentMatch ? commentMatch[1].trim() : "Unnamed Backup";
 
-    cron = cron.split("#")[0];
-    //cron = cron.replace("/C " + getRsync(), '').replace("--delete", "").replace("root@", "").trim();
+    // Find all single-quoted strings in order — assumes source and target are the last two
+    // const quotedPaths = cron.match(/'([^']+)'/g)?.map(str => str.replace(/'/g, ''));
+    // if (!quotedPaths || quotedPaths.length < 2) {
+    //   console.warn("❌ Could not extract source/target from cron line:", cron);
+    //   return null;
+    // }
 
-    const regex = /([^\s]+(?:\s[^\s]+)*)\s+([^\s]+(?:\s[^\s]+)*)/;
+    // const source = quotedPaths[quotedPaths.length - 2];
+    // const rawTarget = quotedPaths[quotedPaths.length - 1];
+    // const target = rawTarget.replace(/^root@/, '');
 
-    // Execute regex on the input command
-    const matchSourceTarget = cron.match(regex);
-
-    if (matchSourceTarget) {
-
-      const sourceLine = matchSourceTarget[1]?.toString();
-      const pathMatch = sourceLine.match(/['"]\/([^'"]+)['"]/);
-      const sourcePath = pathMatch ? pathMatch[1] : null;
-      const rawDestination = matchSourceTarget[2]?.toString();
-      const rawDestinationClean = rawDestination.trim().replace(/^['"]|['"]$/g, '');
-      const destinationPath = rawDestinationClean.replace(/^[^@]+@/, '');
-      if (!sourcePath || !destinationPath) {
-        return null;
-      }
-      const sourceMatch = cron.match(/['"]([^'"]+)['"]\s*$/) || cron.match(/(\S+)\s*$/);
-      if (!sourcePath) {
-        console.warn("⚠️ Could not extract source folder from cron line:", cron);
-        return null;
-      }
-      return {
-        schedule: schedule,
-        mirror: mirror,
-        source: sourcePath,
-        target: destinationPath,
-        description
-      };
-    } else {
+    // Extract only the last two quoted values for source and target
+    const quotedMatches = [...cron.matchAll(/'([^']+)'/g)].map(m => m[1]);
+    if (quotedMatches.length < 2) {
+      console.warn("❌ Could not extract source/target from cron line:", cron);
       return null;
     }
+
+    const source = quotedMatches[quotedMatches.length - 2];
+    const rawTarget = quotedMatches[quotedMatches.length - 1];
+    const target = rawTarget.replace(/^root@/, '');
+
+
+    return {
+      schedule,
+      mirror,
+      source,
+      target,
+      description
+    };
   }
 
   protected reloadCron() {

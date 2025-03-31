@@ -76,17 +76,17 @@ onActivated(() => {
 
         if (backUpSetupStatus.type === "backUpSetupStatus") {
           const status: EasySetupProgress = backUpSetupStatus.status;
-          const newComplatedSteps = [...completedSteps.value];
+          const newCompletedSteps = [...completedSteps.value];
 
           if (status.message.startsWith("Error")) {
 
             error.value = status.message;
           } else {
 
-            newComplatedSteps.push(status);
+            newCompletedSteps.push(status);
           }
 
-          completedSteps.value = newComplatedSteps;
+          completedSteps.value = newCompletedSteps;
 
           if (error.value) {
             setupComplete.value = "yes";
@@ -101,7 +101,7 @@ onActivated(() => {
     IPCRouter.getInstance().send('backend', 'action',
       JSON.stringify(
         {
-          type: 'configurBackUp',
+          type: 'configureBackUp',
           config: backUpSetupConfig
         })
     );
