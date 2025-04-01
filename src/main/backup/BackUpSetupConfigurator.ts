@@ -29,11 +29,13 @@ export class BackUpSetupConfigurator {
       const backUpManager = this.getBackUpManager();
       for (let i = 0; i < config.backUpTasks.length; i++) {
         try {
-          console.log("schedule backup:", config.backUpTasks[i]);
-          const {stdout, stderr} = await backUpManager.schedule(config.backUpTasks[i]);
+          const task = config.backUpTasks[i];
+          console.log("schedule backup:", task);
+          
+          const {stdout, stderr} = await backUpManager.schedule(task);
           console.log(stdout)
           console.error(stderr)
-          progressCallback({ message: "Back up task added for " + config.backUpTasks[i].source + " added.", step: i + 2, total });
+          progressCallback({ message: "Back up task added for " + task.source + " added.", step: i + 2, total });
         } catch (error) {
           console.error("Error in setting up backups:", error);
           progressCallback({ message: `Error: ${error}`, step: -1, total: -1 });

@@ -12,10 +12,13 @@
         <input type="checkbox"
           :checked="selectedBackUp?.source === backUpTask.source && selectedBackUp?.target === backUpTask.target"
           @change="handleSelection(backUpTask)" class="form-checkbox h-5 w-5 text-blue-600" />
-          <span>Folder:</span>
-          <div class="space-y-2 border rounded-lg border-gray-500 p-2"> {{ backUpTask.source }}</div>
-          <span>Backup Location:</span>
-          <div class="space-y-2 border rounded-lg border-gray-500 p-2"> {{ backUpTask.target }}</div>
+        <span>Folder:</span>
+        <div class="space-y-2 border rounded-lg border-gray-500 p-2">{{ backUpTask.source }}</div>
+        <span>Backup Location:</span>
+        <div class="space-y-2 border rounded-lg border-gray-500 p-2">{{ backUpTask.target }}</div>
+        <button @click="deleteTask(backUpTask)" class="ml-2 px-2 py-1 bg-red-500 text-white rounded hover:bg-red-600">
+          Remove Task
+        </button>
       </label>
 
     </div>
@@ -24,7 +27,7 @@
 </template>
 
 <script setup lang="ts">
-import { onActivated, onMounted, ref, watch } from 'vue';
+import { onActivated, ref, watch } from 'vue';
 import { BackUpTask, IPCRouter } from '@45drives/houston-common-lib';
 
 const backUpTasks = ref<BackUpTask[]>([]);
@@ -49,7 +52,7 @@ const emit = defineEmits<{
 
 // Emit event when a backUpTask is selected
 const handleSelection = (backUpTask: BackUpTask) => {
-  console.log("selectedBackUp.value" +selectedBackUp)
+  console.log("selectedBackUp.value" + selectedBackUp)
 
   if (selectedBackUp.value?.source === backUpTask.source && selectedBackUp.value?.target === backUpTask.target) {
     selectedBackUp.value = null;
@@ -57,11 +60,17 @@ const handleSelection = (backUpTask: BackUpTask) => {
     emit('backUpTaskSelected', null);
   } else {
     selectedBackUp.value = backUpTask;
-    console.log("selectedBackUp.value" +selectedBackUp.value.target)
+    console.log("selectedBackUp.value" + selectedBackUp.value.target)
     emit('backUpTaskSelected', backUpTask);
   }
 };
 onActivated(fetchBackupTasks); // Runs when the component is displayed again
+
+
+const deleteTask = (task: BackUpTask) => {
+  backUpTasks.value = backUpTasks.value.filter(t => t.source !== task.source || t.target !== task.target);
+  // TODO: really delete the task
+};
 
 function fetchBackupTasks() {
   IPCRouter.getInstance().send('backend', 'action', 'requestBackUpTasks');

@@ -9,8 +9,7 @@
     <div class="flex flex-col h-full justify-center items-center">
 
       <p class="w-9/12 text-center text-2xl">
-        With countless storage drive layout options, balancing capacity, performance, and redundancy can feel like a
-        juggling act. Drawing from our years of experience configuring enterprise storage servers, we’ve identified best
+        Drawing from our years of experience configuring enterprise storage servers, we’ve identified best
         practices for optimizing drive layouts based on the quantity of drives you decide to install in this server.
       </p>
 

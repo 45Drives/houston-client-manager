@@ -1,6 +1,5 @@
 import { app, dialog } from 'electron';
 import sudo from 'sudo-prompt';
-import { execSync } from 'child_process';
 import { getOS } from './utils';
 
 const options = {
@@ -28,7 +27,14 @@ function missingDependencies(osType) {
       } else if (osType === 'debian') {
         command = `dpkg -l | grep ${pkg}`;
       }
-      execSync(command, { stdio: 'ignore' });
+      sudo.exec(command, options, (error, stdout, stderr) => {
+        if (error) {
+          console.error('Adding Dependency Error:', error);
+          dialog.showErrorBox('Adding Dependency Failed', `Could not add dependency ${pkg}.`);
+          return;
+        }
+        console.log('Installation Output:', stdout);
+      });
     } catch {
       missing.push(pkg);
     }

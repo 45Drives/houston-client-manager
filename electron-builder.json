@@ -9,6 +9,18 @@
         "allowToChangeInstallationDirectory": true,
         "shortcutName": "Houston Client Manager"
     },
+    "mac": {
+        "identity": "Developer ID Application: Protocase Incorporated (CNDSVW45N4)",
+        "hardenedRuntime": true,
+        "gatekeeperAssess": false,
+        "category": "public.app-category.utilities",
+        "target": [
+            "dmg",
+            "zip"
+        ],
+        "entitlements": "entitlements.mac.plist",
+        "entitlementsInherit": "entitlements.mac.plist"
+    },
     "win": {
         "target": "nsis",
         "compression": "maximum"

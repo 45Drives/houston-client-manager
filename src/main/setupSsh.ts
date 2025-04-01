@@ -26,7 +26,7 @@ export async function setupSsh(server: Server) {
 
   // Generate SSH key if it doesn’t exist
   if (!fs.existsSync(sshKeyPath)) {
-    console.log("Generating SSH Key...");
+    console.log("Generating SSH Key...", sshKeyPath);
     
     exec(
       `${ssh_keygen} -t rsa -b 4096 -f "${sshKeyPath}" -N ""`,

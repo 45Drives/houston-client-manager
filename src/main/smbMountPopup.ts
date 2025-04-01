@@ -36,29 +36,29 @@ async function mountSambaClientWin(smb_host: string, smb_share: string, smb_user
     if (!error && !stderr && stdout) {
 
       const result = JSON.parse(stdout.toString());
-      if (!result.message) {
-        dialog
-          .showMessageBox({
-            type: 'info',
-            title: 'Make Mount Persistent',
-            message: `Would like to make this persistent after reboots:\n\n
-        host=${smb_host}\n
-        \n\nYou will need to enter your administrator password to install them.`,
-            buttons: ['OK', 'Cancel'],
-          })
-          .then((result) => {
-            if (result.response === 0) {
-              sudo.exec(`powershell -ExecutionPolicy Bypass -File "${addtasksPath}" \\\\${smb_host}\\${smb_share} ${smb_user} "${smb_pass}"`, options, (error, stdout, stderr) => {
-                if (error) {
-                  console.error(error);
-                  dialog.showErrorBox(error.name, error.message);
-                  return;
-                }
-              });
-            }
-          });
+      // if (!result.message) {
+      //   dialog
+      //     .showMessageBox({
+      //       type: 'info',
+      //       title: 'Make Mount Persistent',
+      //       message: `Would like to make this persistent after reboots:\n\n
+      //   host=${smb_host}\n
+      //   \n\nYou will need to enter your administrator password to install them.`,
+      //       buttons: ['OK', 'Cancel'],
+      //     })
+      //     .then((result) => {
+      //       if (result.response === 0) {
+      //         sudo.exec(`powershell -ExecutionPolicy Bypass -File "${addtasksPath}" \\\\${smb_host}\\${smb_share} ${smb_user} "${smb_pass}"`, options, (error, stdout, stderr) => {
+      //           if (error) {
+      //             console.error(error);
+      //             dialog.showErrorBox(error.name, error.message);
+      //             return;
+      //           }
+      //         });
+      //       }
+      //     });
 
-      }
+      // }
 
     }
   });

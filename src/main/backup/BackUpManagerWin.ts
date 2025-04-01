@@ -253,8 +253,6 @@ $task | Set-ScheduledTask
     }
   }
 
-
-
   protected scheduleToTaskTrigger(sched: TaskSchedule): string | undefined {
 
     console.log(sched);

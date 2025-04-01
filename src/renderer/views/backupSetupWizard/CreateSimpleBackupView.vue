@@ -105,7 +105,7 @@ import MessageDialog from '../../components/MessageDialog.vue';
 const { completeCurrentStep, prevStep } = useWizardSteps("backup");
 
 // Reactive State
-const backUpSetupConfig = inject(backUpSetupConfigKey);//ref<BackUpTask[]>(BackUpSetupConfigGlobal.getInstance().backUpTasks as BackUpTask[]);
+const backUpSetupConfig = inject(backUpSetupConfigKey);
 
 const selectedFolders = ref<{ name: string; path: string }[]>([]);
 const scheduleFrequency = ref<"hour" | "day" | "week" | "month">("hour");
@@ -305,7 +305,7 @@ function getNextScheduleDate(frequency: 'hour' | 'day' | 'week' | 'month'): Date
 
 // Navigation
 const proceedToNextStep = () => {
-  backUpSetupConfig?.backUpTasks.forEach(task => task.target = `${selectedServer.value?.name}.local:backup`)
+  backUpSetupConfig?.backUpTasks.forEach(task => task.target = `${selectedServer.value?.name}.local:${selectedServer.value?.shareName}`)
   completeCurrentStep();
 }
 const proceedToPreviousStep = () => prevStep();
