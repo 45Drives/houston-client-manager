@@ -16,7 +16,7 @@
 					<div class="flex items-center w-[25%] flex-shrink-0 space-x-2">
 						<label class="text-default font-semibold text-left">Back Up Location</label>
 						<CommanderToolTip
-							:message="`This is the designated backup storage location. It is preconfigured and cannot be modified.`" />
+							:message="`This is the designated backup storage location you set up earlier.`" />
 					</div>
 					<select v-model="selectedServer"
 						class="bg-default h-[3rem] text-default rounded-lg px-4 flex-1 border border-default">
@@ -278,8 +278,13 @@ const removeFolder = (index: number) => {
 
 // Proceed to Next Step
 const proceedToNextStep = () => {
-  backUpSetupConfig?.backUpTasks.forEach(task => task.target = `${selectedServer.value?.name}.local:backup`)
-  completeCurrentStep();
+//   backUpSetupConfig?.backUpTasks.forEach(task => task.target = `${selectedServer.value?.name}.local:backup`)
+	backUpSetupConfig?.backUpTasks.forEach(
+		task => {
+			task.target = `${selectedServer.value!.name}.local:${selectedServer.value!.shareName!}`;
+			console.log('target saved:', task.target);
+		});
+	completeCurrentStep();
 }
 
 // Proceed to Previous Step
