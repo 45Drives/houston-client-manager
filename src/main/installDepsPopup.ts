@@ -3,7 +3,7 @@ import sudo from 'sudo-prompt';
 import { getOS } from './utils';
 
 const options = {
-  name: 'Houston Client Manager',
+  name: '45drives Setup Wizard',
 };
 
 // Define dependencies for each OS

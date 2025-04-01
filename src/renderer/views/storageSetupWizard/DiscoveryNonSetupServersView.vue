@@ -21,8 +21,6 @@
       <p class="w-9/12 text-center text-2xl">
         If your storage server is not appearing in the list above, please return to the Hardware Setup and ensure all
         steps were completed.
-        <!-- <CommanderToolTip
-          :message="``" /> -->
       </p>
 
       <br />
@@ -53,10 +51,9 @@ import CardContainer from '../../components/CardContainer.vue';
 import { useWizardSteps } from '@45drives/houston-common-ui';
 import HoustonServerListView from '../../components/HoustonServerListView.vue'
 import { Server } from '../../types';
-import { ref } from 'vue';
-// import { CommanderToolTip } from '../components/commander';
+import { onActivated, onMounted, ref } from 'vue';
 
-const { completeCurrentStep, prevStep } = useWizardSteps("setup");
+const { completeCurrentStep, unCompleteCurrentStep, prevStep } = useWizardSteps("setup");
 const selectedServer = ref<Server | null>(null);
 
 const goBackStep = async () => {
@@ -64,6 +61,8 @@ const goBackStep = async () => {
 };
 
 const proceedToNextStep = async () => {
+  console.log("Next Button on Discovery clicked.")
+  unCompleteCurrentStep()
   completeCurrentStep(true, selectedServer.value as Record<string, any>);
 };
 

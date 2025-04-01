@@ -84,7 +84,7 @@ IPCRouter.getInstance().addEventListener("action", async (data) => {
       await waitForServerRebootAndShowWizard();
 
       // showBackUpSetupWizard.value = true;
-      // useWizardSteps("setupwizard").reset()
+      // useWizardSteps("setup").reset()
     }
   } catch (error) {
   }
@@ -127,7 +127,7 @@ async function waitForServerRebootAndShowWizard() {
   if (serverUp) {
     waitingForServerReboot.value = false;
     showBackUpSetupWizard.value = true;
-    useWizardSteps("setupwizard").reset();
+    useWizardSteps("setup").reset();
   } else {
     waitingForServerReboot.value = false;
     reportError(new Error("Server did not come back online within timeout."));

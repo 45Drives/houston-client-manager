@@ -13,7 +13,7 @@ export class BackUpManagerWin implements BackUpManager {
 
   protected runScriptAdmin(powershellScript: string, scriptName: string): Promise<{ stdout: string, stderr: string }> {
     const options = {
-      name: 'Houston Client Manager'
+      name: '45drives Setup Wizard'
     };
 
     // Save to file

@@ -2,27 +2,31 @@
   <!-- List of servers to click -->
   <div class="flex flex-col">
     <div class="font-bold text-center border-b-2">
-      Houston Servers
+      45drives Servers
     </div>
 
     <div v-if="servers.length == 0" class="spinner"></div>
 
-    <div class="flex flex-col space-y-1 p-2">
-      <label
-      v-for="server in servers"
-      :key="server.ip"
-      class="flex items-center space-x-2 p-2"
-    >
-      <input
-        type="checkbox"
-        :checked="selectedServer?.ip === server.ip"
-        @change="handleSelection(server)"
-        class="form-checkbox h-5 w-5 text-blue-600"
-      />
-      <span>{{ server.name }} - {{ server.ip }}</span>
-    </label>
+    <table class="min-w-full border-collapse border border-gray-500">
+      <thead>
+        <tr class="bg-gray-200">
+          <th class="border border-gray-500 p-2">Select</th>
+          <th class="border border-gray-500 p-2">Name</th>
+          <th class="border border-gray-500 p-2">IP Address</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr v-for="server in servers" :key="server.ip" class="hover:bg-gray-100">
+          <td class="border border-gray-500 p-2 text-center">
+            <input type="checkbox" :checked="selectedServer?.ip === server.ip" @change="handleSelection(server)"
+              class="form-checkbox h-5 w-5 text-blue-600" />
+          </td>
+          <td class="border border-gray-500 p-2">{{ server.name }}</td>
+          <td class="border border-gray-500 p-2">{{ server.ip }}</td>
+        </tr>
+      </tbody>
+    </table>
 
-    </div>
   </div>
 
 </template>
@@ -44,7 +48,7 @@ window.electron.ipcRenderer.on('discovered-servers', async (_event, discoveredSe
   } else {
 
     servers.value = discoveredServers.filter(server => server.status !== "complete");
-  } 
+  }
 
 });
 
