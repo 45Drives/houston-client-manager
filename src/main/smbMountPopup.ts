@@ -16,6 +16,7 @@ async function mountSambaClient(smb_host: string, smb_share: string, smb_user: s
   if (platform === "win32") {
     mountSambaClientWin(smb_host, smb_share, smb_user, smb_pass, mainWindow);
   } else if (platform === "linux") {
+    console.log(`passing host:${smb_host}, share:${smb_share}, user:${smb_user}, pass:${smb_pass} to script`);
     mountSambaClientScript(smb_host, smb_share, smb_user, smb_pass, await getAsset("static", "mount_smb_lin.sh"), mainWindow);
   } else if (platform === "darwin") {
     mountSambaClientScript(smb_host, smb_share, smb_user, smb_pass, await getAsset("static", "mount_smb_mac.sh"), mainWindow);
@@ -147,7 +148,6 @@ export default function mountSmbPopup(smb_host: string, smb_share: string, smb_u
   if (getOS() === "win") {
     mountSambaClient(smb_host, smb_share, smb_user, smb_pass, mainWindow);
   } else {
-
     mountSambaClient(smb_host, smb_share, smb_user, smb_pass, mainWindow);
 
     // dialog

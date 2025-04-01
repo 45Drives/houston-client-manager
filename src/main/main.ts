@@ -72,7 +72,7 @@ function createWindow() {
     } else {
       try {
         const message = JSON.parse(data);
-        if (message.type === 'configurBackUp') {
+        if (message.type === 'configureBackUp') {
 
           message.config.backUpTasks.forEach(backUpTask => {
 
