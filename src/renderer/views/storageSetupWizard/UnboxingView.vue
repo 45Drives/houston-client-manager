@@ -2,7 +2,7 @@
   <CardContainer>
     <template #header>
       <p class="text-header text-center text-3xl">
-        SETTING UP YOUR HARDWARE
+        Unboxing
       </p>
     </template>
     <div class="flex flex-col justify-center items-center h-full">
@@ -10,11 +10,12 @@
         <!-- Step 1 -->
         <p class="col-span-3 text-left text-2xl">
           <b>Let’s set up the storage server and drives.</b><br />
-          1. If you purchased drives from us, they will have arrived in a separate, securely packaged box.
+          If you purchased drives from us, they will have arrived in a separate, securely packaged box.
           If you're using your own drives, we recommend ensuring they all have the same capacity to optimize usable
           storage.
           <CommanderToolTip
             :message="`Beware of using mixed drive sizes! The smallest one determines how much storage you will be able to use.`" />
+          <br />
           <br />
           <b>NOTE:</b> The storage bays are caddiless for 3.5” Drives.
           2.5” Drives can be used, however caddies are required.
@@ -23,32 +24,6 @@
         </p>
         <img class="h-fit" src="../../assets/unboxInsertDrives.png" alt="Insert Drives" />
 
-        <!-- Step 2 -->
-        <p class="col-span-3 text-left text-2xl">
-          2. Take the supplied power cord and plug it into the back of the server power port.
-          Then, plug the other end of the power cord into a wall outlet.
-          <CommanderToolTip
-            :message="`You can also use a UPS (Uninterruptible Power Supply) for power-backup in the case of a power outage.`" />
-        </p>
-        <img class="h-fit" src="../../assets/plugPower.png" alt="Plug Power" />
-
-        <!-- Step 3 -->
-        <p class="col-span-3 text-left text-2xl">
-          3. Take the supplied ethernet cable and plug it into the back of the server.
-          Then, plug it into either a router or network switch.
-          <br />
-          <b>NOTE:</b> This is a Network Attached Server (NAS), not a Direct Attached Server (DAS).
-          Connecting the server directly to a computer will not work.
-          <CommanderToolTip
-            :message="`A NAS connects to a network, not directly to a computer. It needs a network connection to function properly.`" />
-        </p>
-        <img class="h-fit" src="../../assets/plugEthernet.png" alt="Plug Ethernet" />
-
-        <!-- Step 4 -->
-        <p class="col-span-3 text-left text-2xl">
-          4. Press the Power button to turn on your storage server!
-        </p>
-        <img class="h-fit" src="../../assets/pressPower.png" alt="Press Power" />
       </div>
     </div>
 
