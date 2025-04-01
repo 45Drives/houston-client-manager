@@ -6,11 +6,9 @@
         <teleport to="body">
             <div v-if="showCommander" class="absolute"
                 :style="{ top: commanderPosition.top, left: commanderPosition.left }">
-                <CommanderPopup :message="message" :visible="showCommander"
-                    @close="showCommander = false" :position="commanderPosition"
-                    :arrow-offset="commanderPosition.arrowOffset" :placement="commanderPosition.placement" 
-                    :width="width"
-                    />
+                <CommanderPopup :message="message" :visible="showCommander" @close="showCommander = false"
+                    :position="commanderPosition" :arrowOffset="commanderPosition.arrowOffset"
+                    :placement="commanderPosition.placement" :width="width" />
             </div>
         </teleport>
     </span>
