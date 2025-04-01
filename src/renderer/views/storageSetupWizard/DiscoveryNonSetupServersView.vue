@@ -51,7 +51,7 @@ import CardContainer from '../../components/CardContainer.vue';
 import { useWizardSteps } from '@45drives/houston-common-ui';
 import HoustonServerListView from '../../components/HoustonServerListView.vue'
 import { Server } from '../../types';
-import { onActivated, onMounted, ref } from 'vue';
+import { ref } from 'vue';
 
 const { completeCurrentStep, unCompleteCurrentStep, prevStep } = useWizardSteps("setup");
 const selectedServer = ref<Server | null>(null);
