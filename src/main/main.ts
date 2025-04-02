@@ -7,7 +7,7 @@ import mountSmbPopup from './smbMountPopup';
 import { IPCRouter } from '../../houston-common/houston-common-lib/lib/electronIPC/IPCRouter';
 import { getOS } from './utils';
 import { BackUpManager, BackUpManagerLin, BackUpManagerMac, BackUpManagerWin, BackUpSetupConfigurator } from './backup';
-import { BackUpSetupConfig } from '@45drives/houston-common-lib';
+import { BackUpSetupConfig, BackUpTask } from '@45drives/houston-common-lib';
 import { setupSsh } from './setupSsh';
 
 let discoveredServers: Server[] = [];
@@ -87,6 +87,19 @@ function createWindow() {
               status: progress
             }));
           })
+        } else if (message.type === 'removeBackUpTask') {
+          const task: BackUpTask = message.task
+
+          const backupManager = getBackUpManager();
+          if (backupManager) {
+            
+            backupManager.unschedule(task)
+            mainWindow.webContents.send('notification', `Successfully removed ${task.source}->${task.target}!`);
+          } else {
+
+            mainWindow.webContents.send('notification', `Error: No Backup Manager was found able to handle this!`);
+          }
+
         }
       } catch (error) {
 
