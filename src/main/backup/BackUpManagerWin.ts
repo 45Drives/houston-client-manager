@@ -158,33 +158,42 @@ if ($groupMembers -notcontains $user) {
   }
 
   chanagePrivilagesOnSSHKey() {
+    const takeOwnerShip = "takeown /F `" + getSSHKey() + "` /A"
     return `
-$privateKey = "${getSSHKey()}"
-
-# Ensure the file exists
-if (!(Test-Path $privateKey)) {
-    Write-Output "File does not exist: $privateKey"
-    exit 1
-}
-
-# Get the current user
-$activeUser = $env:USERNAME
-
-# Get the ACL for the file
-$acl = Get-Acl $privateKey
-
-# Remove all existing access rules
-$acl.SetAccessRuleProtection($true, $false)
-$acl.Access | ForEach-Object { $acl.RemoveAccessRule($_) }
-
-# Grant full control to the active user only
-$rule = New-Object System.Security.AccessControl.FileSystemAccessRule($activeUser, "FullControl", "Allow")
-$acl.SetAccessRule($rule)
-
-# Apply the new ACL settings
-Set-Acl -Path $privateKey -AclObject $acl
-
-Write-Output "Permissions updated: Only $activeUser has access to $privateKey"
+  $privateKey = "${getSSHKey()}"
+  
+  # Ensure the file exists
+  if (!(Test-Path $privateKey)) {
+      Write-Output "File does not exist: $privateKey"
+      exit 1
+  }
+  
+  # Get the current user
+  $activeUser = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
+  
+  # Take ownership of the file
+  $takeownCmd = "${takeOwnerShip}"
+  Invoke-Expression $takeownCmd
+  
+  # Get the ACL for the file
+  $acl = Get-Acl $privateKey
+  
+  # Set the owner to the current user
+  $owner = New-Object System.Security.Principal.NTAccount($activeUser)
+  $acl.SetOwner($owner)
+  
+  # Remove all existing access rules
+  $acl.SetAccessRuleProtection($true, $false)
+  $acl.Access | ForEach-Object { $acl.RemoveAccessRule($_) }
+  
+  # Grant read-only permissions to the active user
+  $rule = New-Object System.Security.AccessControl.FileSystemAccessRule($activeUser, "Read", "Allow")
+  $acl.SetAccessRule($rule)
+  
+  # Apply the new ACL settings
+  Set-Acl -Path $privateKey -AclObject $acl
+  
+  Write-Output "Owner updated and permissions set to read-only: $activeUser has access to $privateKey"
 `
   }
 

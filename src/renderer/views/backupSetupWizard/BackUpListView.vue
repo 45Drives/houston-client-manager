@@ -70,7 +70,12 @@ onActivated(fetchBackupTasks); // Runs when the component is displayed again
 
 const deleteTask = (task: BackUpTask) => {
   backUpTasks.value = backUpTasks.value.filter(t => t.source !== task.source || t.target !== task.target);
-  // TODO: really delete the task
+  IPCRouter.getInstance().send("backend", 'action', JSON.stringify(
+    {
+      type: "removeBackUpTask",
+      task: task
+    }
+  ))
 };
 
 function fetchBackupTasks() {

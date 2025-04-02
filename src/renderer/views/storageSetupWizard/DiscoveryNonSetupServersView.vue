@@ -20,7 +20,8 @@
 
       <p class="w-9/12 text-center text-2xl">
         If your storage server is not appearing in the list above, please return to the Hardware Setup and ensure all
-        steps were completed.
+        steps were completed correctly.
+        <a href="#" @click.prevent="onRestartSetup" class="text-blue-600 hover:underline">Click Here</a>
       </p>
 
       <br />
@@ -53,7 +54,7 @@ import HoustonServerListView from '../../components/HoustonServerListView.vue'
 import { Server } from '../../types';
 import { ref } from 'vue';
 
-const { completeCurrentStep, unCompleteCurrentStep, prevStep } = useWizardSteps("setup");
+const { completeCurrentStep, unCompleteCurrentStep, prevStep, reset } = useWizardSteps("setup");
 const selectedServer = ref<Server | null>(null);
 
 const goBackStep = async () => {
@@ -65,6 +66,10 @@ const proceedToNextStep = async () => {
   unCompleteCurrentStep()
   completeCurrentStep(true, selectedServer.value as Record<string, any>);
 };
+
+const onRestartSetup = async () => {
+  reset();
+}
 
 const handleServerSelected = async (server: Server | null) => {
   selectedServer.value = server;
