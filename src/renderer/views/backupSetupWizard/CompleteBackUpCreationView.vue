@@ -30,7 +30,7 @@
     <!-- Go to Home Button (visible once complete) -->
     <template #footer>
       <div class="button-group-row justify-end">
-        <button :disabled="setupComplete !== 'yes'" class="btn btn-primary w-40 h-20" @click="goHome">{{ "Finish!"
+        <button :disabled="setupComplete !== 'yes'" class="btn btn-secondary w-40 h-20" @click="goHome">{{ "Finish!"
           }}</button>
       </div>
     </template>

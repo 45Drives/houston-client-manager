@@ -43,7 +43,7 @@
 
     <template #footer>
       <div class="button-group-row justify-left">
-        <button @click="proceedToPreviousStep" class="btn btn-primary h-20 w-40">Back</button>
+        <button @click="proceedToPreviousStep" class="btn btn-secondary h-20 w-40">Back</button>
       </div>
     </template>
   </CardContainer>
