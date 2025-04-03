@@ -131,17 +131,6 @@ export class BackUpManagerLin implements BackUpManager {
     const commentMatch = cron.match(/#\s*(.*)$/);
     const description = commentMatch ? commentMatch[1].trim() : "Unnamed Backup";
 
-    // Find all single-quoted strings in order — assumes source and target are the last two
-    // const quotedPaths = cron.match(/'([^']+)'/g)?.map(str => str.replace(/'/g, ''));
-    // if (!quotedPaths || quotedPaths.length < 2) {
-    //   console.warn("❌ Could not extract source/target from cron line:", cron);
-    //   return null;
-    // }
-
-    // const source = quotedPaths[quotedPaths.length - 2];
-    // const rawTarget = quotedPaths[quotedPaths.length - 1];
-    // const target = rawTarget.replace(/^root@/, '');
-
     // Extract only the last two quoted values for source and target
     const quotedMatches = [...cron.matchAll(/'([^']+)'/g)].map(m => m[1]);
     if (quotedMatches.length < 2) {
@@ -151,8 +140,7 @@ export class BackUpManagerLin implements BackUpManager {
 
     const source = quotedMatches[quotedMatches.length - 2];
     const rawTarget = quotedMatches[quotedMatches.length - 1];
-    const target = rawTarget.replace(/^root@/, '');
-
+    const target = getSmbTargetFromSSHTarget(rawTarget.replace(/^root@/, ''));
 
     return {
       schedule,
