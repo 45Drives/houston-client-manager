@@ -63,7 +63,7 @@ sudo chmod 600 "$CREDENTIALS_FILE"
 
 # Mount the SMB share
 # sudo mount -a
-sudo mount -t cifs "$SMB_PATH" "$MOUNT_POINT" -o credentials=$CREDENTIALS_FILE,vers=3.0,uid=$(id -u),gid=$(id -g),dir_mode=0700,file_mode=0600
+sudo mount -t cifs "$SMB_PATH" "$MOUNT_POINT" -o credentials=$CREDENTIALS_FILE,vers=3.0,uid=$(id -u),gid=$(id -g),dir_mode=0775,file_mode=0664
 
 # Check if mounting was successful
 if [ $? -eq 0 ]; then

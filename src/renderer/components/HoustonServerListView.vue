@@ -1,33 +1,34 @@
 <template>
   <!-- List of servers to click -->
-  <div class="flex flex-col">
-    <div class="font-bold text-center border-b-2">
-      45drives Servers
+  <div class="flex flex-col items-center justify-center w-full mt-4">
+    <div class="font-bold text-center text-xl mb-2 border-b-2 border-default pb-1 w-full max-w-md">
+      45Drives Servers
     </div>
 
-    <div v-if="servers.length == 0" class="spinner"></div>
+    <div v-if="servers.length === 0" class="spinner my-4"></div>
 
-    <table class="min-w-full border-collapse border border-gray-500">
+    <table class="table-auto border-collapse border border-default w-full max-w-md">
       <thead>
-        <tr class="bg-gray-200">
-          <th class="border border-gray-500 p-2">Select</th>
-          <th class="border border-gray-500 p-2">Name</th>
-          <th class="border border-gray-500 p-2">IP Address</th>
+        <tr class="bg-accent">
+          <th class="border border-default p-2 text-center">Select</th>
+          <th class="border border-default p-2 text-center">Name</th>
+          <th class="border border-default p-2 text-center">IP Address</th>
         </tr>
       </thead>
       <tbody>
-        <tr v-for="server in servers" :key="server.ip" class="hover:bg-gray-100">
-          <td class="border border-gray-500 p-2 text-center">
-            <input type="checkbox" :checked="selectedServer?.ip === server.ip" @change="handleSelection(server)"
-              class="form-checkbox h-5 w-5 text-blue-600" />
+        <tr v-for="server in servers" :key="server.ip" class="hover:bg-accent cursor-pointer"
+          @click="handleSelection(server)">
+          <td class="border border-default p-2 text-center">
+            <input type="checkbox" :checked="selectedServer?.ip === server.ip" @click.stop
+              @change="handleSelection(server)" class="form-checkbox h-5 w-5 text-blue-600" />
           </td>
-          <td class="border border-gray-500 p-2">{{ server.name }}</td>
-          <td class="border border-gray-500 p-2">{{ server.ip }}</td>
+          <td class="border border-default p-2 text-center">{{ server.name }}</td>
+          <td class="border border-default p-2 text-center">{{ server.ip }}</td>
         </tr>
       </tbody>
     </table>
-
   </div>
+
 
 </template>
 
