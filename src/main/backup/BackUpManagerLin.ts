@@ -151,7 +151,7 @@ export class BackUpManagerLin implements BackUpManager {
 
     const source = quotedMatches[quotedMatches.length - 2];
     const rawTarget = quotedMatches[quotedMatches.length - 1];
-    const target = rawTarget.replace(/^root@/, '');
+    const target = getSmbTargetFromSSHTarget(rawTarget.replace(/^root@/, ''));
 
 
     return {
