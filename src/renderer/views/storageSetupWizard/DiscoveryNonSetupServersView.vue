@@ -54,8 +54,7 @@ import HoustonServerListView from '../../components/HoustonServerListView.vue'
 import { Server } from '../../types';
 import { ref } from 'vue';
 
-// const { completeCurrentStep, unCompleteCurrentStep, prevStep, reset } = useWizardSteps("setup");
-const { completeCurrentStep, prevStep, reset } = useWizardSteps("setup");
+const { completeCurrentStep, unCompleteCurrentStep, prevStep, reset } = useWizardSteps("setup");
 const selectedServer = ref<Server | null>(null);
 
 const goBackStep = async () => {
@@ -64,7 +63,7 @@ const goBackStep = async () => {
 
 const proceedToNextStep = async () => {
   console.log("Next Button on Discovery clicked.")
-  // unCompleteCurrentStep()
+  unCompleteCurrentStep()
   completeCurrentStep(true, selectedServer.value as Record<string, any>);
 };
 
