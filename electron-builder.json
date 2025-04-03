@@ -19,11 +19,13 @@
             "zip"
         ],
         "entitlements": "entitlements.mac.plist",
-        "entitlementsInherit": "entitlements.mac.plist"
+        "entitlementsInherit": "entitlements.mac.plist",
+        "icon": "icon.ico"
     },
     "win": {
         "target": "nsis",
-        "compression": "maximum"
+        "compression": "maximum",
+        "icon": "icon.ico"
     },
     "linux": {
         "target": [
@@ -33,7 +35,8 @@
             "pacman"
         ],
         "vendor": "45Drives",
-        "maintainer": "Matt Pyne <mpyne@45drives.com>"
+        "maintainer": "Matt Pyne <mpyne@45drives.com>",
+        "icon": "icon.ico"
     },
     "files": [
         {
