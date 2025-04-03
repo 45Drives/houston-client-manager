@@ -183,7 +183,7 @@ const showWizard = (type: 'storage' | 'backup') => {
 onMounted(() => {
   setTimeout(() => {
     scanningNetworkForServers.value = false;
-  }, 5000);
+  }, 7000);
 });
 
 // Receive the discovered servers from the main process

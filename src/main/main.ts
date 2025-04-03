@@ -119,7 +119,7 @@ function createWindow() {
 
     mainWindow.loadURL(`http://localhost:${rendererPort}`);
   } else {
-    mainWindow.setMenu(null);
+    // mainWindow.setMenu(null);
 
     mainWindow.loadFile(join(app.getAppPath(), 'renderer', 'index.html'));
   }

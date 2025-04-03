@@ -1,5 +1,5 @@
 {
-    "appId": "com.protocase.houstonclientmanager",
+    "appId": "com.protocase.drivesetupwizard",
     "directories": {
         "output": "dist"
     },
@@ -105,6 +105,5 @@
             ]
         }
     ],
-    "asar": true,
-    "compression": "maximum"
+    "asar": false
 }
