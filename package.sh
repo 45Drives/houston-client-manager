@@ -6,7 +6,8 @@ set -e
 WIN_HOST="user@192.168.209.83"
 # MAC_HOST="45drives@192.168.210.11"
 MAC_HOST="protocase@192.168.9.9"
-LINUX_HOST="root@192.168.207.44"
+LINUX_HOST="root@192.168.211.113"
+# LINUX_HOST="root@192.168.207.44"
 
 REMOTE_BUILD_DIR="build_houston_m_temp"
 LOCAL_APP_DIR="$(dirname "$0")"
@@ -26,39 +27,39 @@ tar $EXCLUDE_PATTERN -czf /tmp/app.tar.gz -C "$LOCAL_APP_DIR" .
 # ssh "$WIN_HOST" "cmd.exe /c \"if exist $REMOTE_BUILD_DIR rmdir /s /q $REMOTE_BUILD_DIR\" && mkdir $REMOTE_BUILD_DIR && tar -xzf app.tar.gz -C $REMOTE_BUILD_DIR && cd $REMOTE_BUILD_DIR && cd houston-common/houston-common-lib/ && npm install && npm run build && cd ../../ && cd houston-common/houston-common-ui/ && npm install && npm run build && cd ../../ && npm install && npm run build:win"
 # /usr/bin/scp -r "$WIN_HOST:$REMOTE_BUILD_DIR/dist/houston*" "$LOCAL_OUTPUT_DIR/windows"
 
-# # Build on Linux
-# echo "🐧 Building on Linux..."
-# /usr/bin/scp "/tmp/app.tar.gz" "$LINUX_HOST:app.tar.gz"
-# ssh "$LINUX_HOST" "
-#        set -e
-#    export NVM_DIR=\$HOME/.nvm
-#    [ -s \"\$NVM_DIR/nvm.sh\" ] && . \"\$NVM_DIR/nvm.sh\"
-#    nvm use 23
-#    node -v
-#    npm -v
-#    echo 'Removing old build directory...'
-#    rm -rf \"${REMOTE_BUILD_DIR}\" && mkdir -p \"${REMOTE_BUILD_DIR}\"
+# Build on Linux
+echo "🐧 Building on Linux..."
+/usr/bin/scp "/tmp/app.tar.gz" "$LINUX_HOST:app.tar.gz"
+ssh "$LINUX_HOST" "
+       set -e
+   export NVM_DIR=\$HOME/.nvm
+   [ -s \"\$NVM_DIR/nvm.sh\" ] && . \"\$NVM_DIR/nvm.sh\"
+   nvm use 23
+   node -v
+   npm -v
+   echo 'Removing old build directory...'
+   rm -rf \"${REMOTE_BUILD_DIR}\" && mkdir -p \"${REMOTE_BUILD_DIR}\"
    
-#    echo 'Extracting app.tar.gz...'
-#    tar -xzf ~/app.tar.gz -C \"${REMOTE_BUILD_DIR}\"
+   echo 'Extracting app.tar.gz...'
+   tar -xzf ~/app.tar.gz -C \"${REMOTE_BUILD_DIR}\"
 
-#    echo 'Installing dependencies and building...'
-#    cd \"${REMOTE_BUILD_DIR}\"
+   echo 'Installing dependencies and building...'
+   cd \"${REMOTE_BUILD_DIR}\"
    
-#    echo 'Building houston-common-lib...'
-#    cd houston-common/houston-common-lib/ && npm install && npm run build
-#    cd ../../
+   echo 'Building houston-common-lib...'
+   cd houston-common/houston-common-lib/ && npm install && npm run build
+   cd ../../
 
-#    echo 'Building houston-common-ui...'
-#    cd houston-common/houston-common-ui/ && npm install && npm run build
-#    cd ../../
+   echo 'Building houston-common-ui...'
+   cd houston-common/houston-common-ui/ && npm install && npm run build
+   cd ../../
 
-#    echo 'Final npm install and build...'
-#    npm install && npm run build:linux
-# "
-# rm -rf $LOCAL_OUTPUT_DIR/linux/
-# mkdir $LOCAL_OUTPUT_DIR/linux/
-# /usr/bin/scp -r "$LINUX_HOST:$REMOTE_BUILD_DIR/dist/houston*" "$LOCAL_OUTPUT_DIR/linux/"
+   echo 'Final npm install and build...'
+   npm install && npm run build:linux
+"
+rm -rf $LOCAL_OUTPUT_DIR/linux/
+mkdir $LOCAL_OUTPUT_DIR/linux/
+/usr/bin/scp -r "$LINUX_HOST:$REMOTE_BUILD_DIR/dist/houston*" "$LOCAL_OUTPUT_DIR/linux/"
 
 # Build on macOS
 echo "🍏 Building on macOS..."
