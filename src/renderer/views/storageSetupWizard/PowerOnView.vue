@@ -33,7 +33,6 @@
 <script setup lang="ts">
 import CardContainer from '../../components/CardContainer.vue';
 import { useWizardSteps } from '@45drives/houston-common-ui';
-import { CommanderToolTip } from '../../components/commander';
 
 const { completeCurrentStep, prevStep } = useWizardSteps("setup");
 

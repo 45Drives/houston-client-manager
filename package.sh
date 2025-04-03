@@ -22,10 +22,10 @@ EXCLUDE_PATTERN="--exclude=.git --exclude=dist --exclude=*/dist --exclude=build 
 tar $EXCLUDE_PATTERN -czf /tmp/app.tar.gz -C "$LOCAL_APP_DIR" .
 
 # Build on Windows
-# echo "🔧 Building on Windows..."
-# /usr/bin/scp "/tmp/app.tar.gz" "$WIN_HOST:app.tar.gz"
-# ssh "$WIN_HOST" "cmd.exe /c \"if exist $REMOTE_BUILD_DIR rmdir /s /q $REMOTE_BUILD_DIR\" && mkdir $REMOTE_BUILD_DIR && tar -xzf app.tar.gz -C $REMOTE_BUILD_DIR && cd $REMOTE_BUILD_DIR && cd houston-common/houston-common-lib/ && npm install && npm run build && cd ../../ && cd houston-common/houston-common-ui/ && npm install && npm run build && cd ../../ && npm install && npm run build:win"
-# /usr/bin/scp -r "$WIN_HOST:$REMOTE_BUILD_DIR/dist/houston*" "$LOCAL_OUTPUT_DIR/windows"
+echo "🔧 Building on Windows..."
+/usr/bin/scp "/tmp/app.tar.gz" "$WIN_HOST:app.tar.gz"
+ssh "$WIN_HOST" "cmd.exe /c \"if exist $REMOTE_BUILD_DIR rmdir /s /q $REMOTE_BUILD_DIR\" && mkdir $REMOTE_BUILD_DIR && tar -xzf app.tar.gz -C $REMOTE_BUILD_DIR && cd $REMOTE_BUILD_DIR && cd houston-common/houston-common-lib/ && npm install && npm run build && cd ../../ && cd houston-common/houston-common-ui/ && npm install && npm run build && cd ../../ && npm install && npm run build:win"
+/usr/bin/scp -r "$WIN_HOST:$REMOTE_BUILD_DIR/dist/houston*" "$LOCAL_OUTPUT_DIR/windows"
 
 # Build on Linux
 echo "🐧 Building on Linux..."

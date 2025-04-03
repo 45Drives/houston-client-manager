@@ -6,4 +6,4 @@ export interface BackUpManager {
   schedule(task: BackUpTask): Promise<{stdout: string, stderr: string}>
 }
 
-export const backupTaskTag = "houston-client-manager-backup-task"
+export const backupTaskTag = "45drives-setup-wizard-backup-task"
