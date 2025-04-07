@@ -1,5 +1,4 @@
 import { BrowserWindow, dialog } from 'electron';
-import sudo from 'sudo-prompt';
 import os from 'os';
 import installDepPopup from './installDepsPopup';
 import { exec } from 'child_process';
@@ -99,11 +98,6 @@ function handleExecOutput(
     return;
   }
   console.log('Mount samba Output:', stdout);
-  dialog.showMessageBox({
-    type: 'info',
-    title: 'Connection To Storage',
-    message: 'Connected!',
-  });
 }
 
 function handleExecOutputWithOutPopup(
@@ -134,7 +128,8 @@ function handleExecOutputWithOutPopup(
       return false;
     }
 
-    mainWindow.webContents.send('notification', `Successfull connected to ${result}.`);
+    console.log('result:', result);
+    mainWindow.webContents.send('notification', `Successfull connected to host=${smb_host}, share=${smb_share}.`);
   } else {
 
     mainWindow.webContents.send('notification', `Error: failed to connect to host=${smb_host}, share=${smb_share}.`);
