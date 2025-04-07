@@ -92,7 +92,7 @@ function createWindow() {
 
           const backupManager = getBackUpManager();
           if (backupManager) {
-            
+            // console.log('unscheduling task:', task)
             backupManager.unschedule(task)
             mainWindow.webContents.send('notification', `Successfully removed ${task.source}->${task.target}!`);
           } else {

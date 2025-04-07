@@ -38,18 +38,45 @@ export class BackUpManagerLin implements BackUpManager {
     });
   }
 
+  // unschedule(task: BackUpTask): void {
+  //   if (!fs.existsSync(this.cronFilePath)) {
+  //     return;
+  //   }
+  //   // console.log('task being deleted:', task);
+
+  //   const cron = this.backupTaskToCron(task);
+  //   console.log('after cron: ', cron);
+
+  //   const cronFileContents = fs.readFileSync(this.cronFilePath, "utf-8");
+  //   const cronEntries = cronFileContents.split(/[\r\n]+/);
+  //   const newCronEntries = cronEntries.filter((c) => c !== cron);
+  //   const newCronFileContents = newCronEntries.join("\n") + "\n";
+
+
+  //   fs.writeFileSync(this.cronFilePath, newCronFileContents, "utf-8");
+  //   this.reloadCron();
+  // }
   unschedule(task: BackUpTask): void {
     if (!fs.existsSync(this.cronFilePath)) {
       return;
     }
-    const cron = this.backupTaskToCron(task);
+
     const cronFileContents = fs.readFileSync(this.cronFilePath, "utf-8");
     const cronEntries = cronFileContents.split(/[\r\n]+/);
-    const newCronEntries = cronEntries.filter((c) => c !== cron);
+
+    const newCronEntries = cronEntries.filter((line) => {
+      // Only remove lines that match both the tag and description
+      return !(line.includes(`# ${backupTaskTag}`) && line.includes(task.description));
+    });
+
     const newCronFileContents = newCronEntries.join("\n") + "\n";
+
     fs.writeFileSync(this.cronFilePath, newCronFileContents, "utf-8");
-    this.reloadCron();
+    // this.reloadCron();
+
+    console.log(`🧹 Removed task with description "${task.description}" from cron file`);
   }
+
 
   private ensureCronFile(): void {
     if (!fs.existsSync(this.cronFilePath)) {
@@ -73,15 +100,18 @@ export class BackUpManagerLin implements BackUpManager {
   }
 
   protected backupTaskToCron(task: BackUpTask): string {
+    console.log('task being converted to cron:', task);
     if (task.source.includes("'")) {
       throw new Error("Source cannot contain ' (single-quote)");
     }
     if (task.target.includes("'")) {
       throw new Error("Target cannot contain ' (single-quote)");
     }
-    ;
-    return `${this.scheduleToCron(task.schedule)} ${getRsync()}${task.mirror ? " --delete" : ""
+    
+    const result = `${this.scheduleToCron(task.schedule)} ${getRsync()}${task.mirror ? " --delete" : ""
       } '${task.source}' 'root@${getSSHTargetFromSmbTarget(task.target)}' # ${backupTaskTag} ${task.description}`;
+    console.log('backupTaskToCron Result:', result);
+    return result;
   }
 
   protected cronToBackupTask(cron: string): BackUpTask | null {

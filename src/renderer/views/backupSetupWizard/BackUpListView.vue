@@ -69,6 +69,10 @@ onActivated(fetchBackupTasks); // Runs when the component is displayed again
 
 
 const deleteTask = (task: BackUpTask) => {
+  if (selectedBackUp.value == task) {
+    selectedBackUp.value = null;
+    emit('backUpTaskSelected', null);
+  }
   backUpTasks.value = backUpTasks.value.filter(t => t.source !== task.source || t.target !== task.target);
   IPCRouter.getInstance().send("backend", 'action', JSON.stringify(
     {
