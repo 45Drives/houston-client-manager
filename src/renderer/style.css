@@ -32,6 +32,7 @@
   background-color: var(--btn-bg) !important;
   border-color: var(--btn-border) !important;
   color: white !important;
+  z-index: 10;
 }
 
 /* Hover state */
@@ -40,6 +41,7 @@
   background-color: var(--btn-hover-bg) !important;
   border-color: var(--btn-hover-border) !important;
   color: white !important;
+  z-index: 10;
 }
 
 /* Disabled state */
@@ -52,4 +54,5 @@
   color: #6c757d !important;
   cursor: not-allowed;
   opacity: 0.65;
+  z-index: 10;
 }
