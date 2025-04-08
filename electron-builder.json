@@ -29,14 +29,13 @@
     },
     "linux": {
         "target": [
-            "snap",
             "deb",
             "rpm",
             "pacman"
         ],
         "vendor": "45Drives",
         "maintainer": "Matt Pyne <mpyne@45drives.com>",
-        "icon": "icon.ico"
+        "icon": "icon.png"
     },
     "files": [
         {
