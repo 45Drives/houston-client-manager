@@ -1,9 +1,14 @@
 <template>
   <CardContainer class="">
     <template #header>
-      <div class="flex flex-row justify-center text-center items-center text-3xl">
-        Choose Where You Want to Store Back ups &nbsp;
-        <CommanderToolTip :message="`Choose how your storage server will be setup and configured.`" :width="600" />
+      <div class="relative flex items-center justify-center h-24">
+        <div class="absolute left-0">
+          <DynamicBrandingLogo />
+        </div>
+        <p class="text-header text-2xl font-semibold text-center">
+          Choose Where You Want to Store Back ups &nbsp;
+          <CommanderToolTip :message="`Choose how your storage server will be setup and configured.`" :width="600" />
+        </p>
       </div>
     </template>
 
@@ -97,7 +102,7 @@
 import { ref } from 'vue';
 import CardContainer from '../../components/CardContainer.vue';
 import { CommanderToolTip } from '../../components/commander';
-import { useWizardSteps } from '@45drives/houston-common-ui';
+import { useWizardSteps, DynamicBrandingLogo } from '@45drives/houston-common-ui';
 import { Server } from '../../types';
 import MessageDialog from '../../components/MessageDialog.vue';
 

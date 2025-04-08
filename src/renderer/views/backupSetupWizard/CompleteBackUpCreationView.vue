@@ -1,7 +1,14 @@
 <template>
   <CardContainer>
     <template #header class="!text-center">
-      <div class="flex justify-center text-3xl">Congratulations</div>
+      <div class="relative flex items-center justify-center h-24">
+        <div class="absolute left-0">
+          <DynamicBrandingLogo />
+        </div>
+        <p class="text-header text-2xl font-semibold text-center">
+          Congratulations
+        </p>
+      </div>
     </template>
 
     <!-- Complete Section -->
@@ -42,7 +49,7 @@
 <script setup lang="ts">
 import { CardContainer } from "@45drives/houston-common-ui";
 import { ref, watch, inject, onActivated } from "vue";
-import { useWizardSteps } from "@45drives/houston-common-ui";
+import { useWizardSteps, DynamicBrandingLogo } from "@45drives/houston-common-ui";
 import { EasySetupProgress, IPCRouter } from "@45drives/houston-common-lib";
 import { backUpSetupConfigKey } from "../../keys/injection-keys";
 

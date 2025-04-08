@@ -12,15 +12,6 @@
       </button>
     </div>
 
-    <div v-else class="flex justify-center items-center py-6">
-      <div class="flex flex-row items-center bg-white px-6 py-3 rounded-2xl shadow-xl space-x-4">
-        <DynamicBrandingLogo class="h-16 w-auto" :division="divisionCode!" />
-        <span class="text-black text-4xl" :class="(divisionCode == 'default' ? 'mt-1.5' : '-mt-2 -ml-1')">
-          Setup Wizard
-        </span>
-      </div>
-    </div>
-
     <div class="w-full h-full flex items-center justify-center" v-show="showWelcomeSetupWizard">
       <StorageSetupWizard id="setup" :onComplete="onWelcomeWizardComplete" />
     </div>

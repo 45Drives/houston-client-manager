@@ -1,9 +1,14 @@
 <template>
   <CardContainer>
     <template #header>
-      <p class="text-header text-center text-3xl">
-        Unboxing
-      </p>
+      <div class="relative flex items-center justify-center h-24">
+        <div class="absolute left-0">
+          <DynamicBrandingLogo />
+        </div>
+        <p class="text-header text-2xl font-semibold text-center">
+          Unboxing
+        </p>
+      </div>
     </template>
     
     <div class="flex flex-col justify-center items-center h-full">
@@ -45,7 +50,7 @@
 
 <script setup lang="ts">
 import CardContainer from '../../components/CardContainer.vue';
-import { useWizardSteps } from '@45drives/houston-common-ui';
+import { useWizardSteps, DynamicBrandingLogo } from '@45drives/houston-common-ui';
 import { CommanderToolTip } from '../../components/commander';
 
 const { completeCurrentStep, prevStep } = useWizardSteps("setup");

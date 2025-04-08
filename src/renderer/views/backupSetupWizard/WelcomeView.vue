@@ -1,9 +1,14 @@
 <template>
   <CardContainer>
     <template #header>
-      <p class="text-header text-center text-3xl">
-        Welcome to the 45Drives Back Up Setup Wizard!
-      </p>
+      <div class="relative flex items-center justify-center h-24">
+        <div class="absolute left-0">
+          <DynamicBrandingLogo />
+        </div>
+        <p class="text-header text-2xl font-semibold text-center">
+          Welcome to the 45Drives Back Up Setup Wizard!
+        </p>
+      </div>
     </template>
 
     <div class="flex flex-col h-full justify-center items-center">
@@ -57,7 +62,7 @@
 <script setup lang="ts">
 import CardContainer from '../../components/CardContainer.vue';
 import { CommanderToolTip } from '../../components/commander';
-import { useWizardSteps } from '@45drives/houston-common-ui';
+import { useWizardSteps, DynamicBrandingLogo } from '@45drives/houston-common-ui';
 
 const { completeCurrentStep } = useWizardSteps("backup");
 

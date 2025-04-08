@@ -1,7 +1,10 @@
 <template>
   <CardContainer>
     <template #header>
-      <div class="flex flex-col items-center space-y-4">
+      <div class="relative flex items-center justify-center h-24">
+        <div class="absolute left-0">
+          <DynamicBrandingLogo />
+        </div>
         <p class="text-header text-2xl font-semibold text-center">
           Welcome to the 45Drives Setup Wizard!
         </p>
@@ -56,7 +59,7 @@
 <script setup lang="ts">
 import CardContainer from '../../components/CardContainer.vue';
 import { CommanderToolTip } from '../../components/commander';
-import { useWizardSteps } from '@45drives/houston-common-ui';
+import { useWizardSteps, DynamicBrandingLogo } from '@45drives/houston-common-ui';
 
 const { completeCurrentStep } = useWizardSteps("setup");
 
