@@ -183,6 +183,13 @@ function createWindow() {
             serverName: txtRecord.serverName || serverName,
             shareName: txtRecord.shareName,
             setupTime: txtRecord.setupTime,
+            serverInfo: {
+              moboMake: txtRecord.moboMake,
+              moboModel: txtRecord.moboModel,
+              serverModel: txtRecord.serverModel,
+              aliasStyle: txtRecord.aliasStyle,
+              chassisSize: txtRecord.chassisSize
+            }
           };
 
           let existingServer = discoveredServers.find((eServer) => eServer.ip === server.ip && eServer.name === server.name);
@@ -206,6 +213,7 @@ function createWindow() {
               existingServer.serverName = server.serverName;
               existingServer.shareName = server.shareName;
               existingServer.setupTime = server.setupTime;
+              existingServer.serverInfo = server.serverInfo;
             }
 
           } catch (error) {

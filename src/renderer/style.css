@@ -1,16 +1,44 @@
+:root {
+  /* fallback */
+  --btn-bg: #D92B2F;
+  --btn-border: #D92B2F;
+  --btn-hover-bg: #b02428;
+  --btn-hover-border: #b02428;
+}
+
+.theme-default {
+  --btn-bg: #D92B2F;
+  --btn-border: #D92B2F;
+  --btn-hover-bg: #b02428;
+  --btn-hover-border: #b02428;
+}
+
+.theme-homelab {
+  --btn-bg: #2563EB;
+  --btn-border: #2563EB;
+  --btn-hover-bg: #1E4FCB;
+  --btn-hover-border: #1E4FCB;
+}
+
+.theme-professional {
+  --btn-bg: #65A443;
+  --btn-border: #65A443;
+  --btn-hover-bg: #4F8F37;
+  --btn-hover-border: #4F8F37;
+}
+
 .btn-secondary,
 .btn-primary {
-  background-color: #8A1C1E !important;
-  border-color: #8A1C1E !important;
+  background-color: var(--btn-bg) !important;
+  border-color: var(--btn-border) !important;
   color: white !important;
 }
 
 /* Hover state */
 .btn-secondary:hover,
 .btn-primary:hover {
-  background-color: #a62a2c !important;
-  /* slightly lighter red */
-  border-color: #a62a2c !important;
+  background-color: var(--btn-hover-bg) !important;
+  border-color: var(--btn-hover-border) !important;
   color: white !important;
 }
 
@@ -20,10 +48,8 @@
 .btn-secondary.disabled,
 .btn-primary.disabled {
   background-color: #d3d3d3 !important;
-  /* light gray */
   border-color: #d3d3d3 !important;
   color: #6c757d !important;
-  /* muted text */
   cursor: not-allowed;
   opacity: 0.65;
 }

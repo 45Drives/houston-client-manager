@@ -2,9 +2,18 @@ export interface Server {
   ip: string;
   name: string;
   lastSeen: number;
-  status: string | "unknown";
+  status: "unknown" | "complete" | "not complete";
   setupComplete?: boolean;
   shareName?: string;
   serverName?: string;
   setupTime?: string;
+  serverInfo?: {
+    moboMake: string;
+    moboModel: string;
+    serverModel: string;
+    aliasStyle: string;
+    chassisSize: string;
+  };
 }
+
+export type DivisionType = 'default' | 'enterprise' | 'homelab' | 'professional';

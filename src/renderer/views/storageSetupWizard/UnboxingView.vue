@@ -5,6 +5,7 @@
         Unboxing
       </p>
     </template>
+    
     <div class="flex flex-col justify-center items-center h-full">
       <div class="w-9/12 grid grid-cols-4 gap-x-6 gap-y-2 items-center">
         <!-- Step 1 -->
