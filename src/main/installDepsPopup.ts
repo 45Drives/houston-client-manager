@@ -6,45 +6,43 @@ const options = {
   name: '45drives Setup Wizard',
 };
 
-// Define dependencies for each OS
 const dependencies = {
   rocky: ['cifs-utils'],
   debian: ['cifs-utils'],
-  mac: [], // macOS may not need these, but you can add specific ones
+  mac: [],
 };
 
-
-// Check if dependencies are installed
-function missingDependencies(osType) {
+// Returns a Promise that resolves with the list of missing packages
+function checkMissingDependencies(osType: string): Promise<string[]> {
   const packages = dependencies[osType] || [];
-  const missing: string[] = [];
 
-  packages.forEach((pkg: string) => {
-    try {
+  const checks = packages.map((pkg) => {
+    return new Promise<string | null>((resolve) => {
       let command = '';
+
       if (osType === 'rocky') {
         command = `dnf list installed ${pkg}`;
       } else if (osType === 'debian') {
         command = `dpkg -l | grep ${pkg}`;
+      } else {
+        resolve(null);
+        return;
       }
+
       sudo.exec(command, options, (error, stdout, stderr) => {
-        if (error) {
-          console.error('Adding Dependency Error:', error);
-          dialog.showErrorBox('Adding Dependency Failed', `Could not add dependency ${pkg}.`);
-          return;
+        if (error || !stdout!.includes(pkg)) {
+          resolve(pkg); // missing
+        } else {
+          resolve(null); // found
         }
-        console.log('Installation Output:', stdout);
       });
-    } catch {
-      missing.push(pkg);
-    }
+    });
   });
 
-  return missing;
+  return Promise.all(checks).then((results) => results.filter(Boolean) as string[]);
 }
 
-// Install Dependencies
-function installDependencies(osType, missingPackages) {
+function installDependencies(osType: string, missingPackages: string[]) {
   if (missingPackages.length === 0) return;
 
   const packageList = missingPackages.join(' ');
@@ -99,11 +97,11 @@ export default function installDepPopup() {
     return;
   }
 
-  const missingPackages = missingDependencies(osType);
-  if (missingPackages.length > 0) {
-    installDependencies(osType, missingPackages);
-  } else {
-    console.log('All dependencies are already installed.');
-  }
+  checkMissingDependencies(osType).then((missingPackages) => {
+    if (missingPackages.length > 0) {
+      installDependencies(osType, missingPackages);
+    } else {
+      console.log('All dependencies are already installed.');
+    }
+  });
 }
-  

@@ -13,8 +13,8 @@
 
       <br />
 
-      <BackUpListView class=" p-5 justify-center text-2xl" @backUpTaskSelected="handleBackUpTaskSelected"/>
- 
+      <BackUpListView class=" p-5 justify-center text-2xl" @backUpTaskSelected="handleBackUpTaskSelected" />
+
       <p class="w-9/12 text-center text-2xl">
         If your backup is not showing make sure you set it up correctly by going back and creating a backup plan.
       </p>
@@ -32,14 +32,15 @@
       <div class="button-group-row w-full justify-end">
 
         <div class="button-group-row w-full justify-between">
-        <button @click="proceedToPreviousStep" class="btn btn-secondary w-40 h-20">
-          Back
-        </button>
+          <button @click="proceedToPreviousStep" class="btn btn-secondary w-40 h-20">
+            Back
+          </button>
 
-        <button @click="proceedToNextStep" class="btn btn-secondary w-40 h-20">
-          Next
-        </button>
-      </div>
+          <button @click="proceedToNextStep" class="btn btn-secondary w-40 h-20"
+            :class="[(!selectedBackUpTask ? 'disabled' : '')]" :disabled="!selectedBackUpTask">
+            Next
+          </button>
+        </div>
 
       </div>
     </template>
