@@ -1,9 +1,14 @@
 <template>
   <CardContainer class="">
     <template #header>
-      <div class="flex flex-row justify-center text-center items-center text-3xl">
-        Choose Your Setup Option &nbsp;
+      <div class="relative flex items-center justify-center h-24">
+        <div class="absolute left-0">
+          <DynamicBrandingLogo />
+        </div>
+        <p class="text-header text-2xl font-semibold text-center">
+          Choose Your Setup Option &nbsp;
         <CommanderToolTip :message="`Choose how your storage server will be setup and configured.`" :width="600" />
+        </p>
       </div>
     </template>
 
@@ -52,7 +57,7 @@
 <script setup lang="ts">
 import CardContainer from '../../components/CardContainer.vue';
 import { CommanderToolTip } from '../../components/commander';
-import { useWizardSteps } from '@45drives/houston-common-ui';
+import { useWizardSteps, DynamicBrandingLogo } from '@45drives/houston-common-ui';
 
 const { completeCurrentStep, prevStep } = useWizardSteps("backup");
 

@@ -1,7 +1,14 @@
 <template>
 	<CardContainer>
 		<template #header class="!text-center">
-			<div class="flex justify-center text-3xl">Create Simple Backup Plan!</div>
+			<div class="relative flex items-center justify-center h-24">
+				<div class="absolute left-0">
+					<DynamicBrandingLogo />
+				</div>
+				<p class="text-header text-2xl font-semibold text-center">
+					Create Simple Backup Plan!
+				</p>
+			</div>
 		</template>
 
 		<div class="w-9/12 mx-auto text-center">
@@ -96,7 +103,7 @@
 import { CardContainer, CommanderToolTip } from "@45drives/houston-common-ui";
 import { inject, onMounted, ref, watch } from "vue";
 import { PlusIcon, MinusIcon } from "@heroicons/vue/20/solid";
-import { useWizardSteps } from '@45drives/houston-common-ui';
+import { useWizardSteps, DynamicBrandingLogo } from '@45drives/houston-common-ui';
 import { Server } from '../../types'
 import { backUpSetupConfigKey  } from "../../keys/injection-keys";
 import MessageDialog from '../../components/MessageDialog.vue';

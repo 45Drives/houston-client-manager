@@ -1,9 +1,14 @@
 <template>
   <CardContainer>
     <template #header>
-      <p class="text-header text-center text-3xl">
-        Access Your Backup
-      </p>
+      <div class="relative flex items-center justify-center h-24">
+        <div class="absolute left-0">
+          <DynamicBrandingLogo />
+        </div>
+        <p class="text-header text-2xl font-semibold text-center">
+          Access Your Backup
+        </p>
+      </div>
     </template>
 
     <div class="flex flex-col h-full justify-center items-center text-default">
@@ -59,7 +64,7 @@
 <script setup lang="ts">
 import CardContainer from '../../components/CardContainer.vue';
 import { ref, computed } from 'vue';
-import { useWizardSteps } from '@45drives/houston-common-ui';
+import { useWizardSteps, DynamicBrandingLogo } from '@45drives/houston-common-ui';
 import { IPCRouter } from '@45drives/houston-common-lib';
 
 const { prevStep, wizardData } = useWizardSteps("backup");
