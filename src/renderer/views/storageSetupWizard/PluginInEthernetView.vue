@@ -7,12 +7,13 @@
     </template>
     <div class="flex flex-col justify-center items-center h-full">
       <div class="w-9/12 grid grid-cols-4 gap-x-6 gap-y-2 items-center">
-      
+
 
         <!-- Step 3 -->
         <p class="col-span-3 text-left text-2xl">
           Take the supplied ethernet cable and plug it into the back of the server.
           Then, plug it into either a router or network switch.
+          <br />
           <br />
           <b>NOTE:</b> This is a Network Attached Server (NAS), not a Direct Attached Server (DAS).
           Connecting the server directly to a computer will not work.

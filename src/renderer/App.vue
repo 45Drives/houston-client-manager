@@ -1,6 +1,7 @@
 <template>
 
-  <div class="w-screen h-screen overflow-hidden flex flex-col items-center justify-center text-default bg-default">
+  <div
+    class="w-screen h-screen overflow-hidden flex flex-col items-center justify-center text-default bg-default text-center">
 
     <div v-if="isDev">
       <button @click="showWizard('storage')" class="btn btn-secondary w-40 h-min p-2 mx-2">
@@ -12,10 +13,20 @@
       </button>
     </div>
 
-    <div class="w-full h-full" v-show="showWelcomeSetupWizard">
+    <div v-else class="flex justify-center items-center py-6">
+      <div class="flex flex-row items-center bg-white px-6 py-3 rounded-2xl shadow-xl space-x-4">
+        <DynamicBrandingLogo class="h-16 w-auto" :division="divisionCode!" />
+        <span class="text-black text-4xl" :class="(divisionCode == 'default' ? 'mt-1.5' : '-mt-2')">
+          Setup Wizard
+        </span>
+      </div>
+    </div>
+
+
+    <div class="w-full h-full flex items-center justify-center" v-show="showWelcomeSetupWizard">
       <StorageSetupWizard id="setup" :onComplete="onWelcomeWizardComplete" />
     </div>
-    <div class="w-full h-full" v-show="showBackUpSetupWizard">
+    <div class="w-full h-full flex items-center justify-center" v-show="showBackUpSetupWizard">
       <BackUpSetupWizard id="backup" :onComplete="onBackUpWizardComplete" />
     </div>
 
@@ -25,24 +36,18 @@
       webpreferences="javascript=yes,webSecurity=no,enable-cookies=true,nodeIntegration=false,contextIsolation=true"
       ref="webview" @did-finish-load="onWebViewLoaded" />
 
-    <div v-if="loadingWebview" class="p-4">
-      <p class="w-3/4 text-2xl">
-        Give us a few while we login...
-      </p>
+    <div v-if="loadingWebview" class="flex flex-col items-center justify-center p-4">
+      <p class="text-2xl text-center">Give us a few while we login...</p>
       <div id="spinner" class="spinner"></div>
     </div>
 
-    <div v-if="waitingForServerReboot" class="p-4">
-      <p class="w-3/4 text-2xl">
-        Waiting for {{ currentServer!.ip }} to reboot...
-      </p>
+    <div v-if="waitingForServerReboot" class="flex flex-col items-center justify-center p-4">
+      <p class="text-2xl text-center">Waiting for {{ currentServer!.ip }} to reboot...</p>
       <div id="spinner" class="spinner"></div>
     </div>
 
-    <div v-if="scanningNetworkForServers" class="p-4">
-      <p class="w-3/4 text-2xl">
-        Give us a few while we scan for connected servers...
-      </p>
+    <div v-if="scanningNetworkForServers" class="flex flex-col items-center justify-center p-4">
+      <p class="text-2xl text-center">Give us a few while we scan for connected servers...</p>
       <div id="spinner" class="spinner"></div>
     </div>
 
@@ -58,12 +63,11 @@ import { useDarkModeState } from './composables/useDarkModeState';
 import { useAdvancedModeState } from './composables/useAdvancedState';
 import { reportError, reportSuccess } from './components/NotificationView.vue';
 import NotificationView from './components/NotificationView.vue';
-import { Server } from './types';
-import { useWizardSteps } from '@45drives/houston-common-ui'
-
+import { Server, DivisionType } from './types';
+import { useWizardSteps, DynamicBrandingLogo } from '@45drives/houston-common-ui'
 import StorageSetupWizard from './views/storageSetupWizard/Wizard.vue';
 import BackUpSetupWizard from './views/backupSetupWizard/Wizard.vue';
-import { serverInfoInjectionKey } from './keys/injection-keys';
+import { serverInfoInjectionKey, divisionCodeInjectionKey } from './keys/injection-keys';
 import { IPCMessageRouterRenderer, IPCRouter } from '@45drives/houston-common-lib';
 
 IPCRouter.initRenderer();
@@ -135,9 +139,27 @@ async function waitForServerRebootAndShowWizard() {
   }
 }
 
+const aliasStyleToTheme: Record<string, string> = {
+  homelab: 'theme-homelab',
+  professional: 'theme-professional'
+};
+
+function applyThemeFromAliasStyle(aliasStyle?: string) {
+  const normalized = aliasStyle?.toLowerCase() || '';
+  const themeClass = aliasStyleToTheme[normalized] || 'theme-default';
+
+  document.documentElement.classList.remove(
+    'theme-default',
+    'theme-homelab',
+    'theme-professional'
+  );
+
+  document.documentElement.classList.add(themeClass);
+}
+
 const isDev = ref(false);
 
-window.electron.ipcRenderer.invoke('is-dev').then(value => isDev.value = value);
+// window.electron.ipcRenderer.invoke('is-dev').then(value => isDev.value = value);
 console.log(window.electron.ipcRenderer);
 
 const darkModeState = useDarkModeState();
@@ -145,11 +167,13 @@ const darkModeState = useDarkModeState();
 const advancedState = useAdvancedModeState();
 
 const currentServer = ref<Server | null>(null);
+const divisionCode = ref<DivisionType>('default');
 const showBackUpSetupWizard = ref<boolean>(false);
 const showWelcomeSetupWizard = ref<boolean>(false);
 const showWebView = ref<boolean>(false);
 
 provide(currentServer, serverInfoInjectionKey);
+provide(divisionCode, divisionCodeInjectionKey)
 
 const clientip = ref<string>("");
 const webview = ref();
@@ -211,8 +235,8 @@ const openServerWebsite = (server: Server | null) => {
   currentServer.value = server;
   let newUrl = "";
   if (server) {
-    console.log('server:', server);
-    console.log('server.ip:', server.ip);
+    // console.log('server:', server);
+    // console.log('server.ip:', server.ip);
     newUrl = `https://${server.ip}:9090/super-simple-setup-test#dark=${darkModeState.value}&advanced=${advancedState.value}&client_ip=${clientip.value}&server_ip=${server.ip}`;
 
   } else {
@@ -235,15 +259,14 @@ const onWebViewLoaded = async () => {
   webview.value.executeJavaScript(`
         new Promise((resolve, reject) => {
 
-          if (!document.querySelector("#login")) {
-            setTimeout(() => {
-              [...document.querySelectorAll('#main > div')].forEach((e) => {
-                if (e.id !== 'content') e.style.display = 'none';
-              });
+    if (!document.querySelector("#login")) {
+      setTimeout(() => {
+        [...document.querySelectorAll('#main > div')].forEach((e) => {
+          if (e.id !== 'content') e.style.display = 'none';
+        });
 
-              [...document.querySelectorAll('#main > nav')].forEach((e) => {
-                if (e.id !== 'content') e.style.display = 'none';
-              });
+        [...document.querySelectorAll('#main > nav')].forEach((e) => {
+          if (e.id !== 'content') e.style.display = 'none';              });
 
               document.querySelector('#main').style.gridTemplateAreas = '"header" "main"';
               document.querySelector('#main').style.gridTemplateColumns = '1fr';
@@ -291,9 +314,25 @@ const onWebViewLoaded = async () => {
 }
 
 const onWelcomeWizardComplete = (server: Server) => {
+
   console.log("server before unref:", server);
   const realServer = unref(server);
   console.log("server after unref:", realServer);
+  const aliasStyle = realServer.serverInfo?.aliasStyle?.toLowerCase();
+
+  applyThemeFromAliasStyle(aliasStyle);
+
+  switch (aliasStyle) {
+    case 'homelab':
+      divisionCode.value = 'homelab';
+      break;
+    case 'professional':
+      divisionCode.value = 'professional';
+      break;
+    default:
+      divisionCode.value = 'default';
+      break;
+  }
   loginRequest(realServer)
   showWelcomeSetupWizard.value = false;
   showWebView.value = true;

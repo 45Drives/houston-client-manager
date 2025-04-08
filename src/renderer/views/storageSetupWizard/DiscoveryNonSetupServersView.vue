@@ -6,19 +6,20 @@
       </p>
     </template>
 
-    <div class="flex flex-col h-full justify-center items-center">
-      <p class="w-9/12 text-center text-2xl">
+    <div class="flex flex-col h-full justify-center items-center text-left">
+      <p class="w-9/12 text-2xl">
         You may have multiple 45Drives servers on your network that require setup. <br />
         This setup wizard is designed to setup one server at a time. Click the box next to the server you would like to
         setup first. When you are finished setting the selected server up, simply re-run this program to start setting
         up the remaining server(s).
       </p>
 
-      <br />
 
       <HoustonServerListView class="w-1/3 p-5 justify-center text-2xl" @serverSelected="handleServerSelected" />
+      
+      <br />
 
-      <p class="w-9/12 text-center text-2xl">
+      <p class="w-9/12 text-2xl">
         If your storage server is not appearing in the list above, please return to the Hardware Setup and ensure all
         steps were completed correctly.
         <a href="#" @click.prevent="onRestartSetup" class="text-blue-600 hover:underline">Click Here</a>
