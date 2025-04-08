@@ -3,5 +3,7 @@ dist
 build
 builds
 
+.yarn/
+yarn.lock
 .vscode
 .idea

@@ -3,6 +3,9 @@
   "version": "0.1.0",
   "description": "Create backups to any houston servers on your local network",
   "main": "main/src/main/main.js",
+  "workspaces": [
+    "houston-common/*"
+  ],
   "scripts": {
     "dev": "node scripts/dev-server.js",
     "build": "node scripts/build.js && electron-builder",
@@ -28,19 +31,19 @@
     "chokidar": "^3.5.3",
     "electron": "^32.1.2",
     "electron-builder": "^25.1.6",
+    "esbuild": "^0.25.1",
     "jsdom": "^26.0.0",
     "postcss": "^8.4.38",
     "postcss-modules": "^6.0.0",
     "tailwindcss": "^3.4.3",
     "typescript": "^5.2.2",
     "vite": "^6.0.11",
-    "vitest": "^3.0.7",
-    "esbuild": "^0.25.1"
+    "vitest": "^3.0.7"
   },
   "dependencies": {
-    "@45drives/houston-common-css": "file:houston-common/houston-common-css",
-    "@45drives/houston-common-lib": "file:houston-common/houston-common-lib",
-    "@45drives/houston-common-ui": "file:houston-common/houston-common-ui",
+    "@45drives/houston-common-css": "workspace:*",
+    "@45drives/houston-common-lib": "workspace:*",
+    "@45drives/houston-common-ui": "workspace:*",
     "asar": "^3.2.0",
     "multicast-dns": "^7.2.5",
     "node-localstorage": "^3.0.5",
@@ -51,5 +54,6 @@
   },
   "optionalDependencies": {
     "dmg-license": "^1.0.9"
-  }
+  },
+  "packageManager": "yarn@4.6.0+sha512.5383cc12567a95f1d668fbe762dfe0075c595b4bfff433be478dbbe24e05251a8e8c3eb992a986667c1d53b6c3a9c85b8398c35a960587fbd9fa3a0915406728"
 }
