@@ -2,8 +2,8 @@
   <CardContainer>
     <template #header class="!text-center">
       <div class="relative flex items-center justify-center h-24">
-        <div class="absolute left-0">
-          <DynamicBrandingLogo />
+        <div class="absolute left-0 bg-white p-1 px-4 rounded-lg">
+          <DynamicBrandingLogo :division="division" />
         </div>
         <p class="text-header text-2xl font-semibold text-center">
           Congratulations
@@ -11,18 +11,19 @@
       </div>
     </template>
 
-    <!-- Complete Section -->
-    <div class="complete-section text-center">
+    <div class="flex flex-col items-center justify-center text-center w-full h-full py-10">
+      <!-- Complete Section -->
+      <div class="complete-section flex flex-col items-center justify-center text-center">
 
-      <div v-for="completedStep in completedSteps">
-        <div class="smallcheckmark ">✔ - {{ completedStep.message }}</div>
-      </div>
+        <div v-for="completedStep in completedSteps" class="w-full max-w-xl text-left">
+          <div class="smallcheckmark ">✔ - {{ completedStep.message }}</div>
+        </div>
 
-      <div v-if="error" class="text-red-500">
-        🔴 {{ error }}
-      </div>
+        <div v-if="error" class="text-red-500">
+          🔴 {{ error }}
+        </div>
 
-      <div v-if="setupComplete === 'yes' && !error">
+        <!-- <div v-if="setupComplete === 'yes' && !error">
         <div class="checkmark">✔ - DONE! </div>
         <p class="mb-6 text-center text-2xl">🎉 Congratulations! Your Backup Plan is Set! 🚀</p>
         <p class="mb-6 text-center text-2xl">Great job! Your data is now protected with an automatic backup plan. No
@@ -31,16 +32,30 @@
         <p class="mb-6 text-center text-2xl">🔄 Your backups will run as scheduled—keeping your important files safe!
         </p>
         <p class="mb-6 text-center text-2xl">Just click FINISH!</p>
-      </div>
-    </div>
+      </div> -->
+        <div v-if="setupComplete === 'yes' && !error" class="flex justify-center">
+          <div class="text-left max-w-3xl">
+            <div class="checkmark text-center">✔ - DONE!</div>
+            <h2 class="text-2xl font-semibold mb-4">Backup Plan Configured</h2>
+            <p class="mb-4 text-lg">Your backup plan has been successfully set up and is now protecting your data
+              automatically.</p>
+            <p class="mb-4 text-lg">There’s nothing more to worry about—your files are safe and secure. Sit back, relax,
+              and let the scheduled backups do the work.</p>
+            <p class="mb-4 text-lg">Backups will continue to run as scheduled to ensure your data stays protected.</p>
+            <p class="mb-4 text-lg font-medium">Click "Finish" to complete the setup.</p>
+          </div>
+        </div>
 
-    <!-- Go to Home Button (visible once complete) -->
-    <template #footer>
-      <div class="button-group-row justify-end">
-        <button :disabled="setupComplete !== 'yes'" class="btn btn-secondary w-40 h-20" @click="goHome">{{ "Finish!"
-          }}</button>
       </div>
-    </template>
+    </div> 
+
+      <!-- Go to Home Button (visible once complete) -->
+      <template #footer>
+        <div class="button-group-row justify-end">
+          <button :disabled="setupComplete !== 'yes'" class="btn btn-secondary w-40 h-20" @click="goHome">{{ "Finish!"
+            }}</button>
+        </div>
+      </template>
 
   </CardContainer>
 
@@ -52,7 +67,8 @@ import { ref, watch, inject, onActivated } from "vue";
 import { useWizardSteps, DynamicBrandingLogo } from "@45drives/houston-common-ui";
 import { EasySetupProgress, IPCRouter } from "@45drives/houston-common-lib";
 import { backUpSetupConfigKey } from "../../keys/injection-keys";
-
+import { divisionCodeInjectionKey } from '../../keys/injection-keys';
+const division = inject(divisionCodeInjectionKey);
 const { reset } = useWizardSteps('backup');
 
 const setupComplete = ref<string>("no");
@@ -62,9 +78,9 @@ const backUpSetupConfig = inject(backUpSetupConfigKey);
 
 watch(setupComplete, (value) => {
   if (value === "yes" && backUpSetupConfig) {
-    backUpSetupConfig.backUpTasks = []
+    backUpSetupConfig.backUpTasks = [];
   }
-})
+});
 
 function goHome(): void {
   reset();

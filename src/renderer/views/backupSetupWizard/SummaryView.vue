@@ -2,8 +2,8 @@
   <CardContainer>
     <template #header class="!text-center">
       <div class="relative flex items-center justify-center h-24">
-        <div class="absolute left-0">
-          <DynamicBrandingLogo />
+          <div class="absolute left-0 bg-white p-1 px-4 rounded-lg">
+          <DynamicBrandingLogo :division="division" />
         </div>
         <p class="text-header text-2xl font-semibold text-center">
           Summary
@@ -71,7 +71,8 @@ import { CardContainer, CommanderToolTip, confirm } from "@45drives/houston-comm
 import { inject, ref } from "vue";
 import { useWizardSteps, DynamicBrandingLogo } from '@45drives/houston-common-ui';
 import { backUpSetupConfigKey } from "../../keys/injection-keys";
-
+import { divisionCodeInjectionKey } from '../../keys/injection-keys';
+const division = inject(divisionCodeInjectionKey);
 const { completeCurrentStep, prevStep } = useWizardSteps("backup");
 
 const backUpSetupConfig = inject(backUpSetupConfigKey);

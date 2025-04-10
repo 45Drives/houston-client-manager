@@ -2,9 +2,9 @@
 	<CardContainer>
 		<template #header class="!text-center">
 			<div class="relative flex items-center justify-center h-24">
-				<div class="absolute left-0">
-					<DynamicBrandingLogo />
-				</div>
+				     <div class="absolute left-0 bg-white p-1 px-4 rounded-lg">
+            <DynamicBrandingLogo :division="division" />
+          </div>
 				<p class="text-header text-2xl font-semibold text-center">
 					Create Simple Backup Plan!
 				</p>
@@ -80,7 +80,7 @@
 
 		<!-- Buttons -->
 		<template #footer>
-			<div>
+			<div class="button-group-row justify-between">
 				<button @click="proceedToPreviousStep" class="btn btn-primary h-20 w-40">
 					Back
 				</button>
@@ -107,7 +107,8 @@ import { useWizardSteps, DynamicBrandingLogo } from '@45drives/houston-common-ui
 import { Server } from '../../types'
 import { backUpSetupConfigKey  } from "../../keys/injection-keys";
 import MessageDialog from '../../components/MessageDialog.vue';
-
+import { divisionCodeInjectionKey } from '../../keys/injection-keys';
+const division = inject(divisionCodeInjectionKey);
 // Wizard navigation
 const { completeCurrentStep, prevStep } = useWizardSteps("backup");
 

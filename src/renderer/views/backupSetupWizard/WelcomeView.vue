@@ -2,8 +2,8 @@
   <CardContainer>
     <template #header>
       <div class="relative flex items-center justify-center h-24">
-        <div class="absolute left-0">
-          <DynamicBrandingLogo />
+          <div class="absolute left-0 bg-white p-1 px-4 rounded-lg">
+          <DynamicBrandingLogo :division="division" />
         </div>
         <p class="text-header text-2xl font-semibold text-center">
           Welcome to the 45Drives Back Up Setup Wizard!
@@ -63,7 +63,9 @@
 import CardContainer from '../../components/CardContainer.vue';
 import { CommanderToolTip } from '../../components/commander';
 import { useWizardSteps, DynamicBrandingLogo } from '@45drives/houston-common-ui';
-
+import { divisionCodeInjectionKey } from '../../keys/injection-keys';
+import { inject } from 'vue';
+const division = inject(divisionCodeInjectionKey);
 const { completeCurrentStep } = useWizardSteps("backup");
 
 const proceedToNextStep = async () => {
