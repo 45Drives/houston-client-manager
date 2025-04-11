@@ -1,6 +1,7 @@
 import { app, dialog } from 'electron';
 import sudo from 'sudo-prompt';
 import { getOS } from './utils';
+import { exec } from 'child_process';
 
 const options = {
   name: '45drives Setup Wizard',
@@ -29,7 +30,7 @@ function checkMissingDependencies(osType: string): Promise<string[]> {
         return;
       }
 
-      sudo.exec(command, options, (error, stdout, stderr) => {
+      exec(command, (error, stdout, stderr) => {
         if (error || !stdout!.includes(pkg)) {
           resolve(pkg); // missing
         } else {
