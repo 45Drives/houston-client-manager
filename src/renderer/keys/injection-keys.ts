@@ -1,6 +1,6 @@
-import type { InjectionKey, Reactive } from "vue";
-import type { DivisionType } from "../types";
-import type { BackUpSetupConfig, ServerInfo } from "@45drives/houston-common-lib";
-export const serverInfoInjectionKey: InjectionKey<Reactive<Partial<ServerInfo>>> = Symbol('server-info');
+import type { InjectionKey, Reactive, Ref } from "vue";
+import type { DivisionType, Server } from "../types";
+import type { BackUpSetupConfig } from "@45drives/houston-common-lib";
 export const backUpSetupConfigKey: InjectionKey<BackUpSetupConfig> = Symbol('backup-setup-config');
-export const divisionCodeInjectionKey: InjectionKey<DivisionType> = Symbol('division-code');
+export const divisionCodeInjectionKey: InjectionKey<Ref<DivisionType>> = Symbol('division-code');
+export const currentServerInjectionKey: InjectionKey<Ref<Server | null>> = Symbol('server-info');

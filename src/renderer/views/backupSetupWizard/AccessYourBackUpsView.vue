@@ -2,8 +2,8 @@
   <CardContainer>
     <template #header>
       <div class="relative flex items-center justify-center h-24">
-        <div class="absolute left-0">
-          <DynamicBrandingLogo />
+          <div class="absolute left-0 bg-white p-1 px-4 rounded-lg">
+          <DynamicBrandingLogo :division="division" />
         </div>
         <p class="text-header text-2xl font-semibold text-center">
           Access Your Backups
@@ -58,8 +58,9 @@ import { BackUpTask } from '@45drives/houston-common-lib';
 import CardContainer from '../../components/CardContainer.vue';
 import { useWizardSteps, DynamicBrandingLogo } from '@45drives/houston-common-ui';
 import BackUpListView from './BackUpListView.vue';
-import { ref } from 'vue';
-
+import { inject, ref } from 'vue';
+import { divisionCodeInjectionKey } from '../../keys/injection-keys';
+const division = inject(divisionCodeInjectionKey);
 const selectedBackUpTask = ref<BackUpTask | null>(null);
 const handleBackUpTaskSelected = (backUpTask: BackUpTask | null) => {
   selectedBackUpTask.value = backUpTask;
