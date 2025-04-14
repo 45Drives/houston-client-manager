@@ -308,18 +308,34 @@ $taskTrigger = New-ScheduledTaskTrigger -At $startTime -Monthly
         let monthsIntervalMatch;
         if (typeof cimProperties === 'string') {
           startBoundaryMatch = cimProperties.match(/StartBoundary\s*=\s*"([^"]+)"/);
+          if (startBoundaryMatch) {
+            startBoundaryMatch = startBoundaryMatch[1]
+          }
           hoursIntervalMatch = cimProperties.match(/HoursInterval\s*=\s*(\d+)/);
+          if (startBoundaryMatch) {
+            hoursIntervalMatch = hoursIntervalMatch[1]
+          }
           daysIntervalMatch = cimProperties.match(/DaysInterval\s*=\s*(\d+)/);
+          if (startBoundaryMatch) {
+            daysIntervalMatch = daysIntervalMatch[1]
+          }
           weeksIntervalMatch = cimProperties.match(/WeeksInterval\s*=\s*(\d+)/);
+          if (startBoundaryMatch) {
+            weeksIntervalMatch = weeksIntervalMatch[1]
+          }
           monthsIntervalMatch = cimProperties.match(/MonthsInterval\s*=\s*(\d+)/);
+          if (startBoundaryMatch) {
+            monthsIntervalMatch = monthsIntervalMatch[1]
+          }
         } else if (Array.isArray(cimProperties)) {
-          for (let i = 0; i < cimProperties.length; i++) {
-            const prop = cimProperties[i];
+          for (const prop of cimProperties) {
             if (prop.Name === "StartBoundary") {
               startBoundaryMatch = prop.Value;
-            } else if (prop.Name === "HoursInterval") {
+            } 
+            else if (prop.Name === "HoursInterval") {
               hoursIntervalMatch = prop.Value;
-            } else if (prop.Name === "DaysInterval") {
+            } 
+            else if (prop.Name === "DaysInterval") {
               daysIntervalMatch = prop.Value;
             }
             else if (prop.Name === "WeeksInterval") {
@@ -337,35 +353,34 @@ $taskTrigger = New-ScheduledTaskTrigger -At $startTime -Monthly
           monthsIntervalMatch = cimProperties.MonthsInterval;
         }
 
-
         // Check if the matches were found and extract values
         if (startBoundaryMatch) {
           if (hoursIntervalMatch) {
 
             return {
               repeatFrequency: 'hour',
-              startDate: new Date(startBoundaryMatch[1]),
+              startDate: new Date(startBoundaryMatch),
             };
 
           } else if (daysIntervalMatch) {
 
             return {
               repeatFrequency: 'day',
-              startDate: new Date(startBoundaryMatch[1]),
+              startDate: new Date(startBoundaryMatch),
             };
 
           } else if (weeksIntervalMatch) {
 
             return {
               repeatFrequency: 'week',
-              startDate: new Date(startBoundaryMatch[1]),
+              startDate: new Date(startBoundaryMatch),
             };
 
           } else if (monthsIntervalMatch) {
 
             return {
               repeatFrequency: 'month',
-              startDate: new Date(startBoundaryMatch[1]),
+              startDate: new Date(startBoundaryMatch),
             };
 
           } else {

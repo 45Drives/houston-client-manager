@@ -44,7 +44,7 @@
     <!-- Page curl corner effect -->
     <div class="page-corner-effect pointer-events-none"></div>
 
-     <!-- Double arrows -->
+    <!-- Double arrows -->
     <div class="double-arrow absolute bottom-4 right-4 z-10 text-gray-400 text-xl animate-pulse pointer-events-none">
       &raquo;
     </div>
@@ -152,7 +152,7 @@ function applyThemeFromAliasStyle(aliasStyle?: string) {
   document.documentElement.classList.add(themeClass);
 }
 
-const isDev = ref(false);
+const isDev = ref(true);
 
 // window.electron.ipcRenderer.invoke('is-dev').then(value => isDev.value = value);
 console.log(window.electron.ipcRenderer);
@@ -186,8 +186,19 @@ window.electron.ipcRenderer.on('notification', (_event, message: string) => {
 
     reportError(new Error(message))
   } else {
+    try {
+      const mJson = JSON.parse(message);
 
-    reportSuccess(message);
+      if (mJson.error) {
+        reportError(new Error(mJson.error));
+      } else {
+        reportSuccess(message);
+      }
+    } catch (_error) {
+      // assume it is just a success message
+      reportSuccess(message);
+    }
+
   }
 
 });
@@ -306,7 +317,7 @@ const onWebViewLoaded = async () => {
     });
 
   // comment this line out for prod
-  webview.value.openDevTools();
+  // webview.value.openDevTools();
 }
 
 const onWelcomeWizardComplete = (server: Server) => {
@@ -373,13 +384,14 @@ const loginRequest = async (server: Server) => {
     transform: rotate(360deg);
   }
 }
+
 .page-corner-effect {
   position: fixed;
   bottom: 0;
   right: 0;
   width: 10%;
   height: 40%;
-  background: linear-gradient(135deg, rgba(0,0,0,0.4) 0%, rgba(0,0,0,0.1) 100%);
+  background: linear-gradient(135deg, rgba(0, 0, 0, 0.4) 0%, rgba(0, 0, 0, 0.1) 100%);
   clip-path: polygon(100% 100%, 0% 100%, 100% 0%);
   z-index: 1;
   transform: rotate(0deg);
@@ -394,10 +406,13 @@ const loginRequest = async (server: Server) => {
 }
 
 @keyframes doubleArrowPulse {
-  0%, 100% {
+
+  0%,
+  100% {
     transform: translateY(0);
     opacity: 0.5;
   }
+
   50% {
     transform: translateY(-6px);
     opacity: 1;

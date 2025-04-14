@@ -37,11 +37,13 @@
       </div>
 
       <!-- "Open" button -->
-      <div class="mt-4">
-        <button @click="handleOpen" :disabled="isButtonDisabled"
+      <div class="mt-4 flex flex-row ">
+        <button  @click="handleOpen" :disabled="isButtonDisabled"
           class="w-full p-3 btn btn-secondary font-semibold rounded-md  disabled:cursor-not-allowed">
           Open
         </button>
+
+        <LoadingSpinner v-if="openingBackup" />
       </div>
     </div>
 
@@ -52,9 +54,7 @@
           <button @click="proceedToPreviousStep" class="btn btn-secondary w-40 h-20">
             Back
           </button>
-
         </div>
-
       </div>
     </template>
 
@@ -64,7 +64,7 @@
 <script setup lang="ts">
 import CardContainer from '../../components/CardContainer.vue';
 import { ref, computed } from 'vue';
-import { useWizardSteps, DynamicBrandingLogo } from '@45drives/houston-common-ui';
+import { useWizardSteps, DynamicBrandingLogo, LoadingSpinner } from '@45drives/houston-common-ui';
 import { IPCRouter } from '@45drives/houston-common-lib';
 
 const { prevStep, wizardData } = useWizardSteps("backup");
@@ -76,9 +76,10 @@ const backupTask = computed(() => {
 });  // if wizardData is a ref// Reactive variables for username and password
 const username = ref('');
 const password = ref('');
+const openingBackup = ref(false);
 
 // Check if the "Open" button should be disabled
-const isButtonDisabled = computed(() => !username.value || !password.value);
+const isButtonDisabled = computed(() => !username.value || !password.value || openingBackup.value);
 
 // Method to handle the "Open" button action
 const handleOpen = () => {
@@ -99,6 +100,17 @@ const handleOpen = () => {
     console.log("Host:", host);  // Output: "hl4-test.local"
     console.log("Share:", share); // Output: "backups"
 
+    IPCRouter.getInstance().addEventListener("action", data => {
+      try {
+        const response = JSON.parse(data);
+        if (response.action === "mountSmbResult") {
+          const result = response.result;
+          openingBackup.value = false;
+        }
+      } catch (e) {
+
+      }
+    });
     IPCRouter.getInstance().send('backend', 'mountSambaClient',
       {
         smb_host: host,
@@ -107,6 +119,7 @@ const handleOpen = () => {
         smb_pass: password.value,
       }
     );
+    openingBackup.value = true;
   }
 };
 

@@ -65,11 +65,12 @@ const handleBackUpTaskSelected = (backUpTask: BackUpTask | null) => {
   selectedBackUpTask.value = backUpTask;
 }
 
-const { completeCurrentStep, prevStep } = useWizardSteps("backup");
+const { completeCurrentStep, unCompleteCurrentStep, prevStep } = useWizardSteps("backup");
 
 const proceedToNextStep = async () => {
   if (selectedBackUpTask.value) {
     console.log('selectedBackupTask:', selectedBackUpTask.value);
+    unCompleteCurrentStep();
     completeCurrentStep(true, selectedBackUpTask.value);
   } else {
     throw new Error("Should have selected a Back Up to access")
