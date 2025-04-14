@@ -2,9 +2,9 @@
 	<CardContainer>
 		<template #header class="!text-center">
 			<div class="relative flex items-center justify-center h-24">
-				<div class="absolute left-0">
-					<DynamicBrandingLogo />
-				</div>
+				     <div class="absolute left-0 bg-white p-1 px-4 rounded-lg">
+            <DynamicBrandingLogo :division="division" />
+          </div>
 				<p class="text-header text-2xl font-semibold text-center">
 					Customize Backup Plan
 				</p>
@@ -81,9 +81,9 @@
 
 		<!-- Buttons -->
 		<template #footer>
-			<div>
-				<button @click="proceedToPreviousStep" class="btn btn-primary h-20 w-40">
-					Back
+			<div class="button-group-row justify-between">
+				<button @click=" proceedToPreviousStep" class="btn btn-primary h-20 w-40">
+				Back
 				</button>
 				<button :disabled="backUpSetupConfig?.backUpTasks.length === 0" @click="proceedToNextStep"
 					class="absolute btn right-[1rem] btn-secondary h-20 w-40">
@@ -105,7 +105,8 @@ import { CalendarIcon } from "@heroicons/vue/24/outline";
 import { BackUpTask, TaskSchedule } from "@45drives/houston-common-lib";
 import { Server } from '../../types'
 import { SimpleCalendar } from "../../components/calendar";
-
+import { divisionCodeInjectionKey } from '../../keys/injection-keys';
+const division = inject(divisionCodeInjectionKey);
 // Reactive State
 const backUpSetupConfig = inject(backUpSetupConfigKey);
 

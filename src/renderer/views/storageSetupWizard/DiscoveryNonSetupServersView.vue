@@ -2,8 +2,8 @@
   <CardContainer>
     <template #header>
       <div class="relative flex items-center justify-center h-24">
-        <div class="absolute left-0">
-          <DynamicBrandingLogo />
+          <div class="absolute left-0 bg-white p-1 px-4 rounded-lg">
+          <DynamicBrandingLogo  />
         </div>
         <p class="text-header text-2xl font-semibold text-center">
           Discovered 45Drives Storage Server

@@ -2,8 +2,8 @@
   <CardContainer>
     <template #header>
       <div class="relative flex items-center justify-center h-24">
-        <div class="absolute left-0">
-          <DynamicBrandingLogo />
+          <div class="absolute left-0 bg-white p-1 px-4 rounded-lg">
+          <DynamicBrandingLogo :division="division" />
         </div>
         <p class="text-header text-2xl font-semibold text-center">
           Access Your Backup
@@ -63,10 +63,11 @@
 
 <script setup lang="ts">
 import CardContainer from '../../components/CardContainer.vue';
-import { ref, computed } from 'vue';
-import { useWizardSteps, DynamicBrandingLogo, LoadingSpinner } from '@45drives/houston-common-ui';
+import { ref, computed, inject } from 'vue';
+import { useWizardSteps, DynamicBrandingLogo } from '@45drives/houston-common-ui';
 import { IPCRouter } from '@45drives/houston-common-lib';
-
+import { divisionCodeInjectionKey } from '../../keys/injection-keys';
+const division = inject(divisionCodeInjectionKey);
 const { prevStep, wizardData } = useWizardSteps("backup");
 
 const backupTask = computed(() => {

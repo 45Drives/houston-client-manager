@@ -2,8 +2,8 @@
   <CardContainer class="">
     <template #header>
       <div class="relative flex items-center justify-center h-24">
-        <div class="absolute left-0">
-          <DynamicBrandingLogo />
+          <div class="absolute left-0 bg-white p-1 px-4 rounded-lg">
+          <DynamicBrandingLogo :division="division" />
         </div>
         <p class="text-header text-2xl font-semibold text-center">
           Choose Where You Want to Store Back ups &nbsp;
@@ -99,13 +99,14 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue';
+import { inject, ref } from 'vue';
 import CardContainer from '../../components/CardContainer.vue';
 import { CommanderToolTip } from '../../components/commander';
 import { useWizardSteps, DynamicBrandingLogo } from '@45drives/houston-common-ui';
 import { Server } from '../../types';
 import MessageDialog from '../../components/MessageDialog.vue';
-
+import { divisionCodeInjectionKey } from '../../keys/injection-keys';
+const division = inject(divisionCodeInjectionKey);
 const { completeCurrentStep, prevStep } = useWizardSteps("backup");
 const servers = ref<Server[]>([]);
 

@@ -42,10 +42,11 @@
     <NotificationView />
 
     <!-- Page curl corner effect -->
-    <div class="page-corner-effect pointer-events-none"></div>
+    <div v-if="!showWebView" class="page-corner-effect pointer-events-none"></div>
 
     <!-- Double arrows -->
-    <div class="double-arrow absolute bottom-4 right-4 z-10 text-gray-400 text-xl animate-pulse pointer-events-none">
+    <div v-if="!showWebView"
+      class="double-arrow absolute bottom-4 right-4 z-10 text-gray-400 text-xl animate-pulse pointer-events-none">
       &raquo;
     </div>
   </div>
@@ -53,16 +54,16 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, provide, ref, unref } from 'vue';
+import { onMounted, provide, ref, unref, watch } from 'vue';
 import { useDarkModeState } from './composables/useDarkModeState';
 import { useAdvancedModeState } from './composables/useAdvancedState';
 import { reportError, reportSuccess } from './components/NotificationView.vue';
 import NotificationView from './components/NotificationView.vue';
 import { Server, DivisionType } from './types';
-import { useWizardSteps, DynamicBrandingLogo } from '@45drives/houston-common-ui'
+import { useWizardSteps } from '@45drives/houston-common-ui'
 import StorageSetupWizard from './views/storageSetupWizard/Wizard.vue';
 import BackUpSetupWizard from './views/backupSetupWizard/Wizard.vue';
-import { serverInfoInjectionKey, divisionCodeInjectionKey } from './keys/injection-keys';
+import { divisionCodeInjectionKey, currentServerInjectionKey } from './keys/injection-keys';
 import { IPCMessageRouterRenderer, IPCRouter } from '@45drives/houston-common-lib';
 
 IPCRouter.initRenderer();
@@ -78,12 +79,16 @@ IPCRouter.getInstance().addEventListener("action", async (data) => {
       console.log("Go_HOME")
       showWelcomeSetupWizard.value = false;
       showWebView.value = false;
+      showBackUpSetupWizard.value = true;
+
+      useWizardSteps("setup").reset()
+    } else if (data === "go_home_reboot") {
+      console.log("Go_HOME_REBOOT")
+      showWelcomeSetupWizard.value = false;
+      showWebView.value = false;
       waitingForServerReboot.value = true;
 
       await waitForServerRebootAndShowWizard();
-
-      // showBackUpSetupWizard.value = true;
-      // useWizardSteps("setup").reset()
     }
   } catch (error) {
   }
@@ -134,12 +139,15 @@ async function waitForServerRebootAndShowWizard() {
   }
 }
 
+const currentTheme = ref("theme-default");
+
 const aliasStyleToTheme: Record<string, string> = {
   homelab: 'theme-homelab',
   professional: 'theme-professional'
 };
 
 function applyThemeFromAliasStyle(aliasStyle?: string) {
+  console.log('detected alias style:', aliasStyle);
   const normalized = aliasStyle?.toLowerCase() || '';
   const themeClass = aliasStyleToTheme[normalized] || 'theme-default';
 
@@ -150,11 +158,12 @@ function applyThemeFromAliasStyle(aliasStyle?: string) {
   );
 
   document.documentElement.classList.add(themeClass);
+  currentTheme.value = themeClass;
 }
 
 const isDev = ref(true);
 
-// window.electron.ipcRenderer.invoke('is-dev').then(value => isDev.value = value);
+window.electron.ipcRenderer.invoke('is-dev').then(value => isDev.value = value);
 console.log(window.electron.ipcRenderer);
 
 const darkModeState = useDarkModeState();
@@ -167,8 +176,8 @@ const showBackUpSetupWizard = ref<boolean>(false);
 const showWelcomeSetupWizard = ref<boolean>(false);
 const showWebView = ref<boolean>(false);
 
-provide(currentServer, serverInfoInjectionKey);
-provide(divisionCode, divisionCodeInjectionKey)
+provide(divisionCodeInjectionKey, divisionCode);
+provide(currentServerInjectionKey, currentServer);
 
 const clientip = ref<string>("");
 const webview = ref();
@@ -214,6 +223,48 @@ onMounted(() => {
   setTimeout(() => {
     scanningNetworkForServers.value = false;
   }, 7000);
+
+  const updateTheme = () => {
+    const found = Array.from(document.documentElement.classList).find(cls =>
+      cls.startsWith("theme-")
+    );
+    console.log('found:', found);
+    currentTheme.value = found || "theme-default";
+    switch (currentTheme.value) {
+      case 'theme-homelab':
+        divisionCode.value = 'homelab';
+        break;
+      case 'theme-professional':
+        divisionCode.value = 'professional';
+        break;
+      default:
+        divisionCode.value = 'default';
+        break;
+    }
+  };
+
+  updateTheme(); // check initially
+
+  const observer = new MutationObserver(() => updateTheme());
+  observer.observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: ['class']
+  });
+
+});
+
+watch(currentTheme, (theme) => {
+  switch (theme) {
+    case 'theme-homelab':
+      divisionCode.value = 'homelab';
+      break;
+    case 'theme-professional':
+      divisionCode.value = 'professional';
+      break;
+    default:
+      divisionCode.value = 'default';
+      break;
+  }
 });
 
 // Receive the discovered servers from the main process
@@ -329,24 +380,21 @@ const onWelcomeWizardComplete = (server: Server) => {
 
   applyThemeFromAliasStyle(aliasStyle);
 
-  switch (aliasStyle) {
-    case 'homelab':
-      divisionCode.value = 'homelab';
-      break;
-    case 'professional':
-      divisionCode.value = 'professional';
-      break;
-    default:
-      divisionCode.value = 'default';
-      break;
-  }
   loginRequest(realServer)
   showWelcomeSetupWizard.value = false;
   showWebView.value = true;
   showBackUpSetupWizard.value = false;
 }
 
-const onBackUpWizardComplete = () => {
+const onBackUpWizardComplete = (server: Server) => {
+
+  console.log("server before unref:", server);
+  const realServer = unref(server);
+  console.log("server after unref:", realServer);
+  const aliasStyle = realServer.serverInfo?.aliasStyle?.toLowerCase();
+
+  applyThemeFromAliasStyle(aliasStyle);
+
   console.log("BackUp Wizard complete")
   showBackUpSetupWizard.value = true;
   showWelcomeSetupWizard.value = false;
