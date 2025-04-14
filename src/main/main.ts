@@ -276,8 +276,13 @@ function createWindow() {
     }
   }
 
-  IPCRouter.getInstance().addEventListener('mountSambaClient', (data) => {
-    mountSmbPopup(data.smb_host, data.smb_share, data.smb_user, data.smb_pass, mainWindow);
+  IPCRouter.getInstance().addEventListener('mountSambaClient', async (data) => {
+    const result = await mountSmbPopup(data.smb_host, data.smb_share, data.smb_user, data.smb_pass, mainWindow);
+
+    IPCRouter.getInstance().send("renderer", "action", JSON.stringify({
+      action: "mountSmbResult",
+      result: result
+    }))
   });
 
   // Poll every 5 seconds

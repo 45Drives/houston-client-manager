@@ -45,7 +45,8 @@
             <!-- <text v-else class="text-default font-semibold text-left px-4">{{`Backup will happen ${formatFrequency(task.schedule.repeatFrequency)} at 9:00 AM starting ${task.schedule.startDate.toDateString()}`}}</text> -->
             <text v-else class="text-default font-semibold text-left px-4">{{ `Backup will happen
               ${formatFrequency(task.schedule.repeatFrequency)} at ${task.schedule.startDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} starting
-              ${task.schedule.startDate.toDateString()}`}}</text>
+              ${task.schedule.startDate.toDateString()}`}}
+            </text>
 
           </div>
         </div>
@@ -71,6 +72,7 @@ import { CardContainer, CommanderToolTip, confirm } from "@45drives/houston-comm
 import { inject, ref } from "vue";
 import { useWizardSteps, DynamicBrandingLogo } from '@45drives/houston-common-ui';
 import { backUpSetupConfigKey } from "../../keys/injection-keys";
+import { formatFrequency } from "./utils";
 
 const { completeCurrentStep, prevStep } = useWizardSteps("backup");
 
@@ -82,16 +84,6 @@ const proceedToNextStep = async () => {
 
 const proceedToPreviousStep = () => {
   prevStep();
-};
-
-const formatFrequency = (frequency: "hour" | "day" | "week" | "month") => {
-    const frequencyMap: Record<string, string> = {
-        hour: "hourly",
-        day: "daily",
-        week: "weekly",
-        month: "monthly"
-    };
-    return frequencyMap[frequency] || frequency; // Default to original if unknown
 };
 
 const handleNextClick = async () => {
