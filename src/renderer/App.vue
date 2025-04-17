@@ -90,7 +90,7 @@ IPCRouter.getInstance().addEventListener("action", async (data) => {
       const serverIp = currentServer.value?.ip;
 
       loadingWebview.value = true;
-      currentUrl.value = `${serverIp}:9090`;
+      currentUrl.value = `https://${serverIp}:9090`;
     }
 
     if (data.endsWith("_reboot")) {
@@ -321,6 +321,11 @@ const onWebViewLoaded = async () => {
 
   routerRenderer.setCockpitWebView(webview.value);
 
+  if (currentUrl.value.endsWith(":9090")) {
+    loadingWebview.value = false;
+    webview.value.className = "h-[100vh] w-full";
+    return;
+  }
   webview.value.executeJavaScript(`
         new Promise((resolve, reject) => {
 
