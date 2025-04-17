@@ -16,10 +16,10 @@ const blockerId = powerSaveBlocker.start("prevent-app-suspension");
 
 app.commandLine.appendSwitch('ignore-certificate-errors', 'true');
 
-app.commandLine.appendSwitch("disable-background-timer-throttling", 'true');
-app.commandLine.appendSwitch("disable-renderer-backgrounding", "true");
-app.commandLine.appendSwitch("disable-backgrounding-occluded-windows", 'true');
-app.commandLine.appendSwitch("use-gl", "desktop");
+// app.commandLine.appendSwitch("disable-background-timer-throttling", 'true');
+// app.commandLine.appendSwitch("disable-renderer-backgrounding", "true");
+// app.commandLine.appendSwitch("disable-backgrounding-occluded-windows", 'true');
+// app.commandLine.appendSwitch("use-gl", "desktop");
 
 // Timeout duration in milliseconds (e.g., 30 seconds)
 const TIMEOUT_DURATION = 10000;
