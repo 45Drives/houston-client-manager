@@ -5,7 +5,7 @@
           <div class="absolute left-0 bg-white p-1 px-4 rounded-lg">
           <DynamicBrandingLogo :division="division" />
         </div>
-        <p class="text-header text-2xl font-semibold text-center">
+        <p class="text-3xl font-semibold text-center">
           Welcome to the 45Drives Back Up Setup Wizard!
         </p>
       </div>
@@ -13,25 +13,25 @@
 
     <div class="flex flex-col h-full justify-center items-center">
 
-      <p class="w-9/12 text-center text-2xl">
+      <p class="w-9/12 text-left text-2xl">
         Your data is precious—protect it with the power of backups! A backup ensures your files are safe from accidents, failures, and digital mischief. Set up your protection now and keep your data secure, always.
       </p>
 
       <br />
 
-      <p class="w-9/12 text-center text-2xl">
+      <p class="w-9/12 text-left text-2xl">
         We will set up automated backups with your chosen folders and schedule when they should happen. Back up tasks will be added to your system so you don’t have to worry.
       </p>
 
       <br />
 
-      <p class="w-9/12 text-center text-2xl">
+      <p class="w-9/12 text-left text-2xl">
         This setup wizard will guide you through the steps to get your backups setup quickly.
       </p>
 
       <br />
 
-      <p class="w-9/12 text-center text-2xl">
+      <p class="w-9/12 text-left text-2xl">
         Anywhere you see this icon: &nbsp;
         <CommanderToolTip
           :message="`Welcome to the 45Drives Setup Wizard! \n I'm the Houston Commander, and I'm here to show you some tips, tricks and information. 

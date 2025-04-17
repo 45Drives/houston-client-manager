@@ -131,24 +131,6 @@ function createWindow() {
 
   // Start listening for devices
   mDNSClient.on('response', async (response) => {
-    // const parsedResponse = JSON.stringify(response).toLowerCase();
-
-    // const bannedKeywords = [
-    //   'hp laserjet', 'sales', 'laptop', 'rd-', 'eds-', 'switch', 'kyocera',
-    //   'protocase', 'admin', 'prod', 'b3-', 'win-', 'sale-', 'b4-', 'b1-', 'b2-',
-    //   'oldproto', 'mrkt-', 'qual-', 'trng-', 'b5-', '45dr-', 'cnc-', 'grph-',
-    //   'winpod-', 'admn-', 'hr-', 'b2x', '45-', 'it-', 'paint', 'virtek', 'kmb68843', 'vdsp',
-    //   'tableau-', 'qbusa-', 'log-', 'b2brake-', 'win-', 'lptp', 'countersink-', 'acct-', 'win10', 'jboudreau', 'cncrouter', 'sugar2', 'server',
-    //   'lunchclock.', 'pod.', 'ship-', 'svr-', 'b2', 'b1', 'b3', 'b4', 'b5', '45drives', 'matsuura', 'ricoh', 'slcm2',
-    // ];
-
-    // if (!bannedKeywords.some(keyword => parsedResponse.includes(keyword))) {
-    //   console.log('response:', response);
-    // }
-
-    // if (parsedResponse.includes('192.168.2.227') || parsedResponse.includes('fe80::5e4f:ac9c:a2a2:f51a') || parsedResponse.includes('souporsimple')) {
-    //   console.log('response:', response);
-    // }
 
     server_search:
     for (const answer1 of response.answers) {
@@ -171,8 +153,6 @@ function createWindow() {
               txtRecord[key] = value;
             });
           }
-
-          // console.log('Discovered server TXT:', txtRecord);
 
           const server: Server = {
             ip: serverIp,

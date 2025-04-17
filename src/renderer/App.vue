@@ -70,27 +70,35 @@ IPCRouter.initRenderer();
 IPCRouter.getInstance().addEventListener("action", async (data) => {
   console.log("action in renderer: ", data);
   try {
-    if (data === "setup_wizard_go_back") {
+    if (data === "setup_wizard_go_back" || data === "show_storage_setup_wizard") {
       showWelcomeSetupWizard.value = true;
       showWebView.value = false;
       showBackUpSetupWizard.value = false;
-
-    } else if (data === "go_home") {
-      console.log("Go_HOME")
+      openStorageSetup(null);
+    } else if (data === "show_back_up_setup_wizard") {
       showWelcomeSetupWizard.value = false;
       showWebView.value = false;
       showBackUpSetupWizard.value = true;
 
+      openStorageSetup(null);
       useWizardSteps("setup").reset()
-    } else if (data === "go_home_reboot") {
-      console.log("Go_HOME_REBOOT")
+    } else if (data === "show_houston") {
       showWelcomeSetupWizard.value = false;
-      showWebView.value = false;
-      waitingForServerReboot.value = true;
+      showWebView.value = true;
+      showBackUpSetupWizard.value = false;
 
+      const serverIp = currentServer.value?.ip;
+
+      loadingWebview.value = true;
+      currentUrl.value = `${serverIp}:9090`;
+    }
+
+    if (data.endsWith("_reboot")) {
       await waitForServerRebootAndShowWizard();
     }
+
   } catch (error) {
+    console.log(error)
   }
 });
 
@@ -287,7 +295,7 @@ window.electron.ipcRenderer.on('discovered-servers', (_event, discoveredServers:
 });
 
 // Handle server click to open the website
-const openServerWebsite = (server: Server | null) => {
+const openStorageSetup = (server: Server | null) => {
 
   currentServer.value = server;
   let newUrl = "";
@@ -368,7 +376,7 @@ const onWebViewLoaded = async () => {
     });
 
   // comment this line out for prod
-  // webview.value.openDevTools();
+  webview.value.openDevTools();
 }
 
 const onWelcomeWizardComplete = (server: Server) => {
@@ -402,7 +410,7 @@ const onBackUpWizardComplete = (server: Server) => {
 }
 
 const loginRequest = async (server: Server) => {
-  openServerWebsite(server);
+  openStorageSetup(server);
 };
 
 </script>
