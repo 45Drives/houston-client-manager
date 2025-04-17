@@ -5,7 +5,7 @@
 				     <div class="absolute left-0 bg-white p-1 px-4 rounded-lg">
             <DynamicBrandingLogo :division="division" />
           </div>
-				<p class="text-header text-2xl font-semibold text-center">
+				<p class="text-3xl font-semibold text-center">
 					Create Simple Backup Plan!
 				</p>
 			</div>
@@ -15,6 +15,9 @@
 			<div class="text-center">
 				<p class="mb-6 text-2xl">
 					Choose the folders you want to back up and choose how often you want to back it up.
+				</p>
+				<p class="mb-6 text-2xl">
+					File explorer may open on different screen when you click the add folder button "+".
 				</p>
 			</div>
 

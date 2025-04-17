@@ -6,7 +6,7 @@
 
     <div v-if="backUpTasks.length == 0" class="spinner"></div>
 
-    <div class="flex flex-col space-y-1 p-2">
+    <div class="flex flex-col space-y-1 p-2 overflow-y-auto">
       <label v-for="backUpTask in backUpTasks" :key="backUpTask.source + backUpTask.target"
         class="flex items-center space-x-2 p-2 border">
         <input type="checkbox"
