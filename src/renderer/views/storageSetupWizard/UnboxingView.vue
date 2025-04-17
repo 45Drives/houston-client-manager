@@ -2,7 +2,7 @@
   <CardContainer>
     <template #header>
       <div class="relative flex items-center justify-center h-24">
-          <div class="absolute left-0 bg-white p-1 px-4 rounded-lg">
+        <div class="absolute left-0 bg-white p-1 px-4 rounded-lg">
           <DynamicBrandingLogo />
         </div>
         <p class="text-header text-2xl font-semibold text-center">
@@ -17,10 +17,10 @@
         <p class="col-span-3 text-left text-2xl">
           <b>Let’s set up the storage server and drives.</b><br />
           If you purchased drives from us, they will have arrived in a separate, securely packaged box.
-          If you're using your own drives, we recommend ensuring they all have the same capacity to optimize usable
-          storage.
+          If you're using your own drives, we recommend <b>ensuring they all have the same capacity</b> to optimize
+          usable storage.
           <CommanderToolTip
-            :message="`Beware of using mixed drive sizes! The smallest one determines how much storage you will be able to use.`" />
+            :message="`Beware of using mixed drive sizes! The smallest one determines how much storage you will be able to use.\nExample: If you have three 20TB drives and one 4TB drive, your pool of storage will only be equal to four 4TB drives, or 12TB of storage. (16TB raw total minus one drive for redundancy)`" />
 
           <br />
           <br />
@@ -29,7 +29,7 @@
 
           <br />
           <br />
-          <b>NOTE:</b> The storage bays are caddiless for 3.5” Drives.
+          <b>NOTE:</b> The storage bays are caddiless for 3.5” Drives.<br />
           2.5” Drives can be used, however caddies are required.
           <CommanderToolTip
             :message="`Get some caddies here at <a href='https://store.45homelab.com/products/11' target='_blank' class='text-link'>45HomeLab Store</a>, or 3D print your own with our <a href='https://www.printables.com/model/583544-45drives-ssd-caddies' target='_blank' class='text-link'>Printables</a> files!`" />

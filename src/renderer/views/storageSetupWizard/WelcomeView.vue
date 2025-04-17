@@ -24,7 +24,7 @@
       </p>
 
       <p class="w-9/12 text-2xl">
-        Our goal is to ensure a smooth setup you can start using your storage server as network attached storage (NAS)
+        Our goal is to ensure a smooth setup so you can start using your storage server as a network attached storage (NAS)
         device with confidence.
       </p>
 
