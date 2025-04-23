@@ -21,9 +21,8 @@
       <div class="flex flex-col space-y-4 mt-[5rem]">
         <div class="flex items-center">
           <text class="text-default font-semibold text-left">Back Up Location</text>
-          <CommanderToolTip
-            :message="`This is the designated backup storage location. It is preconfigured and cannot be modified.`" />
-          <text class="text-default font-semibold text-left px-4">{{backUpSetupConfig?.backUpTasks[0].target}}</text>
+            <CommanderToolTip :message="`This is the designated backup storage location you configured earlier.`" />
+          <!-- <text class="text-default font-semibold text-left px-4">{{backUpSetupConfig?.backUpTasks[0].target}}</text> --> 
         </div>
       </div>
 
@@ -58,7 +57,7 @@
 
     <!-- Buttons -->
     <template #footer>
-      <div>
+      <div class="button-group-row justify-between">
         <button @click="proceedToPreviousStep" class="btn btn-primary h-20 w-40">Back</button>
         <button @click="handleNextClick" class="absolute btn right-[1rem] btn-secondary h-20 w-40">Next</button>
       </div>
