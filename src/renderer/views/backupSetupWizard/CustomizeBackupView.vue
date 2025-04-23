@@ -2,9 +2,9 @@
 	<CardContainer>
 		<template #header class="!text-center">
 			<div class="relative flex items-center justify-center h-24">
-				     <div class="absolute left-0 bg-white p-1 px-4 rounded-lg">
-            <DynamicBrandingLogo :division="division" />
-          </div>
+				<div class="absolute left-0 bg-white p-1 px-4 rounded-lg">
+					<DynamicBrandingLogo :division="division" />
+				</div>
 				<p class="text-3xl font-semibold text-center">
 					Customize Backup Plan
 				</p>
@@ -76,17 +76,19 @@
 
 			</div>
 		</div>
-		<Modal :show="showCalendar" class="rounded-md" @clickOutside="">
-			<SimpleCalendar title="Schedule Your Backup" :taskSchedule="selectedTaskSchedule"
-				@close="handleCalendarClose(false)" @save="handleCalendarClose(true)"
-				class="border-2 border-default rounded-md w-full max-w-[800px]" />
+		<Modal :show="showCalendar" class="fixed inset-0 flex items-center justify-center" @clickOutside="">
+			<div class="w-full max-w-[800px] mx-auto">
+				<SimpleCalendar title="Schedule Your Backup" :taskSchedule="selectedTaskSchedule"
+					@close="handleCalendarClose(false)" @save="handleCalendarClose(true)"
+					class="border-2 border-default rounded-md w-full" />
+			</div>
 		</Modal>
 
 		<!-- Buttons -->
 		<template #footer>
 			<div class="button-group-row justify-between">
 				<button @click=" proceedToPreviousStep" class="btn btn-primary h-20 w-40">
-				Back
+					Back
 				</button>
 				<button :disabled="backUpSetupConfig?.backUpTasks.length === 0" @click="proceedToNextStep"
 					class="absolute btn right-[1rem] btn-secondary h-20 w-40">
@@ -305,7 +307,7 @@ const proceedToNextStep = () => {
 
 	backUpSetupConfig?.backUpTasks.forEach(
 		task => {
-			task.target = `${selectedServer.value!.name}.local:${selectedServer.value!.shareName!}/client-backups/${hostname}/${crypto.randomUUID()}/${sanitizeFilePath(task.source)}`;
+			task.target = `${selectedServer.value!.name}.local:${selectedServer.value!.shareName!}/client-backups/${hostname}/${crypto.randomUUID()}${sanitizeFilePath(task.source)}`;
 			console.log('target saved:', task.target);
 		});
 
