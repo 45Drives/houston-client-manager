@@ -10,8 +10,9 @@ export const formatFrequency = (frequency: "hour" | "day" | "week" | "month") =>
 
 export const sanitizeFilePath = (input: string) => {
     return input
-      .replace(/[:*?"<>|]/g, '_') // replace illegal characters with underscore
+      .replace(/[:*?"<>|]/g, '') // replace illegal characters with underscore
       .replace(/\s+/g, ' ')           // optional: collapse multiple spaces
+      .replace(/\\/g, "/")           // optional: collapse multiple spaces
       .trim();                        // trim leading/trailing whitespace
   }
   

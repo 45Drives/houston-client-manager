@@ -308,7 +308,6 @@ IPCRouter.getInstance().addEventListener("action", (data) => {
 })
 
 IPCRouter.getInstance().send("backend", "action", "requestHostname");
-IPCRouter.getInstance().send("backend", "action", "requestUsername");
 
 // Navigation
 const proceedToNextStep = () => {

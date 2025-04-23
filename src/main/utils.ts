@@ -73,7 +73,7 @@ export function getAppPath() {
 }
 
 export function getSSHTargetFromSmbTarget(target: string) {
-  return target.replace(":", ":/tank/");
+  return target.replace(":", ":'\"\"/tank/") + "\"\"'";
 }
 
 export function getSmbTargetFromSSHTarget(target: string) {
