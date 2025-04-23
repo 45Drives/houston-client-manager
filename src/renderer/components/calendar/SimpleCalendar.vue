@@ -1,5 +1,5 @@
 <template>
-    <CardContainer class="">
+    <CardContainer class="justify-self-center">
         <template #header>
             <div class="flex flex-row text-center justify-center">
                 {{ title }}
@@ -140,6 +140,22 @@ watch(() => schedule.value.repeatFrequency, (newFrequency) => {
     }
 });
 
+watch([minuteValue, hourValue, dayValue, monthValue], () => {
+    updateStartDate();
+});
+
+watch(
+    () => props.taskSchedule.startDate,
+    (newDate) => {
+        dayValue.value = newDate.getDate();
+        monthValue.value = newDate.getMonth() + 1;
+        hourValue.value = newDate.getHours();
+        minuteValue.value = newDate.getMinutes();
+    },
+    { immediate: true }
+);
+
+
 const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 const weekDays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
@@ -208,6 +224,7 @@ const changeMonth = (delta: number) => {
 // Save function
 async function saveScheduleBtn() {
     savingSchedule.value = true;
+    updateStartDate();             
     emit('save', schedule.value);
 }
 
