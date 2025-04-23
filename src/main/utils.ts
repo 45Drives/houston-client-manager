@@ -98,6 +98,11 @@ export function getScp() {
   return scp;
 }
 
+export function getSsh() {
+  const sshKeyPath = getSSHKey();
+  return `ssh -o StrictHostKeyChecking=no -o PasswordAuthentication=no -i ""${sshKeyPath}""`;
+}
+
 export function getSSHKey() {
   let basePath = getAppPath();
 

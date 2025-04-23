@@ -64,7 +64,7 @@ import { useWizardSteps } from '@45drives/houston-common-ui'
 import StorageSetupWizard from './views/storageSetupWizard/Wizard.vue';
 import BackUpSetupWizard from './views/backupSetupWizard/Wizard.vue';
 import { divisionCodeInjectionKey, currentServerInjectionKey } from './keys/injection-keys';
-import { IPCMessageRouterRenderer, IPCRouter } from '@45drives/houston-common-lib';
+import { IPCMessageRouterRenderer, IPCRouter, server } from '@45drives/houston-common-lib';
 
 IPCRouter.initRenderer();
 IPCRouter.getInstance().addEventListener("action", async (data) => {
@@ -314,6 +314,7 @@ const openStorageSetup = (server: Server | null) => {
   }
 
 };
+
 
 const onWebViewLoaded = async () => {
 

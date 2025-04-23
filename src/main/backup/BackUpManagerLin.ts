@@ -2,8 +2,7 @@ import { BackUpManager } from "./types";
 import { BackUpTask, backupTaskTag, TaskSchedule } from "@45drives/houston-common-lib";
 import * as fs from "fs";
 import { execSync } from "child_process";
-import { getRsync, getSmbTargetFromSSHTarget, getSSHTargetFromSmbTarget } from "../utils";
-import { getOS } from "../utils";
+import { getRsync, getSmbTargetFromSSHTarget, getSSHTargetFromSmbTarget, getOS } from "../utils";
 
 export class BackUpManagerLin implements BackUpManager {
   protected cronFilePath: string = "/etc/cron.d/houston-backup-manager";
@@ -38,24 +37,6 @@ export class BackUpManagerLin implements BackUpManager {
     });
   }
 
-  // unschedule(task: BackUpTask): void {
-  //   if (!fs.existsSync(this.cronFilePath)) {
-  //     return;
-  //   }
-  //   // console.log('task being deleted:', task);
-
-  //   const cron = this.backupTaskToCron(task);
-  //   console.log('after cron: ', cron);
-
-  //   const cronFileContents = fs.readFileSync(this.cronFilePath, "utf-8");
-  //   const cronEntries = cronFileContents.split(/[\r\n]+/);
-  //   const newCronEntries = cronEntries.filter((c) => c !== cron);
-  //   const newCronFileContents = newCronEntries.join("\n") + "\n";
-
-
-  //   fs.writeFileSync(this.cronFilePath, newCronFileContents, "utf-8");
-  //   this.reloadCron();
-  // }
   unschedule(task: BackUpTask): void {
     if (!fs.existsSync(this.cronFilePath)) {
       return;
@@ -72,11 +53,9 @@ export class BackUpManagerLin implements BackUpManager {
     const newCronFileContents = newCronEntries.join("\n") + "\n";
 
     fs.writeFileSync(this.cronFilePath, newCronFileContents, "utf-8");
-    // this.reloadCron();
 
     console.log(`🧹 Removed task with description "${task.description}" from cron file`);
   }
-
 
   private ensureCronFile(): void {
     if (!fs.existsSync(this.cronFilePath)) {

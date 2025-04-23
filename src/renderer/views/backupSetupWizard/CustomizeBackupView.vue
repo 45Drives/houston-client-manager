@@ -105,10 +105,11 @@ import { inject, ref, reactive, watch, nextTick } from "vue";
 import { PlusIcon, MinusIcon } from "@heroicons/vue/20/solid";
 import { backUpSetupConfigKey } from "../../keys/injection-keys";
 import { CalendarIcon } from "@heroicons/vue/24/outline";
-import { BackUpTask, TaskSchedule } from "@45drives/houston-common-lib";
+import { BackUpTask, IPCRouter, TaskSchedule } from "@45drives/houston-common-lib";
 import { Server } from '../../types'
 import { SimpleCalendar } from "../../components/calendar";
 import { divisionCodeInjectionKey } from '../../keys/injection-keys';
+import { sanitizeFilePath } from "./utils";
 const division = inject(divisionCodeInjectionKey);
 // Reactive State
 const backUpSetupConfig = inject(backUpSetupConfigKey);
@@ -287,14 +288,29 @@ const removeFolder = (index: number) => {
 	}
 };
 
-// Proceed to Next Step
+let hostname = ""
+IPCRouter.getInstance().addEventListener("action", (data) => {
+	try {
+		const jsondata = JSON.parse(data);
+
+		if (jsondata.type === "sendHostname") {
+			hostname = sanitizeFilePath(jsondata.hostname);
+		} 
+	} catch (_e) {}
+})
+
+IPCRouter.getInstance().send("backend", "action", "requestHostname");
+IPCRouter.getInstance().send("backend", "action", "requestUsername");
+
+// Navigation
 const proceedToNextStep = () => {
-//   backUpSetupConfig?.backUpTasks.forEach(task => task.target = `${selectedServer.value?.name}.local:backup`)
+
 	backUpSetupConfig?.backUpTasks.forEach(
 		task => {
-			task.target = `${selectedServer.value!.name}.local:${selectedServer.value!.shareName!}`;
+			task.target = `${selectedServer.value!.name}.local:${selectedServer.value!.shareName!}/client-backups/${hostname}/${crypto.randomUUID()}/${task.source}`;
 			console.log('target saved:', task.target);
 		});
+
 	completeCurrentStep();
 }
 
