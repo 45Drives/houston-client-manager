@@ -329,7 +329,6 @@ const onWebViewLoaded = async () => {
   }
   webview.value.executeJavaScript(`
         new Promise((resolve, reject) => {
-
     if (!document.querySelector("#login")) {
       setTimeout(() => {
         [...document.querySelectorAll('#main > div')].forEach((e) => {
@@ -360,7 +359,23 @@ const onWebViewLoaded = async () => {
               // Dispatch input events to ensure the values are recognized
               usernameField.dispatchEvent(new Event("input", { bubbles: true }));
               passwordField.dispatchEvent(new Event("input", { bubbles: true }));
+              
+              // Watch for login result
+              const observer = new MutationObserver(() => {
+                const loginError = document.querySelector("#login-error-message");
+                if (loginError && loginError.textContent.includes("Wrong user name")) {
+                  observer.disconnect();
+                  [...document.querySelectorAll('#main > div')].forEach((e) => {
+                    if (e.id !== 'content') e.style.display = 'block';
+                  });
+                  reject("Login failed: Wrong user name or password.");
+                } else if (!document.querySelector("#login")) {
+                  observer.disconnect();
+                  resolve("Login successful: login form disappeared.");
+                }
+              });
 
+              observer.observe(document.body, { childList: true, subtree: true });
               setTimeout(() => {
                 loginButton.click();
                 loginForm.submit(); // Submit the form programmatically
@@ -370,7 +385,7 @@ const onWebViewLoaded = async () => {
             }
           }
         });
-      `)
+        `)
     .then((result: any) => {
       console.log("result", result);
       loadingWebview.value = false;
@@ -379,6 +394,7 @@ const onWebViewLoaded = async () => {
     .catch((error: any) => {
       console.error("Error:", error);
       loadingWebview.value = false;
+      webview.value.className = "h-[100vh] w-full";
     });
 
   // comment this line out for prod

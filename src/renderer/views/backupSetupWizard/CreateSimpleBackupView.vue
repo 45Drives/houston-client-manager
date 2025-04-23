@@ -322,8 +322,8 @@ IPCRouter.getInstance().addEventListener("action", (data) => {
 
 		if (jsondata.type === "sendHostname") {
 			hostname = sanitizeFilePath(jsondata.hostname);
-		} 
-	} catch (_e) {}
+		}
+	} catch (_e) { }
 })
 
 
@@ -335,7 +335,7 @@ const proceedToNextStep = () => {
 
 	backUpSetupConfig?.backUpTasks.forEach(
 		task => {
-			task.target = `${selectedServer.value!.name}.local:${selectedServer.value!.shareName!}/client-backups/${hostname}/${crypto.randomUUID()}/${task.source}`;
+			task.target = `${selectedServer.value!.name}.local:${selectedServer.value!.shareName!}/client-backups/${hostname}/${crypto.randomUUID()}/${sanitizeFilePath(task.source)}`;
 			console.log('target saved:', task.target);
 		});
 
