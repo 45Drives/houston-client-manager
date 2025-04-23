@@ -7,7 +7,7 @@
         </template>
 
         <div class="grid grid-cols-1 gap-2">
-            <div class="border border-default rounded-md p-2 min-w-[600px] w-full max-w-[600px] mx-auto">
+            <div class="border border-default rounded-md p-2 min-w-md w-full mx-auto">
                 <label for="frequency-select" class="block text-sm font-medium">Backup Frequency</label>
                 <select id="frequency-select" v-model="schedule.repeatFrequency" class="input-textlike w-full">
                     <option value="hour">Hourly</option>
@@ -16,7 +16,7 @@
                     <option value="month">Monthly</option>
                 </select>
 
-                <div class="col-span-1 grid grid-cols-1 gap-2 mt-2">
+                <div class="col-span-1 grid grid-cols-1 gap-1 mt-2">
                     <!-- Day Input -->
                     <div>
                         <label class="block text-sm">Start Day</label>
@@ -96,7 +96,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue';
+import { ref, computed, watch, toRef } from 'vue';
 import { CardContainer } from '@45drives/houston-common-ui';
 import { CommanderToolTip } from '../commander';
 import { type TaskSchedule, parseTaskScheduleIntoString } from "@45drives/houston-common-lib";
@@ -111,11 +111,12 @@ const emit = defineEmits(['close', 'save']);
 const savingSchedule = ref(false);
 
 // const schedule = ref<TaskSchedule>(props.taskSchedule || { repeatFrequency: 'day', startDate: new Date()});
-const schedule = ref<TaskSchedule>(
-    props.taskSchedule
-        ? { ...props.taskSchedule, startDate: new Date(props.taskSchedule.startDate) } // Ensure it's a Date object
-        : { repeatFrequency: 'day', startDate: new Date() } // Default when adding a new schedule
-);
+// const schedule = ref<TaskSchedule>(
+//     props.taskSchedule
+//         ? { ...props.taskSchedule, startDate: new Date(props.taskSchedule.startDate) } // Ensure it's a Date object
+//         : { repeatFrequency: 'day', startDate: new Date() } // Default when adding a new schedule
+// );
+const schedule = toRef(props, 'taskSchedule')
 
 // Extract day/month values from startDate
 const dayValue = ref(schedule.value.startDate.getDate());
