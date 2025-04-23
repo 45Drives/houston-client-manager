@@ -96,9 +96,11 @@ const handleOpen = () => {
 
     console.log("Target:", backupTask.value?.target);
 
-    const [host, share] = backupTask.value?.target.split(":");
+    const [host, path] = backupTask.value?.target.split(":");
 
     console.log("Host:", host);  // Output: "hl4-test.local"
+
+    const share = path.split("/")[0];
     console.log("Share:", share); // Output: "backups"
 
     IPCRouter.getInstance().addEventListener("action", data => {
