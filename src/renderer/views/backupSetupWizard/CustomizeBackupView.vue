@@ -277,7 +277,6 @@ async function editSchedule(taskSchedule: TaskSchedule) {
 	}
 }
 
-
 // Remove Folder from List
 const removeFolder = (index: number) => {
 	selectedFolders.value.splice(index, 1);
@@ -307,7 +306,7 @@ const proceedToNextStep = () => {
 
 	backUpSetupConfig?.backUpTasks.forEach(
 		task => {
-			task.target = `${selectedServer.value!.name}.local:${selectedServer.value!.shareName!}/client-backups/${hostname}/${crypto.randomUUID()}/${task.source}`;
+			task.target = `${selectedServer.value!.name}.local:${selectedServer.value!.shareName!}/client-backups/${hostname}/${crypto.randomUUID()}/${sanitizeFilePath(task.source)}`;
 			console.log('target saved:', task.target);
 		});
 
