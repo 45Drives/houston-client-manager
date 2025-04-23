@@ -103,6 +103,12 @@ export class BackUpManagerWin implements BackUpManager {
 
     const scp = getScp();
 
+    console.log("task.target", task.target);
+
+    let targetPath = "/tank/" + task.target.split(":")[1];
+    let host = task.target.split(":")[0];
+    console.log("targetPath", targetPath)
+
     // PowerShell script to create the task
     const powershellScript = `
 
@@ -116,7 +122,7 @@ Write-Host "user being used: $user"
 
 ${this.chanagePrivilagesOnSSHKey()}
 
-$sourcePath = "${task.source}"
+$sourcePath = "${task.source}/*"
 $destinationPath = "${getSSHTargetFromSmbTarget(task.target)}"
 $mirror = ${task.mirror ? "$true" : "$false"}  # Set to $true if you want to mirror the directories
 
@@ -134,7 +140,7 @@ $principal = New-ScheduledTaskPrincipal -UserId "$user" -LogonType S4U -RunLevel
 
 $task = Register-ScheduledTask -Action $action -Trigger $taskTrigger -Principal $principal -TaskName "${TASK_ID}_${crypto.randomUUID()}"
 
-${getSsh()} 'mkdir -p ${task.target}'
+${getSsh()} root@${host} 'mkdir -p ""${targetPath}""'
 ${this.dailyTaskTriggerUpdate(task.schedule)}
 
 `;
@@ -410,8 +416,6 @@ $taskTrigger = New-ScheduledTaskTrigger -At $startTime -Monthly
   protected parseBackupCommand(command: string): { source: string, target: string, mirror: boolean } | null {
     try {
 
-      //$backupCommand = "${rsync} --delete $sourcePath root@$destinationPath"
-
       if (!command.includes(getNoneQuotedScp())) {
         return null;
       }
@@ -419,8 +423,6 @@ $taskTrigger = New-ScheduledTaskTrigger -At $startTime -Monthly
       const mirror = command.includes("--delete");
       command = command.replace("/C " + getNoneQuotedScp(), '')
         .replace("--delete", "")
-        .replace("\"", "")
-        .replace("\"", "")
         .replace("root@", "").trim();
 
       console.log(command)
