@@ -1,6 +1,6 @@
 import { BackUpManager } from "./types";
 import { BackUpTask, TaskSchedule } from "@45drives/houston-common-lib";
-import { formatDateForTask, getNoneQuotedScp, getScp, getSmbTargetFromSSHTarget, getSSHKey, getSSHTargetFromSmbTarget } from "../utils";
+import { formatDateForTask, getNoneQuotedScp, getScp, getSmbTargetFromSSHTarget, getSsh, getSSHKey, getSSHTargetFromSmbTarget } from "../utils";
 import sudo from 'sudo-prompt';
 import path from "path";
 import fs from 'fs';
@@ -134,6 +134,7 @@ $principal = New-ScheduledTaskPrincipal -UserId "$user" -LogonType S4U -RunLevel
 
 $task = Register-ScheduledTask -Action $action -Trigger $taskTrigger -Principal $principal -TaskName "${TASK_ID}_${crypto.randomUUID()}"
 
+${getSsh()} 'mkdir -p ${task.target}'
 ${this.dailyTaskTriggerUpdate(task.schedule)}
 
 `;

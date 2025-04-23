@@ -2,9 +2,9 @@
 	<CardContainer>
 		<template #header class="!text-center">
 			<div class="relative flex items-center justify-center h-24">
-				     <div class="absolute left-0 bg-white p-1 px-4 rounded-lg">
-            <DynamicBrandingLogo :division="division" />
-          </div>
+				<div class="absolute left-0 bg-white p-1 px-4 rounded-lg">
+					<DynamicBrandingLogo :division="division" />
+				</div>
 				<p class="text-3xl font-semibold text-center">
 					Create Simple Backup Plan!
 				</p>
@@ -26,8 +26,7 @@
 				<div class="flex items-center">
 					<div class="flex items-center w-[25%] flex-shrink-0 space-x-2">
 						<label class="text-default font-semibold text-left">Back Up Location</label>
-						<CommanderToolTip
-							:message="`This is the designated backup storage location you set up earlier.`" />
+						<CommanderToolTip :message="`This is the designated backup storage location you set up earlier.`" />
 					</div>
 					<select v-model="selectedServer"
 						class="bg-default h-[3rem] text-default rounded-lg px-4 flex-1 border border-default">
@@ -108,9 +107,11 @@ import { inject, onMounted, ref, watch } from "vue";
 import { PlusIcon, MinusIcon } from "@heroicons/vue/20/solid";
 import { useWizardSteps, DynamicBrandingLogo } from '@45drives/houston-common-ui';
 import { Server } from '../../types'
-import { backUpSetupConfigKey  } from "../../keys/injection-keys";
+import { backUpSetupConfigKey } from "../../keys/injection-keys";
 import MessageDialog from '../../components/MessageDialog.vue';
 import { divisionCodeInjectionKey } from '../../keys/injection-keys';
+import { IPCMessageRouter, IPCRouter, server } from "@45drives/houston-common-lib";
+import { sanitizeFilePath } from "./utils";
 const division = inject(divisionCodeInjectionKey);
 // Wizard navigation
 const { completeCurrentStep, prevStep } = useWizardSteps("backup");
@@ -314,14 +315,29 @@ function getNextScheduleDate(frequency: 'hour' | 'day' | 'week' | 'month'): Date
 	return nextDate;
 }
 
+let hostname = ""
+IPCRouter.getInstance().addEventListener("action", (data) => {
+	try {
+		const jsondata = JSON.parse(data);
+
+		if (jsondata.type === "sendHostname") {
+			hostname = sanitizeFilePath(jsondata.hostname);
+		} 
+	} catch (_e) {}
+})
+
+
+IPCRouter.getInstance().send("backend", "action", "requestHostname");
+IPCRouter.getInstance().send("backend", "action", "requestUsername");
+
 // Navigation
 const proceedToNextStep = () => {
 
-	// backUpSetupConfig?.backUpTasks.forEach(task => task.target = `${selectedServer.value?.name}.local:backup`)
 	backUpSetupConfig?.backUpTasks.forEach(
-		task => { task.target = `${selectedServer.value!.name}.local:${selectedServer.value!.shareName!}`;
-		console.log('target saved:', task.target);
-	});
+		task => {
+			task.target = `${selectedServer.value!.name}.local:${selectedServer.value!.shareName!}/client-backups/${hostname}/${crypto.randomUUID()}/${task.source}`;
+			console.log('target saved:', task.target);
+		});
 
 	completeCurrentStep();
 }

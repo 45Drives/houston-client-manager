@@ -7,7 +7,7 @@ import mountSmbPopup from './smbMountPopup';
 import { IPCRouter } from '../../houston-common/houston-common-lib/lib/electronIPC/IPCRouter';
 import { getOS } from './utils';
 import { BackUpManager, BackUpManagerLin, BackUpManagerMac, BackUpManagerWin, BackUpSetupConfigurator } from './backup';
-import { BackUpSetupConfig, BackUpTask } from '@45drives/houston-common-lib';
+import { BackUpSetupConfig, BackUpTask, server, unwrap } from '@45drives/houston-common-lib';
 import { setupSsh } from './setupSsh';
 
 let discoveredServers: Server[] = [];
@@ -69,6 +69,11 @@ function createWindow() {
       if (backUpManager !== null) {
         IPCRouter.getInstance().send('renderer', 'sendBackupTasks', await backUpManager.queryTasks());
       }
+    } else if (data === "requestHostname") {
+        IPCRouter.getInstance().send('renderer', 'action', JSON.stringify({
+          type: "sendHostname",
+          hostname: await unwrap(server.getHostname())
+        }));
     } else {
       try {
         const message = JSON.parse(data);
