@@ -76,9 +76,9 @@
 
 			</div>
 		</div>
-		<Modal :show="showCalendar" class="-mt-2"
+		<Modal :show="showCalendar" class="-mt-10"
 			@clickOutside="">
-			<div class="w-full max-w-md mx-auto">
+			<div class="w-full max-w-xl mx-auto">
 				<SimpleCalendar title="Schedule Your Backup" :taskSchedule="selectedTaskSchedule"
 					@close="handleCalendarClose(false)" @save="handleCalendarClose(true)"
 					class="border-2 border-default rounded-md w-full" />

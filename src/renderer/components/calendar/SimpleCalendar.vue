@@ -7,7 +7,7 @@
         </template>
 
         <div class="grid grid-cols-1 gap-2">
-            <div class="border border-default rounded-md p-2 min-w-md w-full mx-auto">
+            <div class="border border-default rounded-md p-2 w-full mx-auto">
                 <label for="frequency-select" class="block text-sm font-medium">Backup Frequency</label>
                 <select id="frequency-select" v-model="schedule.repeatFrequency" class="input-textlike w-full">
                     <option value="hour">Hourly</option>
@@ -16,7 +16,7 @@
                     <option value="month">Monthly</option>
                 </select>
 
-                <div class="col-span-1 grid grid-cols-1 gap-1 mt-2">
+                <div class="col-span-1 grid grid-cols-2 gap-1 mt-2">
                     <!-- Day Input -->
                     <div>
                         <label class="block text-sm">Start Day</label>
@@ -74,24 +74,31 @@
                         </div>
                     </div>
                     <div class="grid grid-cols-7 gap-1 w-full grid-rows-6 auto-rows-fr">
-                        <div v-for="day in days" :key="day.id"
+                        <!-- <div v-for="day in days" :key="day.id"
                             :class="{ 'bg-accent text-muted border-default': day.isPadding, 'bg-green-600 dark:bg-green-800': day.isMarked && !day.isPadding, 'bg-default': !day.isMarked && !day.isPadding }"
                             class="p-2 text-default text-center border border-default rounded">
                             {{ day.date }}
+                        </div> -->
+                        <div v-for="day in days" :key="day.id"
+                            :class="[ day.isPadding ? 'bg-accent text-muted cursor-default' : 'cursor-pointer hover:bg-gray-700',
+                            day.isMarked && !day.isPadding ? 'bg-green-600 dark:bg-green-800 text-white' : 'bg-default' ]"
+                            class="p-2 text-default text-center border border-default rounded"
+                            @click="!day.isPadding && selectDay(Number(day.date))">
+                            {{ day.date }}
+                        </div>
                         </div>
                     </div>
                 </div>
             </div>
-        </div>
 
-        <template #footer>
-            <div class="button-group-row w-full justify-between">
-                <button @click.stop="emit('close')" class="btn btn-danger">Close</button>
-                <button :disabled="savingSchedule" @click="saveScheduleBtn()" class="btn btn-primary">
-                    {{ savingSchedule ? 'Saving...' : 'Save Schedule' }}
-                </button>
-            </div>
-        </template>
+            <template #footer>
+                <div class="button-group-row w-full justify-between">
+                    <button @click.stop="emit('close')" class="btn btn-danger">Close</button>
+                    <button :disabled="savingSchedule" @click="saveScheduleBtn()" class="btn btn-primary">
+                        {{ savingSchedule ? 'Saving...' : 'Save Schedule' }}
+                    </button>
+                </div>
+            </template>
     </CardContainer>
 </template>
 
@@ -123,6 +130,7 @@ const dayValue = ref(schedule.value.startDate.getDate());
 const monthValue = ref(schedule.value.startDate.getMonth() + 1);
 const hourValue = ref(schedule.value.startDate.getHours());
 const minuteValue = ref(schedule.value.startDate.getMinutes());
+const yearValue = ref(schedule.value.startDate.getFullYear());
 
 /// Calendar logic
 const today = new Date();
@@ -131,8 +139,21 @@ const currentYear = ref(today.getFullYear());
 
 // Update startDate when inputs change
 const updateStartDate = () => {
-    schedule.value.startDate = new Date(schedule.value.startDate.getFullYear(), monthValue.value - 1, dayValue.value, hourValue.value, minuteValue.value);
+    schedule.value.startDate = new Date(
+        yearValue.value,
+        monthValue.value - 1,
+        dayValue.value,
+        hourValue.value,
+        minuteValue.value
+    );
 };
+
+function selectDay(d: number) {
+    dayValue.value = d;
+    monthValue.value = currentMonth.value + 1;
+    yearValue.value = currentYear.value;
+    updateStartDate();
+}
 
 watch(() => schedule.value.repeatFrequency, (newFrequency) => {
     if (newFrequency === 'hour') {
@@ -212,15 +233,15 @@ const isScheduled = (date: Date): boolean => {
 
 // Change month in calendar
 const changeMonth = (delta: number) => {
-    currentMonth.value += delta;
-    if (currentMonth.value < 0) {
-        currentMonth.value = 11;
-        currentYear.value--;
-    } else if (currentMonth.value > 11) {
-        currentMonth.value = 0;
-        currentYear.value++;
-    }
+    let m = currentMonth.value + delta;
+    let y = currentYear.value;
+    if (m < 0) { m = 11; y--; }
+    else if (m > 11) { m = 0; y++; }
+    currentMonth.value = m;
+    currentYear.value = y;
+    yearValue.value = y;
 };
+
 
 // Save function
 async function saveScheduleBtn() {
