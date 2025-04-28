@@ -13,7 +13,7 @@ export async function setupSsh(server: Server) {
   // Determine the base path
   let basePath = getAppPath();
 
-  const cwRsyncPath = path.join(basePath,  "cwrsync");
+  const cwRsyncPath = path.join(basePath,  "static");
   const sshKeyPath = path.join(basePath,  ".ssh", "id_rsa");
   const sshKeyPubPath = path.join(basePath,  ".ssh", "id_rsa.pub");
   const ssh_keygen = getOS() === "win" ? `"${path.join(cwRsyncPath, "bin", "ssh-keygen.exe")}"` : "ssh-keygen";

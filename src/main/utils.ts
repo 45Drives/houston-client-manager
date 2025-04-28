@@ -16,6 +16,16 @@ export function getOS(): 'mac' | 'rocky' | 'debian' | 'win' {
   return "win";
 }
 
+export function getRsync() {
+  let basePath = getAppPath();
+
+  const sshKeyPath = path.join(basePath, ".ssh", "id_rsa");
+  const rsyncPath = getOS() === "win" ? path.join(basePath, "cwrsync", "bin", "rsync.exe") : "rsync";
+  const sshWithKey = `ssh -i '${sshKeyPath}'`;
+  const rsync = `${rsyncPath} -az -e "${sshWithKey}"`
+  return rsync;
+}
+
 
 export async function getAsset(folder: string, fileName: string, isFolder: boolean = false): Promise<string> {
   const filePath = path.join(__dirname, "..", "..", folder, fileName);
@@ -67,9 +77,34 @@ export function getAppPath() {
   const isDev = process.env.NODE_ENV === 'development';
   let basePath = process.resourcesPath || __dirname;
   if (isDev) {
-    basePath = __dirname + "/../../static/"
+    if (getOS() == "win") {
+
+      basePath = __dirname + "\\..\\..\\static\\"
+    } else {
+
+      basePath = __dirname + "/../../static/"
+    }
   }
   return basePath;
+}
+
+export function getMountSmbScript() {
+  if (getOS() === "win") {
+    return path.join(getAppPath(), "mount_smb.bat");
+  } else if (getOS() === "mac") {
+    return path.join(getAppPath(), "mount_smb_mac.sh");
+  } else {
+    return path.join(getAppPath(), "mount_smb_lin.sh")
+  }
+}
+
+export function getSmbTargetFromSmbTarget(target: string) {
+  let targetPath = "/tank/" + target.split(":")[1];
+  console.log("targetPath", targetPath)
+  let [smbHost, smbShare] = target.split(":");
+  smbShare = smbShare.split("/")[0]; 
+
+  return target.replace(smbHost + ":" + smbShare, "");
 }
 
 export function getSSHTargetFromSmbTarget(target: string) {
@@ -78,16 +113,6 @@ export function getSSHTargetFromSmbTarget(target: string) {
 
 export function getSmbTargetFromSSHTarget(target: string) {
   return target.replace(":/tank/", ":");
-}
-
-export function getRsync() {
-  let basePath = getAppPath();
-
-  const sshKeyPath = path.join(basePath, ".ssh", "id_rsa");
-  const rsyncPath = getOS() === "win" ? path.join(basePath, "cwrsync", "bin", "rsync.exe") : "rsync";
-  const sshWithKey = `ssh -i '${sshKeyPath}'`;
-  const rsync = `${rsyncPath} -az -e "${sshWithKey}"`
-  return rsync;
 }
 
 
@@ -106,8 +131,8 @@ export function getSsh() {
 export function getSSHKey() {
   let basePath = getAppPath();
 
-  const sshKeyPath = path.join(basePath, ".ssh", "id_rsa" );
-  return sshKeyPath; 
+  const sshKeyPath = path.join(basePath, ".ssh", "id_rsa");
+  return sshKeyPath;
 }
 
 export function getNoneQuotedScp() {

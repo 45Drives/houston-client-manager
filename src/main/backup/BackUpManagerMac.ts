@@ -21,7 +21,7 @@ export class BackUpManagerMac implements BackUpManager {
     });
   }
 
-  schedule(task: BackUpTask): Promise<{ stdout: string, stderr: string }> {
+  schedule(task: BackUpTask, username: string, password: string): Promise<{ stdout: string, stderr: string }> {
     const plist = this.backupTaskToPlist(task);
     const plistFileName = `com.backup-task.${this.safeTaskName(task.description)}.plist`;
     const tempPlistPath = path.join("/tmp", plistFileName);

@@ -27,7 +27,7 @@ export class BackUpManagerLin implements BackUpManager {
     });
   }
 
-  schedule(task: BackUpTask): Promise<{ stdout: string, stderr: string }> {
+  schedule(task: BackUpTask, username: string, password: string): Promise<{ stdout: string, stderr: string }> {
     return new Promise((resolve, reject) => {
       const cron = this.backupTaskToCron(task);
       this.ensureCronFile();

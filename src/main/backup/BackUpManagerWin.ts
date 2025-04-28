@@ -1,6 +1,6 @@
 import { BackUpManager } from "./types";
 import { BackUpTask, TaskSchedule } from "@45drives/houston-common-lib";
-import { formatDateForTask, getNoneQuotedScp, getScp, getSmbTargetFromSSHTarget, getSsh, getSSHKey, getSSHTargetFromSmbTarget } from "../utils";
+import { formatDateForTask, getAppPath, getMountSmbScript, getNoneQuotedScp, getScp, getSmbTargetFromSmbTarget, getSmbTargetFromSSHTarget, getSsh, getSSHKey, getSSHTargetFromSmbTarget } from "../utils";
 import sudo from 'sudo-prompt';
 import path from "path";
 import fs from 'fs';
@@ -8,6 +8,15 @@ import os from 'os';
 import { exec } from "child_process";
 
 const TASK_ID = "HoustonBackUp";
+
+interface TaskData {
+  source?: string;
+  target?: string;
+  description?: string;
+  mirror?: boolean;
+  schedule?: string;
+}
+
 
 export class BackUpManagerWin implements BackUpManager {
 
@@ -82,7 +91,7 @@ export class BackUpManagerWin implements BackUpManager {
             }
 
             return {
-              description: task.TaskName as string,
+              description: actionDetails.description,
               schedule: trigger,
               source: actionDetails.source,
               target: actionDetails.target,
@@ -99,18 +108,22 @@ export class BackUpManagerWin implements BackUpManager {
 
   }
 
-  async schedule(task: BackUpTask): Promise<{ stdout: string, stderr: string }> {
-
-    const scp = getScp();
+  async schedule(task: BackUpTask, username: string, password: string): Promise<{ stdout: string, stderr: string }> {
 
     console.log("task.target", task.target);
 
     let targetPath = "/tank/" + task.target.split(":")[1];
-    let host = task.target.split(":")[0];
     console.log("targetPath", targetPath)
+    let [smbHost, smbShare] = task.target.split(":");
+    smbShare = smbShare.split("/")[0];
 
     // PowerShell script to create the task
     const powershellScript = `
+$batFile  = "${getMountSmbScript()}"
+$smbHost  = "${smbHost}"
+$smbShare = "${smbShare}"
+$username = "${username}"
+$password = "${password}"
 
 $user = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
 
@@ -122,25 +135,60 @@ Write-Host "user being used: $user"
 
 ${this.chanagePrivilagesOnSSHKey()}
 
-$sourcePath = "${task.source}/*"
-$destinationPath = "${getSSHTargetFromSmbTarget(task.target)}"
+$sourcePath = "${task.source}"
+$destinationPath = "${getSmbTargetFromSmbTarget(task.target).replace(/\//g, "\\")}"
 $mirror = ${task.mirror ? "$true" : "$false"}  # Set to $true if you want to mirror the directories
 
-if ($mirror) {
-    $backupCommand = "${scp} ""$sourcePath"" root@$destinationPath"
-} else {
-    $backupCommand = "${scp} ""$sourcePath"" root@$destinationPath"
-}
+$taskScript = @"
+@echo off
+:: source = ${task.source}
+:: target = ${task.target}
+:: description = ${task.description}
+:: mirror = ${task.mirror}
+:: schedule = ${JSON.stringify(task.schedule)}
+
+:: Run your batch file and capture output
+for /f "delims=" %%O in ('"$batFile" $smbHost $smbShare $username $password') do (
+    set "json=%%O"
+)
+
+:: Save JSON to a temp file
+set "tempfile=%TEMP%\\json.txt"
+echo %json% > "%tempfile%"
+
+:: Use PowerShell to read the file and parse JSON
+for /f %%D in ('powershell -NoProfile -Command "Get-Content -Raw '%tempfile%' | ConvertFrom-Json | Select-Object -ExpandProperty DriveLetter"') do (
+    set "drive=%%D"
+)
+
+:: Delete temp file
+del "%tempfile%"
+
+echo Drive letter is %drive%
+
+if not defined drive (
+    echo Failed to mount SMB share
+    exit /b 1
+)
+
+mkdir "%drive%:$destinationPath"
+xcopy "$sourcePath" "%drive%:$destinationPath" /E /I /Y
+timeout /t 2 >nul
+net use %drive%: /delete /y
+"@
+
+# Save script to a temp .bat file
+$tempScriptPath = "${getAppPath()}\\run_backup_task${crypto.randomUUID()}.bat"
+[System.IO.File]::WriteAllText($tempScriptPath, $taskScript)
 
 ${this.scheduleToTaskTrigger(task.schedule)}
 
-$action = New-ScheduledTaskAction -Execute "cmd.exe" -Argument "/C $backupCommand"
+$action = New-ScheduledTaskAction -Execute "cmd.exe" -Argument "/C \`"$tempScriptPath\`""
 
 $principal = New-ScheduledTaskPrincipal -UserId "$user" -LogonType S4U -RunLevel Highest
 
 $task = Register-ScheduledTask -Action $action -Trigger $taskTrigger -Principal $principal -TaskName "${TASK_ID}_${crypto.randomUUID()}"
 
-${getSsh()} root@${host} 'mkdir -p ""${targetPath}""'
 ${this.dailyTaskTriggerUpdate(task.schedule)}
 
 `;
@@ -338,10 +386,10 @@ $taskTrigger = New-ScheduledTaskTrigger -At $startTime -Monthly
           for (const prop of cimProperties) {
             if (prop.Name === "StartBoundary") {
               startBoundaryMatch = prop.Value;
-            } 
+            }
             else if (prop.Name === "HoursInterval") {
               hoursIntervalMatch = prop.Value;
-            } 
+            }
             else if (prop.Name === "DaysInterval") {
               daysIntervalMatch = prop.Value;
             }
@@ -413,40 +461,38 @@ $taskTrigger = New-ScheduledTaskTrigger -At $startTime -Monthly
     }
   }
 
-  protected parseBackupCommand(command: string): { source: string, target: string, mirror: boolean } | null {
+  protected parseBackupCommand(command: string): TaskData | null {
     try {
 
-      if (!command.includes(getNoneQuotedScp())) {
-        return null;
-      }
-
-      const mirror = command.includes("--delete");
-      command = command.replace("/C " + getNoneQuotedScp(), '')
-        .replace("--delete", "")
-        .replace("root@", "").trim();
+      command = command.replace("/C ", '').replace("\"", "").replace("\"", "").trim();
 
       console.log(command)
 
-      const regex = /([^\s]+(?:\s[^\s]+)*)\s+([^\s]+(?:\s[^\s]+)*)/;
+      // Path to your .bat file
+      const batFilePath = command;
 
-      // Execute regex on the input command
-      const match = command.match(regex);
+      // Read the file
+      const content = fs.readFileSync(batFilePath, 'utf8');
 
-      if (match) {
-        const sourcePath = match[1]?.toString().replace('\'', "").replace('\'', "");
-        const destinationPath = getSmbTargetFromSSHTarget(match[2]?.toString());
+      // Initialize object to hold extracted variables
+      const task: TaskData = {};
 
-        if (!sourcePath || !destinationPath) {
-          return null;
-        }
-        return {
-          source: sourcePath,
-          target: destinationPath,
-          mirror
-        };
-      } else {
-        return null;
+      // Regular expression to match the lines
+      const regex = /^::\s*(\w+)\s*=\s*(.*)$/gm;
+
+      let match;
+      while ((match = regex.exec(content)) !== null) {
+        const key = match[1];
+        let value = match[2];
+
+        // Clean up value if needed (e.g., remove ${} if still present)
+        value = value.replace(/^\${|}$/g, '');
+
+        (task as any)[key] = value;
       }
+
+      return task;
+
     } catch (parseError) {
       console.error('Error regex:', parseError);
       console.error('String value was:', command);

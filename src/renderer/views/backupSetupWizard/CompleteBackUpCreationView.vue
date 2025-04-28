@@ -23,16 +23,6 @@
           🔴 {{ error }}
         </div>
 
-        <!-- <div v-if="setupComplete === 'yes' && !error">
-        <div class="checkmark">✔ - DONE! </div>
-        <p class="mb-6 text-center text-2xl">🎉 Congratulations! Your Backup Plan is Set! 🚀</p>
-        <p class="mb-6 text-center text-2xl">Great job! Your data is now protected with an automatic backup plan. No
-          more
-          worries—your files are safe and secure. Sit back, relax, and let the backups run!</p>
-        <p class="mb-6 text-center text-2xl">🔄 Your backups will run as scheduled—keeping your important files safe!
-        </p>
-        <p class="mb-6 text-center text-2xl">Just click FINISH!</p>
-      </div> -->
         <div v-if="setupComplete === 'yes' && !error" class="flex justify-center">
           <div class="text-left max-w-3xl">
             <div class="checkmark text-center">✔ - DONE!</div>

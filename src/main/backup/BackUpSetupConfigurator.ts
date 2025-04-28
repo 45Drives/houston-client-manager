@@ -13,9 +13,6 @@ export interface BackUpSetupProgress {
 
 export class BackUpSetupConfigurator {
 
-  constructor() {
-  }
-
   async applyConfig(
     config: BackUpSetupConfig,
     progressCallback: (progress: BackUpSetupProgress) => void
@@ -32,7 +29,7 @@ export class BackUpSetupConfigurator {
           const task = config.backUpTasks[i];
           console.log("schedule backup:", task);
           
-          const {stdout, stderr} = await backUpManager.schedule(task);
+          const {stdout, stderr} = await backUpManager.schedule(task, config.username, config.password);
           console.log(stdout)
           console.error(stderr)
           progressCallback({ message: "Back up task added for " + task.source + " added.", step: i + 2, total });

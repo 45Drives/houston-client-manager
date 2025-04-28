@@ -97,8 +97,8 @@
     ],
     "extraResources": [
         {
-            "from": "src/main/static/cwrsync",
-            "to": "cwrsync",
+            "from": "src/main/static",
+            "to": "static",
             "filter": [
                 "**/*"
             ]
