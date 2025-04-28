@@ -39,7 +39,7 @@
             <text v-if="task.schedule.repeatFrequency=='hour'"
               class="text-default font-semibold text-left px-4">{{`Backup will run
               ${formatFrequency(task.schedule.repeatFrequency)} starting on
-              ${task.schedule.startDate.toDateString()}`}}</text>
+              ${task.schedule.startDate.toDateString()} at ${task.schedule.startDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`}}</text>
 
             <!-- <text v-else class="text-default font-semibold text-left px-4">{{`Backup will happen ${formatFrequency(task.schedule.repeatFrequency)} at 9:00 AM starting ${task.schedule.startDate.toDateString()}`}}</text> -->
             <text v-else class="text-default font-semibold text-left px-4">{{ `Backup will happen
