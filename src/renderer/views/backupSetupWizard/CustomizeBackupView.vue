@@ -76,8 +76,9 @@
 
 			</div>
 		</div>
-		<Modal :show="showCalendar" class="fixed inset-0 flex items-center justify-center" @clickOutside="">
-			<div class="w-full max-w-[800px] mx-auto">
+		<Modal :show="showCalendar" class="-mt-10"
+			@clickOutside="">
+			<div class="w-full max-w-xl mx-auto">
 				<SimpleCalendar title="Schedule Your Backup" :taskSchedule="selectedTaskSchedule"
 					@close="handleCalendarClose(false)" @save="handleCalendarClose(true)"
 					class="border-2 border-default rounded-md w-full" />
@@ -128,6 +129,12 @@ const { completeCurrentStep, prevStep } = useWizardSteps("backup");
 
 const showCalendar = ref(false);
 let resolveCalendarPromise: ((value: boolean) => void) | null = null;
+
+async function onCalendarSave(newSchedule: TaskSchedule) {
+	// overwrite the parent’s copy
+	selectedTaskSchedule.value = reactive(newSchedule)
+	handleCalendarClose(true)
+}
 
 function toggleCalendarComponent() {
 	showCalendar.value = true;
