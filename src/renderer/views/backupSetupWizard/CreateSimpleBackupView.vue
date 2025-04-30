@@ -334,7 +334,7 @@ const proceedToNextStep = () => {
 
 	backUpSetupConfig?.backUpTasks.forEach(
 		task => {
-			task.target = `${selectedServer.value!.name}.local:${selectedServer.value!.shareName!}/client-backups/${crypto.randomUUID()}/${hostname}/${sanitizeFilePath(task.source)}`;
+			task.target = `${selectedServer.value!.name}.local:${selectedServer.value!.shareName!}/${crypto.randomUUID()}/${hostname}/${sanitizeFilePath(task.source)}`;
 			console.log('target saved:', task.target);
 		});
 
