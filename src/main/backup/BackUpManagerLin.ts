@@ -77,6 +77,8 @@ export class BackUpManagerLin implements BackUpManager {
         return `${sched.startDate.getMinutes()} ${sched.startDate.getHours()} * * ${sched.startDate.getDay()}`;
       case "month":
         return `${sched.startDate.getMinutes()} ${sched.startDate.getHours()} ${sched.startDate.getDate()} * *`;
+      default:
+        return '';
     }
   }
 
