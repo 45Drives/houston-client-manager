@@ -1,8 +1,10 @@
 import { BackUpManager } from "./types";
 import { BackUpTask, backupTaskTag, TaskSchedule } from "@45drives/houston-common-lib";
 import * as fs from "fs";
+import { writeFileSync, chmodSync } from 'fs';
 import { execSync } from "child_process";
-import { getRsync, getSmbTargetFromSSHTarget, getSSHTargetFromSmbTarget, getOS } from "../utils";
+import { getRsync, getSmbTargetFromSSHTarget, getSSHTargetFromSmbTarget, getOS, getAppPath, getSmbTargetFromSmbTarget } from "../utils";
+import { join } from "path";
 
 export class BackUpManagerLin implements BackUpManager {
   protected cronFilePath: string = "/etc/cron.d/houston-backup-manager";
@@ -29,7 +31,7 @@ export class BackUpManagerLin implements BackUpManager {
 
   schedule(task: BackUpTask, username: string, password: string): Promise<{ stdout: string, stderr: string }> {
     return new Promise((resolve, reject) => {
-      const cron = this.backupTaskToCron(task);
+      const cron = this.backupTaskToCron(task, username, password);
       this.ensureCronFile();
       fs.appendFileSync(this.cronFilePath, cron + "\n", "utf-8");
       this.reloadCron();
@@ -80,7 +82,7 @@ export class BackUpManagerLin implements BackUpManager {
     }
   }
 
-  protected backupTaskToCron(task: BackUpTask): string {
+  protected backupTaskToCron(task: BackUpTask, smbUser: string, smb_pass: string): string {
     console.log('task being converted to cron:', task);
     if (task.source.includes("'")) {
       throw new Error("Source cannot contain ' (single-quote)");
@@ -88,11 +90,53 @@ export class BackUpManagerLin implements BackUpManager {
     if (task.target.includes("'")) {
       throw new Error("Target cannot contain ' (single-quote)");
     }
-    
-    const result = `${this.scheduleToCron(task.schedule)} ${getRsync()}${task.mirror ? " --delete" : ""
-      } '${task.source}' 'root@${getSSHTargetFromSmbTarget(task.target)}' # ${backupTaskTag} ${task.description}`;
-    console.log('backupTaskToCron Result:', result);
-    return result;
+
+    console.log("task.target", task.target);
+
+    let targetPath = "/tank/" + task.target.split(":")[1];
+    console.log("targetPath", targetPath)
+
+    let [smbHost, smbShare] = task.target.split(":");
+    smbShare = smbShare.split("/")[0];
+
+    // Path to save the script
+    const scriptName = `run_backup_task${crypto.randomUUID()}.sh`;
+    const scriptPath = join(getAppPath(), scriptName);
+
+    const scriptContent = `#!/bin/bash
+
+SMB_HOST='${smbHost}'
+SMB_SHARE='${smbShare}'
+SMB_USER='${smbUser}'
+SMB_PASS='${smb_pass}'
+SOURCE='${task.source}'
+TARGET='${getSmbTargetFromSmbTarget(task.target)}'
+
+MOUNT_POINT="/mnt/backup_$$"
+
+mkdir -p "$MOUNT_POINT"
+
+mount -t cifs "//$SMB_HOST/$SMB_SHARE" "$MOUNT_POINT" \\
+  -o username="$SMB_USER",password="$SMB_PASS",rw,iocharset=utf8
+
+if [ $? -ne 0 ]; then
+  echo "Failed to mount //$SMB_HOST/$SMB_SHARE"
+  exit 1
+fi
+
+rsync -a${task.mirror ? ' --delete' : ''} "$SOURCE" "$MOUNT_POINT/$TARGET"
+
+umount "$MOUNT_POINT"
+rmdir "$MOUNT_POINT"
+`;
+
+    writeFileSync(scriptPath, scriptContent, { mode: 0o700 });
+    chmodSync(scriptPath, 0o700); // Make sure it’s executable
+
+    const cronEntry = `${this.scheduleToCron(task.schedule)} ${scriptPath} # ${backupTaskTag} ${task.description}`;
+    console.log('backupTaskToCron Result:', cronEntry);
+
+    return cronEntry;
   }
 
   protected cronToBackupTask(cron: string): BackUpTask | null {
