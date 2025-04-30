@@ -1,7 +1,7 @@
 <template>
   <CardContainer>
     <template #header>
-      <div class="relative flex items-center justify-center h-24">
+      <div class="relative flex items-center justify-center h-18">
           <div class="absolute left-0 bg-white p-1 px-4 rounded-lg">
           <DynamicBrandingLogo />
         </div>
