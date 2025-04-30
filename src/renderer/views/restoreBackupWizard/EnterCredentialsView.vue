@@ -15,23 +15,25 @@
       <!-- Header with instructions -->
       <div>
         <p class=" text-lg">
-          Please provide your server, username and password to access the backups on the server.
+          Please provide your server, username and password for the backup you want to access.
         </p>
       </div>
 
-      <HoustonServerListView class="w-1/3 px-5 justify-center text-2xl" @serverSelected="handleServerSelected"/>
-
-      <!-- Username and Password input fields -->
-      <div class="flex flex-col gap-4 mt-4 text-default">
-        <label for="username" class="font-semibold ">Username:</label>
-        <input v-model="restoreBackUpData.username" type="text" id="username"
-          class="p-2 input-textlike rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-          placeholder="Enter your username" />
-
-        <label for="password" class="font-semibold ">Password:</label>
-        <input v-model="restoreBackUpData.password" type="password" id="password"
-          class="p-2 input-textlike rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-          placeholder="Enter your password" />
+      <div class="flex flex-row">
+        <HoustonServerListView class="w-1/3 px-5 justify-center text-2xl" @serverSelected="handleServerSelected"/>
+  
+        <!-- Username and Password input fields -->
+        <div class="flex flex-col gap-4 mt-4 text-default">
+          <label for="username" class="font-semibold ">Username:</label>
+          <input v-model="restoreBackUpData.username" type="text" id="username"
+            class="p-2 input-textlike rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            placeholder="Enter your username" />
+  
+          <label for="password" class="font-semibold ">Password:</label>
+          <input v-model="restoreBackUpData.password" type="password" id="password"
+            class="p-2 input-textlike rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            placeholder="Enter your password" />
+        </div>
       </div>
     </div>
 

@@ -102,7 +102,7 @@
 </template>
 
 <script setup lang="ts">
-import { CardContainer, CommanderToolTip } from "@45drives/houston-common-ui";
+import { CardContainer, CommanderToolTip, confirm } from "@45drives/houston-common-ui";
 import { inject, onMounted, ref, watch } from "vue";
 import { PlusIcon, MinusIcon } from "@heroicons/vue/20/solid";
 import { useWizardSteps, DynamicBrandingLogo } from '@45drives/houston-common-ui';
@@ -110,7 +110,7 @@ import { Server } from '../../types'
 import { backUpSetupConfigKey } from "../../keys/injection-keys";
 import MessageDialog from '../../components/MessageDialog.vue';
 import { divisionCodeInjectionKey } from '../../keys/injection-keys';
-import { IPCMessageRouter, IPCRouter, server } from "@45drives/houston-common-lib";
+import { IPCMessageRouter, IPCRouter, server, unwrap } from "@45drives/houston-common-lib";
 import { sanitizeFilePath } from "./utils";
 const division = inject(divisionCodeInjectionKey);
 // Wizard navigation
