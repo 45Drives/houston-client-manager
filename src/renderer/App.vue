@@ -10,6 +10,10 @@
       <button @click="showWizard('backup')" class="btn btn-secondary w-40 h-min p-2 mx-2">
         Backup Setup
       </button>
+
+      <button @click="showWizard('restore-backup')" class="btn btn-secondary w-40 h-min p-2 mx-2">
+        Restore Backup
+      </button>
     </div>
 
     <div class="w-full h-full flex items-center justify-center" v-show="showWelcomeSetupWizard">
@@ -17,6 +21,10 @@
     </div>
     <div class="w-full h-full flex items-center justify-center" v-show="showBackUpSetupWizard">
       <BackUpSetupWizard id="backup" :onComplete="onBackUpWizardComplete" />
+    </div>
+
+    <div class="w-full h-full flex items-center justify-center" v-show="showRestoreBackupWizard">
+      <RestoreBackUpWizard id="restore-backup" :onComplete="onRestoreBackUpWizardComplete" />
     </div>
 
     <webview v-show="showWebView && !loadingWebview && !waitingForServerReboot" id="myWebview" title="test"
@@ -63,6 +71,7 @@ import { Server, DivisionType } from './types';
 import { useWizardSteps } from '@45drives/houston-common-ui'
 import StorageSetupWizard from './views/storageSetupWizard/Wizard.vue';
 import BackUpSetupWizard from './views/backupSetupWizard/Wizard.vue';
+import RestoreBackUpWizard from './views/restoreBackupWizard/Wizard.vue';
 import { divisionCodeInjectionKey, currentServerInjectionKey } from './keys/injection-keys';
 import { IPCMessageRouterRenderer, IPCRouter, server } from '@45drives/houston-common-lib';
 
@@ -181,6 +190,7 @@ const advancedState = useAdvancedModeState();
 const currentServer = ref<Server | null>(null);
 const divisionCode = ref<DivisionType>('default');
 const showBackUpSetupWizard = ref<boolean>(false);
+const showRestoreBackupWizard = ref<boolean>(false);
 const showWelcomeSetupWizard = ref<boolean>(false);
 const showWebView = ref<boolean>(false);
 
@@ -220,9 +230,10 @@ window.electron.ipcRenderer.on('notification', (_event, message: string) => {
 
 });
 
-const showWizard = (type: 'storage' | 'backup') => {
+const showWizard = (type: 'storage' | 'backup' | 'restore-backup') => {
   showWelcomeSetupWizard.value = type === 'storage';
   showBackUpSetupWizard.value = type === 'backup';
+  showRestoreBackupWizard.value = type === 'restore-backup';
   showWebView.value = false;
 };
 
@@ -284,8 +295,10 @@ window.electron.ipcRenderer.on('discovered-servers', (_event, discoveredServers:
     if (anyServersNotSetup) {
       showWelcomeSetupWizard.value = true;
       showBackUpSetupWizard.value = false;
+      showRestoreBackupWizard.value = false;
       showWebView.value = false;
     } else {
+      showRestoreBackupWizard.value = false;
       showWelcomeSetupWizard.value = false;
       showBackUpSetupWizard.value = true;
       showWebView.value = false;
@@ -314,7 +327,6 @@ const openStorageSetup = (server: Server | null) => {
   }
 
 };
-
 
 const onWebViewLoaded = async () => {
 
@@ -414,6 +426,7 @@ const onWelcomeWizardComplete = (server: Server) => {
   showWelcomeSetupWizard.value = false;
   showWebView.value = true;
   showBackUpSetupWizard.value = false;
+  showRestoreBackupWizard.value = false;
 }
 
 const onBackUpWizardComplete = (server: Server) => {
@@ -428,8 +441,26 @@ const onBackUpWizardComplete = (server: Server) => {
   console.log("BackUp Wizard complete")
   showBackUpSetupWizard.value = true;
   showWelcomeSetupWizard.value = false;
+  showRestoreBackupWizard.value = false;
   showWebView.value = false;
 }
+
+const onRestoreBackUpWizardComplete = (server: Server) => {
+
+  console.log("server before unref:", server);
+  const realServer = unref(server);
+  console.log("server after unref:", realServer);
+  const aliasStyle = realServer.serverInfo?.aliasStyle?.toLowerCase();
+
+  applyThemeFromAliasStyle(aliasStyle);
+
+  console.log("BackUp Wizard complete")
+  showBackUpSetupWizard.value = true;
+  showWelcomeSetupWizard.value = false;
+  showRestoreBackupWizard.value = false;
+  showWebView.value = false;
+}
+
 
 const loginRequest = async (server: Server) => {
   openStorageSetup(server);

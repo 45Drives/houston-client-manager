@@ -19,7 +19,6 @@ import CustomizeBackupView from './CustomizeBackupView.vue';
 import CompleteBackUpCreationView from './CompleteBackUpCreationView.vue';
 import { provide, reactive } from 'vue';
 import { backUpSetupConfigKey } from '../../keys/injection-keys';
-import RestoreBackupsView from './RestoreBackupsView.vue';
 import EnterSmbCredBackUpSetupView from './EnterSmbCredBackUpSetupView.vue';
 
 const props = defineProps<{

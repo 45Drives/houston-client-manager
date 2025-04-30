@@ -1,53 +1,67 @@
-const { ipcMain } = require('electron');
-const { exec } = require('child_process');
-const path = require('path');
-const os = require('os');
-const fs = require('fs');
+import { getOS } from "../utils";
+import fsAsync from "fs/promises";
+import path from "path";
+import { IPCRouter } from '../../../houston-common/houston-common-lib/lib/electronIPC/IPCRouter';
 
-// This directory is where we'll restore to
-const LOCAL_RESTORE_DIR = path.join(os.homedir(), 'RestoredBackups');
+export default async function restoreBackups(data: any) {
 
-ipcMain.on('restore-files', (event, payload) => {
-  const { target, folder, files } = payload;
+  console.log("restore backups")
 
-  if (!target || !folder || !files || files.length === 0) {
-    console.error('Invalid restore payload:', payload);
-    return;
+  const slash = getOS() === "win" ? "\\" : "/"
+
+  console.log(data)
+  const basePath = `${slash}${slash}${data.smb_host}${slash}${data.smb_share}${slash}client-backups`;
+  const uuid = data.uuid;
+  const client = data.client;
+  let files: string[] = data.files;
+
+  console.log("uuid", uuid)
+  console.log("basePath", basePath)
+  console.log("files", files)
+  console.log("client", client)
+
+  const folderPath = path.join(basePath, uuid, client);
+
+  for (const file of files) {
+
+    console.log("processing:", file)
+    let copyToFilePath = file;
+    if (getOS() === "win") {
+      copyToFilePath = fixWinPath(file);
+    }
+
+    const sourcePath = folderPath + file;
+
+    console.log("Copying " + sourcePath + " to " + copyToFilePath);
+
+
+    IPCRouter.getInstance().send('renderer', 'action', JSON.stringify({
+      type: "restoreBackupsResult",
+      result: await copyFile(sourcePath, copyToFilePath, file)
+    }));
   }
 
-  console.log('Restoring files from:', target);
-  console.log('Files:', files);
+}
 
-  // Make sure restore directory exists
-  if (!fs.existsSync(LOCAL_RESTORE_DIR)) {
-    fs.mkdirSync(LOCAL_RESTORE_DIR, { recursive: true });
+async function copyFile(sourcePath: string, copyToFilePath: string, originalFilePath: string) {
+  try {
+    fsAsync.mkdir(path.dirname(copyToFilePath), { recursive: true });
+    fsAsync.copyFile(sourcePath, copyToFilePath, 0);
+
+    return {
+      file: originalFilePath
+    }
+  } catch (e) {
+
+    console.log(e);
+    return {
+      file: originalFilePath,
+      error: "Failed to copy file"
+    }
+
   }
+}
 
-  files.forEach((filePath) => {
-    const fileName = path.basename(filePath);
-    const remoteFile = `${target}:"${filePath}"`;
-    const localPath = path.join(LOCAL_RESTORE_DIR, fileName);
-
-    const scpCommand = `scp ${remoteFile} "${localPath}"`;
-
-    console.log('Executing:', scpCommand);
-
-    exec(scpCommand, (error, stdout, stderr) => {
-      if (error) {
-        console.error(`SCP failed for ${filePath}:`, error.message);
-        event.reply('restore-status', {
-          file: filePath,
-          success: false,
-          error: error.message,
-        });
-        return;
-      }
-
-      console.log(`Restored ${filePath} to ${localPath}`);
-      event.reply('restore-status', {
-        file: filePath,
-        success: true,
-      });
-    });
-  });
-});
+function fixWinPath(str) {
+  return str.replace(/^\\([A-Za-z])\\/, '$1:\\');
+}

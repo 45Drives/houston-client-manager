@@ -35,8 +35,8 @@ for /f "tokens=2 delims=\\" %%A in ("%NETWORK_PATH%") do set "SMB_SERVER=%%A"
 
 :: Check if the SMB server is already mounted
 for /f "tokens=2" %%D in ('net use ^| findstr /I "%SMB_SERVER%"') do (
-    echo {"message": "SMB share is already mounted on drive %%D"}
-    start explorer %%D:  & exit /b 0
+    echo Unmounting drive %%D...
+    net use %%D /delete /y
 )
 
 :: Find an available drive letter (Z: downward)

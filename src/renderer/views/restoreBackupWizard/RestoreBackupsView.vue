@@ -9,6 +9,7 @@
           Restore Backups
         </p>
       </div>
+      <div v-if="loading">Loading... Please Wait</div>
     </template>
 
     <div class="flex justify-between">
@@ -17,14 +18,13 @@
           <input v-model="search" type="text" placeholder="Type To Search For backup?"
             class="w-full p-2 border rounded" />
         </div>
-        <table class="w-full border text-left">
+        <table class="max-h-96 overflow-y-auto w-full border text-left">
           <thead>
             <tr class="bg-gray-300">
               <th class="p-2">Folder</th>
               <th class="p-2">Client</th>
               <th class="p-2">Server</th>
               <th class="p-2">Last Backup</th>
-              <th class="p-2">On System</th>
             </tr>
           </thead>
           <tbody>
@@ -35,7 +35,6 @@
               <td class="p-2">{{ backup.client }}</td>
               <td class="p-2">{{ backup.server }}</td>
               <td class="p-2">{{ backup.lastBackup }}</td>
-              <td class="p-2">{{ backup.onSystem }}</td>
             </tr>
           </tbody>
         </table>
@@ -47,7 +46,7 @@
             placeholder="Select a backup to see files">
           </input>
         </div>
-        <div v-if="selectedBackup">
+        <div class="max-h-96 overflow-y-auto" v-if="selectedBackup">
 
           <table class="w-full border text-left">
             <thead>
@@ -69,6 +68,12 @@
       </div>
     </div>
 
+    <div v-if="restoreProgress.total > 0" class="my-4 text-center">
+      <p>Restoring file {{ restoreProgress.current }} of {{ restoreProgress.total }}...</p>
+      <p><strong>{{ restoreProgress.lastFile }}</strong></p>
+      <progress :value="restoreProgress.current" :max="restoreProgress.total" class="w-full"></progress>
+    </div>
+
     <!-- Buttons -->
     <template #footer>
       <div class="button-group-row justify-between">
@@ -87,37 +92,26 @@
 </template>
 
 <script lang="ts" setup>
-import { ref, computed, inject, onMounted, watch } from 'vue'
+import { ref, computed, inject, onActivated } from 'vue'
 import { useWizardSteps, DynamicBrandingLogo } from '@45drives/houston-common-ui';
-import { divisionCodeInjectionKey } from '../../keys/injection-keys';
+import { divisionCodeInjectionKey, restoreBackUpSetupDataKey } from '../../keys/injection-keys';
 import { CardContainer } from "@45drives/houston-common-ui";
 import { IPCRouter, type BackupEntry, type FileEntry } from '@45drives/houston-common-lib';
-import { Server } from '../../types';
 
 const division = inject(divisionCodeInjectionKey);
+const restoreBackupsData = inject(restoreBackUpSetupDataKey)!;
+const loading = ref<boolean>(true);
+const restoreProgress = ref<{ current: number; total: number; lastFile: string }>({
+  current: 0,
+  total: 0,
+  lastFile: ""
+});
 
-const { prevStep } = useWizardSteps("backup");
+const { prevStep } = useWizardSteps("restore-backup");
 
 const proceedToPreviousStep = () => {
   prevStep();
 };
-
-const serverList = ref<Server[]>([]);
-// Receive the discovered servers from the main process
-window.electron.ipcRenderer.on('discovered-servers', async (_event, discoveredServers: Server[]) => {
-  const isDev = await window.electron.ipcRenderer.invoke("is-dev")
-
-  const servers = discoveredServers;
-  if (!isDev) {
-
-    serverList.value = discoveredServers.filter(server => server.status !== "complete");
-  } 
-
-  if (serverList.value.length !== servers.length) {
-    serverList.value = servers;
-  }
-
-});
 
 const search = ref('')
 
@@ -131,36 +125,65 @@ const filteredBackups = computed(() => {
   )
 })
 
-async function fetchBackupsFromServer(server: Server): Promise<BackupEntry[]> {
-  // This function should make a real call in production
-  try {
-    const response = await fetch(`http://${server.ip}:9095/backups`)
-    const data = await response.json()
-    const result = data as BackupEntry[];
+onActivated(() => {
 
-    return result;
-  } catch (e) {
+  loading.value = true;
+  console.log("activated!")
 
-    return [];
-  }
-}
+  IPCRouter.getInstance().addEventListener("action", data => {
+    try {
+      const response = JSON.parse(data);
+      if (response.type === "fetchFilesFromBackupResult" && selectedBackup.value) {
+        const files = response.result.map((file: string) => ({ path: file.replace(selectedBackup.value!.client, ""), selected: false })) as FileEntry[]
+        selectedBackup.value.files = files;
+      } else if (response.type === "fetchBackupsFromServerResult") {
+        backups.value = response.result as BackupEntry[];
+      } else if (response.type === "restoreBackupsResult") {
+        console.log("restore happened")
+        restoreProgress.value.current++;
+        restoreProgress.value.lastFile = response.value.file;
+        // Optional: track errors
+        if (response.value.error) {
+          console.error(`Error restoring ${response.value.file}: ${response.value.error}`);
+        }
+      }
+    } catch (e) { }
 
-watch(serverList, async () => {
-  const allBackups = await Promise.all(serverList.value.map(fetchBackupsFromServer))
-  console.log('Fetched all backups:', allBackups)
-  backups.value = allBackups.flat()
-})
+    loading.value = false;
+  });
+
+
+  IPCRouter.getInstance().send("backend", 'action', JSON.stringify(
+    {
+      type: "fetchBackupsFromServer",
+      data: {
+        smb_host: (restoreBackupsData.server?.serverName ?? "") + ".local",
+        smb_share: restoreBackupsData.server?.shareName ?? "",
+        smb_user: restoreBackupsData.username,
+        smb_pass: restoreBackupsData.password,
+      }
+    }))
+
+});
 
 async function selectBackup(backup: BackupEntry) {
   selectedBackup.value = { ...backup, files: [] }
-  const files = await fetchBackupFiles(backup)
-  selectedBackup.value.files = files
+  await fetchBackupFiles(backup)
 }
 
-async function fetchBackupFiles(backup: BackupEntry): Promise<FileEntry[]> {
-  const response = await fetch(`http://${backup.server}:9095/backups/files?uuid=${backup.uuid}`)
-  const files = await response.json()
-  return files.map((file: string) => ({path: file.replace(backup.client, ""), selected: false})) as FileEntry[]
+async function fetchBackupFiles(backup: BackupEntry) {
+  console.log("fetchFilesFromBackup")
+  IPCRouter.getInstance().send("backend", 'action', JSON.stringify(
+    {
+      type: "fetchFilesFromBackup",
+      data: {
+        smb_host: (restoreBackupsData.server?.serverName ?? "") + ".local",
+        smb_share: restoreBackupsData.server?.shareName ?? "",
+        smb_user: restoreBackupsData.username,
+        smb_pass: restoreBackupsData.password,
+        uuid: backup.uuid
+      }
+    }))
 }
 
 function selectAll() {
@@ -172,19 +195,29 @@ function deselectAll() {
 }
 
 function restoreSelected() {
-  if (!selectedBackup.value) return
+
   if (!selectedBackup.value) return
   const filesToRestore = selectedBackup.value.files.filter(file => file.selected)
 
+  restoreProgress.value = {
+    current: 0,
+    total: filesToRestore.length,
+    lastFile: ""
+  };
+
   const restorePayload = {
-    target: selectedBackup.value.server,
-    folder: selectedBackup.value.folder,
+    smb_host: (restoreBackupsData.server?.serverName ?? "") + ".local",
+    smb_share: restoreBackupsData.server?.shareName ?? "",
+    smb_user: restoreBackupsData.username,
+    smb_pass: restoreBackupsData.password,
+    uuid: selectedBackup.value.uuid,
+    client: selectedBackup.value.client,
     files: filesToRestore.map(file => file.path)
   }
 
   IPCRouter.getInstance().send("backend", "action", JSON.stringify({
-    type: "restore-backup",
-    restorePayload
+    type: "restoreBackups",
+    data: restorePayload
   }))
 }
 </script>
