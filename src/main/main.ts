@@ -11,7 +11,7 @@ import { BackupEntry, BackUpSetupConfig, BackUpTask, server, unwrap } from '@45d
 import { setupSsh } from './setupSsh';
 import fetchBackups from './backup/fetchBackups';
 import fetchFilesInBackup from './backup/fetchFilesFromBackup';
-import restoreBackups from './backup/restoreBackups';
+import restoreBackups from './backup/RestoreBackups';
 
 let discoveredServers: Server[] = [];
 
