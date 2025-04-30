@@ -39,7 +39,6 @@ export class BackUpManagerWin implements BackUpManager {
 
   }
 
-
   protected runScript(powershellScript: string, scriptName: string): Promise<{ stdout: string, stderr: string }> {
     // Save to file
     const tempDir = os.tmpdir();
@@ -114,6 +113,7 @@ export class BackUpManagerWin implements BackUpManager {
 
     let targetPath = "/tank/" + task.target.split(":")[1];
     console.log("targetPath", targetPath)
+    
     let [smbHost, smbShare] = task.target.split(":");
     smbShare = smbShare.split("/")[0];
 
@@ -139,7 +139,7 @@ $sourcePath = "${task.source}"
 $destinationPath = "${getSmbTargetFromSmbTarget(task.target).replace(/\//g, "\\")}"
 $mirror = ${task.mirror ? "$true" : "$false"}  # Set to $true if you want to mirror the directories
 
-$taskScript = @"
+$actionScript = @"
 @echo off
 :: source = ${task.source}
 :: target = ${task.target}
@@ -179,7 +179,7 @@ net use %drive%: /delete /y
 
 # Save script to a temp .bat file
 $tempScriptPath = "${getAppPath()}\\run_backup_task${crypto.randomUUID()}.bat"
-[System.IO.File]::WriteAllText($tempScriptPath, $taskScript)
+[System.IO.File]::WriteAllText($tempScriptPath, $actionScript)
 
 ${this.scheduleToTaskTrigger(task.schedule)}
 
