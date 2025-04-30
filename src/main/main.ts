@@ -5,10 +5,13 @@ import os from 'os';
 import { Server } from './types';
 import mountSmbPopup from './smbMountPopup';
 import { IPCRouter } from '../../houston-common/houston-common-lib/lib/electronIPC/IPCRouter';
-import { getOS } from './utils';
+import { getMountSmbScript, getOS } from './utils';
 import { BackUpManager, BackUpManagerLin, BackUpManagerMac, BackUpManagerWin, BackUpSetupConfigurator } from './backup';
-import { BackUpSetupConfig, BackUpTask, server, unwrap } from '@45drives/houston-common-lib';
+import { BackupEntry, BackUpSetupConfig, BackUpTask, server, unwrap } from '@45drives/houston-common-lib';
 import { setupSsh } from './setupSsh';
+import fetchBackups from './backup/fetchBackups';
+import fetchFilesInBackup from './backup/fetchFilesFromBackup';
+import restoreBackups from './backup/restoreBackups';
 
 let discoveredServers: Server[] = [];
 
@@ -70,10 +73,10 @@ function createWindow() {
         IPCRouter.getInstance().send('renderer', 'sendBackupTasks', await backUpManager.queryTasks());
       }
     } else if (data === "requestHostname") {
-        IPCRouter.getInstance().send('renderer', 'action', JSON.stringify({
-          type: "sendHostname",
-          hostname: await unwrap(server.getHostname())
-        }));
+      IPCRouter.getInstance().send('renderer', 'action', JSON.stringify({
+        type: "sendHostname",
+        hostname: await unwrap(server.getHostname())
+      }));
     } else {
       try {
         const message = JSON.parse(data);
@@ -92,6 +95,24 @@ function createWindow() {
               status: progress
             }));
           })
+        } else if (message.type === 'fetchBackupsFromServer') {
+
+          IPCRouter.getInstance().send('renderer', 'action', JSON.stringify({
+            type: "fetchBackupsFromServerResult",
+            result: await fetchBackups(message.data, mainWindow)
+          }));
+
+        } else if (message.type === 'fetchFilesFromBackup') {
+
+          IPCRouter.getInstance().send('renderer', 'action', JSON.stringify({
+            type: "fetchFilesFromBackupResult",
+            result: await fetchFilesInBackup(message.data)
+          }));
+
+        } else if (message.type === 'restoreBackups') {
+
+          restoreBackups(message.data)
+
         } else if (message.type === 'removeBackUpTask') {
           const task: BackUpTask = message.task
 
@@ -185,7 +206,7 @@ function createWindow() {
               const setupStatusResponse = await fetchResponse.json();
               server.status = setupStatusResponse.status ?? "unknown";
             } else {
-              console.warn(`HTTP error! status: ${fetchResponse.status}`);
+              console.warn(`HTTP error! server: ${server.name} status: ${fetchResponse.status}`);
             }
 
             if (!existingServer) {
@@ -328,4 +349,6 @@ function getBackUpManager() {
     backUpManager = new BackUpManagerMac();
   }
   return backUpManager;
+
 }
+
