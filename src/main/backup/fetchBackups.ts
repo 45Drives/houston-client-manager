@@ -15,11 +15,12 @@ export default async function fetchBackupsFromServer(data: any, mainWindow: Brow
 
   const slash = getOS() === "win" ? "\\" : "/"
 
-  try {
-    const backupRoot = `${slash}${slash}${data.smb_host}${slash}${data.smb_share}${slash}client-backups`;
-    const uuidDirs = await fsAsync.readdir(backupRoot);
 
-    for (const uuid of uuidDirs) {
+  const backupRoot = `${slash}${slash}${data.smb_host}${slash}${data.smb_share}`;
+  const uuidDirs = await fsAsync.readdir(backupRoot);
+
+  for (const uuid of uuidDirs) {
+    try {
       const backupDir = path.join(backupRoot, uuid);
       const entries = await walkDir(backupDir);
       entries.sort((a, b) => a.length - b.length);
@@ -70,10 +71,10 @@ export default async function fetchBackupsFromServer(data: any, mainWindow: Brow
         onSystem: true,
         files: []
       });
-    }
 
-  } catch (err) {
-    console.error('Failed to list backups:', err);
+    } catch (err) {
+      console.error('Failed to list backups:', err);
+    }
   }
 
   return results;
