@@ -12,6 +12,18 @@
       <div v-if="loading">Loading... Please Wait</div>
     </template>
 
+
+    <p class="text-1xl font-semibold text-center">
+      If you were expected to see backups and see none go back and make sure you enter the correct server, username and password.
+
+      <br>
+
+      Search and select a backup on the left then you should see the files in that backup. 
+      
+      <br>
+      Select the files you want to restore and once you are ready click "Restore Selected Files" button.
+    </p>
+
     <div class="flex justify-between">
       <div class="w-1/2 pr-2">
         <div class="mb-2">
