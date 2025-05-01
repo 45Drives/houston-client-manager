@@ -32,6 +32,9 @@
             <p class="mb-4 text-lg">There’s nothing more to worry about—your files are safe and secure. Sit back, relax,
               and let the scheduled backups do the work.</p>
             <p class="mb-4 text-lg">Backups will continue to run as scheduled to ensure your data stays protected.</p>
+
+            <p class="mb-4 text-lg">NOTE: This computer and the server will have to turn on for backups to happen.</p>
+
             <p class="mb-4 text-lg font-medium">Click "Finish" to complete the setup.</p>
           </div>
         </div>
