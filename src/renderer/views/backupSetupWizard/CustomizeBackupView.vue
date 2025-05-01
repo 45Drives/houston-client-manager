@@ -50,7 +50,7 @@
 				</div>
 
 				<!-- Selected Folders List -->
-				<div v-if="selectedFolders.length > 0" class="space-y-2 border rounded-lg border-gray-500">
+				<div v-if="backUpSetupConfig?.backUpTasks.length > 0" class="space-y-2 border rounded-lg border-gray-500">
 					<div v-for="(folder, index) in selectedFolders" :key="index" class="p-2">
 						<div class="flex items-center m-[1rem]">
 							<div class="flex items-center w-[25%] flex-shrink-0 space-x-2">
@@ -113,6 +113,7 @@ import { Server } from '../../types'
 import { SimpleCalendar } from "../../components/calendar";
 import { divisionCodeInjectionKey } from '../../keys/injection-keys';
 import { sanitizeFilePath } from "./utils";
+
 const division = inject(divisionCodeInjectionKey);
 // Reactive State
 const backUpSetupConfig = inject(backUpSetupConfigKey);
@@ -135,6 +136,8 @@ async function onCalendarSave(newSchedule: TaskSchedule) {
 	selectedTaskSchedule.value = reactive(newSchedule)
 	handleCalendarClose(true)
 }
+
+
 
 function toggleCalendarComponent() {
 	showCalendar.value = true;
@@ -210,6 +213,18 @@ watch(scheduleFrequency, (newSchedule) => {
 		});
 	}
 });
+watch(
+  () => backUpSetupConfig?.backUpTasks.length,
+  (newLength, oldLength) => {
+    if (newLength !== oldLength) {
+      selectedFolders.value = (backUpSetupConfig?.backUpTasks || []).map(task => ({
+        name: task.description,
+        path: task.source
+      }))
+    }
+  },
+  { immediate: true } // triggers on mount too
+)
 
 
 // Folder Selection
@@ -256,9 +271,13 @@ const handleFolderSelect = async () => {
 				console.log('newTask:', newTask);
 
 				const newBackUpTasks = [...backUpSetupConfig?.backUpTasks];
+				
 				newBackUpTasks.push(newTask);
 				backUpSetupConfig.backUpTasks = newBackUpTasks;
 				selectedFolders.value.push({ name: folderName, path: folderPath });
+				if(!backUpSetupConfig?.backUpTasks){
+					selectedFolders.value = []
+				}
 			}
 		}
 	} catch (error) {
