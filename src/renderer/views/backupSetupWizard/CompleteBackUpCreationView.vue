@@ -73,8 +73,24 @@ watch(setupComplete, (value) => {
 });
 
 function goHome(): void {
-  reset();
+  console.log("before clearing: ", backUpSetupConfig)
+
+  if (backUpSetupConfig) {
+    for (const key in backUpSetupConfig) {
+      if (Array.isArray(backUpSetupConfig[key])) {
+        backUpSetupConfig[key] = [];
+      } else if (typeof backUpSetupConfig[key] === 'object' && backUpSetupConfig[key] !== null) {
+        backUpSetupConfig[key] = {};
+      } else {
+        backUpSetupConfig[key] = null;
+      }
+    }
+  }
+
+  console.log("after clearing: ", backUpSetupConfig);
+  reset();  // Assuming this is the wizard reset
 }
+
 
 onActivated(() => {
   completedSteps.value = [];
