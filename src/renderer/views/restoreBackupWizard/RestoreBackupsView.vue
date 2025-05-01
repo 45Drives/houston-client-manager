@@ -105,10 +105,10 @@
 
 <script lang="ts" setup>
 import { ref, computed, inject, onActivated } from 'vue'
-import { useWizardSteps, DynamicBrandingLogo } from '@45drives/houston-common-ui';
+import { useWizardSteps, DynamicBrandingLogo, confirm } from '@45drives/houston-common-ui';
 import { divisionCodeInjectionKey, restoreBackUpSetupDataKey } from '../../keys/injection-keys';
 import { CardContainer } from "@45drives/houston-common-ui";
-import { IPCRouter, type BackupEntry, type FileEntry } from '@45drives/houston-common-lib';
+import { IPCRouter, unwrap, type BackupEntry, type FileEntry } from '@45drives/houston-common-lib';
 
 const division = inject(divisionCodeInjectionKey);
 const restoreBackupsData = inject(restoreBackUpSetupDataKey)!;
@@ -206,8 +206,20 @@ function deselectAll() {
   selectedBackup.value?.files.forEach(file => file.selected = false)
 }
 
-function restoreSelected() {
+async function restoreSelected() {
 
+  if (!(await unwrap(
+    confirm({
+      header: "Proceed with Restoring Selected Files",
+      body:
+        "Restoring these files will overwrite existing files if they exist.",
+      dangerous: true,
+      confirmButtonText: "Continue anyway",
+    })
+  ))) {
+    return;
+  }
+  
   if (!selectedBackup.value) return
   const filesToRestore = selectedBackup.value.files.filter(file => file.selected)
 

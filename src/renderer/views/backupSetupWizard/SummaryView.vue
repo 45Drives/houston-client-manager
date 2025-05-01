@@ -2,7 +2,7 @@
   <CardContainer>
     <template #header class="!text-center">
       <div class="relative flex items-center justify-center h-18">
-          <div class="absolute left-0 bg-white p-1 px-4 rounded-lg">
+        <div class="absolute left-0 bg-white p-1 px-4 rounded-lg">
           <DynamicBrandingLogo :division="division" />
         </div>
         <p class="text-3xl font-semibold text-center">
@@ -21,8 +21,8 @@
       <div class="flex flex-col space-y-4 mt-[5rem]">
         <div class="flex items-center">
           <text class="text-default font-semibold text-left">Back Up Location</text>
-            <CommanderToolTip :message="`This is the designated backup storage location you configured earlier.`" />
-          <!-- <text class="text-default font-semibold text-left px-4">{{backUpSetupConfig?.backUpTasks[0].target}}</text> --> 
+          <CommanderToolTip :message="`This is the designated backup storage location you configured earlier.`" />
+          <text class="text-default font-semibold text-left px-4">{{ backUpSetupConfig?.backUpTasks[0]?.target }}</text>
         </div>
       </div>
 
@@ -32,18 +32,24 @@
           <div class="text-start w-[50%]">
             <text class="text-default font-semibold text-left">Folder:</text>
 
-            <text class="text-default font-semibold text-left px-4">{{task.source}}</text>
+            <text class="text-default font-semibold text-left px-4">{{ task.source }}</text>
           </div>
           <div class="text-start w-[50%] flex items-center">
             <text class="text-default font-semibold text-left">When:</text>
-            <text v-if="task.schedule.repeatFrequency=='hour'"
-              class="text-default font-semibold text-left px-4">{{`Backup will run
+            <text v-if="task.schedule.repeatFrequency == 'hour'"
+              class="text-default font-semibold text-left px-4">{{ `Backup
+              will run
               ${formatFrequency(task.schedule.repeatFrequency)} starting on
-              ${task.schedule.startDate.toDateString()} at ${task.schedule.startDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`}}</text>
+              ${task.schedule.startDate.toDateString()} at ${task.schedule.startDate.toLocaleTimeString([], {
+                hour:
+                  '2-digit', minute: '2-digit' })}`}}</text>
 
             <!-- <text v-else class="text-default font-semibold text-left px-4">{{`Backup will happen ${formatFrequency(task.schedule.repeatFrequency)} at 9:00 AM starting ${task.schedule.startDate.toDateString()}`}}</text> -->
             <text v-else class="text-default font-semibold text-left px-4">{{ `Backup will happen
-              ${formatFrequency(task.schedule.repeatFrequency)} at ${task.schedule.startDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} starting
+              ${formatFrequency(task.schedule.repeatFrequency)} at ${task.schedule.startDate.toLocaleTimeString([], {
+              hour:
+                '2-digit', minute: '2-digit'
+            })} starting
               ${task.schedule.startDate.toDateString()}`}}
             </text>
 
@@ -90,6 +96,6 @@ const proceedToPreviousStep = () => {
 const handleNextClick = async () => {
 
   proceedToNextStep();
-  
+
 };
 </script>

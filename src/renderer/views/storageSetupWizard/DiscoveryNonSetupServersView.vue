@@ -33,7 +33,7 @@
       <p class="w-9/12 text-2xl">
         If your storage server is not appearing in the list above, please return to the Hardware Setup and ensure all
         steps were completed correctly.
-        <a href="#" @click.prevent="onRestartSetup" class="text-blue-600 hover:underline">Click Here</a>
+        <a href="#" @click.prevent="onRestartSetup" class="text-blue-600 hover:underline">Start Over</a>
       </p>
 
       <br />

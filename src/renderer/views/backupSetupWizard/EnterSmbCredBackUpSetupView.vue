@@ -15,8 +15,7 @@
       <!-- Header with instructions -->
       <div>
         <p class=" text-lg">
-          Please provide your username and password to access the backup folder on the server at
-          <strong class="text-blue-600">{{ backUpSetupConfig.backUpTasks[0]?.target }}</strong>
+          Please provide your username and password to use for the backup
         </p>
       </div>
 
