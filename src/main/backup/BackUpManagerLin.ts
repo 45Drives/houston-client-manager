@@ -149,21 +149,18 @@ rmdir "$MOUNT_POINT"
     let match: RegExpExecArray | null;
 
     if ((match = hourRe.exec(cron))) {
-      let [minutes] = match.slice(1).map(Number);
-      if (isNaN(minutes)) return null;
+      const [minutes] = match.slice(1).map(Number);
       const startDate = new Date();
       startDate.setMinutes(minutes);
       schedule = { repeatFrequency: "hour", startDate };
     } else if ((match = dayRe.exec(cron))) {
       const [minutes, hours] = match.slice(1).map(Number);
-      if (isNaN(minutes) || isNaN(hours)) return null;
       const startDate = new Date();
       startDate.setMinutes(minutes);
       startDate.setHours(hours);
       schedule = { repeatFrequency: "day", startDate };
     } else if ((match = weekRe.exec(cron))) {
       const [minutes, hours, weekDay] = match.slice(1).map(Number);
-      if (isNaN(minutes) || isNaN(hours) || isNaN(weekDay)) return null;
       const startDate = new Date();
       startDate.setMinutes(minutes);
       startDate.setHours(hours);
@@ -172,7 +169,6 @@ rmdir "$MOUNT_POINT"
       schedule = { repeatFrequency: "week", startDate };
     } else if ((match = monthRe.exec(cron))) {
       const [minutes, hours, dayOfMonth] = match.slice(1).map(Number);
-      if (isNaN(minutes) || isNaN(hours) || isNaN(dayOfMonth)) return null;
       const startDate = new Date();
       startDate.setMinutes(minutes);
       startDate.setHours(hours);
@@ -182,20 +178,32 @@ rmdir "$MOUNT_POINT"
       return null;
     }
 
-    const mirror = cron.includes("--delete");
     const commentMatch = cron.match(/#\s*(.*)$/);
     const description = commentMatch ? commentMatch[1].trim() : "Unnamed Backup";
 
-    // Extract only the last two quoted values for source and target
-    const quotedMatches = [...cron.matchAll(/'([^']+)'/g)].map(m => m[1]);
-    if (quotedMatches.length < 2) {
-      console.warn("❌ Could not extract source/target from cron line:", cron);
+    // 🔍 Extract script path from cron line
+    const parts = cron.split(" ");
+    const scriptPath = parts.slice(5).find(p => p.endsWith(".sh"));
+    if (!scriptPath || !fs.existsSync(scriptPath)) {
+      console.warn("❌ Script file not found:", scriptPath);
       return null;
     }
 
-    const source = quotedMatches[quotedMatches.length - 2];
-    const rawTarget = quotedMatches[quotedMatches.length - 1];
+    const scriptContent = fs.readFileSync(scriptPath, "utf-8");
+
+    const sourceMatch = scriptContent.match(/SOURCE='([^']+)'/);
+    const targetMatch = scriptContent.match(/TARGET='([^']+)'/);
+
+    if (!sourceMatch || !targetMatch) {
+      console.warn("❌ Could not extract SOURCE or TARGET from script:", scriptPath);
+      return null;
+    }
+
+    const source = sourceMatch[1];
+    const rawTarget = targetMatch[1];
     const target = getSmbTargetFromSSHTarget(rawTarget.replace(/^root@/, ''));
+
+    const mirror = scriptContent.includes("--delete");
 
     return {
       schedule,
@@ -205,6 +213,7 @@ rmdir "$MOUNT_POINT"
       description
     };
   }
+
 
   protected reloadCron() {
     const os = getOS();

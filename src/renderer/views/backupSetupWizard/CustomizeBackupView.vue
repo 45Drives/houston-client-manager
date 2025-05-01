@@ -50,7 +50,7 @@
 				</div>
 
 				<!-- Selected Folders List -->
-				<div v-if="backUpSetupConfig?.backUpTasks.length > 0" class="space-y-2 border rounded-lg border-gray-500">
+				<div v-if="backUpSetupConfig?.backUpTasks.length! > 0" class="space-y-2 border rounded-lg border-gray-500">
 					<div v-for="(folder, index) in selectedFolders" :key="index" class="p-2">
 						<div class="flex items-center m-[1rem]">
 							<div class="flex items-center w-[25%] flex-shrink-0 space-x-2">
@@ -131,13 +131,11 @@ const { completeCurrentStep, prevStep } = useWizardSteps("backup");
 const showCalendar = ref(false);
 let resolveCalendarPromise: ((value: boolean) => void) | null = null;
 
-async function onCalendarSave(newSchedule: TaskSchedule) {
-	// overwrite the parent’s copy
-	selectedTaskSchedule.value = reactive(newSchedule)
-	handleCalendarClose(true)
-}
-
-
+// async function onCalendarSave(newSchedule: TaskSchedule) {
+// 	// overwrite the parent’s copy
+// 	selectedTaskSchedule.value = reactive(newSchedule)
+// 	handleCalendarClose(true)
+// }
 
 function toggleCalendarComponent() {
 	showCalendar.value = true;
@@ -173,7 +171,7 @@ function areArraysEqual(arr1: Server[], arr2: Server[]): boolean {
 // Receive the discovered servers from the main process
 window.electron.ipcRenderer.on('discovered-servers', (_event, discoveredServers: Server[]) => {
   if (!areArraysEqual(discoveredServers, servers.value)) {
-	  console.log("Discovered servers:", discoveredServers)
+	console.log("Discovered servers:", discoveredServers)
     servers.value = discoveredServers;
 	selectedServer.value = discoveredServers[0];
 	
