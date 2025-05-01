@@ -67,7 +67,7 @@ const { reset } = useWizardSteps('backup');
 const setupComplete = ref<string>("no");
 const error = ref<string>();
 const completedSteps = ref<EasySetupProgress[]>([]);
-const backUpSetupConfig = inject(backUpSetupConfigKey);
+const backUpSetupConfig: any = inject(backUpSetupConfigKey);
 
 watch(setupComplete, (value) => {
   if (value === "yes" && backUpSetupConfig) {
