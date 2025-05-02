@@ -16,3 +16,24 @@ export const sanitizeFilePath = (input: string) => {
       .trim();                        // trim leading/trailing whitespace
   }
   
+export function deconstructFullTarget(fullPath: string): {
+    smbHost: string;
+    smbShare: string;
+    targetPath: string;
+} | null {
+    try {
+        const match = fullPath.match(/^([^:]+):([^/]+)\/(.+)$/);
+
+        if (!match) {
+            console.warn("❌ Invalid full SMB path format:", fullPath);
+            return null;
+        }
+
+        const [, smbHost, smbShare, targetPath] = match;
+
+        return { smbHost, smbShare, targetPath };
+    } catch (err) {
+        console.error("❌ Failed to parse full SMB path:", err);
+        return null;
+    }
+}
