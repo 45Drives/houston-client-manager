@@ -56,6 +56,9 @@
             </button>
           </div>
         </button>
+        <div v-if="backUpTasks.length < 1">
+          No Tasks Found
+        </div>
       </div>
     </div>
   </div>

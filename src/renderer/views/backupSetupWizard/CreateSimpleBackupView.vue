@@ -63,7 +63,7 @@
 				</div>
 
 				<!-- Selected Folders List -->
-				<div v-if="selectedFolders.length > 0" class="space-y-2 border rounded-lg border-gray-500">
+				<div v-if="backUpSetupConfig?.backUpTasks.length! > 0" class="space-y-2 border rounded-lg border-gray-500">
 					<div v-for="(folder, index) in selectedFolders" :key="folder.path" class="p-2">
 						<div class="flex items-center m-[1rem]">
 							<div class="flex items-center w-[25%] flex-shrink-0 space-x-2">
@@ -110,7 +110,7 @@ import { Server } from '../../types'
 import { backUpSetupConfigKey } from "../../keys/injection-keys";
 import MessageDialog from '../../components/MessageDialog.vue';
 import { divisionCodeInjectionKey } from '../../keys/injection-keys';
-import { IPCMessageRouter, IPCRouter, server, unwrap } from "@45drives/houston-common-lib";
+import { BackUpTask, IPCMessageRouter, IPCRouter, server, unwrap } from "@45drives/houston-common-lib";
 import { sanitizeFilePath } from "./utils";
 const division = inject(divisionCodeInjectionKey);
 // Wizard navigation
@@ -201,6 +201,20 @@ onMounted(loadExistingFolders);
 const normalizePath = (path: string) =>
 	path.replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase(); // Normalize for consistency
 
+watch(
+	() => backUpSetupConfig?.backUpTasks.length,
+	(newLength, oldLength) => {
+		if (newLength !== oldLength) {
+			selectedFolders.value = (backUpSetupConfig?.backUpTasks || []).map(task => ({
+				name: task.description,
+				path: task.source
+			}))
+		}
+	},
+	{ immediate: true } // triggers on mount too
+)
+
+
 const handleFolderSelect = async () => {
 	if (isSelectingFolder.value) return; // Prevent multiple popups
 	isSelectingFolder.value = true;
@@ -249,7 +263,7 @@ const handleFolderSelect = async () => {
 
 
 			//  Add New Folder if No Conflicts
-			const newTask = {
+			const newTask: BackUpTask = {
 				schedule: { startDate: getNextScheduleDate(scheduleFrequency.value), repeatFrequency: scheduleFrequency.value },
 				description: `Backup task for ${folderName}`,
 				source: folderPath,
@@ -261,6 +275,9 @@ const handleFolderSelect = async () => {
 
 			backUpSetupConfig.backUpTasks.push(newTask);
 			selectedFolders.value.push({ name: folderName, path: folderPath });
+			if (!backUpSetupConfig?.backUpTasks) {
+				selectedFolders.value = []
+			}
 		}
 	} catch (error) {
 		console.error("Error selecting folder:", error);

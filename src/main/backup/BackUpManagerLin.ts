@@ -3,7 +3,7 @@ import { BackUpTask, backupTaskTag, TaskSchedule } from "@45drives/houston-commo
 import * as fs from "fs";
 import { writeFileSync, chmodSync } from 'fs';
 import { execSync } from "child_process";
-import { getSmbTargetFromSSHTarget, getOS, getAppPath } from "../utils";
+import { getOS, getAppPath, getSmbTargetFromSmbTarget, reconstructFullTarget } from "../utils";
 import { join } from "path";
 
 export class BackUpManagerLin implements BackUpManager {
@@ -39,25 +39,6 @@ export class BackUpManagerLin implements BackUpManager {
     });
   }
 
-  // unschedule(task: BackUpTask): void {
-  //   if (!fs.existsSync(this.cronFilePath)) {
-  //     return;
-  //   }
-
-  //   const cronFileContents = fs.readFileSync(this.cronFilePath, "utf-8");
-  //   const cronEntries = cronFileContents.split(/[\r\n]+/);
-
-  //   const newCronEntries = cronEntries.filter((line) => {
-  //     // Only remove lines that match both the tag and description
-  //     return !(line.includes(`# ${backupTaskTag}`) && line.includes(task.description));
-  //   });
-
-  //   const newCronFileContents = newCronEntries.join("\n") + "\n";
-
-  //   fs.writeFileSync(this.cronFilePath, newCronFileContents, "utf-8");
-
-  //   console.log(`🧹 Removed task with description "${task.description}" from cron file`);
-  // }
   unschedule(task: BackUpTask): void {
     if (!fs.existsSync(this.cronFilePath)) return;
 
@@ -142,14 +123,41 @@ export class BackUpManagerLin implements BackUpManager {
     const scriptName = `run_backup_task${crypto.randomUUID()}.sh`;
     const scriptPath = join(getAppPath(), scriptName);
 
-    const scriptContent = `#!/bin/bash
+   /*  const scriptContent = `#!/bin/bash
 
 SMB_HOST='${smbHost}'
 SMB_SHARE='${smbShare}'
 SMB_USER='${smbUser}'
 SMB_PASS='${smb_pass}'
 SOURCE='${task.source}'
-TARGET='${task.target}'
+TARGET='${getSmbTargetFromSmbTarget(task.target)}'
+
+MOUNT_POINT="/mnt/backup_$$"
+
+mkdir -p "$MOUNT_POINT"
+
+mount -t cifs "//$SMB_HOST/$SMB_SHARE" "$MOUNT_POINT" \\
+  -o username="$SMB_USER",password="$SMB_PASS",rw,iocharset=utf8
+
+if [ $? -ne 0 ]; then
+  echo "Failed to mount //$SMB_HOST$SMB_SHARE"
+  exit 1
+fi
+
+rsync -a${task.mirror ? ' --delete' : ''} "$SOURCE" "$MOUNT_POINT/$TARGET"
+
+umount "$MOUNT_POINT"
+rmdir "$MOUNT_POINT"
+`; */
+    const scriptContent = `#!/bin/bash
+set -e
+
+SMB_HOST='${smbHost}'
+SMB_SHARE='${smbShare}'
+SMB_USER='${smbUser}'
+SMB_PASS='${smb_pass}'
+SOURCE='${task.source}'
+TARGET='${getSmbTargetFromSmbTarget(task.target)}'
 
 MOUNT_POINT="/mnt/backup_$$"
 
@@ -163,11 +171,16 @@ if [ $? -ne 0 ]; then
   exit 1
 fi
 
+# Ensure destination directory exists
+mkdir -p "$MOUNT_POINT/$TARGET"
+
+# Perform rsync with optional --delete
 rsync -a${task.mirror ? ' --delete' : ''} "$SOURCE" "$MOUNT_POINT/$TARGET"
 
 umount "$MOUNT_POINT"
 rmdir "$MOUNT_POINT"
 `;
+
 
     writeFileSync(scriptPath, scriptContent, { mode: 0o700 });
     chmodSync(scriptPath, 0o700); // Make sure it’s executable
@@ -179,6 +192,7 @@ rmdir "$MOUNT_POINT"
   }
 
   protected cronToBackupTask(cron: string): BackUpTask | null {
+    // console.log('cronToBackupTask Called');
     const hourRe = /^(\d+) \* \* \* \*/;
     const dayRe = /^(\d+) (\d+) \* \* \*/;
     const weekRe = /^(\d+) (\d+) \* \* (\d+)/;
@@ -239,8 +253,12 @@ rmdir "$MOUNT_POINT"
     }
 
     const source = sourceMatch[1];
+    // console.log('source:', source);
     const rawTarget = targetMatch[1];
-    const target = getSmbTargetFromSSHTarget(rawTarget.replace(/^root@/, ''));
+    // console.log('rawTarget:', rawTarget);
+    // const target = getSmbTargetFromSSHTarget(rawTarget.replace(/^root@/, ''));
+    const target = reconstructFullTarget(scriptPath);
+    // console.log('target:', target)
 
     const mirror = scriptContent.includes("--delete");
 
