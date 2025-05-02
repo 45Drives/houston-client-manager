@@ -89,16 +89,12 @@ const emit = defineEmits<{
 
 // Emit event when a backUpTask is selected
 const handleSelection = (backUpTask: BackUpTask) => {
-
-  console.log("selectedBackUp.value" + selectedBackUp.value)
-
   if (selectedBackUp.value?.source === backUpTask.source && selectedBackUp.value?.target === backUpTask.target) {
     selectedBackUp.value = null;
-
     emit('backUpTaskSelected', null);
   } else {
     selectedBackUp.value = backUpTask;
-    console.log("selectedBackUp.value" + selectedBackUp.value.target)
+    // console.log("selectedBackUp.value: " + selectedBackUp.value.target)
     emit('backUpTaskSelected', backUpTask);
   }
 };

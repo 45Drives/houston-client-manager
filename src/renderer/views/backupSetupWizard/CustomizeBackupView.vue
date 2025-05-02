@@ -328,10 +328,13 @@ IPCRouter.getInstance().send("backend", "action", "requestHostname");
 
 // Navigation
 const proceedToNextStep = () => {
-
+	// console.log('backup tasks:', backUpSetupConfig?.backUpTasks);
+	// console.log('selectedServer:', selectedServer.value);
+	// console.log('hostname:', hostname);
 	backUpSetupConfig?.backUpTasks.forEach(
 		task => {
 			task.target = `${selectedServer.value!.name}.local:${selectedServer.value!.shareName!}/${hostname}/${crypto.randomUUID()}${sanitizeFilePath(task.source)}`;
+			// task.target = task.target;
 			console.log('target saved:', task.target);
 		});
 

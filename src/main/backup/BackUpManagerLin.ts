@@ -3,7 +3,7 @@ import { BackUpTask, backupTaskTag, TaskSchedule } from "@45drives/houston-commo
 import * as fs from "fs";
 import { writeFileSync, chmodSync } from 'fs';
 import { execSync } from "child_process";
-import { getRsync, getSmbTargetFromSSHTarget, getSSHTargetFromSmbTarget, getOS, getAppPath, getSmbTargetFromSmbTarget } from "../utils";
+import { getSmbTargetFromSSHTarget, getOS, getAppPath } from "../utils";
 import { join } from "path";
 
 export class BackUpManagerLin implements BackUpManager {
@@ -39,24 +39,63 @@ export class BackUpManagerLin implements BackUpManager {
     });
   }
 
+  // unschedule(task: BackUpTask): void {
+  //   if (!fs.existsSync(this.cronFilePath)) {
+  //     return;
+  //   }
+
+  //   const cronFileContents = fs.readFileSync(this.cronFilePath, "utf-8");
+  //   const cronEntries = cronFileContents.split(/[\r\n]+/);
+
+  //   const newCronEntries = cronEntries.filter((line) => {
+  //     // Only remove lines that match both the tag and description
+  //     return !(line.includes(`# ${backupTaskTag}`) && line.includes(task.description));
+  //   });
+
+  //   const newCronFileContents = newCronEntries.join("\n") + "\n";
+
+  //   fs.writeFileSync(this.cronFilePath, newCronFileContents, "utf-8");
+
+  //   console.log(`🧹 Removed task with description "${task.description}" from cron file`);
+  // }
   unschedule(task: BackUpTask): void {
-    if (!fs.existsSync(this.cronFilePath)) {
-      return;
-    }
+    if (!fs.existsSync(this.cronFilePath)) return;
 
     const cronFileContents = fs.readFileSync(this.cronFilePath, "utf-8");
     const cronEntries = cronFileContents.split(/[\r\n]+/);
 
+    let scriptPathToDelete: string | null = null;
+
     const newCronEntries = cronEntries.filter((line) => {
-      // Only remove lines that match both the tag and description
-      return !(line.includes(`# ${backupTaskTag}`) && line.includes(task.description));
+      const shouldRemove = line.includes(`# ${backupTaskTag}`) && line.includes(task.description);
+
+      // If it's a match, extract the script path for deletion
+      if (shouldRemove) {
+        const parts = line.split(" ");
+        const scriptPath = parts.slice(5).find(p => p.endsWith(".sh"));
+        if (scriptPath) {
+          scriptPathToDelete = scriptPath;
+        }
+      }
+
+      return !shouldRemove;
     });
 
-    const newCronFileContents = newCronEntries.join("\n") + "\n";
-
-    fs.writeFileSync(this.cronFilePath, newCronFileContents, "utf-8");
-
+    // Write updated cron file
+    fs.writeFileSync(this.cronFilePath, newCronEntries.join("\n") + "\n", "utf-8");
     console.log(`🧹 Removed task with description "${task.description}" from cron file`);
+
+    // Delete the script if it exists
+    if (scriptPathToDelete && fs.existsSync(scriptPathToDelete)) {
+      try {
+        fs.unlinkSync(scriptPathToDelete);
+        console.log(`🗑️ Deleted backup script: ${scriptPathToDelete}`);
+      } catch (err) {
+        console.error(`❌ Failed to delete script at ${scriptPathToDelete}:`, err);
+      }
+    } else {
+      console.warn(`⚠️ Script file not found for deletion: ${scriptPathToDelete}`);
+    }
   }
 
   private ensureCronFile(): void {
@@ -110,7 +149,7 @@ SMB_SHARE='${smbShare}'
 SMB_USER='${smbUser}'
 SMB_PASS='${smb_pass}'
 SOURCE='${task.source}'
-TARGET='${getSmbTargetFromSmbTarget(task.target)}'
+TARGET='${task.target}'
 
 MOUNT_POINT="/mnt/backup_$$"
 
