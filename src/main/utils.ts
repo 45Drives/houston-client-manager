@@ -103,9 +103,13 @@ export function getSmbTargetFromSmbTarget(target: string) {
   let targetPath = "/tank/" + target.split(":")[1];
   // console.log("[getSmbTargetFromSmbTarget] targetPath", targetPath)
   let [smbHost, smbShare] = target.split(":");
+  // console.log("[getSmbTargetFromSmbTarget] smbHost", smbHost)
+  // console.log("[getSmbTargetFromSmbTarget] smbShare before", smbShare)
   smbShare = smbShare.split("/")[0]; 
-
-  return target.replace(smbHost + ":" + smbShare, "");
+  // console.log("[getSmbTargetFromSmbTarget] smbShare after", smbShare)
+  const result = target.replace(smbHost + ":" + smbShare, "");
+  // console.log("[getSmbTargetFromSmbTarget] result", result)
+  return result;
 }
 
 export function getSSHTargetFromSmbTarget(target: string) {
@@ -116,6 +120,29 @@ export function getSmbTargetFromSSHTarget(target: string) {
   return target.replace(":/tank/", ":");
 }
 
+export function reconstructFullTarget(scriptPath: string): string {
+  try {
+    const content = fs.readFileSync(scriptPath, 'utf-8');
+
+    const hostMatch = content.match(/SMB_HOST=['"]([^'"]+)['"]/);
+    const shareMatch = content.match(/SMB_SHARE=['"]([^'"]+)['"]/);
+    const targetMatch = content.match(/TARGET=['"]([^'"]+)['"]/);
+
+    if (!hostMatch || !shareMatch || !targetMatch) {
+      console.warn("❌ Missing SMB_HOST, SMB_SHARE, or TARGET in script:", scriptPath);
+      return '';
+    }
+
+    const smbHost = hostMatch[1];
+    const smbShare = shareMatch[1];
+    const targetPath = targetMatch[1].replace(/^\/+/, ''); // Remove leading slashes
+
+    return `${smbHost}:${smbShare}/${targetPath}`;
+  } catch (err) {
+    console.error("❌ Failed to read or parse script:", err);
+    return '';
+  }
+}
 
 export function getScp() {
   const sshKeyPath = getSSHKey();

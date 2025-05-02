@@ -93,8 +93,8 @@ const handleOpen = () => {
       password: password.value,
       target: backupTask.value?.target,
     });
-
-    console.log("Target:", backupTask.value?.target);
+    // console.log('backupTaskData:', backupTask.value);
+    // console.log("Target:", backupTask.value?.target);
 
     const [host, path] = backupTask.value?.target.split(":");
 
