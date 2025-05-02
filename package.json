@@ -15,7 +15,7 @@
     "build:linux": "yarn build:common && node scripts/build.js && electron-builder --linux",
     "test": "vitest run"
   },
-  "repository": "https://github.com/45Drives/houston-client-manager",
+  "repository": "https://github.com/45Drives/45drives-setup-wizard",
   "author": {
     "name": "Matt Pyne",
     "email": "mpyne@45drives.com"
