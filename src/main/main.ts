@@ -126,6 +126,19 @@ function createWindow() {
             mainWindow.webContents.send('notification', `Error: No Backup Manager was found able to handle this!`);
           }
 
+        } else if (message.type === 'updateBackUpTask') {
+          // const task: BackUpTask = message.task;
+          // const backupManager = getBackUpManager();
+          // if (backupManager) {
+          //   // Remove the old version
+          //   backupManager.unschedule(task);
+
+          //   // Then re-schedule with the new schedule
+          //   backupManager.schedule(task, task.smbUser, task.smbPass);
+          //   mainWindow.webContents.send('notification', `Updated schedule for ${task.source} -> ${task.target}`);
+          // } else {
+          //   mainWindow.webContents.send('notification', `Error: Could not update task – no backup manager available.`);
+          // }
         }
       } catch (error) {
 

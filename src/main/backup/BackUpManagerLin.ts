@@ -123,32 +123,6 @@ export class BackUpManagerLin implements BackUpManager {
     const scriptName = `run_backup_task${crypto.randomUUID()}.sh`;
     const scriptPath = join(getAppPath(), scriptName);
 
-   /*  const scriptContent = `#!/bin/bash
-
-SMB_HOST='${smbHost}'
-SMB_SHARE='${smbShare}'
-SMB_USER='${smbUser}'
-SMB_PASS='${smb_pass}'
-SOURCE='${task.source}'
-TARGET='${getSmbTargetFromSmbTarget(task.target)}'
-
-MOUNT_POINT="/mnt/backup_$$"
-
-mkdir -p "$MOUNT_POINT"
-
-mount -t cifs "//$SMB_HOST/$SMB_SHARE" "$MOUNT_POINT" \\
-  -o username="$SMB_USER",password="$SMB_PASS",rw,iocharset=utf8
-
-if [ $? -ne 0 ]; then
-  echo "Failed to mount //$SMB_HOST$SMB_SHARE"
-  exit 1
-fi
-
-rsync -a${task.mirror ? ' --delete' : ''} "$SOURCE" "$MOUNT_POINT/$TARGET"
-
-umount "$MOUNT_POINT"
-rmdir "$MOUNT_POINT"
-`; */
     const scriptContent = `#!/bin/bash
 set -e
 
