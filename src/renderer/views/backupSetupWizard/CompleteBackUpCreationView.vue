@@ -56,7 +56,7 @@
 
 <script setup lang="ts">
 import { CardContainer } from "@45drives/houston-common-ui";
-import { ref, watch, inject, onActivated } from "vue";
+import { ref, watch, inject, onActivated, onBeforeUnmount } from "vue";
 import { useWizardSteps, DynamicBrandingLogo } from "@45drives/houston-common-ui";
 import { EasySetupProgress, IPCRouter } from "@45drives/houston-common-lib";
 import { backUpSetupConfigKey } from "../../keys/injection-keys";
@@ -94,54 +94,53 @@ function goHome(): void {
   reset();  // Assuming this is the wizard reset
 }
 
+function handleActionEvent(data: string) {
+  try {
+    const { type, status } = JSON.parse(data);
+    if (type !== "backUpSetupStatus") return;
+
+    if (status.message.startsWith("Error")) {
+      error.value = status.message;
+    }
+
+    // Avoid duplicates
+    if (!completedSteps.value.some(step => step.message === status.message)) {
+      completedSteps.value.push(status);
+    }
+
+    if (error.value || status.step === status.total) {
+      setupComplete.value = "yes";
+    }
+  } catch (err) {
+    console.error("Failed to parse event data:", err);
+  }
+}
+
+let listenerRegistered = false;
 
 onActivated(() => {
   completedSteps.value = [];
   error.value = undefined;
-  setupComplete.value = 'no';
-  
-  try {
-    IPCRouter.getInstance().addEventListener('action', (data) => {
+  setupComplete.value = "no";
 
-      try {
-        const backUpSetupStatus = JSON.parse(data);
+  if (!listenerRegistered) {
+    IPCRouter.getInstance().addEventListener("action", handleActionEvent);
+    listenerRegistered = true;
+  }
 
-        if (backUpSetupStatus.type === "backUpSetupStatus") {
-          const status: EasySetupProgress = backUpSetupStatus.status;
-          const newCompletedSteps = [...completedSteps.value];
+  IPCRouter.getInstance().send("backend", "action", JSON.stringify({
+    type: "configureBackUp",
+    config: backUpSetupConfig
+  }));
+});
 
-          if (status.message.startsWith("Error")) {
-
-            error.value = status.message;
-          } else {
-
-            newCompletedSteps.push(status);
-          }
-
-          completedSteps.value = newCompletedSteps;
-
-          if (error.value) {
-            setupComplete.value = "yes";
-          } else if (status.step === status.total) {
-            setupComplete.value = "yes";
-          }
-        }
-      } catch (error) {
-      }
-    })
-
-    IPCRouter.getInstance().send('backend', 'action',
-      JSON.stringify(
-        {
-          type: 'configureBackUp',
-          config: backUpSetupConfig
-        })
-    );
-
-  } catch (error) {
-    console.error("45D Caught error:", error);
+onBeforeUnmount(() => {
+  if (listenerRegistered) {
+    IPCRouter.getInstance().removeEventListener("action", handleActionEvent);
+    listenerRegistered = false;
   }
 });
+
 
 
 </script>

@@ -162,8 +162,13 @@ watch(() => schedule.value.repeatFrequency, (newFrequency) => {
     }
 });
 
-watch([minuteValue, hourValue, dayValue, monthValue], () => {
-    updateStartDate();
+// watch([minuteValue, hourValue, dayValue, monthValue], () => {
+//     updateStartDate();
+// });
+watch([hourValue, minuteValue, dayValue, monthValue, yearValue], () => {
+    if (hourValue.value != null && minuteValue.value != null) {
+        updateStartDate();
+    }
 });
 
 watch(

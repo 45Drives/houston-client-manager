@@ -99,8 +99,9 @@ export function getMountSmbScript() {
 }
 
 export function getSmbTargetFromSmbTarget(target: string) {
+  // console.log('[getSmbTargetFromSmbTarget] raw target:', target);
   let targetPath = "/tank/" + target.split(":")[1];
-  console.log("targetPath", targetPath)
+  // console.log("[getSmbTargetFromSmbTarget] targetPath", targetPath)
   let [smbHost, smbShare] = target.split(":");
   smbShare = smbShare.split("/")[0]; 
 
