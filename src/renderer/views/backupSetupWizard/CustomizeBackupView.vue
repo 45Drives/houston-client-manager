@@ -131,12 +131,6 @@ const { completeCurrentStep, prevStep } = useWizardSteps("backup");
 const showCalendar = ref(false);
 let resolveCalendarPromise: ((value: boolean) => void) | null = null;
 
-// async function onCalendarSave(newSchedule: TaskSchedule) {
-// 	// overwrite the parent’s copy
-// 	selectedTaskSchedule.value = reactive(newSchedule)
-// 	handleCalendarClose(true)
-// }
-
 function toggleCalendarComponent() {
 	showCalendar.value = true;
 
@@ -333,7 +327,7 @@ const proceedToNextStep = () => {
 	// console.log('hostname:', hostname);
 	backUpSetupConfig?.backUpTasks.forEach(
 		task => {
-			task.target = `${selectedServer.value!.name}.local:${selectedServer.value!.shareName!}/${hostname}/${crypto.randomUUID()}${sanitizeFilePath(task.source)}`;
+			task.target = `${selectedServer.value!.name}.local:${selectedServer.value!.shareName!}/${crypto.randomUUID()}/${hostname}${sanitizeFilePath(task.source)}`;
 			console.log('target saved:', task.target);
 		});
 
