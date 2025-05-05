@@ -24,27 +24,59 @@ export class BackUpSetupConfigurator {
       progressCallback({ message: "Initializing Backup Setup... please wait", step: 1, total });
 
       const backUpManager = this.getBackUpManager();
-      for (let i = 0; i < config.backUpTasks.length; i++) {
-        try {
-          const task = config.backUpTasks[i];
-          console.log("schedule backup:", task);
+      // for (let i = 0; i < config.backUpTasks.length; i++) {
+      //   try {
+      //     const task = config.backUpTasks[i];
+      //     console.log("schedule backup:", task);
           
-          const {stdout, stderr} = await backUpManager.schedule(task, config.username, config.password);
-          console.log(stdout)
-          console.error(stderr)
-          progressCallback({ message: "Back up task added for " + task.source + " added.", step: i + 2, total });
-        } catch (error) {
-          console.error("Error in setting up backups:", error);
-          progressCallback({ message: `Error: ${error}`, step: -1, total: -1 });
+      //     const {stdout, stderr} = await backUpManager.schedule(task, config.username, config.password);
+      //     console.log(stdout)
+      //     console.error(stderr)
+      //     progressCallback({ message: "Back up task added for " + task.source + " added.", step: i + 2, total });
+      //   } catch (error) {
+      //     console.error("Error in setting up backups:", error);
+      //     progressCallback({ message: `Error: ${error}`, step: -1, total: -1 });
+      //   }
+      // }
+
+      if ("scheduleAllTasks" in backUpManager && config.backUpTasks.length > 1) {
+        await (backUpManager as BackUpManagerLin).scheduleAllTasks(
+          config.backUpTasks,
+          config.username,
+          config.password,
+          (step, total, message) => {
+            progressCallback({ step, total, message });
+          }
+        );
+      } else {
+        for (let i = 0; i < config.backUpTasks.length; i++) {
+          try {
+            const task = config.backUpTasks[i];
+            const { stdout, stderr } = await backUpManager.schedule(task, config.username, config.password);
+            progressCallback({
+              message: "Back up task added for " + task.source + " added.",
+              step: i + 1,
+              total: config.backUpTasks.length + 1,
+            });
+          } catch (error) {
+            console.error("Error in setting up backups:", error);
+            progressCallback({ message: `Error: ${error}`, step: -1, total: -1 });
+          }
         }
       }
 
       console.log(config);
 
+      progressCallback({
+        message: "All backup tasks scheduled successfully.",
+        step: total,
+        total,
+      });
+
     } catch (error: any) {
       console.error("Error in setting up backups:", error);
       progressCallback({ message: `Error: ${error.message}`, step: -1, total: -1 });
-    }
+    }    
 
   }
 

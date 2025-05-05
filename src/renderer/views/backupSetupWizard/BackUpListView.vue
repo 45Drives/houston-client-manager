@@ -15,7 +15,7 @@
       }">
 
         <!-- Backup Card -->
-        <button v-for="task in backUpTasks" :key="task.source + task.target"
+        <div v-for="task in backUpTasks" :key="task.source + task.target"
           class="relative border border-default rounded-lg shadow-sm p-2 space-y-2 cursor-pointer items-center"
           @click="handleSelection(task)"
           :class="[(selectedBackUp?.source === task.source && selectedBackUp?.target === task.target ? 'btn-secondary' : 'bg-default')]">
@@ -58,7 +58,7 @@
               Remove Task
             </button>
           </div>
-        </button>
+        </div>
 
         <div v-if="backUpTasks.length < 1">
           No Tasks Found
@@ -79,8 +79,8 @@
 
 <script setup lang="ts">
 import { nextTick, onActivated, reactive, ref, watch } from 'vue';
-import { BackUpTask, IPCRouter, TaskSchedule } from '@45drives/houston-common-lib';
-import { Modal } from '@45drives/houston-common-ui';
+import { BackUpTask, IPCRouter, unwrap } from '@45drives/houston-common-lib';
+import { Modal, confirm } from '@45drives/houston-common-ui';
 import { formatFrequency, deconstructFullTarget } from "./utils";
 import { SimpleCalendar } from "../../components/calendar";
 const backUpTasks = ref<BackUpTask[]>([]);
@@ -161,7 +161,17 @@ async function editSchedule(selectedBackUp: BackUpTask) {
   }
 }
 
-const deleteTask = (task: BackUpTask) => {
+const deleteTask = async (task: BackUpTask) => {
+  // const confirmed = await unwrap(confirm({
+  //   header: "Delete Backup Task?",
+  //   body: `Are you sure you want to delete the backup task from "${task.source}" to "${task.target}"? This action cannot be undone.`,
+  //   dangerous: true,
+  //   confirmButtonText: "Delete",
+  // }));
+  const confirmed = window.confirm(`Are you sure you want to delete the backup task from \n"${task.source}" to \n"${task.target}"? \nThis action cannot be undone.`);
+
+  if (!confirmed) return;
+
   if (selectedBackUp.value == task) {
     selectedBackUp.value = null;
     emit('backUpTaskSelected', null);
