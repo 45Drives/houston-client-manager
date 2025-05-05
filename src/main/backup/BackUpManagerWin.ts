@@ -108,7 +108,8 @@ export class BackUpManagerWin implements BackUpManager {
   }
 
   async schedule(task: BackUpTask, username: string, password: string): Promise<{ stdout: string, stderr: string }> {
-
+    const uuid = task.uuid ?? crypto.randomUUID();
+    task.uuid = uuid;
     console.log("task.target", task.target);
 
     let targetPath = "/tank/" + task.target.split(":")[1];
@@ -146,6 +147,7 @@ $actionScript = @"
 :: description = ${task.description}
 :: mirror = ${task.mirror}
 :: schedule = ${JSON.stringify(task.schedule)}
+:: uuid = ${uuid}
 
 :: Run your batch file and capture output
 for /f "delims=" %%O in ('"$batFile" $smbHost $smbShare $username $password') do (
@@ -178,7 +180,7 @@ net use %drive%: /delete /y
 "@
 
 # Save script to a temp .bat file
-$tempScriptPath = "${getAppPath()}\\run_backup_task${crypto.randomUUID()}.bat"
+$tempScriptPath = "${getAppPath()}\\run_backup_task${uuid}.bat"
 [System.IO.File]::WriteAllText($tempScriptPath, $actionScript)
 
 ${this.scheduleToTaskTrigger(task.schedule)}
@@ -187,7 +189,7 @@ $action = New-ScheduledTaskAction -Execute "cmd.exe" -Argument "/C \`"$tempScrip
 
 $principal = New-ScheduledTaskPrincipal -UserId "$user" -LogonType S4U -RunLevel Highest
 
-$task = Register-ScheduledTask -Action $action -Trigger $taskTrigger -Principal $principal -TaskName "${TASK_ID}_${crypto.randomUUID()}"
+$task = Register-ScheduledTask -Action $action -Trigger $taskTrigger -Principal $principal -TaskName "${TASK_ID}_${uuid}"
 
 ${this.dailyTaskTriggerUpdate(task.schedule)}
 
