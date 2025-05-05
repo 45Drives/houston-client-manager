@@ -39,7 +39,7 @@
 				<!-- Backup Frequency -->
 				<div class="flex py-2">
 					<label class="w-[25%] py-2 text-default font-semibold text-start">
-						Backup Interval <span v-if="scheduleFrequency != 'hour'">(Starts At 9:00 AM):</span>
+						Backup Interval <span v-if="scheduleFrequency != 'hour'">(Starts At 12:00 AM (Midnight)):</span>
 					</label>
 					<select v-model="scheduleFrequency"
 						class="bg-default h-[3rem] text-default rounded-lg px-4 flex-1 border border-default">
@@ -306,14 +306,14 @@ function getNextScheduleDate(frequency: 'hour' | 'day' | 'week' | 'month'): Date
 			break;
 
 		case 'day':
-			nextDate.setHours(9, 0, 0, 0);
+			nextDate.setHours(0, 0, 0, 0);
 			if (now >= nextDate) {
 				nextDate.setDate(nextDate.getDate() + 1);
 			}
 			break;
 
 		case 'week':
-			nextDate.setHours(9, 0, 0, 0);
+			nextDate.setHours(0, 0, 0, 0);
 			nextDate.setDate(now.getDate() + 7);
 			break;
 
