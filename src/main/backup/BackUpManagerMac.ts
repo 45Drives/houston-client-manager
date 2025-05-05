@@ -164,6 +164,7 @@ export class BackUpManagerMac implements BackUpManager {
       target,
       description: fileName.replace("com.backup-task.", "").replace(".plist", ""),
       mirror: plistContents.includes("--delete"),
+      uuid: crypto.randomUUID()
     };
   }
 }

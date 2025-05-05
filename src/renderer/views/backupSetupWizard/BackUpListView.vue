@@ -51,11 +51,7 @@
             </div>
           </div>
           <div class="flex justify-between items-center pt-2">
-            <button class="btn btn-primary text-sm relative" @click.stop="editSchedule(task.schedule)" disabled>
-              <div
-                class="text-left absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 font-bold text-45d opacity-40 rotate-[-10deg] pointer-events-none whitespace-nowrap">
-                COMING SOON
-              </div>
+            <button class="btn btn-primary text-sm relative" @click.stop="editSchedule(task)">
               Edit Schedule
             </button>
             <button @click.stop="deleteTask(task)" class="btn btn-danger text-sm">
@@ -123,7 +119,7 @@ watch(backUpTasks, () => {
 
 // Define event emitter
 const emit = defineEmits<{
-  (event: 'backUpTaskSelected', bacUupTask: BackUpTask | null): void;
+  (event: 'backUpTaskSelected', backUpTask: BackUpTask | null): void;
 }>();
 
 // Emit event when a backUpTask is selected
@@ -139,11 +135,11 @@ const handleSelection = (backUpTask: BackUpTask) => {
 };
 onActivated(fetchBackupTasks); // Runs when the component is displayed again
 
-async function editSchedule(taskSchedule: TaskSchedule) {
+async function editSchedule(selectedBackUp: BackUpTask) {
   // Set the selected schedule for editing
   selectedTaskSchedule.value = reactive({
-    repeatFrequency: taskSchedule.repeatFrequency,
-    startDate: new Date(taskSchedule.startDate),
+    repeatFrequency: selectedBackUp.schedule.repeatFrequency,
+    startDate: new Date(selectedBackUp.schedule.startDate),
   });
 
   // Wait for Vue to update before showing the modal
@@ -153,14 +149,16 @@ async function editSchedule(taskSchedule: TaskSchedule) {
   const scheduleConfirmed = await toggleCalendarComponent();
 
   // If the user saves, update the task schedule
-  if (scheduleConfirmed) {
-    taskSchedule.repeatFrequency = selectedTaskSchedule.value.repeatFrequency;
-    taskSchedule.startDate = selectedTaskSchedule.value.startDate;
+  if (scheduleConfirmed && selectedBackUp) {
+    selectedBackUp.schedule.repeatFrequency = selectedTaskSchedule.value.repeatFrequency;
+    selectedBackUp.schedule.startDate = selectedTaskSchedule.value.startDate;
+
+    console.log("Updating backup task with schedule:", selectedBackUp);
+    IPCRouter.getInstance().send("backend", "action", JSON.stringify({
+      type: "updateBackUpTask",
+      task: selectedBackUp
+    }));
   }
-  IPCRouter.getInstance().send("backend", "action", JSON.stringify({
-    type: "updateBackUpTask",
-    task: selectedBackUp.value
-  }));
 }
 
 const deleteTask = (task: BackUpTask) => {

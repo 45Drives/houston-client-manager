@@ -27,7 +27,7 @@
     <div class="flex justify-between">
       <div class="w-1/2 pr-2">
         <div class="mb-2">
-          <input v-model="search" type="text" placeholder="Type To Search For backup?"
+          <input v-model="search" type="text" placeholder="Type To Search For backup"
             class="w-full p-2 border rounded" />
         </div>
         <table class="max-h-96 overflow-y-auto w-full border text-left">

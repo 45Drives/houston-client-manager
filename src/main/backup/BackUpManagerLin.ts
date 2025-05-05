@@ -48,12 +48,14 @@ export class BackUpManagerLin implements BackUpManager {
     let scriptPathToDelete: string | null = null;
 
     const newCronEntries = cronEntries.filter((line) => {
-      const shouldRemove = line.includes(`# ${backupTaskTag}`) && line.includes(task.description);
+      // const shouldRemove = line.includes(`# ${backupTaskTag}`) && line.includes(task.description);
+      const shouldRemove = line.includes(`run_backup_task${task.uuid}.sh`);
 
       // If it's a match, extract the script path for deletion
       if (shouldRemove) {
         const parts = line.split(" ");
-        const scriptPath = parts.slice(5).find(p => p.endsWith(".sh"));
+        // const scriptPath = parts.slice(5).find(p => p.endsWith(".sh"));
+        const scriptPath = parts.find(p => p.includes(`run_backup_task${task.uuid}.sh`));
         if (scriptPath) {
           scriptPathToDelete = scriptPath;
         }
@@ -119,8 +121,11 @@ export class BackUpManagerLin implements BackUpManager {
     let [smbHost, smbShare] = task.target.split(":");
     smbShare = smbShare.split("/")[0];
 
+    const taskUUID = task.uuid ?? crypto.randomUUID(); // Only generate if not present
+    task.uuid = taskUUID; // Persist in the object
+
     // Path to save the script
-    const scriptName = `run_backup_task${crypto.randomUUID()}.sh`;
+    const scriptName = `run_backup_task${taskUUID}.sh`;
     const scriptPath = join(getAppPath(), scriptName);
 
     const scriptContent = `#!/bin/bash
@@ -216,6 +221,14 @@ rmdir "$MOUNT_POINT"
       return null;
     }
 
+    const uuidMatch = scriptPath.match(/run_backup_task([a-f0-9\-]+)\.sh$/i);
+    const uuid = uuidMatch ? uuidMatch[1] : undefined;
+
+    if (!uuid) {
+      console.warn("❌ Could not extract UUID from script name:", scriptPath);
+      return null;
+    }
+
     const scriptContent = fs.readFileSync(scriptPath, "utf-8");
 
     const sourceMatch = scriptContent.match(/SOURCE='([^']+)'/);
@@ -241,7 +254,8 @@ rmdir "$MOUNT_POINT"
       mirror,
       source,
       target,
-      description
+      description,
+      uuid
     };
   }
 

@@ -22,7 +22,6 @@
     <div class="w-full h-full flex items-center justify-center" v-show="showBackUpSetupWizard">
       <BackUpSetupWizard id="backup" :onComplete="onBackUpWizardComplete" />
     </div>
-
     <div class="w-full h-full flex items-center justify-center" v-show="showRestoreBackupWizard">
       <RestoreBackUpWizard id="restore-backup" :onComplete="onRestoreBackUpWizardComplete" />
     </div>
