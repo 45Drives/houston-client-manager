@@ -4,7 +4,7 @@ import * as fs from "fs";
 import * as os from "os";
 import { writeFileSync, chmodSync } from 'fs';
 import { execSync } from "child_process";
-import { getOS, getAppPath, getSmbTargetFromSmbTarget, reconstructFullTarget } from "../utils";
+import { getOS, getAppPath, getSmbTargetFromSmbTarget, reconstructFullTarget, runPrivilegedAppend, runPrivilegedReplaceFile } from "../utils";
 import { join } from "path";
 
 export class BackUpManagerLin implements BackUpManager {
@@ -33,8 +33,9 @@ export class BackUpManagerLin implements BackUpManager {
   schedule(task: BackUpTask, username: string, password: string): Promise<{ stdout: string, stderr: string }> {
     return new Promise((resolve, reject) => {
       const cron = this.backupTaskToCron(task, username, password);
-      this.ensureCronFile();
-      fs.appendFileSync(this.cronFilePath, cron + "\n", "utf-8");
+      // this.ensureCronFile();
+      // fs.appendFileSync(this.cronFilePath, cron + "\n", "utf-8");
+      runPrivilegedAppend(cron, this.cronFilePath, this.pkexec);
       this.reloadCron();
       resolve({ stdout: "", stderr: "" });
     });
@@ -54,10 +55,10 @@ export class BackUpManagerLin implements BackUpManager {
     const total = tasks.length + 2; // +1 for final script, +1 for cron move
 
     for (const task of tasks) {
-      const taskUUID = task.uuid ?? crypto.randomUUID();
+      const taskUUID = task.uuid;
       task.uuid = taskUUID;
 
-      const scriptName = `run_backup_task${taskUUID}.sh`;
+      const scriptName = `run_backup_task_${taskUUID}.sh`;
       const tempScriptPath = join(tmpDir, scriptName);
       const finalScriptPath = join(getAppPath(), scriptName);
 
@@ -66,7 +67,6 @@ export class BackUpManagerLin implements BackUpManager {
       const target = getSmbTargetFromSmbTarget(task.target);
 
       const scriptContent = `#!/bin/bash
-set -e
 
 SMB_HOST='${smbHost}'
 SMB_SHARE='${smbShare}'
@@ -96,7 +96,7 @@ rmdir "$MOUNT_POINT"
 
       fs.writeFileSync(tempScriptPath, scriptContent, { mode: 0o700 });
 
-      const cronLine = `${this.scheduleToCron(task.schedule)} ${finalScriptPath} # ${backupTaskTag} ${task.description}`;
+      const cronLine = `${this.scheduleToCron(task.schedule)} root ${finalScriptPath} # ${backupTaskTag} ${task.description}`;
       cronEntries.push(cronLine);
 
       moveCommands.push(`mv "${tempScriptPath}" "${finalScriptPath}"`);
@@ -126,9 +126,9 @@ rmdir "$MOUNT_POINT"
     const setupScriptPath = join(tmpDir, "setup_all_tasks.sh");
     const setupScript = `
 #!/bin/bash
-set -e
 
 mv "${cronTmpPath}" "${this.cronFilePath}"
+chown root:root "${this.cronFilePath}"
 chmod 644 "${this.cronFilePath}"
 
 ${moveCommands.join("\n")}
@@ -152,55 +152,126 @@ systemctl restart ${getOS() === "debian" ? "cron" : "crond"}
   }
 
 
+  // unschedule(task: BackUpTask): void {
+  //   if (!fs.existsSync(this.cronFilePath)) return;
+
+  //   const cronFileContents = fs.readFileSync(this.cronFilePath, "utf-8");
+  //   const cronEntries = cronFileContents.split(/[\r\n]+/);
+
+  //   let scriptPathToDelete: string | null = null;
+
+  //   const newCronEntries = cronEntries.filter((line) => {
+  //     // const shouldRemove = line.includes(`# ${backupTaskTag}`) && line.includes(task.description);
+  //     const shouldRemove = line.includes(`run_backup_task_${task.uuid}.sh`);
+
+  //     // If it's a match, extract the script path for deletion
+  //     if (shouldRemove) {
+  //       const parts = line.split(" ");
+  //       // const scriptPath = parts.slice(5).find(p => p.endsWith(".sh"));
+  //       const scriptPath = parts.find(p => p.includes(`run_backup_task_${task.uuid}.sh`));
+  //       if (scriptPath) {
+  //         scriptPathToDelete = scriptPath;
+  //       }
+  //     }
+
+  //     return !shouldRemove;
+  //   });
+
+  //   // Write updated cron file
+  //   fs.writeFileSync(this.cronFilePath, newCronEntries.join("\n") + "\n", "utf-8");
+  //   console.log(`🧹 Removed task with description "${task.description}" from cron file`);
+
+  //   // Delete the script if it exists
+  //   if (scriptPathToDelete && fs.existsSync(scriptPathToDelete)) {
+  //     try {
+  //       fs.unlinkSync(scriptPathToDelete);
+  //       console.log(`🗑️ Deleted backup script: ${scriptPathToDelete}`);
+  //     } catch (err) {
+  //       console.error(`❌ Failed to delete script at ${scriptPathToDelete}:`, err);
+  //     }
+  //   } else {
+  //     console.warn(`⚠️ Script file not found for deletion: ${scriptPathToDelete}`);
+  //   }
+  // }
+
   unschedule(task: BackUpTask): void {
     if (!fs.existsSync(this.cronFilePath)) return;
 
     const cronFileContents = fs.readFileSync(this.cronFilePath, "utf-8");
     const cronEntries = cronFileContents.split(/[\r\n]+/);
-
     let scriptPathToDelete: string | null = null;
 
     const newCronEntries = cronEntries.filter((line) => {
-      // const shouldRemove = line.includes(`# ${backupTaskTag}`) && line.includes(task.description);
-      const shouldRemove = line.includes(`run_backup_task${task.uuid}.sh`);
-
-      // If it's a match, extract the script path for deletion
+      const shouldRemove = line.includes(`run_backup_task_${task.uuid}.sh`);
       if (shouldRemove) {
         const parts = line.split(" ");
-        // const scriptPath = parts.slice(5).find(p => p.endsWith(".sh"));
-        const scriptPath = parts.find(p => p.includes(`run_backup_task${task.uuid}.sh`));
-        if (scriptPath) {
-          scriptPathToDelete = scriptPath;
-        }
+        const scriptPath = parts.find(p => p.includes(`run_backup_task_${task.uuid}.sh`));
+        if (scriptPath) scriptPathToDelete = scriptPath;
       }
-
       return !shouldRemove;
     });
 
-    // Write updated cron file
-    fs.writeFileSync(this.cronFilePath, newCronEntries.join("\n") + "\n", "utf-8");
-    console.log(`🧹 Removed task with description "${task.description}" from cron file`);
+    const tmpDir = fs.mkdtempSync(join(os.tmpdir(), "backup-unschedule-"));
+    const newCronPath = join(tmpDir, "new_cron");
+    const unscheduleScript = join(tmpDir, "unschedule.sh");
 
-    // Delete the script if it exists
-    if (scriptPathToDelete && fs.existsSync(scriptPathToDelete)) {
-      try {
-        fs.unlinkSync(scriptPathToDelete);
-        console.log(`🗑️ Deleted backup script: ${scriptPathToDelete}`);
-      } catch (err) {
-        console.error(`❌ Failed to delete script at ${scriptPathToDelete}:`, err);
-      }
-    } else {
-      console.warn(`⚠️ Script file not found for deletion: ${scriptPathToDelete}`);
+    fs.writeFileSync(newCronPath, newCronEntries.join("\n") + "\n", "utf-8");
+
+    const shellScript = `#!/bin/bash
+mv "${newCronPath}" "${this.cronFilePath}"
+chown root:root "${this.cronFilePath}"
+chmod 644 "${this.cronFilePath}"
+${scriptPathToDelete ? `rm -f "${scriptPathToDelete}"` : ""}
+systemctl restart ${getOS() === "debian" ? "cron" : "crond"}
+`;
+
+    fs.writeFileSync(unscheduleScript, shellScript, { mode: 0o700 });
+
+    try {
+      execSync(`${this.pkexec} bash "${unscheduleScript}"`);
+      console.log("✅ Task unscheduled with root permissions.");
+    } catch (err) {
+      console.error("❌ Failed to unschedule task:", err);
     }
   }
 
-  private ensureCronFile(): void {
-    if (!fs.existsSync(this.cronFilePath)) {
-      execSync(
-        `${this.pkexec} bash -c 'touch ${this.cronFilePath} && chmod a+rw ${this.cronFilePath}'`
-      );
+
+
+  async updateSchedule(task: BackUpTask): Promise < void> {
+      if(!fs.existsSync(this.cronFilePath)) {
+      throw new Error("Cron file not found.");
     }
+
+    const cronLines = fs.readFileSync(this.cronFilePath, 'utf-8').split('\n');
+    const lineIndex = cronLines.findIndex(line =>
+      line.includes(`run_backup_task_${task.uuid}.sh`)
+    );
+
+    if (lineIndex === -1) {
+      throw new Error(`Could not find matching cron entry for UUID ${task.uuid}`);
+    }
+
+    const originalLine = cronLines[lineIndex];
+    const parts = originalLine.trim().split(/\s+/);
+    const scriptPath = parts.find(p => p.endsWith('.sh'));
+
+    if (!scriptPath || !fs.existsSync(scriptPath)) {
+      throw new Error("Script not found at expected path.");
+    }
+
+    const date = new Date(task.schedule.startDate);
+    const minute = date.getMinutes();
+    const hour = date.getHours();
+
+    const comment = originalLine.includes('#') ? originalLine.substring(originalLine.indexOf('#')) : '';
+
+    const newLine = `${minute} ${hour} * * * root ${scriptPath} ${comment}`;
+    cronLines[lineIndex] = newLine;
+
+    const updatedContent = cronLines.join('\n');
+    runPrivilegedReplaceFile(updatedContent, this.cronFilePath, this.pkexec);
   }
+
 
   protected scheduleToCron(sched: TaskSchedule): string {
     switch (sched.repeatFrequency) {
@@ -234,16 +305,14 @@ systemctl restart ${getOS() === "debian" ? "cron" : "crond"}
     let [smbHost, smbShare] = task.target.split(":");
     smbShare = smbShare.split("/")[0];
 
-    const taskUUID = task.uuid ?? crypto.randomUUID(); // Only generate if not present
+    const taskUUID = task.uuid; // Only generate if not present
     task.uuid = taskUUID; // Persist in the object
 
     // Path to save the script
-    const scriptName = `run_backup_task${taskUUID}.sh`;
+    const scriptName = `run_backup_task_${taskUUID}.sh`;
     const scriptPath = join(getAppPath(), scriptName);
 
     const scriptContent = `#!/bin/bash
-set -e
-
 SMB_HOST='${smbHost}'
 SMB_SHARE='${smbShare}'
 SMB_USER='${smbUser}'
@@ -277,7 +346,7 @@ rmdir "$MOUNT_POINT"
     writeFileSync(scriptPath, scriptContent, { mode: 0o700 });
     chmodSync(scriptPath, 0o700); // Make sure it’s executable
 
-    const cronEntry = `${this.scheduleToCron(task.schedule)} ${scriptPath} # ${backupTaskTag} ${task.description}`;
+    const cronEntry = `${this.scheduleToCron(task.schedule)} root ${scriptPath} # ${backupTaskTag} ${task.description}`;
     console.log('backupTaskToCron Result:', cronEntry);
 
     return cronEntry;
@@ -330,7 +399,7 @@ rmdir "$MOUNT_POINT"
     const scriptPath = parts.slice(5).find(p => p.endsWith(".sh"));
     if (!scriptPath || !fs.existsSync(scriptPath)) return null;
 
-    const uuidMatch = scriptPath.match(/run_backup_task([a-f0-9\-]+)\.sh$/i);
+    const uuidMatch = scriptPath.match(/run_backup_task_([a-f0-9\-]+)\.sh$/i);
     const uuid = uuidMatch ? uuidMatch[1] : undefined;
     if (!uuid) return null;
 
