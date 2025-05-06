@@ -10,8 +10,8 @@ import { getMountSmbScript, getOS } from './utils';
 import { BackUpManager, BackUpManagerLin, BackUpManagerMac, BackUpManagerWin, BackUpSetupConfigurator } from './backup';
 import { BackupEntry, BackUpSetupConfig, BackUpTask, server, unwrap } from '@45drives/houston-common-lib';
 import { setupSsh } from './setupSsh';
-import fetchBackups from './backup/FetchBackups';
-import fetchFilesInBackup from './backup/FetchFilesFromBackup';
+import fetchBackups from './backup/fetchBackups';
+import fetchFilesInBackup from './backup/fetchFilesFromBackup';
 import restoreBackups from './backup/RestoreBackups';
 
 let discoveredServers: Server[] = [];
@@ -123,65 +123,28 @@ function createWindow() {
             backupManager.unschedule(task)
             mainWindow.webContents.send('notification', `Successfully removed ${task.source}->${task.target}!`);
           } else {
-
             mainWindow.webContents.send('notification', `Error: No Backup Manager was found able to handle this!`);
           }
 
         } else if (message.type === 'updateBackUpTask') {
           const task: BackUpTask = message.task;
           const backupManager = getBackUpManager();
-          const cronPath = '/etc/cron.d/houston-backup-manager';
 
           if (!backupManager) {
             mainWindow.webContents.send('notification', `Error: No Backup Manager available.`);
             return;
           }
 
-          if (!fs.existsSync(cronPath)) {
-            mainWindow.webContents.send('notification', `Error: Cron file not found.`);
-            return;
+          try {
+            await backupManager.updateSchedule(task);
+            const date = new Date(task.schedule.startDate);
+            const minute = date.getMinutes().toString().padStart(2, '0');
+            const hour = date.getHours();
+            mainWindow.webContents.send('notification', `Updated cron schedule for ${task.description} to ${hour}:${minute}`);
+          } catch (err: any) {
+            mainWindow.webContents.send('notification', `Error: ${err.message}`);
+            console.error("updateBackUpTask failed:", err);
           }
-
-          if (!task.uuid) {
-            mainWindow.webContents.send('notification', `Error: Task UUID is missing — cannot update.`);
-            return;
-          }
-
-          const cronLines = fs.readFileSync(cronPath, 'utf-8').split('\n');
-
-          const lineIndex = cronLines.findIndex(line =>
-            line.includes(`run_backup_task${task.uuid}.sh`)
-          );
-
-          if (lineIndex === -1) {
-            mainWindow.webContents.send('notification', `Error: Could not find matching cron entry for UUID ${task.uuid}.`);
-            return;
-          }
-
-          const originalLine = cronLines[lineIndex];
-          const parts = originalLine.trim().split(/\s+/);
-          const scriptPath = parts.find(p => p.endsWith('.sh'));
-
-          if (!scriptPath || !fs.existsSync(scriptPath)) {
-            mainWindow.webContents.send('notification', `Error: Script not found at expected path.`);
-            return;
-          }
-
-          const date = new Date(task.schedule.startDate);
-          const minute = date.getMinutes();
-          const hour = date.getHours();
-
-          const comment = originalLine.includes('#') ? originalLine.substring(originalLine.indexOf('#')) : '';
-
-          const newLine = `${minute} ${hour} * * * ${scriptPath} ${comment}`;
-          cronLines[lineIndex] = newLine;
-
-          fs.writeFileSync(cronPath, cronLines.join('\n'), 'utf-8');
-
-          mainWindow.webContents.send(
-            'notification',
-            `Updated cron schedule for ${task.description} to ${hour}:${minute.toString().padStart(2, '0')}`
-          );
         }
 
 
