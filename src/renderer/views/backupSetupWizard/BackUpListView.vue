@@ -190,9 +190,6 @@ function fetchBackupTasks() {
   IPCRouter.getInstance().addEventListener('sendBackupTasks', (backUpTasks2) => {
     console.log("tasks from backend:", backUpTasks2);
     backUpTasks2.forEach(backUpTask => {
-
-      console.log(backUpTask.schedule);
-
       backUpTask.schedule.startDate = new Date(backUpTask.schedule.startDate);
     })
     backUpTasks.value = backUpTasks2;
