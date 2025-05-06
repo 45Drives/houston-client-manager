@@ -349,9 +349,12 @@ IPCRouter.getInstance().send("backend", "action", "requestHostname");
 // Navigation
 const proceedToNextStep = () => {
 
+	const os = getOs();
+
+	const slashOrNotSlash = os === "win" ? "/" : ""
 	backUpSetupConfig?.backUpTasks.forEach(
 		task => {
-			task.target = `${selectedServer.value!.name}.local:${selectedServer.value!.shareName!}/${crypto.randomUUID()}/${hostname}${sanitizeFilePath(task.source)}`;
+			task.target = `${selectedServer.value!.name}.local:${selectedServer.value!.shareName!}/${crypto.randomUUID()}/${hostname}${slashOrNotSlash}${sanitizeFilePath(task.source)}`;
 			console.log('target saved:', task.target);
 		});
 

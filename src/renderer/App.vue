@@ -312,12 +312,9 @@ const openStorageSetup = (server: Server | null) => {
   currentServer.value = server;
   let newUrl = "";
   if (server) {
-    // console.log('server:', server);
-    // console.log('server.ip:', server.ip);
-
     const prodURL = 'super-simple-setup';
     const devURL = 'super-simple-setup-test';
-    newUrl = `https://${server.ip}:9090/${(isDev ? devURL : prodURL)}#dark=${darkModeState.value}&advanced=${advancedState.value}&client_ip=${clientip.value}&server_ip=${server.ip}`;
+    newUrl = `https://${server.ip}:9090/${(isDev.value ? devURL : prodURL)}#dark=${darkModeState.value}&advanced=${advancedState.value}&client_ip=${clientip.value}&server_ip=${server.ip}`;
 
   } else {
     currentUrl.value = "";
