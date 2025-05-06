@@ -1,8 +1,7 @@
 import { getOS } from "../utils";
 
-const path = require('path');
-const fs = require('fs');
-const fsAsync = require('fs/promises');
+import path from 'path';
+import fs from 'fs';
 
 export default async function fetchBackupsFromFile(data: any) {
 
