@@ -5,7 +5,7 @@ import { exec } from 'child_process';
 import { getAsset } from './utils';
 
 const options = {
-  name: '45drives Setup Wizard',
+  name: '45Drives Setup Wizard',
 };
 
 async function mountSambaClient(smb_host: string, smb_share: string, smb_user: string, smb_pass: string, mainWindow: BrowserWindow): Promise<string> {
