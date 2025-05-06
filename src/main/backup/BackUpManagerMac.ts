@@ -59,6 +59,11 @@ export class BackUpManagerMac implements BackUpManager {
     }
   }
 
+  async updateSchedule(task: BackUpTask): Promise<void> {
+    console.warn("🚧 updateSchedule is not yet implemented for macOS.");
+    throw new Error("Backup scheduling update is not supported on macOS yet.");
+  }
+
   private runAsAdmin(command: string, message: string = "This 45drives Setup Wizard requires administrator privileges."): void {
     execSync(`osascript -e 'display dialog "${message.replace(/"/g, '\\"')}" with title "Backup Scheduler" buttons {"OK"} default button 1'`);
     execSync(`osascript -e 'do shell script "${this.escapeForAppleScript(command)}" with administrator privileges'`);

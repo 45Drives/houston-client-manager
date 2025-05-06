@@ -269,6 +269,7 @@ const handleFolderSelect = async () => {
 				source: folderPath,
 				target: `\\\\${selectedServer.value?.name}.local\\${selectedServer.value?.shareName}`,
 				mirror: false,
+				uuid: crypto.randomUUID(),
 			};
 
 			console.log("NewTask.Startdate:", newTask.schedule.startDate);
@@ -350,8 +351,8 @@ IPCRouter.getInstance().send("backend", "action", "requestHostname");
 const proceedToNextStep = () => {
 
 	backUpSetupConfig?.backUpTasks.forEach(
-		task => {
-			task.target = `${selectedServer.value!.name}.local:${selectedServer.value!.shareName!}/${crypto.randomUUID()}/${hostname}${sanitizeFilePath(task.source)}`;
+		(task: BackUpTask) => {
+			task.target = `${selectedServer.value!.name}.local:${selectedServer.value!.shareName!}/${hostname}/${task.uuid}${sanitizeFilePath(task.source)}`;
 			console.log('target saved:', task.target);
 		});
 

@@ -258,6 +258,7 @@ const handleFolderSelect = async () => {
 					source: folderPath,
 					target: `\\\\${selectedServer.value?.name}.local\\${selectedServer.value?.shareName}`,
 					mirror: false,
+					uuid: crypto.randomUUID(),
 				};
 
 				console.log('newTask:', newTask);
@@ -327,7 +328,7 @@ const proceedToNextStep = () => {
 	// console.log('hostname:', hostname);
 	backUpSetupConfig?.backUpTasks.forEach(
 		task => {
-			task.target = `${selectedServer.value!.name}.local:${selectedServer.value!.shareName!}/${crypto.randomUUID()}/${hostname}${sanitizeFilePath(task.source)}`;
+			task.target = `${selectedServer.value!.name}.local:${selectedServer.value!.shareName!}/${hostname}/${task.uuid}${sanitizeFilePath(task.source)}`;
 			console.log('target saved:', task.target);
 		});
 

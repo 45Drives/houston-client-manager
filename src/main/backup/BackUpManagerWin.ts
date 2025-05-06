@@ -108,8 +108,6 @@ export class BackUpManagerWin implements BackUpManager {
   }
 
   async schedule(task: BackUpTask, username: string, password: string): Promise<{ stdout: string, stderr: string }> {
-    const uuid = task.uuid ?? crypto.randomUUID();
-    task.uuid = uuid;
     console.log("task.target", task.target);
 
     let targetPath = "/tank/" + task.target.split(":")[1];
@@ -147,7 +145,7 @@ $actionScript = @"
 :: description = ${task.description}
 :: mirror = ${task.mirror}
 :: schedule = ${JSON.stringify(task.schedule)}
-:: uuid = ${uuid}
+:: uuid = ${task.uuid}
 
 :: Run your batch file and capture output
 for /f "delims=" %%O in ('"$batFile" $smbHost $smbShare $username $password') do (
@@ -180,7 +178,7 @@ net use %drive%: /delete /y
 "@
 
 # Save script to a temp .bat file
-$tempScriptPath = "${getAppPath()}\\run_backup_task${uuid}.bat"
+$tempScriptPath = "${getAppPath()}\\run_backup_task_${task.uuid}.bat"
 [System.IO.File]::WriteAllText($tempScriptPath, $actionScript)
 
 ${this.scheduleToTaskTrigger(task.schedule)}
@@ -189,7 +187,7 @@ $action = New-ScheduledTaskAction -Execute "cmd.exe" -Argument "/C \`"$tempScrip
 
 $principal = New-ScheduledTaskPrincipal -UserId "$user" -LogonType S4U -RunLevel Highest
 
-$task = Register-ScheduledTask -Action $action -Trigger $taskTrigger -Principal $principal -TaskName "${TASK_ID}_${uuid}"
+$task = Register-ScheduledTask -Action $action -Trigger $taskTrigger -Principal $principal -TaskName "${TASK_ID}_${task.uuid}"
 
 ${this.dailyTaskTriggerUpdate(task.schedule)}
 
@@ -297,9 +295,11 @@ if (-not $hasBatchLogon -or -not $hasServiceLogon) {
 
 
   unschedule(task: BackUpTask): void {
-    const powershellScript = `
-Unregister-ScheduledTask -TaskName "${task.description}" -Confirm:$false
-`;
+//     const powershellScript = `
+// Unregister-ScheduledTask -TaskName "${task.description}" -Confirm:$false
+// `;
+    const taskName = `${TASK_ID}_${task.uuid}`;
+    const powershellScript = `Unregister-ScheduledTask -TaskName "${taskName}" -Confirm:$false`;
 
     this.runScriptAdmin(powershellScript, "unchedule_task");
 
@@ -349,6 +349,30 @@ $taskTrigger = New-ScheduledTaskTrigger -At $startTime -Monthly
         console.error("RepeatFrequency unknown", sched.repeatFrequency)
     }
   }
+
+  async updateSchedule(task: BackUpTask): Promise<void> {
+    const taskName = `${TASK_ID}_${task.uuid}`;
+
+    const deleteScript = `
+if (Get-ScheduledTask -TaskName "${taskName}" -ErrorAction SilentlyContinue) {
+  Unregister-ScheduledTask -TaskName "${taskName}" -Confirm:$false
+} else {
+  Write-Host "⚠ Task '${taskName}' not found — skipping delete"
+}
+`;
+
+    try {
+      // Step 1: Remove old version
+      await this.runScriptAdmin(deleteScript, `delete_${task.uuid}`);
+
+      // Step 2: Recreate with new schedule
+      await this.schedule(task, "", ""); // Provide actual username/password if required
+    } catch (err) {
+      console.error(`❌ Failed to update schedule for ${taskName}:`, err);
+      throw new Error(`Failed to update task: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
 
   protected convertTriggersToTaskSchedule(triggers: any[]): TaskSchedule | null {
     try {
