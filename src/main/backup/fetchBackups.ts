@@ -2,15 +2,12 @@ import { BrowserWindow } from "electron";
 import { getOS } from "../utils";
 import { BackupEntry } from "@45drives/houston-common-lib";
 import mountSmbPopup from "../smbMountPopup";
-const path = require('path');
-const fs = require('fs');
-const fsAsync = require('fs/promises');
+import path from 'path';
+import fsAsync from 'fs/promises';
 
 export default async function fetchBackupsFromServer(data: any, mainWindow: BrowserWindow): Promise<BackupEntry[]> {
-  const os = getOS();
-  const mountResult = await mountSmbPopup(data.smb_host, data.smb_share, data.smb_user, data.smb_pass, mainWindow);
+  await mountSmbPopup(data.smb_host, data.smb_share, data.smb_user, data.smb_pass, mainWindow);
 
-  const mountJson = JSON.parse(mountResult);
   const results: BackupEntry[] = [];
 
   const slash = getOS() === "win" ? "\\" : "/"
@@ -80,7 +77,7 @@ export default async function fetchBackupsFromServer(data: any, mainWindow: Brow
   return results;
 }
 
-async function isDirectory(path) {
+async function isDirectory(path: string) {
   try {
     const stats = await fsAsync.stat(path);
     return stats.isDirectory();
@@ -90,7 +87,7 @@ async function isDirectory(path) {
   }
 }
 
-async function walkDir(dir: String, results: String[] = []) {
+async function walkDir(dir: string, results: string[] = []) {
   const list = await fsAsync.readdir(dir, { withFileTypes: true });
 
   results.push(dir);
