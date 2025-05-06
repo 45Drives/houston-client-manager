@@ -2,7 +2,7 @@
   <div
     class="w-screen h-screen overflow-hidden flex flex-col items-center justify-center text-default bg-default text-center">
 
-    <div v-if="isDev">
+    <div>
       <button @click="showWizard('storage')" class="btn btn-secondary w-40 h-min p-2 mx-2">
         Storage Setup
       </button>
@@ -317,7 +317,6 @@ const openStorageSetup = (server: Server | null) => {
 
     const prodURL = 'super-simple-setup';
     const devURL = 'super-simple-setup-test';
-    // newUrl = `https://${server.ip}:9090/super-simple-setup-test#dark=${darkModeState.value}&advanced=${advancedState.value}&client_ip=${clientip.value}&server_ip=${server.ip}`;
     newUrl = `https://${server.ip}:9090/${(isDev ? devURL : prodURL)}#dark=${darkModeState.value}&advanced=${advancedState.value}&client_ip=${clientip.value}&server_ip=${server.ip}`;
 
   } else {
