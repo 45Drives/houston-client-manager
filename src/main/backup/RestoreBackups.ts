@@ -1,7 +1,7 @@
 import { getOS } from "../utils";
 import fsAsync from "fs/promises";
 import path from "path";
-import { IPCRouter } from '../../../houston-common/houston-common-lib/lib/electronIPC/IPCRouter';
+import { IPCRouter } from '@45drives/houston-common-lib';
 
 export default async function restoreBackups(data: any) {
 
