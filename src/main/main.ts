@@ -10,8 +10,8 @@ import { getMountSmbScript, getOS } from './utils';
 import { BackUpManager, BackUpManagerLin, BackUpManagerMac, BackUpManagerWin, BackUpSetupConfigurator } from './backup';
 import { BackupEntry, BackUpSetupConfig, BackUpTask, server, unwrap } from '@45drives/houston-common-lib';
 import { setupSsh } from './setupSsh';
-import fetchBackups from './backup/FetchBackups';
-import fetchFilesInBackup from './backup/FetchFilesFromBackup';
+import fetchBackups from './backup/fetchBackups';
+import fetchFilesInBackup from './backup/fetchFilesFromBackup';
 import restoreBackups from './backup/RestoreBackups';
 
 let discoveredServers: Server[] = [];
