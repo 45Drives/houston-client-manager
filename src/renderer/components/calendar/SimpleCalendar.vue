@@ -48,6 +48,13 @@
                 </div>
             </div>
 
+            <div v-if="showInvalidDateWarning">
+                <p class="text-warning text-sm mt-1">
+                    Selected day is invalid for this month. Adjusted to last valid day.
+                </p>
+
+            </div>
+
             <div :title="parsedIntervalString"
                 class="col-span-1 mt-2 text-base text-default bg-well p-2 rounded-md text-center w-full max-w-[600px] mx-auto">
                 <p class="mt-1 text-sm text-default">Start date/time: {{ schedule.startDate.toLocaleString() }}</p>
@@ -74,11 +81,6 @@
                         </div>
                     </div>
                     <div class="grid grid-cols-7 gap-1 w-full grid-rows-6 auto-rows-fr">
-                        <!-- <div v-for="day in days" :key="day.id"
-                            :class="{ 'bg-accent text-muted border-default': day.isPadding, 'bg-green-600 dark:bg-green-800': day.isMarked && !day.isPadding, 'bg-default': !day.isMarked && !day.isPadding }"
-                            class="p-2 text-default text-center border border-default rounded">
-                            {{ day.date }}
-                        </div> -->
                         <div v-for="day in days" :key="day.id"
                             :class="[ day.isPadding ? 'bg-accent text-muted cursor-default' : 'cursor-pointer hover:bg-gray-700',
                             day.isMarked && !day.isPadding ? 'bg-green-600 dark:bg-green-800 text-white' : 'bg-default' ]"
@@ -86,19 +88,19 @@
                             @click="!day.isPadding && selectDay(Number(day.date))">
                             {{ day.date }}
                         </div>
-                        </div>
                     </div>
                 </div>
             </div>
+        </div>
 
-            <template #footer>
-                <div class="button-group-row w-full justify-between">
-                    <button @click.stop="emit('close')" class="btn btn-danger">Close</button>
-                    <button :disabled="savingSchedule" @click="saveScheduleBtn()" class="btn btn-primary">
-                        {{ savingSchedule ? 'Saving...' : 'Save Schedule' }}
-                    </button>
-                </div>
-            </template>
+        <template #footer>
+            <div class="button-group-row w-full justify-between">
+                <button @click.stop="emit('close')" class="btn btn-danger">Close</button>
+                <button :disabled="savingSchedule" @click="saveScheduleBtn()" class="btn btn-primary">
+                    {{ savingSchedule ? 'Saving...' : 'Save Schedule' }}
+                </button>
+            </div>
+        </template>
     </CardContainer>
 </template>
 
@@ -117,12 +119,6 @@ const emit = defineEmits(['close', 'save']);
 
 const savingSchedule = ref(false);
 
-// const schedule = ref<TaskSchedule>(props.taskSchedule || { repeatFrequency: 'day', startDate: new Date()});
-// const schedule = ref<TaskSchedule>(
-//     props.taskSchedule
-//         ? { ...props.taskSchedule, startDate: new Date(props.taskSchedule.startDate) } // Ensure it's a Date object
-//         : { repeatFrequency: 'day', startDate: new Date() } // Default when adding a new schedule
-// );
 const schedule = toRef(props, 'taskSchedule')
 
 // Extract day/month values from startDate
@@ -137,16 +133,28 @@ const today = new Date();
 const currentMonth = ref(today.getMonth());
 const currentYear = ref(today.getFullYear());
 
-// Update startDate when inputs change
+// Update startDate when inputs change and check for valid day/month combos
 const updateStartDate = () => {
-    schedule.value.startDate = new Date(
-        yearValue.value,
-        monthValue.value - 1,
-        dayValue.value,
-        hourValue.value,
-        minuteValue.value
-    );
+    let day = dayValue.value;
+    const month = monthValue.value - 1; // JS months are 0-indexed
+    const year = yearValue.value;
+
+    if (schedule.value.repeatFrequency === 'month') {
+        const daysInMonth = new Date(year, month + 1, 0).getDate();
+        if (day > daysInMonth) {
+            day = daysInMonth;
+            dayValue.value = day; // Adjust UI to show new valid day
+        }
+    }
+
+    schedule.value.startDate = new Date(year, month, day, hourValue.value, minuteValue.value);
 };
+
+const showInvalidDateWarning = computed(() => {
+    if (schedule.value.repeatFrequency !== 'month') return false;
+    const daysInMonth = new Date(yearValue.value, monthValue.value, 0).getDate();
+    return dayValue.value > daysInMonth;
+});
 
 function selectDay(d: number) {
     dayValue.value = d;
@@ -162,9 +170,6 @@ watch(() => schedule.value.repeatFrequency, (newFrequency) => {
     }
 });
 
-// watch([minuteValue, hourValue, dayValue, monthValue], () => {
-//     updateStartDate();
-// });
 watch([hourValue, minuteValue, dayValue, monthValue, yearValue], () => {
     if (hourValue.value != null && minuteValue.value != null) {
         updateStartDate();
@@ -181,7 +186,6 @@ watch(
     },
     { immediate: true }
 );
-
 
 const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 const weekDays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];

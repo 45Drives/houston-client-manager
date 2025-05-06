@@ -96,7 +96,9 @@ rmdir "$MOUNT_POINT"
 
       fs.writeFileSync(tempScriptPath, scriptContent, { mode: 0o700 });
 
-      const cronLine = `${this.scheduleToCron(task.schedule)} root ${finalScriptPath} # ${backupTaskTag} ${task.description}`;
+      // const cronLine = `${this.scheduleToCron(task.schedule)} root ${finalScriptPath} # ${backupTaskTag} ${task.description}`;
+      const isoStart = task.schedule.startDate.toISOString();
+      const cronLine = `${this.scheduleToCron(task.schedule)} root ${finalScriptPath} # ${backupTaskTag} start=${isoStart} ${task.description}`;
       cronEntries.push(cronLine);
 
       moveCommands.push(`mv "${tempScriptPath}" "${finalScriptPath}"`);
@@ -152,48 +154,6 @@ systemctl restart ${getOS() === "debian" ? "cron" : "crond"}
   }
 
 
-  // unschedule(task: BackUpTask): void {
-  //   if (!fs.existsSync(this.cronFilePath)) return;
-
-  //   const cronFileContents = fs.readFileSync(this.cronFilePath, "utf-8");
-  //   const cronEntries = cronFileContents.split(/[\r\n]+/);
-
-  //   let scriptPathToDelete: string | null = null;
-
-  //   const newCronEntries = cronEntries.filter((line) => {
-  //     // const shouldRemove = line.includes(`# ${backupTaskTag}`) && line.includes(task.description);
-  //     const shouldRemove = line.includes(`run_backup_task_${task.uuid}.sh`);
-
-  //     // If it's a match, extract the script path for deletion
-  //     if (shouldRemove) {
-  //       const parts = line.split(" ");
-  //       // const scriptPath = parts.slice(5).find(p => p.endsWith(".sh"));
-  //       const scriptPath = parts.find(p => p.includes(`run_backup_task_${task.uuid}.sh`));
-  //       if (scriptPath) {
-  //         scriptPathToDelete = scriptPath;
-  //       }
-  //     }
-
-  //     return !shouldRemove;
-  //   });
-
-  //   // Write updated cron file
-  //   fs.writeFileSync(this.cronFilePath, newCronEntries.join("\n") + "\n", "utf-8");
-  //   console.log(`🧹 Removed task with description "${task.description}" from cron file`);
-
-  //   // Delete the script if it exists
-  //   if (scriptPathToDelete && fs.existsSync(scriptPathToDelete)) {
-  //     try {
-  //       fs.unlinkSync(scriptPathToDelete);
-  //       console.log(`🗑️ Deleted backup script: ${scriptPathToDelete}`);
-  //     } catch (err) {
-  //       console.error(`❌ Failed to delete script at ${scriptPathToDelete}:`, err);
-  //     }
-  //   } else {
-  //     console.warn(`⚠️ Script file not found for deletion: ${scriptPathToDelete}`);
-  //   }
-  // }
-
   unschedule(task: BackUpTask): void {
     if (!fs.existsSync(this.cronFilePath)) return;
 
@@ -215,9 +175,11 @@ systemctl restart ${getOS() === "debian" ? "cron" : "crond"}
     const newCronPath = join(tmpDir, "new_cron");
     const unscheduleScript = join(tmpDir, "unschedule.sh");
 
-    fs.writeFileSync(newCronPath, newCronEntries.join("\n") + "\n", "utf-8");
+    try {
+      execSync(`${this.pkexec} bash "${unscheduleScript}"`);
+      fs.writeFileSync(newCronPath, newCronEntries.join("\n") + "\n", "utf-8");
 
-    const shellScript = `#!/bin/bash
+      const shellScript = `#!/bin/bash
 mv "${newCronPath}" "${this.cronFilePath}"
 chown root:root "${this.cronFilePath}"
 chmod 644 "${this.cronFilePath}"
@@ -225,20 +187,16 @@ ${scriptPathToDelete ? `rm -f "${scriptPathToDelete}"` : ""}
 systemctl restart ${getOS() === "debian" ? "cron" : "crond"}
 `;
 
-    fs.writeFileSync(unscheduleScript, shellScript, { mode: 0o700 });
+      fs.writeFileSync(unscheduleScript, shellScript, { mode: 0o700 });
 
-    try {
-      execSync(`${this.pkexec} bash "${unscheduleScript}"`);
       console.log("✅ Task unscheduled with root permissions.");
     } catch (err) {
       console.error("❌ Failed to unschedule task:", err);
     }
   }
 
-
-
-  async updateSchedule(task: BackUpTask): Promise < void> {
-      if(!fs.existsSync(this.cronFilePath)) {
+  async updateSchedule(task: BackUpTask): Promise<void> {
+    if (!fs.existsSync(this.cronFilePath)) {
       throw new Error("Cron file not found.");
     }
 
@@ -262,13 +220,38 @@ systemctl restart ${getOS() === "debian" ? "cron" : "crond"}
     const date = new Date(task.schedule.startDate);
     const minute = date.getMinutes();
     const hour = date.getHours();
+    const dayOfMonth = date.getDate();
+    const dayOfWeek = date.getDay(); // 0 = Sunday
+
+    let cronTiming: string;
+
+    switch (task.schedule.repeatFrequency) {
+      case 'hour':
+        // Every hour at the specific minute
+        cronTiming = `${minute} * * * *`;
+        break;
+      case 'day':
+        // Daily at a specific time
+        cronTiming = `${minute} ${hour} * * *`;
+        break;
+      case 'week':
+        // Weekly on the same weekday as startDate
+        cronTiming = `${minute} ${hour} * * ${dayOfWeek}`;
+        break;
+      case 'month':
+        // Monthly on the same day of the month
+        cronTiming = `${minute} ${hour} ${dayOfMonth} * *`;
+        break;
+      default:
+        throw new Error(`Unsupported repeat frequency: ${task.schedule.repeatFrequency}`);
+    }
 
     const comment = originalLine.includes('#') ? originalLine.substring(originalLine.indexOf('#')) : '';
+    const newLine = `${cronTiming} root ${scriptPath} ${comment}`;
 
-    const newLine = `${minute} ${hour} * * * root ${scriptPath} ${comment}`;
     cronLines[lineIndex] = newLine;
-
     const updatedContent = cronLines.join('\n');
+
     runPrivilegedReplaceFile(updatedContent, this.cronFilePath, this.pkexec);
   }
 
@@ -346,7 +329,18 @@ rmdir "$MOUNT_POINT"
     writeFileSync(scriptPath, scriptContent, { mode: 0o700 });
     chmodSync(scriptPath, 0o700); // Make sure it’s executable
 
-    const cronEntry = `${this.scheduleToCron(task.schedule)} root ${scriptPath} # ${backupTaskTag} ${task.description}`;
+    
+    // const cronEntry = `${this.scheduleToCron(task.schedule)} root ${scriptPath} # ${backupTaskTag} ${task.description}`;
+
+    if (!task.schedule?.startDate || isNaN(new Date(task.schedule.startDate).getTime())) {
+      console.warn("⚠️ Invalid or missing startDate when creating cron:", task);
+    } else {
+      console.log("✅ startDate being added:", task.schedule.startDate.toISOString());
+    }
+
+    const isoStart = task.schedule.startDate.toISOString();
+    const cronEntry = `${this.scheduleToCron(task.schedule)} root ${scriptPath} # ${backupTaskTag} start=${isoStart} ${task.description}`;
+
     console.log('backupTaskToCron Result:', cronEntry);
 
     return cronEntry;
@@ -360,22 +354,30 @@ rmdir "$MOUNT_POINT"
     const monthRe = /^(\d+) (\d+) (\d+) \* \*/;
 
     let schedule: TaskSchedule;
+    let isoStartDate: Date | null = null;
+
+    // Try to extract ISO start date from comment
+    const isoMatch = cron.match(/start=([^\s]+)/);
+    if (isoMatch && isoMatch[1]) {
+      isoStartDate = new Date(isoMatch[1]);
+    }
+
     let match: RegExpExecArray | null;
 
     if ((match = hourRe.exec(cron))) {
       const [minutes] = match.slice(1).map(Number);
-      const startDate = new Date();
+      const startDate = isoStartDate ?? new Date();
       startDate.setMinutes(minutes);
       schedule = { repeatFrequency: "hour", startDate };
     } else if ((match = dayRe.exec(cron))) {
       const [minutes, hours] = match.slice(1).map(Number);
-      const startDate = new Date();
+      const startDate = isoStartDate ?? new Date();
       startDate.setMinutes(minutes);
       startDate.setHours(hours);
       schedule = { repeatFrequency: "day", startDate };
     } else if ((match = weekRe.exec(cron))) {
       const [minutes, hours, weekDay] = match.slice(1).map(Number);
-      const startDate = new Date();
+      const startDate = isoStartDate ?? new Date();
       startDate.setMinutes(minutes);
       startDate.setHours(hours);
       const currentWeekDay = startDate.getDay();
@@ -383,7 +385,7 @@ rmdir "$MOUNT_POINT"
       schedule = { repeatFrequency: "week", startDate };
     } else if ((match = monthRe.exec(cron))) {
       const [minutes, hours, dayOfMonth] = match.slice(1).map(Number);
-      const startDate = new Date();
+      const startDate = isoStartDate ?? new Date();
       startDate.setMinutes(minutes);
       startDate.setHours(hours);
       startDate.setDate(dayOfMonth);
