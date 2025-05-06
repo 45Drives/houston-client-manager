@@ -2,16 +2,15 @@ import { app, BrowserWindow, ipcMain, dialog, powerSaveBlocker } from 'electron'
 import { join } from 'path';
 import mdns from 'multicast-dns';
 import os from 'os';
-import * as fs from 'fs';
 import { Server } from './types';
 import mountSmbPopup from './smbMountPopup';
 import { IPCRouter } from '../../houston-common/houston-common-lib/lib/electronIPC/IPCRouter';
-import { getMountSmbScript, getOS } from './utils';
+import { getOS } from './utils';
 import { BackUpManager, BackUpManagerLin, BackUpManagerMac, BackUpManagerWin, BackUpSetupConfigurator } from './backup';
-import { BackupEntry, BackUpSetupConfig, BackUpTask, server, unwrap } from '@45drives/houston-common-lib';
+import { BackUpSetupConfig, BackUpTask, server, unwrap } from '@45drives/houston-common-lib';
 import { setupSsh } from './setupSsh';
-import fetchBackups from './backup/fetchBackups';
-import fetchFilesInBackup from './backup/fetchFilesFromBackup';
+import fetchBackups from './backup/FetchBackups';
+import fetchFilesInBackup from './backup/FetchFilesFromBackup';
 import restoreBackups from './backup/RestoreBackups';
 
 let discoveredServers: Server[] = [];
