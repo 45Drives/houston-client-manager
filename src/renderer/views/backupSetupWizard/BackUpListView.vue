@@ -158,39 +158,13 @@ async function editSchedule(selectedBackUp: BackUpTask) {
 }
 
 const deleteTask = async (task: BackUpTask) => {
-  // const confirmed = await unwrap(confirm({
-  //   header: "Delete Backup Task?",
-  //   body: `Are you sure you want to delete the backup task from "${task.source}" to "${task.target}"? This action cannot be undone.`,
-  //   dangerous: true,
-  //   confirmButtonText: "Delete",
-  //   cancelButtonText: "Cancel"
-  // }));
-
-  /*  How its used in other components
-  
-      if (
-          issues.value.length === 0 ||
-          await unwrap(confirm({
-            header: "Proceed with issues?",
-            body:
-              "The following issues have been found:\n" +
-              issues.value.map((issue) => issue.message).join("\n"),
-            dangerous: true,
-            confirmButtonText: "Continue anyway",
-          }))
-      ) {...}
-
-
-      const proceed = await confirm({
-        body: 'Please ensure you save your username and password in a secure location for future reference. You will not be able to retrieve them later. If you have already saved them, click "OK" to proceed. Otherwise, click "Back" to cancel and securely store your credentials.',
-        header: "Save Your Credentials", confirmButtonText: "OK, Proceed", cancelButtonText: "Back"
-      }).unwrapOr(false);
-      console.log("handleConfirm:", proceed); // Debugging log
-      if (proceed === true) {...}
-        
-  */
-
-  const confirmed = window.confirm(`Are you sure you want to delete the backup task from \n"${task.source}" to \n"${task.target}"? \nThis action cannot be undone.`);
+  const confirmed = await unwrap(confirm({
+    header: "Delete Backup Task?",
+    body: `Are you sure you want to delete the backup task from "${task.source}" to "${task.target}"? This action cannot be undone.`,
+    dangerous: true,
+    confirmButtonText: "Delete",
+    cancelButtonText: "Cancel"
+  }));
 
   if (confirmed === true) {
     if (selectedBackUp.value == task) {

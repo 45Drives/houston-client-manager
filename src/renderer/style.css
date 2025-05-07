@@ -56,3 +56,11 @@
   opacity: 0.65;
   z-index: 10;
 }
+
+.bg-secondary,
+.bg-primary {
+  background-color: var(--btn-bg) !important;
+  border-color: var(--btn-border) !important;
+  color: white !important;
+  z-index: 10;
+}

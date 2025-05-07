@@ -1,7 +1,7 @@
 <template>
   <CardContainer>
     <template #header class="!text-center">
-      <div class="relative flex items-center justify-center h-24">
+      <div class="relative flex items-center justify-center h-18">
         <div class="absolute left-0 bg-white p-1 px-4 rounded-lg">
           <DynamicBrandingLogo :division="division" />
         </div>
@@ -15,24 +15,21 @@
     <p class="text-1xl font-semibold text-center">
       If you were expected to see backups and see none go back and make sure you enter the correct server, username and
       password.
-
       <br>
-
       Search and select a backup on the left then you should see the files in that backup.
-
       <br>
       Select the files you want to restore and once you are ready click "Restore Selected Files" button.
     </p>
 
-    <div class="flex justify-between">
+    <div class="flex justify-between mt-1">
       <div class="w-1/2 pr-2">
         <div class="mb-2">
           <input v-model="search" type="text" placeholder="Type To Search For backup"
-            class="w-full p-2 border rounded" />
+            class="w-full p-2 border rounded bg-white text-black" />
         </div>
         <table class="max-h-96 overflow-y-auto w-full border text-left">
           <thead>
-            <tr class="bg-gray-300">
+            <tr class="bg-primary">
               <th class="p-2">Folder</th>
               <th class="p-2">Client</th>
               <th class="p-2">Server</th>
@@ -40,9 +37,10 @@
             </tr>
           </thead>
           <tbody>
-            <tr v-for="backup in filteredBackups" :key="backup.uuid"
-              :class="{ 'bg-yellow-100': selectedBackup?.uuid === backup.uuid }" @click="selectBackup(backup)"
-              class="cursor-pointer hover:bg-gray-100">
+            <tr v-for="backup in filteredBackups" :key="backup.uuid" :class="[
+              'cursor-pointer ',
+  selectedBackup?.uuid === backup.uuid ? 'bg-yellow-100 hover:bg-yellow-200 text-black' : 'bg-default text-default'
+            ]" @click="selectBackup(backup)">
               <td class="p-2">{{ backup.folder }}</td>
               <td class="p-2">{{ backup.client }}</td>
               <td class="p-2">{{ backup.server }}</td>
@@ -54,26 +52,36 @@
 
       <div class="w-1/2 pl-2">
         <div class="text-center mb-2">
-          <input class="bg-blue-300 hover:bg-blue-300 text-white w-full p-2 border rounded" disabled
+          <input class="bg-well w-full p-2 border rounded text-default" disabled
             placeholder="Select a backup to see files">
           </input>
         </div>
-        <div class="max-h-96 overflow-y-auto" v-if="selectedBackup">
+        <div class="max-h-96 overflow-y-auto text-default" v-if="selectedBackup">
 
           <table class="w-full border text-left">
             <thead>
-              <tr class="bg-gray-300">
+              <tr class="bg-secondary">
                 <th class="p-2">File</th>
                 <th class="p-2">Select</th>
               </tr>
             </thead>
             <tbody>
-              <tr v-for="(file, index) in selectedBackup.files" :key="index">
+              <!-- <tr v-for="(file, index) in selectedBackup.files" :key="index">
                 <td class="p-2">{{ file.path }}</td>
                 <td class="p-2">
                   <input type="checkbox" v-model="file.selected" />
                 </td>
+              </tr> -->
+              <tr v-for="(file, index) in selectedBackup.files" :key="index" class="cursor-pointer" :class="[
+                'cursor-pointer ',
+  file?.selected ? 'bg-yellow-100 hover:bg-yellow-200 text-black' : 'bg-default text-default'
+              ]" @click="toggleFileSelection(file)">
+                <td class="p-2">{{ file.path }}</td>
+                <td class="p-2" @click.stop>
+                  <input type="checkbox" v-model="file.selected" />
+                </td>
               </tr>
+
             </tbody>
           </table>
         </div>
@@ -95,7 +103,7 @@
         <div v-if="selectedBackup" class="flex justify-center gap-4 mt-2">
           <button class="bg-blue-500 text-white px-4 py-2 rounded" @click="deselectAll">Deselect All</button>
           <button class="bg-blue-500 text-white px-4 py-2 rounded" @click="selectAll">Select All</button>
-          <button class="bg-blue-500 text-white px-4 py-2 rounded" @click="restoreSelected">Restore Selected
+          <button @click="restoreSelected" class="bg-blue-500 text-white px-4 py-2 rounded">Restore Selected
             Files</button>
         </div>
       </div>
@@ -103,12 +111,11 @@
   </CardContainer>
 </template>
 
-<script lang="ts" setup>
+<script setup lang="ts">
 import { ref, computed, inject, onActivated } from 'vue'
-import { useWizardSteps, DynamicBrandingLogo, confirm } from '@45drives/houston-common-ui';
+import { useWizardSteps, DynamicBrandingLogo, confirm, CardContainer } from '@45drives/houston-common-ui';
 import { divisionCodeInjectionKey, restoreBackUpSetupDataKey } from '../../keys/injection-keys';
-import { CardContainer } from "@45drives/houston-common-ui";
-import { IPCRouter, unwrap, type BackupEntry, type FileEntry } from '@45drives/houston-common-lib';
+import { IPCRouter, type BackupEntry, type FileEntry } from '@45drives/houston-common-lib';
 
 const division = inject(divisionCodeInjectionKey);
 const restoreBackupsData = inject(restoreBackUpSetupDataKey)!;
@@ -136,6 +143,10 @@ const filteredBackups = computed(() => {
     backup.folder.toLowerCase().includes(search.value.toLowerCase())
   )
 })
+
+function toggleFileSelection(file: FileEntry) {
+  file.selected = !file.selected;
+}
 
 onActivated(() => {
 
@@ -206,20 +217,25 @@ function deselectAll() {
   selectedBackup.value?.files.forEach(file => file.selected = false)
 }
 
-async function restoreSelected() {
+const restoreSelected = async () => {
+  // const confirmed = window.confirm('Restoring these files will overwrite existing files if they exist.');
 
-  if (!(await unwrap(
+  const confirmed = await 
     confirm({
       header: "Proceed with Restoring Selected Files",
       body:
         "Restoring these files will overwrite existing files if they exist.",
       dangerous: true,
-      confirmButtonText: "Continue anyway",
-    })
-  ))) {
+      confirmButtonText: "Houston, OBLITERATE!",
+    }).unwrapOr(false)
+  
+  if (!confirmed) {
     return;
   }
-  
+  // if (!confirmed) {
+  //   return;
+  // }
+
   if (!selectedBackup.value) return
   const filesToRestore = selectedBackup.value.files.filter(file => file.selected)
 
@@ -244,6 +260,50 @@ async function restoreSelected() {
     data: restorePayload
   }))
 }
+
+/* async function restoreSelected() {
+
+  const confirmed = window.confirm('Restoring these files will overwrite existing files if they exist.');
+
+  if (!(await unwrap(
+    confirm({
+      header: "Proceed with Restoring Selected Files",
+      body:
+        "Restoring these files will overwrite existing files if they exist.",
+      dangerous: true,
+      confirmButtonText: "Continue anyway",
+    })
+  ))) {
+    return;
+  }
+  // if (!confirmed) {
+  //   return;
+  // }
+  
+  if (!selectedBackup.value) return
+  const filesToRestore = selectedBackup.value.files.filter(file => file.selected)
+
+  restoreProgress.value = {
+    current: 0,
+    total: filesToRestore.length,
+    lastFile: ""
+  };
+
+  const restorePayload = {
+    smb_host: (restoreBackupsData.server?.serverName ?? "") + ".local",
+    smb_share: restoreBackupsData.server?.shareName ?? "",
+    smb_user: restoreBackupsData.username,
+    smb_pass: restoreBackupsData.password,
+    uuid: selectedBackup.value.uuid,
+    client: selectedBackup.value.client,
+    files: filesToRestore.map(file => file.path)
+  }
+
+  IPCRouter.getInstance().send("backend", "action", JSON.stringify({
+    type: "restoreBackups",
+    data: restorePayload
+  }))
+} */
 </script>
 
 <style scoped>

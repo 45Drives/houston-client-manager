@@ -1,16 +1,16 @@
 import { getOS } from "../utils";
 import fsAsync from "fs/promises";
 import path from "path";
-import { IPCRouter } from '@45drives/houston-common-lib';
+import { IPCMessageRouter } from '../../..//houston-common/houston-common-lib/lib/electronIPC';
 
-export default async function restoreBackups(data: any) {
-
+export default async function restoreBackups(data: any, IPCRouter: IPCMessageRouter) {
+  
   console.log("restore backups")
 
   const slash = getOS() === "win" ? "\\" : "/"
 
   console.log(data)
-  const basePath = `${slash}${slash}${data.smb_host}${slash}${data.smb_share}`;
+  const basePath = getOS() === "win" ? `${slash}${slash}${data.smb_host}${slash}${data.smb_share}` : `/mnt/${data.smb_share}`;
   const uuid = data.uuid;
   const client = data.client;
   let files: string[] = data.files;
@@ -35,7 +35,7 @@ export default async function restoreBackups(data: any) {
     console.log("Copying " + sourcePath + " to " + copyToFilePath);
 
 
-    IPCRouter.getInstance().send('renderer', 'action', JSON.stringify({
+    IPCRouter.send('renderer', 'action', JSON.stringify({
       type: "restoreBackupsResult",
       result: await copyFile(sourcePath, copyToFilePath, file)
     }));

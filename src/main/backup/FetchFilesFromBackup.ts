@@ -8,7 +8,7 @@ export default async function fetchBackupsFromFile(data: any) {
   const slash = getOS() === "win" ? "\\" : "/"
   
   console.log(data)
-  const basePath = `${slash}${slash}${data.smb_host}${slash}${data.smb_share}`;
+  const basePath = getOS() === "win" ? `${slash}${slash}${data.smb_host}${slash}${data.smb_share}` : `/mnt/${data.smb_share}`;
   const uuid = data.uuid;
 
   console.log("uuid", uuid)
