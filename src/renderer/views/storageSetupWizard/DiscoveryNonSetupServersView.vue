@@ -2,8 +2,8 @@
   <CardContainer>
     <template #header>
       <div class="relative flex items-center justify-center h-18">
-          <div class="absolute left-0 bg-white p-1 px-4 rounded-lg">
-          <DynamicBrandingLogo  />
+        <div class="absolute left-0 bg-white p-1 px-4 rounded-lg">
+          <DynamicBrandingLogo />
         </div>
         <p class="text-3xl font-semibold text-center">
           Discovered 45Drives Storage Server
@@ -26,12 +26,18 @@
         up the remaining server(s).
       </p>
 
-      <HoustonServerListView class="w-1/3 px-5 justify-center text-2xl" @serverSelected="handleServerSelected" />
+      <div class="overflow-hidden w-full">
+        <div class="max-h-[50vh] overflow-y-auto">
+          <HoustonServerListView class="w-1/3 px-5 justify-center text-2xl" @serverSelected="handleServerSelected" />
+        </div>
+      </div>
+
 
       <br />
 
       <p class="w-9/12 text-2xl">
-        If your storage server is not appearing in the list above, please return to the Hardware Setup and ensure all
+        If your storage server is not appearing in the list above, please return to the Hardware Setup and ensure
+        all
         steps were completed correctly.
         <a href="#" @click.prevent="onRestartSetup" class="text-blue-600 hover:underline">Start Over</a>
       </p>
