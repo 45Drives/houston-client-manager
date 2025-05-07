@@ -2,7 +2,7 @@
   <CardContainer>
     <template #header>
       <div class="relative flex items-center justify-center h-18">
-          <div class="absolute left-0 bg-white p-1 px-4 rounded-lg">
+        <div class="absolute left-0 bg-white p-1 px-4 rounded-lg">
           <DynamicBrandingLogo :division="division" />
         </div>
         <p class="text-3xl font-semibold text-center">
@@ -11,6 +11,7 @@
       </div>
     </template>
 
+    <!-- <div class="flex flex-col h-full w-full px-4 space-y-6"> -->
     <div class="flex flex-col h-full justify-center items-center">
       <p class="w-9/12 text-center text-2xl">
         Select a backup from the list to view. You may be prompted for password.
@@ -18,9 +19,14 @@
 
       <br />
 
-      <BackUpListView class=" p-5 justify-center text-2xl" @backUpTaskSelected="handleBackUpTaskSelected" />
+      <div class="overflow-hidden w-full">
+        <div class="bg-well p-4 rounded-lg border border-default max-h-[50vh] overflow-y-auto">
+          <BackUpListView class="p-5 justify-center text-2xl" @backUpTaskSelected="handleBackUpTaskSelected" />
 
-      <p class="w-9/12 text-center text-2xl">
+        </div>
+      </div>
+
+      <p class="w-9/12 text-center text-2xl mt-2">
         If your backup is not showing make sure you set it up correctly by going back and creating a backup plan.
       </p>
 
