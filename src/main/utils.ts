@@ -30,48 +30,23 @@ export function getRsync() {
 
 
 export async function getAsset(folder: string, fileName: string, isFolder: boolean = false): Promise<string> {
-  const filePath = path.join(__dirname, "..", "..", folder, fileName);
+  const isDev = process.env.NODE_ENV === 'development';
 
-  console.log("asset: ", filePath);
+  if (isDev) {
+    const filePath = path.join(__dirname, "..", "..", folder, fileName);
 
-  // Check if running inside an ASAR package
-  let extractedFilepath = filePath;
-  if (__dirname.includes("app.asar")) {
-    // Path to the .asar file (usually in the dist folder after building)
-    const asarFile = path.join(__dirname).replace("\\main", "");
+    console.log("asset: ", filePath);
 
-    // Path to extract the file to
-    const tempPath = path.join(os.tmpdir(), "houston-manager", "main", folder, fileName);
+    return filePath;
+  } else {
 
-    await fs.promises.mkdir(path.join(os.tmpdir(), "houston-manager", "main", folder), { recursive: true });
+    const filePath = path.join(__dirname, "..", "..", "..", folder, fileName);
 
-    // Extract the file from the asar archive
-    const extractFile = (source, destination) => {
-      try {
-        if (isFolder) {
-          const fileData = asar.extractAll(source, `${destination}\\${fileName}`); // Path to the file inside the .asar archive
-          console.log('File extracted successfully to:', `${destination}\\${fileName}`);
-        } else {
+    console.log("asset: ", filePath);
 
-          const fileData = asar.extractFile(source, `${folder}\\${fileName}`); // Path to the file inside the .asar archive
-          fs.writeFileSync(destination, fileData);
-          console.log('File extracted successfully to:', destination);
-        }
-      } catch (error) {
-        console.error('Error extracting file:', error);
-      }
-    };
-
-    // Extract `main.js` from the `app.asar` archive
-    if (!fs.existsSync(tempPath)) {
-
-      extractFile(asarFile, tempPath);
-    }
-
-    extractedFilepath = tempPath;
+    return filePath;
   }
-
-  return extractedFilepath;
+  
 }
 
 export function getAppPath() {

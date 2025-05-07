@@ -78,7 +78,7 @@
       <div class="flex flex-col lg:flex-row gap-10 w-full justify-center items-start">
         <!-- Server Selection -->
         <div class="w-full lg:w-2/5">
-          <HoustonServerListView class="w-full text-xl" @serverSelected="handleServerSelected" />
+          <HoustonServerListView class="w-full text-xl" :filterOutStorageSetupComplete="false" @serverSelected="handleServerSelected" />
         </div>
 
         <!-- Username & Password -->

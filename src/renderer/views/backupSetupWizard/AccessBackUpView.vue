@@ -63,7 +63,7 @@
 
 <script setup lang="ts">
 import CardContainer from '../../components/CardContainer.vue';
-import { ref, computed, inject } from 'vue';
+import { ref, computed, inject, watch } from 'vue';
 import { useWizardSteps, DynamicBrandingLogo } from '@45drives/houston-common-ui';
 import { IPCRouter } from '@45drives/houston-common-lib';
 import { divisionCodeInjectionKey } from '../../keys/injection-keys';
@@ -103,6 +103,9 @@ const handleOpen = () => {
     const share = path.split("/")[0];
     console.log("Share:", share); // Output: "backups"
 
+    watch(username, () => openingBackup.value = false);
+    watch(password, () => openingBackup.value = false);
+    
     IPCRouter.getInstance().addEventListener("action", data => {
       try {
         const response = JSON.parse(data);

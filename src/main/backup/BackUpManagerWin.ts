@@ -1,6 +1,6 @@
 import { BackUpManager } from "./types";
 import { BackUpTask, TaskSchedule } from "@45drives/houston-common-lib";
-import { formatDateForTask, getAppPath, getMountSmbScript, getNoneQuotedScp, getScp, getSmbTargetFromSmbTarget, getSmbTargetFromSSHTarget, getSsh, getSSHKey, getSSHTargetFromSmbTarget } from "../utils";
+import { formatDateForTask, getAppPath, getMountSmbScript, getSmbTargetFromSmbTarget } from "../utils";
 import sudo from 'sudo-prompt';
 import path from "path";
 import fs from 'fs';
@@ -132,8 +132,6 @@ ${this.getAddBackupGroupsToLogOnBatchAndService()}
 
 Write-Host "user being used: $user"
 
-${this.chanagePrivilagesOnSSHKey()}
-
 $sourcePath = "${task.source}"
 $destinationPath = "${getSmbTargetFromSmbTarget(task.target).replace(/\//g, "\\")}"
 $mirror = ${task.mirror ? "$true" : "$false"}  # Set to $true if you want to mirror the directories
@@ -209,46 +207,6 @@ if ($groupMembers -notcontains $user) {
 } else {
     Write-Output "$user is already a member of Backup Operators."
 }    
-`
-  }
-
-  chanagePrivilagesOnSSHKey() {
-    const takeOwnerShip = "takeown /F `" + getSSHKey() + "` /A"
-    return `
-  $privateKey = "${getSSHKey()}"
-  
-  # Ensure the file exists
-  if (!(Test-Path $privateKey)) {
-      Write-Output "File does not exist: $privateKey"
-      exit 1
-  }
-  
-  # Get the current user
-  $activeUser = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
-  
-  # Take ownership of the file
-  $takeownCmd = "${takeOwnerShip}"
-  Invoke-Expression $takeownCmd
-  
-  # Get the ACL for the file
-  $acl = Get-Acl $privateKey
-  
-  # Set the owner to the current user
-  $owner = New-Object System.Security.Principal.NTAccount($activeUser)
-  $acl.SetOwner($owner)
-  
-  # Remove all existing access rules
-  $acl.SetAccessRuleProtection($true, $false)
-  $acl.Access | ForEach-Object { $acl.RemoveAccessRule($_) }
-  
-  # Grant read-only permissions to the active user
-  $rule = New-Object System.Security.AccessControl.FileSystemAccessRule($activeUser, "Read", "Allow")
-  $acl.SetAccessRule($rule)
-  
-  # Apply the new ACL settings
-  Set-Acl -Path $privateKey -AclObject $acl
-  
-  Write-Output "Owner updated and permissions set to read-only: $activeUser has access to $privateKey"
 `
   }
 
