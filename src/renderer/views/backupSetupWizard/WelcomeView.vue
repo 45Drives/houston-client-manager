@@ -6,7 +6,7 @@
           <DynamicBrandingLogo :division="division" />
         </div>
         <p class="text-3xl font-semibold text-center">
-          Welcome to the 45Drives Back Up Setup Wizard!
+          Welcome to the 45Drives Backup Setup Wizard!
         </p>
       </div>
     </template>

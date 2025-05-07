@@ -49,15 +49,15 @@
     <NotificationView />
 
     <!-- Page curl corner effect -->
-    <div v-if="!showWebView" class="page-corner-effect pointer-events-none"></div>
+    <div v-if="!showWebView && !showRestoreBackupWizard" class="page-corner-effect pointer-events-none"></div>
 
     <!-- Double arrows -->
-    <div v-if="!showWebView"
+    <div v-if="!showWebView && !showRestoreBackupWizard"
       class="double-arrow absolute bottom-4 right-4 z-10 text-gray-400 text-xl animate-pulse pointer-events-none">
       &raquo;
     </div>
   </div>
-
+  <GlobalModalConfirm />
 </template>
 
 <script setup lang="ts">
@@ -67,7 +67,7 @@ import { useAdvancedModeState } from './composables/useAdvancedState';
 import { reportError, reportSuccess } from './components/NotificationView.vue';
 import NotificationView from './components/NotificationView.vue';
 import { Server, DivisionType } from './types';
-import { useWizardSteps } from '@45drives/houston-common-ui'
+import { useWizardSteps, GlobalModalConfirm } from '@45drives/houston-common-ui'
 import StorageSetupWizard from './views/storageSetupWizard/Wizard.vue';
 import BackUpSetupWizard from './views/backupSetupWizard/Wizard.vue';
 import RestoreBackUpWizard from './views/restoreBackupWizard/Wizard.vue';

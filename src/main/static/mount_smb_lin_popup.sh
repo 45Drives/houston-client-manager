@@ -33,7 +33,16 @@ SMB_SERVER=$(echo "$SMB_PATH" | awk -F'/' '{print $3}')
 
 # Check if the share is already mounted
 if mount | grep -q "$MOUNT_POINT"; then
-    sudo umount "$MOUNT_POINT" > /dev/null 2>&1
+    echo '{"message": "SMB share is already mounted"}'
+    
+    # Open the already mounted folder
+    if command -v gio >/dev/null 2>&1; then
+        gio open "$MOUNT_POINT"
+    elif command -v xdg-open >/dev/null 2>&1; then
+        xdg-open "$MOUNT_POINT"
+    fi
+
+    exit 0
 fi
 
 # Create mount point if it doesn't exist
@@ -59,6 +68,13 @@ sudo mount -t cifs "$SMB_PATH" "$MOUNT_POINT" -o credentials=$CREDENTIALS_FILE,v
 # Check if mounting was successful
 if [ $? -eq 0 ]; then
     echo "{\"MountPoint\": \"$MOUNT_POINT\", \"smb_server\": \"$SMB_SERVER\"}"
+    
+    # Open the mounted folder
+    if command -v gio >/dev/null 2>&1; then
+        gio open "$MOUNT_POINT"
+    elif command -v xdg-open >/dev/null 2>&1; then
+        xdg-open "$MOUNT_POINT"
+    fi
     
     exit 0
 else

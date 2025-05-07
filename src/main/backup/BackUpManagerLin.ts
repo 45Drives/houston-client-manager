@@ -72,7 +72,7 @@ SMB_HOST='${smbHost}'
 SMB_SHARE='${smbShare}'
 SMB_USER='${username}'
 SMB_PASS='${password}'
-SOURCE='${task.source}'
+SOURCE='${task.source}/'
 TARGET='${target}'
 
 MOUNT_POINT="/mnt/backup_$$"

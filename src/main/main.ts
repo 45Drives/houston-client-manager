@@ -111,7 +111,7 @@ function createWindow() {
 
         } else if (message.type === 'restoreBackups') {
 
-          restoreBackups(message.data)
+          await restoreBackups(message.data, IPCRouter.getInstance())
 
         } else if (message.type === 'removeBackUpTask') {
           const task: BackUpTask = message.task
