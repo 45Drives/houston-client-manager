@@ -28,7 +28,7 @@
 
       <div class="overflow-hidden w-full">
         <div class="max-h-[50vh] overflow-y-auto">
-          <HoustonServerListView class="w-1/3 px-5 justify-center text-2xl" @serverSelected="handleServerSelected" />
+          <HoustonServerListView class="w-1/3 px-5 justify-center text-2xl" :filterOutStorageSetupComplete="true" @serverSelected="handleServerSelected" />
         </div>
       </div>
 

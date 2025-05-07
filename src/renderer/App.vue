@@ -408,8 +408,10 @@ const onWebViewLoaded = async () => {
       webview.value.className = "h-[100vh] w-full";
     });
 
-  // comment this line out for prod
-  webview.value.openDevTools();
+    if (isDev.value) {
+
+      webview.value.openDevTools();
+    }
 }
 
 const onWelcomeWizardComplete = (server: Server) => {

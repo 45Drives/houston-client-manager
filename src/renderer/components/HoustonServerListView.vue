@@ -36,6 +36,8 @@
 import { ref, watch } from 'vue';
 import { Server } from '../types'
 
+const props = defineProps<{ filterOutStorageSetupComplete: boolean }>();
+
 const servers = ref<Server[]>([]);
 const selectedServer = ref<Server | null>(null);
 
@@ -43,7 +45,7 @@ const selectedServer = ref<Server | null>(null);
 window.electron.ipcRenderer.on('discovered-servers', async (_event, discoveredServers: Server[]) => {
   const isDev = await window.electron.ipcRenderer.invoke("is-dev")
 
-  if (isDev) {
+  if (isDev || !props.filterOutStorageSetupComplete) {
 
     servers.value = discoveredServers;
   } else {

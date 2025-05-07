@@ -36,7 +36,7 @@ for /f "tokens=2 delims=\\" %%A in ("%NETWORK_PATH%") do set "SMB_SERVER=%%A"
 :: Check if the SMB server is already mounted
 for /f "tokens=2" %%D in ('net use ^| findstr /I "%SMB_SERVER%"') do (
     echo {"message": "SMB share is already mounted on drive %%D"}
-    start explorer %%D:  & exit /b 0
+    start explorer %%D  & exit /b 0
 )
 
 :: Find an available drive letter (Z: downward)
@@ -52,7 +52,7 @@ exit /b 1
 
 :MOUNT_SMB
 :: Map the network drive with credentials
-net use %DRIVE_LETTER%: %NETWORK_PATH% /user:%USERNAME% "%PASSWORD%" /persistent:yes >nul 2>&1
+net use %DRIVE_LETTER%: %NETWORK_PATH% /user:%USERNAME% "%PASSWORD%" /persistent:no >nul 2>&1
 
 :: Check if the mapping was successful
 if %ERRORLEVEL%==0 (
