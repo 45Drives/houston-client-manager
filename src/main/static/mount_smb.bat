@@ -51,7 +51,7 @@ exit /b 1
 
 :MOUNT_SMB
 :: Map the network drive with credentials
-net use %DRIVE_LETTER%: %NETWORK_PATH% /user:%USERNAME% "%PASSWORD%" /persistent:yes >nul 2>&1
+net use %DRIVE_LETTER%: %NETWORK_PATH% /user:%USERNAME% "%PASSWORD%" /persistent:no >nul 2>&1
 
 :: Check if the mapping was successful
 if %ERRORLEVEL%==0 (

@@ -40,7 +40,7 @@ export default async function fetchBackupsFromServer(data: any, mainWindow: Brow
             return stat.mtime;
           }));
           const mostRecent = new Date(Math.max(...times.map(t => t.getTime())));
-          lastModified = mostRecent.toISOString().split('T')[0]; // format YYYY-MM-DD
+          lastModified = mostRecent.toISOString().split('T')[0];
         }
 
         if (fileCount == 0 && keepSearchForBaseFolder) {
