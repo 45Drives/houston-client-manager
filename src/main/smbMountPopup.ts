@@ -28,7 +28,7 @@ async function mountSambaClient(smb_host: string, smb_share: string, smb_user: s
 
 async function mountSambaClientWin(smb_host: string, smb_share: string, smb_user: string, smb_pass: string, mainWindow: BrowserWindow): Promise<string> {
   return new Promise((resolve, reject) => {
-    getAsset("static", "mount_smb.bat").then(batpath => {
+    getAsset("static", "mount_smb_popup.bat").then(batpath => {
       exec(`cmd /C ""${batpath}" ${smb_host} ${smb_share} ${smb_user} "${smb_pass}""`, (error, stdout, stderr) => {
         handleExecOutput(error, stdout, stderr, smb_host, smb_share, mainWindow);
 
