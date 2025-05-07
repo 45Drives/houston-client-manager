@@ -230,7 +230,6 @@ function createWindow() {
             }
 
             if (!existingServer) {
-              setupSsh(server);
               discoveredServers.push(server);
             } else {
               existingServer.lastSeen = Date.now();
