@@ -11,69 +11,75 @@
 			</div>
 		</template>
 
-		<div class="w-9/12 mx-auto text-center">
-			<div class="text-center">
-				<p class="mb-6 text-2xl">
-					Choose the folders you want to back up and choose how often you want to back it up.
-				</p>
-				<p class="mb-6 text-2xl">
-					File explorer may open on different screen when you click the add folder button "+".
-				</p>
-			</div>
-
-			<div class="flex flex-col space-y-4 mt-[5rem]">
-				<!-- Backup Location -->
-				<div class="flex items-center">
-					<div class="flex items-center w-[25%] flex-shrink-0 space-x-2">
-						<label class="text-default font-semibold text-left">Back Up Location</label>
-						<CommanderToolTip :message="`This is the designated backup storage location you set up earlier.`" />
+		<div class="flex flex-col max-h-[calc(100vh-12rem)] min-h-0 flex-1 overflow-hidden">
+			<div class="flex flex-col h-full min-h-0">
+				<div class="flex flex-col flex-1 min-h-0 overflow-hidden w-9/12 mx-auto text-left space-y-2">
+					<div class="text-center shrink-0">
+						<p class="mb-2 text-2xl">
+							Choose the folders you want to back up and choose how often you want to back it up.
+						</p>
+						<p class="mb-2 text-2xl">
+							File explorer may open on different screen when you click the add folder button "+".
+						</p>
 					</div>
-					<select v-model="selectedServer"
-						class="bg-default h-[3rem] text-default rounded-lg px-4 flex-1 border border-default">
-						<option v-for="item in servers" :key="item.ip" :value="item">
-							{{ `\\\\${item.name}\\${item.shareName}` }}
-						</option>
-					</select>
-				</div>
 
-				<!-- Backup Frequency -->
-				<div class="flex py-2">
-					<label class="w-[25%] py-2 text-default font-semibold text-start">
-						Backup Interval <span v-if="scheduleFrequency != 'hour'">(Starts At 12:00 AM (Midnight)):</span>
-					</label>
-					<select v-model="scheduleFrequency"
-						class="bg-default h-[3rem] text-default rounded-lg px-4 flex-1 border border-default">
-						<option value="hour">Hourly</option>
-						<option value="day">Daily</option>
-						<option value="week">Weekly</option>
-						<option value="month">Monthly</option>
-					</select>
-				</div>
-
-				<!-- Folder Selection Button -->
-				<div class="flex items-center mt-[5rem]">
-					<button @click="handleFolderSelect" class="relative btn btn-secondary h-10 w-15">
-						<PlusIcon class="w-6 h-6 text-white-500" />
-					</button>
-					<CommanderToolTip class="ml-[4rem]"
-						:message="`Click the plus icon to select a folder for backup. You can add multiple locations by selecting them one at a time.`" />
-					<p class="h-[3rem] text-start ml-[1rem] px-4 py-4 flex-1 font-semibold text-lg">
-						Select a folder to back up to the designated location.
-					</p>
-				</div>
-
-				<!-- Selected Folders List -->
-				<div v-if="backUpSetupConfig?.backUpTasks.length! > 0" class="space-y-2 border rounded-lg border-gray-500">
-					<div v-for="(folder, index) in selectedFolders" :key="folder.path" class="p-2">
-						<div class="flex items-center m-[1rem]">
+					<div class="shrink-0 space-y-2 overflow-hidden w-full">
+						<!-- Backup Location -->
+						<div class="flex items-center">
 							<div class="flex items-center w-[25%] flex-shrink-0 space-x-2">
-								<label class="text-default font-semibold text-left">{{ folder.name }}</label>
+								<label class="text-default font-semibold text-left">Back Up Location</label>
+								<CommanderToolTip
+									:message="`This is the designated backup storage location you set up earlier.`" />
 							</div>
-							<input disabled :value="folder.path"
-								class="bg-default h-[3rem] mr-[1rem] text-default rounded-lg px-4 flex-1 border border-default" />
-							<button @click="removeFolder(index)" class="btn btn-secondary">
-								<MinusIcon class="w-6 h-6 text-white-500"></MinusIcon>
+							<select v-model="selectedServer"
+								class="bg-default h-[3rem] text-default rounded-lg px-4 flex-1 border border-default">
+								<option v-for="item in servers" :key="item.ip" :value="item">
+									{{ `\\\\${item.name}\\${item.shareName}` }}
+								</option>
+							</select>
+						</div>
+
+						<!-- Backup Frequency -->
+						<div class="shrink-0 flex flex-row items-center py-2">
+							<label class="w-[25%] text-default font-semibold text-start">
+								Backup Interval <span v-if="scheduleFrequency != 'hour'">(Starts At 12:00 AM
+									(Midnight)):</span>
+							</label>
+							<select v-model="scheduleFrequency"
+								class="bg-default h-[3rem] text-default rounded-lg px-4 flex-1 border border-default">
+								<option value="hour">Hourly</option>
+								<option value="day">Daily</option>
+								<option value="week">Weekly</option>
+								<option value="month">Monthly</option>
+							</select>
+						</div>
+
+						<!-- Folder Selection Button -->
+						<div class="flex flex-row items-center mt-4">
+							<button @click="handleFolderSelect" class="btn btn-secondary h-10 w-15">
+								<PlusIcon class="w-6 h-6 text-white" />
 							</button>
+							<CommanderToolTip class="ml-4"
+								:message="`Click the plus icon to select a folder for backup. You can add multiple locations by selecting them one at a time.`" />
+							<p class="text-start ml-2 font-semibold text-lg">
+								Select a folder to back up to the designated location.
+							</p>
+						</div>
+
+						<!-- Selected Folders List -->
+						<div v-if="backUpSetupConfig?.backUpTasks.length! > 0"
+							class="overflow-y-auto max-h-[40vh] border border-default rounded-lg shadow-inner bg-well p-2 space-y-4">
+							<div v-for="(folder, index) in selectedFolders" :key="folder.path"
+								class="flex items-center p-2">
+								<div class="w-[25%] flex-shrink-0 space-x-2 flex items-center">
+									<label class="text-default font-semibold text-left">{{ folder.name }}</label>
+								</div>
+								<input disabled :value="folder.path"
+									class="bg-default h-[3rem] mr-4 text-default rounded-lg px-4 flex-1 border border-default" />
+								<button @click="removeFolder(index)" class="btn btn-secondary">
+									<MinusIcon class="w-6 h-6 text-white" />
+								</button>
+							</div>
 						</div>
 					</div>
 				</div>
@@ -112,6 +118,7 @@ import MessageDialog from '../../components/MessageDialog.vue';
 import { divisionCodeInjectionKey } from '../../keys/injection-keys';
 import { BackUpTask, IPCMessageRouter, IPCRouter, server, unwrap } from "@45drives/houston-common-lib";
 import { sanitizeFilePath } from "./utils";
+
 const division = inject(divisionCodeInjectionKey);
 // Wizard navigation
 const { completeCurrentStep, prevStep } = useWizardSteps("backup");

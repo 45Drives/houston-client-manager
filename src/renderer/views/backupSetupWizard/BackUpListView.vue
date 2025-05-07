@@ -1,14 +1,10 @@
 <template>
   <div class="flex flex-col">
-    <!-- <div class="text-header text-center border-b border-default mb-2">
-      Back Ups
-    </div> -->
-
     <div v-if="backUpTasks.length == 0" class="spinner"></div>
 
-    <!-- Scrollable Task Grid -->
-    <div class="overflow-y-auto bg-well p-2 rounded-lg border border-default">
-      <div class="grid gap-2" :class="{
+    <!-- <div class="bg-well p-4 rounded-lg border border-default max-h-[45vh] overflow-y-auto w-full"> -->
+    <div class="">
+      <div class="grid gap-4" :class="{
         'grid-cols-1': backUpTasks.length <= 2,
         'md:grid-cols-2': backUpTasks.length >= 3,
         'lg:grid-cols-3': backUpTasks.length >= 5
@@ -167,22 +163,48 @@ const deleteTask = async (task: BackUpTask) => {
   //   body: `Are you sure you want to delete the backup task from "${task.source}" to "${task.target}"? This action cannot be undone.`,
   //   dangerous: true,
   //   confirmButtonText: "Delete",
+  //   cancelButtonText: "Cancel"
   // }));
+
+  /*  How its used in other components
+  
+      if (
+          issues.value.length === 0 ||
+          await unwrap(confirm({
+            header: "Proceed with issues?",
+            body:
+              "The following issues have been found:\n" +
+              issues.value.map((issue) => issue.message).join("\n"),
+            dangerous: true,
+            confirmButtonText: "Continue anyway",
+          }))
+      ) {...}
+
+
+      const proceed = await confirm({
+        body: 'Please ensure you save your username and password in a secure location for future reference. You will not be able to retrieve them later. If you have already saved them, click "OK" to proceed. Otherwise, click "Back" to cancel and securely store your credentials.',
+        header: "Save Your Credentials", confirmButtonText: "OK, Proceed", cancelButtonText: "Back"
+      }).unwrapOr(false);
+      console.log("handleConfirm:", proceed); // Debugging log
+      if (proceed === true) {...}
+        
+  */
+
   const confirmed = window.confirm(`Are you sure you want to delete the backup task from \n"${task.source}" to \n"${task.target}"? \nThis action cannot be undone.`);
 
-  if (!confirmed) return;
-
-  if (selectedBackUp.value == task) {
-    selectedBackUp.value = null;
-    emit('backUpTaskSelected', null);
-  }
-  backUpTasks.value = backUpTasks.value.filter(t => t.source !== task.source || t.target !== task.target);
-  IPCRouter.getInstance().send("backend", 'action', JSON.stringify(
-    {
-      type: "removeBackUpTask",
-      task: task
+  if (confirmed === true) {
+    if (selectedBackUp.value == task) {
+      selectedBackUp.value = null;
+      emit('backUpTaskSelected', null);
     }
-  ))
+    backUpTasks.value = backUpTasks.value.filter(t => t.source !== task.source || t.target !== task.target);
+    IPCRouter.getInstance().send("backend", 'action', JSON.stringify(
+      {
+        type: "removeBackUpTask",
+        task: task
+      }
+    ))
+  }
 };
 
 function fetchBackupTasks() {

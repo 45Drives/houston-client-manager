@@ -11,7 +11,7 @@
       </div>
     </template>
 
-    <div class="flex flex-col items-center justify-center text-center w-full h-full py-10">
+    <div class="flex flex-col items-center justify-center text-center w-full h-full py-2">
       <!-- Complete Section -->
       <div class="complete-section flex flex-col items-center justify-center text-center">
 
@@ -178,7 +178,7 @@ onBeforeUnmount(() => {
 }
 
 .checkmark {
-  font-size: 5rem;
+  font-size: 3rem;
   color: #4caf50;
   margin: 1rem 0;
 }
