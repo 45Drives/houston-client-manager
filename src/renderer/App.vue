@@ -2,59 +2,50 @@
   <div
     class="w-screen h-screen overflow-hidden flex flex-col items-center justify-center text-default bg-default text-center">
 
-    <div>
-      <button @click="showWizard('storage')" class="btn btn-secondary w-40 h-min p-2 mx-2">
-        Storage Setup
-      </button>
-
-      <button @click="showWizard('backup')" class="btn btn-secondary w-40 h-min p-2 mx-2">
-        Backup Setup
-      </button>
-
-      <button @click="showWizard('restore-backup')" class="btn btn-secondary w-40 h-min p-2 mx-2">
-        Restore Backup
-      </button>
-    </div>
-
-    <div class="w-full h-full flex items-center justify-center" v-show="showWelcomeSetupWizard">
-      <StorageSetupWizard id="setup" :onComplete="onWelcomeWizardComplete" />
-    </div>
-    <div class="w-full h-full flex items-center justify-center" v-show="showBackUpSetupWizard">
-      <BackUpSetupWizard id="backup" :onComplete="onBackUpWizardComplete" />
-    </div>
-    <div class="w-full h-full flex items-center justify-center" v-show="showRestoreBackupWizard">
-      <RestoreBackUpWizard id="restore-backup" :onComplete="onRestoreBackUpWizardComplete" />
-    </div>
-
-    <webview v-show="showWebView && !loadingWebview && !waitingForServerReboot" id="myWebview" title="test"
-      :src="currentUrl" allowpopups nodeintegration allow-same-origin allow-scripts partition="persist:authSession"
-      webpreferences="javascript=yes,webSecurity=no,enable-cookies=true,nodeIntegration=false,contextIsolation=true"
-      ref="webview" @did-finish-load="onWebViewLoaded" />
-
-    <div v-if="loadingWebview" class="flex flex-col items-center justify-center p-4">
-      <p class="text-2xl text-center">Give us a few while we login...</p>
-      <div id="spinner" class="spinner"></div>
-    </div>
-
-    <div v-if="waitingForServerReboot" class="flex flex-col items-center justify-center p-4">
-      <p class="text-2xl text-center">Waiting for {{ currentServer!.ip }} to reboot...</p>
-      <div id="spinner" class="spinner"></div>
-    </div>
-
-    <div v-if="scanningNetworkForServers" class="flex flex-col items-center justify-center p-4">
+    <!-- 🌀 FULL SCREEN LOADING WHEN SCANNING -->
+    <div v-if="scanningNetworkForServers" class="flex flex-col items-center justify-center w-full h-full p-4">
       <p class="text-2xl text-center">Give us a few while we scan for connected servers...</p>
       <div id="spinner" class="spinner"></div>
     </div>
 
-    <NotificationView />
+    <!-- 🎯 MAIN APP CONTENT -->
+    <div v-else class="w-full h-full relative flex flex-col items-center justify-center">
 
-    <!-- Page curl corner effect -->
-    <div v-if="!showWebView && !showRestoreBackupWizard" class="page-corner-effect pointer-events-none"></div>
+      <div class="w-full h-full flex items-center justify-center" v-if="currentWizard === 'storage'">
+        <StorageSetupWizard id="setup" :onComplete="onWizardComplete" />
+      </div>
 
-    <!-- Double arrows -->
-    <div v-if="!showWebView && !showRestoreBackupWizard"
-      class="double-arrow absolute bottom-4 right-4 z-10 text-gray-400 text-xl animate-pulse pointer-events-none">
-      &raquo;
+      <div class="w-full h-full flex items-center justify-center" v-else-if="currentWizard === 'backup'">
+        <BackUpSetupWizard id="backup" :onComplete="onWizardComplete" />
+      </div>
+
+      <div class="w-full h-full flex items-center justify-center" v-else-if="currentWizard === 'restore-backup'">
+        <RestoreBackUpWizard id="restore-backup" :onComplete="onWizardComplete" />
+      </div>
+
+      <webview v-show="showWebView && !loadingWebview && !waitingForServerReboot" id="myWebview" title="test"
+        :src="currentUrl" allowpopups nodeintegration allow-same-origin allow-scripts partition="persist:authSession"
+        webpreferences="javascript=yes,webSecurity=no,enable-cookies=true,nodeIntegration=false,contextIsolation=true"
+        ref="webview" @did-finish-load="onWebViewLoaded" />
+
+      <div v-if="loadingWebview || waitingForServerReboot"
+        class="absolute inset-0 z-40 bg-default flex flex-col items-center justify-center">
+        <p class="text-2xl text-center">
+          <template v-if="loadingWebview">Give us a few while we login...</template>
+          <template v-else-if="waitingForServerReboot">Waiting for {{ currentServer?.ip }} to reboot...</template>
+        </p>
+        <div id="spinner" class="spinner"></div>
+      </div>
+
+      <!-- Page curl corner effect -->
+      <div v-if="!showWebView && currentWizard !== 'restore-backup'" class="page-corner-effect pointer-events-none">
+      </div>
+
+      <!-- Double arrows -->
+      <div v-if="!showWebView && currentWizard !== 'restore-backup'"
+        class="double-arrow absolute bottom-4 right-4 z-10 text-gray-400 text-xl animate-pulse pointer-events-none">
+        &raquo;
+      </div>
     </div>
   </div>
   <GlobalModalConfirm />
@@ -71,32 +62,33 @@ import { useWizardSteps, GlobalModalConfirm } from '@45drives/houston-common-ui'
 import StorageSetupWizard from './views/storageSetupWizard/Wizard.vue';
 import BackUpSetupWizard from './views/backupSetupWizard/Wizard.vue';
 import RestoreBackUpWizard from './views/restoreBackupWizard/Wizard.vue';
-import { divisionCodeInjectionKey, currentServerInjectionKey } from './keys/injection-keys';
+import { divisionCodeInjectionKey, currentServerInjectionKey, currentWizardInjectionKey } from './keys/injection-keys';
 import { IPCMessageRouterRenderer, IPCRouter, server } from '@45drives/houston-common-lib';
 
 IPCRouter.initRenderer();
 IPCRouter.getInstance().addEventListener("action", async (data) => {
   console.log("action in renderer: ", data);
   try {
-    if (data === "setup_wizard_go_back" || data === "show_storage_setup_wizard") {
-      showWelcomeSetupWizard.value = true;
+    if (
+      data === "setup_wizard_go_back" ||
+      data === "show_storage_setup_wizard"
+    ) {
+      currentWizard.value = "storage";
       showWebView.value = false;
-      showBackUpSetupWizard.value = false;
       openStorageSetup(null);
-    } else if (data === "show_back_up_setup_wizard") {
-      showWelcomeSetupWizard.value = false;
+    } else if (data === "show_backup_setup_wizard") {
+      currentWizard.value = "backup";
       showWebView.value = false;
-      showBackUpSetupWizard.value = true;
-
       openStorageSetup(null);
-      useWizardSteps("setup").reset()
+    } else if (data === "show_restore-backup_setup_wizard") {
+      currentWizard.value = "restore-backup";
+      showWebView.value = false;
+      openStorageSetup(null);
     } else if (data === "show_houston") {
-      showWelcomeSetupWizard.value = false;
+      currentWizard.value = null;
       showWebView.value = true;
-      showBackUpSetupWizard.value = false;
 
       const serverIp = currentServer.value?.ip;
-
       loadingWebview.value = true;
       currentUrl.value = `https://${serverIp}:9090`;
     }
@@ -104,11 +96,18 @@ IPCRouter.getInstance().addEventListener("action", async (data) => {
     if (data.endsWith("_reboot")) {
       await waitForServerRebootAndShowWizard();
     }
-
   } catch (error) {
     console.log(error)
   }
 });
+
+const currentWizard = ref<'storage' | 'backup' | 'restore-backup' | null>('backup');
+provide(currentWizardInjectionKey, currentWizard);
+
+const showWizard = (type: 'storage' | 'backup' | 'restore-backup') => {
+  currentWizard.value = type;
+  showWebView.value = false;
+};
 
 const waitingForServerReboot = ref(false);
 
@@ -146,12 +145,15 @@ async function waitForServerRebootAndShowWizard() {
 
   if (serverUp) {
     waitingForServerReboot.value = false;
-    showBackUpSetupWizard.value = true;
-    useWizardSteps("setup").reset();
+    currentWizard.value = 'backup';
+    useWizardSteps("backup").reset()
+    // currentWizard.value = 'storage';
+    // useWizardSteps("setup").reset();
   } else {
     waitingForServerReboot.value = false;
     reportError(new Error("Server did not come back online within timeout."));
-    showWelcomeSetupWizard.value = true;
+    currentWizard.value = 'storage';
+    useWizardSteps("setup").reset();
   }
 }
 
@@ -188,9 +190,6 @@ const advancedState = useAdvancedModeState();
 
 const currentServer = ref<Server | null>(null);
 const divisionCode = ref<DivisionType>('default');
-const showBackUpSetupWizard = ref<boolean>(false);
-const showRestoreBackupWizard = ref<boolean>(false);
-const showWelcomeSetupWizard = ref<boolean>(false);
 const showWebView = ref<boolean>(false);
 
 provide(divisionCodeInjectionKey, divisionCode);
@@ -229,12 +228,6 @@ window.electron.ipcRenderer.on('notification', (_event, message: string) => {
 
 });
 
-const showWizard = (type: 'storage' | 'backup' | 'restore-backup') => {
-  showWelcomeSetupWizard.value = type === 'storage';
-  showBackUpSetupWizard.value = type === 'backup';
-  showRestoreBackupWizard.value = type === 'restore-backup';
-  showWebView.value = false;
-};
 
 
 onMounted(() => {
@@ -283,25 +276,31 @@ watch(currentTheme, (theme) => {
       divisionCode.value = 'default';
       break;
   }
-});
+}, { deep: true, immediate: true});
 
 // Receive the discovered servers from the main process
 let discoveredServersChecked = false;
 window.electron.ipcRenderer.on('discovered-servers', (_event, discoveredServers: Server[]) => {
+  // if (!scanningNetworkForServers.value && !discoveredServersChecked) {
+  //   discoveredServersChecked = true;
+  //   const anyServersNotSetup = discoveredServers.some((server, _index, _array) => server.status !== "complete");
+  //   if (anyServersNotSetup) {
+  //     showWelcomeSetupWizard.value = true;
+  //     showBackUpSetupWizard.value = false;
+  //     showRestoreBackupWizard.value = false;
+  //     showWebView.value = false;
+  //   } else {
+  //     showRestoreBackupWizard.value = false;
+  //     showWelcomeSetupWizard.value = false;
+  //     showBackUpSetupWizard.value = true;
+  //     showWebView.value = false;
+  //   }
+  // }
   if (!scanningNetworkForServers.value && !discoveredServersChecked) {
     discoveredServersChecked = true;
-    const anyServersNotSetup = discoveredServers.some((server, _index, _array) => server.status !== "complete");
-    if (anyServersNotSetup) {
-      showWelcomeSetupWizard.value = true;
-      showBackUpSetupWizard.value = false;
-      showRestoreBackupWizard.value = false;
-      showWebView.value = false;
-    } else {
-      showRestoreBackupWizard.value = false;
-      showWelcomeSetupWizard.value = false;
-      showBackUpSetupWizard.value = true;
-      showWebView.value = false;
-    }
+    const anyServersNotSetup = discoveredServers.some((server) => server.status !== "complete");
+    currentWizard.value = anyServersNotSetup ? 'storage' : 'backup';
+    showWebView.value = false;
   }
 
 });
@@ -414,53 +413,18 @@ const onWebViewLoaded = async () => {
     }
 }
 
-const onWelcomeWizardComplete = (server: Server) => {
-
-  console.log("server before unref:", server);
+const onWizardComplete = (server: Server) => {
   const realServer = unref(server);
-  console.log("server after unref:", realServer);
   const aliasStyle = realServer.serverInfo?.aliasStyle?.toLowerCase();
 
   applyThemeFromAliasStyle(aliasStyle);
 
-  loginRequest(realServer)
-  showWelcomeSetupWizard.value = false;
+  // Open Cockpit view
+  loginRequest(realServer);
+  currentWizard.value = null;
   showWebView.value = true;
-  showBackUpSetupWizard.value = false;
-  showRestoreBackupWizard.value = false;
-}
+};
 
-const onBackUpWizardComplete = (server: Server) => {
-
-  console.log("server before unref:", server);
-  const realServer = unref(server);
-  console.log("server after unref:", realServer);
-  const aliasStyle = realServer.serverInfo?.aliasStyle?.toLowerCase();
-
-  applyThemeFromAliasStyle(aliasStyle);
-
-  console.log("BackUp Wizard complete")
-  showBackUpSetupWizard.value = true;
-  showWelcomeSetupWizard.value = false;
-  showRestoreBackupWizard.value = false;
-  showWebView.value = false;
-}
-
-const onRestoreBackUpWizardComplete = (server: Server) => {
-
-  console.log("server before unref:", server);
-  const realServer = unref(server);
-  console.log("server after unref:", realServer);
-  const aliasStyle = realServer.serverInfo?.aliasStyle?.toLowerCase();
-
-  applyThemeFromAliasStyle(aliasStyle);
-
-  console.log("BackUp Wizard complete")
-  showBackUpSetupWizard.value = true;
-  showWelcomeSetupWizard.value = false;
-  showRestoreBackupWizard.value = false;
-  showWebView.value = false;
-}
 
 
 const loginRequest = async (server: Server) => {

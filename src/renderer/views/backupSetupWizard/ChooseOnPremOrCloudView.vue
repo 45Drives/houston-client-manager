@@ -1,14 +1,17 @@
 <template>
   <CardContainer class="">
     <template #header>
-      <div class="relative flex items-center justify-center h-18">
-          <div class="absolute left-0 bg-white p-1 px-4 rounded-lg">
+      <div class="relative flex items-center justify-center h-18  w-full">
+        <div class="absolute left-0 bg-white p-1 px-4 rounded-lg">
           <DynamicBrandingLogo :division="division" />
         </div>
         <p class="text-3xl font-semibold text-center">
           Choose Where You Want to Store Back ups &nbsp;
           <CommanderToolTip :message="`Choose how your storage server will be setup and configured.`" :width="600" />
         </p>
+        <div class="absolute right-0 top-1/2 -translate-y-1/2">
+          <GlobalSetupWizardMenu />
+        </div>
       </div>
     </template>
 
@@ -24,7 +27,7 @@
         <div>
           <br>
           <p>
-             What It Is:
+            What It Is:
           </p>
           <p>
             A backup solution where your data is stored on your own servers, NAS, or external drives instead of the
@@ -56,10 +59,10 @@
           </button>
         </template>
 
-        <div  class="text-muted">
+        <div class="text-muted">
           <br>
           <p>
-             What It Is:
+            What It Is:
           </p>
           <p>
 
@@ -69,7 +72,7 @@
           </p>
           <br>
           <p>
-             Why Choose It?
+            Why Choose It?
           </p>
           <p>
 
@@ -94,13 +97,15 @@
       </div>
 
     </template>
-    <MessageDialog ref="messageNoServersDialog" message="No servers detected. Ensure the plugin is powered and the network is connected for any servers you want to set up backups on." />
+    <MessageDialog ref="messageNoServersDialog"
+      message="No servers detected. Ensure the plugin is powered and the network is connected for any servers you want to set up backups on." />
   </CardContainer>
 </template>
 
 <script setup lang="ts">
 import { inject, ref } from 'vue';
 import CardContainer from '../../components/CardContainer.vue';
+import GlobalSetupWizardMenu from '../../components/GlobalSetupWizardMenu.vue';
 import { CommanderToolTip } from '../../components/commander';
 import { useWizardSteps, DynamicBrandingLogo } from '@45drives/houston-common-ui';
 import { Server } from '../../types';

@@ -1,46 +1,90 @@
 :root {
-  /* fallback */
-  --btn-bg: #D92B2F;
-  --btn-border: #D92B2F;
-  --btn-hover-bg: #b02428;
-  --btn-hover-border: #b02428;
+  /* fallback (same as default) */
+  --btn-primary-bg: #D92B2F;
+  --btn-primary-border: #D92B2F;
+  --btn-primary-hover-bg: #b02428;
+  --btn-primary-hover-border: #b02428;
+
+  --btn-secondary-bg: #a02226;
+  --btn-secondary-border: #a02226;
+  --btn-secondary-hover-bg: #821b1f;
+  --btn-secondary-hover-border: #821b1f;
+
+  --checkbox-border: #737373;
+  --checkbox-checked-border: #D92B2F;
+  --checkbox-checked-bg: #b02428;
+
+  --wizard-glow-color: rgba(255, 255, 255, 0.7);
 }
 
 .theme-default {
-  --btn-bg: #D92B2F;
-  --btn-border: #D92B2F;
-  --btn-hover-bg: #b02428;
-  --btn-hover-border: #b02428;
+  --btn-primary-bg: #D92B2F;
+  --btn-primary-border: #D92B2F;
+  --btn-primary-hover-bg: #b02428;
+  --btn-primary-hover-border: #b02428;
+
+  --btn-secondary-bg: #a02226;
+  --btn-secondary-border: #a02226;
+  --btn-secondary-hover-bg: #821b1f;
+  --btn-secondary-hover-border: #821b1f;
+
+  --checkbox-checked-border: #D92B2F;
+  --checkbox-checked-bg: #b02428;
 }
 
 .theme-homelab {
-  --btn-bg: #2563EB;
-  --btn-border: #2563EB;
-  --btn-hover-bg: #1E4FCB;
-  --btn-hover-border: #1E4FCB;
+  --btn-primary-bg: #2563EB;
+  --btn-primary-border: #2563EB;
+  --btn-primary-hover-bg: #1E4FCB;
+  --btn-primary-hover-border: #1E4FCB;
+
+  --btn-secondary-bg: #1B50C1;
+  --btn-secondary-border: #1B50C1;
+  --btn-secondary-hover-bg: #153fa0;
+  --btn-secondary-hover-border: #153fa0;
+
+  --checkbox-checked-border: #2563EB;
+  --checkbox-checked-bg: #1E4FCB;
 }
 
 .theme-professional {
-  --btn-bg: #65A443;
-  --btn-border: #65A443;
-  --btn-hover-bg: #4F8F37;
-  --btn-hover-border: #4F8F37;
+  --btn-primary-bg: #65A443;
+  --btn-primary-border: #65A443;
+  --btn-primary-hover-bg: #4F8F37;
+  --btn-primary-hover-border: #4F8F37;
+
+  --btn-secondary-bg: #447c31;
+  --btn-secondary-border: #447c31;
+  --btn-secondary-hover-bg: #346527;
+  --btn-secondary-hover-border: #346527;
+
+  --checkbox-checked-border: #65A443;
+  --checkbox-checked-bg: #4F8F37;
 }
 
-.btn-secondary,
 .btn-primary {
-  background-color: var(--btn-bg) !important;
-  border-color: var(--btn-border) !important;
+  background-color: var(--btn-primary-bg) !important;
+  border-color: var(--btn-primary-border) !important;
   color: white !important;
   z-index: 10;
 }
 
-/* Hover state */
-.btn-secondary:hover,
 .btn-primary:hover {
-  background-color: var(--btn-hover-bg) !important;
-  border-color: var(--btn-hover-border) !important;
+  background-color: var(--btn-primary-hover-bg) !important;
+  border-color: var(--btn-primary-hover-border) !important;
+  z-index: 10;
+}
+
+.btn-secondary {
+  background-color: var(--btn-secondary-bg) !important;
+  border-color: var(--btn-secondary-border) !important;
   color: white !important;
+  z-index: 10;
+}
+
+.btn-secondary:hover {
+  background-color: var(--btn-secondary-hover-bg) !important;
+  border-color: var(--btn-secondary-hover-border) !important;
   z-index: 10;
 }
 
@@ -57,10 +101,49 @@
   z-index: 10;
 }
 
-.bg-secondary,
 .bg-primary {
-  background-color: var(--btn-bg) !important;
-  border-color: var(--btn-border) !important;
+  background-color: var(--btn-primary-bg) !important;
+  border-color: var(--btn-primary-border) !important;
   color: white !important;
-  z-index: 10;
+}
+
+.bg-secondary {
+  background-color: var(--btn-secondary-bg) !important;
+  border-color: var(--btn-secondary-border) !important;
+  color: white !important;
+}
+
+.border-primary {
+  border-color: var(--btn-primary-border);
+}
+
+.border-secondary {
+  border-color: var(--btn-secondary-border);
+}
+
+
+.input-checkbox {
+  background-color: var(--checkbox-bg, #fff);
+  border: 1px solid var(--checkbox-border, #737373);
+  border-radius: 0.25rem;
+  height: 1rem;
+  width: 1rem;
+  outline: none;
+  box-shadow: 0 0 0 2px transparent;
+  appearance: none;
+  cursor: pointer;
+  transition: background-color 0.2s ease, border-color 0.2s ease;
+}
+
+.input-checkbox:checked {
+  border-color: var(--checkbox-checked-border, #D92B2F);
+  background-color: var(--checkbox-checked-bg, #D92B2F);
+}
+
+.animate-glow {
+  box-shadow: 0 0 12px 4px var(--btn-primary-border);
+  border: 2px solid var(--btn-primary-border);
+  border-radius: 0.375rem;
+  position: relative;
+  z-index: 1;
 }

@@ -1,13 +1,16 @@
 <template>
 	<CardContainer>
 		<template #header class="!text-center">
-			<div class="relative flex items-center justify-center h-18">
+			<div class="relative flex items-center justify-center h-18  w-full">
 				<div class="absolute left-0 bg-white p-1 px-4 rounded-lg">
 					<DynamicBrandingLogo :division="division" />
 				</div>
 				<p class="text-3xl font-semibold text-center">
 					Create Simple Backup Plan!
 				</p>
+				<div class="absolute right-0 top-1/2 -translate-y-1/2">
+					<GlobalSetupWizardMenu />
+				</div>
 			</div>
 		</template>
 
@@ -59,11 +62,11 @@
 							<button @click="handleFolderSelect" class="btn btn-secondary h-10 w-15">
 								<PlusIcon class="w-6 h-6 text-white" />
 							</button>
-							<CommanderToolTip class="ml-4"
-								:message="`Click the plus icon to select a folder for backup. You can add multiple locations by selecting them one at a time.`" />
 							<p class="text-start ml-2 font-semibold text-lg">
 								Select a folder to back up to the designated location.
 							</p>
+							<CommanderToolTip class="ml-4"
+								:message="`Click the plus icon to select a folder for backup. You can add multiple locations by selecting them one at a time.`" />
 						</div>
 
 						<!-- Selected Folders List -->
@@ -93,7 +96,7 @@
 					Back
 				</button>
 				<button :disabled="backUpSetupConfig?.backUpTasks.length === 0" @click="proceedToNextStep"
-					class="absolute btn right-[1rem] btn-secondary h-20 w-40">
+					class="absolute btn right-[1rem] btn-primary h-20 w-40">
 					Next
 				</button>
 			</div>
@@ -113,10 +116,10 @@ import { inject, onMounted, ref, watch } from "vue";
 import { PlusIcon, MinusIcon } from "@heroicons/vue/20/solid";
 import { useWizardSteps, DynamicBrandingLogo } from '@45drives/houston-common-ui';
 import { Server } from '../../types'
-import { backUpSetupConfigKey } from "../../keys/injection-keys";
+import { backUpSetupConfigKey, divisionCodeInjectionKey } from "../../keys/injection-keys";
 import MessageDialog from '../../components/MessageDialog.vue';
-import { divisionCodeInjectionKey } from '../../keys/injection-keys';
 import { BackUpTask, IPCMessageRouter, IPCRouter, server, unwrap } from "@45drives/houston-common-lib";
+import GlobalSetupWizardMenu from '../../components/GlobalSetupWizardMenu.vue';
 import { sanitizeFilePath } from "./utils";
 
 const division = inject(divisionCodeInjectionKey);

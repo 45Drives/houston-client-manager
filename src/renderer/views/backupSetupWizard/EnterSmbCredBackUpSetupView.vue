@@ -2,12 +2,15 @@
   <CardContainer>
     <template #header>
       <div class="relative flex items-center justify-center h-24">
-          <div class="absolute left-0 bg-white p-1 px-4 rounded-lg">
+        <div class="absolute left-0 bg-white p-1 px-4 rounded-lg">
           <DynamicBrandingLogo :division="division" />
         </div>
         <p class="text-3xl font-semibold text-center">
           Server Credentials
         </p>
+        <div class="absolute right-0 top-1/2 -translate-y-1/2">
+          <GlobalSetupWizardMenu />
+        </div>
       </div>
     </template>
 
@@ -37,12 +40,12 @@
     <template #footer>
       <div class="button-group-row w-full justify-end">
         <div class="button-group-row w-full justify-between">
-          
+
           <button @click="proceedToPreviousStep" class="btn btn-secondary w-40 h-20">
             Back
           </button>
 
-          <button :disabled="isButtonDisabled" @click="proceedToNextStep" class="btn btn-secondary w-40 h-20">
+          <button :disabled="isButtonDisabled" @click="proceedToNextStep" class="btn btn-primary w-40 h-20">
             Next
           </button>
 
@@ -59,6 +62,7 @@ import CardContainer from '../../components/CardContainer.vue';
 import { ref, computed, inject } from 'vue';
 import { useWizardSteps, DynamicBrandingLogo } from '@45drives/houston-common-ui';
 import { backUpSetupConfigKey, divisionCodeInjectionKey } from '../../keys/injection-keys';
+import GlobalSetupWizardMenu from '../../components/GlobalSetupWizardMenu.vue';
 
 const division = inject(divisionCodeInjectionKey);
 const { prevStep, nextStep, wizardData } = useWizardSteps("backup");

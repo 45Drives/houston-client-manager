@@ -250,7 +250,21 @@ if (-not $hasBatchLogon -or -not $hasServiceLogon) {
 }
 `
   }
-
+  async scheduleAllTasks(
+    tasks: BackUpTask[],
+    username: string,
+    password: string,
+    onProgress?: (step: number, total: number, message: string) => void
+  ): Promise<void> {
+    for (let i = 0; i < tasks.length; i++) {
+      const task = tasks[i];
+      await this.schedule(task, username, password);
+      if (onProgress) {
+        onProgress(i + 1, tasks.length, `Scheduled task for ${task.description}`);
+      }
+    }
+  }
+  
 
   unschedule(task: BackUpTask): void {
 //     const powershellScript = `
@@ -276,6 +290,27 @@ $task | Set-ScheduledTask
       return ""
     }
   }
+
+  async unscheduleSelectedTasks(tasks: BackUpTask[]): Promise<void> {
+    const deleteScripts = tasks.map(task => {
+      const taskName = `HoustonBackUp_${task.uuid}`;
+      return `
+  if (Get-ScheduledTask -TaskName "${taskName}" -ErrorAction SilentlyContinue) {
+    Unregister-ScheduledTask -TaskName "${taskName}" -Confirm:$false
+  } else {
+    Write-Host "⚠ Task '${taskName}' not found — skipping"
+  }
+  `;
+    }).join("\n");
+
+    try {
+      await this.runScriptAdmin(deleteScripts, "bulk_unschedule_tasks");
+    } catch (err) {
+      console.error("❌ Failed to unschedule selected tasks:", err);
+      throw err;
+    }
+  }
+  
 
   protected scheduleToTaskTrigger(sched: TaskSchedule): string | undefined {
 

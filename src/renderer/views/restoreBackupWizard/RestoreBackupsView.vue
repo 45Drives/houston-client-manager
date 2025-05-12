@@ -1,13 +1,16 @@
 <template>
   <CardContainer>
     <template #header class="!text-center">
-      <div class="relative flex items-center justify-center h-18">
+      <div class="relative flex items-center justify-center h-18  w-full">
         <div class="absolute left-0 bg-white p-1 px-4 rounded-lg">
           <DynamicBrandingLogo :division="division" />
         </div>
         <p class="text-3xl font-semibold text-center">
           Restore Backups
         </p>
+        <div class="absolute right-0 top-1/2 -translate-y-1/2">
+          <GlobalSetupWizardMenu />
+        </div>
       </div>
       <div v-if="loading">Loading... Please Wait</div>
     </template>
@@ -66,12 +69,6 @@
               </tr>
             </thead>
             <tbody>
-              <!-- <tr v-for="(file, index) in selectedBackup.files" :key="index">
-                <td class="p-2">{{ file.path }}</td>
-                <td class="p-2">
-                  <input type="checkbox" v-model="file.selected" />
-                </td>
-              </tr> -->
               <tr v-for="(file, index) in selectedBackup.files" :key="index" class="cursor-pointer" :class="[
                 'cursor-pointer ',
   file?.selected ? 'bg-yellow-100 hover:bg-yellow-200 text-black' : 'bg-default text-default'
@@ -97,13 +94,13 @@
     <!-- Buttons -->
     <template #footer>
       <div class="button-group-row justify-between">
-        <button @click="proceedToPreviousStep" class="btn btn-primary h-20 w-40">
+        <button @click="proceedToPreviousStep" class="btn btn-secondary h-20 w-40">
           Back
         </button>
         <div v-if="selectedBackup" class="flex justify-center gap-4 mt-2">
-          <button class="bg-blue-500 text-white px-4 py-2 rounded" @click="deselectAll">Deselect All</button>
-          <button class="bg-blue-500 text-white px-4 py-2 rounded" @click="selectAll">Select All</button>
-          <button @click="restoreSelected" class="bg-blue-500 text-white px-4 py-2 rounded">Restore Selected
+          <button class="btn btn-secondary px-4 py-2 rounded" @click="deselectAll">Deselect All</button>
+          <button class="btn btn-secondary px-4 py-2 rounded" @click="selectAll">Select All</button>
+          <button @click="restoreSelected" class="btn btn-primary px-4 py-2 rounded">Restore Selected
             Files</button>
         </div>
       </div>
@@ -116,6 +113,7 @@ import { ref, computed, inject, onActivated } from 'vue'
 import { useWizardSteps, DynamicBrandingLogo, confirm, CardContainer } from '@45drives/houston-common-ui';
 import { divisionCodeInjectionKey, restoreBackUpSetupDataKey } from '../../keys/injection-keys';
 import { IPCRouter, type BackupEntry, type FileEntry } from '@45drives/houston-common-lib';
+import GlobalSetupWizardMenu from '../../components/GlobalSetupWizardMenu.vue';
 
 const division = inject(divisionCodeInjectionKey);
 const restoreBackupsData = inject(restoreBackUpSetupDataKey)!;

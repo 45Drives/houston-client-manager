@@ -153,7 +153,6 @@ systemctl restart ${getOS() === "debian" ? "cron" : "crond"}
     }
   }
 
-
   unschedule(task: BackUpTask): void {
     if (!fs.existsSync(this.cronFilePath)) return;
 
@@ -175,25 +174,75 @@ systemctl restart ${getOS() === "debian" ? "cron" : "crond"}
     const newCronPath = join(tmpDir, "new_cron");
     const unscheduleScript = join(tmpDir, "unschedule.sh");
 
+    fs.writeFileSync(newCronPath, newCronEntries.join("\n") + "\n", "utf-8");
+
+    const shellScript = `#!/bin/bash
+  mv "${newCronPath}" "${this.cronFilePath}"
+  chown root:root "${this.cronFilePath}"
+  chmod 644 "${this.cronFilePath}"
+  ${scriptPathToDelete ? `rm -f "${scriptPathToDelete}"` : ""}
+  systemctl restart ${getOS() === "debian" ? "cron" : "crond"}
+  `;
+
+    fs.writeFileSync(unscheduleScript, shellScript, { mode: 0o700 });
+
     try {
       execSync(`${this.pkexec} bash "${unscheduleScript}"`);
-      fs.writeFileSync(newCronPath, newCronEntries.join("\n") + "\n", "utf-8");
-
-      const shellScript = `#!/bin/bash
-mv "${newCronPath}" "${this.cronFilePath}"
-chown root:root "${this.cronFilePath}"
-chmod 644 "${this.cronFilePath}"
-${scriptPathToDelete ? `rm -f "${scriptPathToDelete}"` : ""}
-systemctl restart ${getOS() === "debian" ? "cron" : "crond"}
-`;
-
-      fs.writeFileSync(unscheduleScript, shellScript, { mode: 0o700 });
-
       console.log("✅ Task unscheduled with root permissions.");
     } catch (err) {
       console.error("❌ Failed to unschedule task:", err);
+      throw err;
     }
   }
+  
+
+  async unscheduleSelectedTasks(tasks: BackUpTask[]): Promise<void> {
+    if (!fs.existsSync(this.cronFilePath)) return;
+
+    const cronFileContents = fs.readFileSync(this.cronFilePath, "utf-8");
+    const cronEntries = cronFileContents.split(/[\r\n]+/);
+
+    const tmpDir = fs.mkdtempSync(join(os.tmpdir(), "unschedule-batch-"));
+    const newCronEntries: string[] = [];
+    const scriptPathsToDelete: string[] = [];
+
+    for (const line of cronEntries) {
+      if (tasks.some(task => line.includes(`run_backup_task_${task.uuid}.sh`))) {
+        const parts = line.split(/\s+/);
+        const scriptPath = parts.find(p => p.includes(`run_backup_task_`) && p.endsWith('.sh'));
+        if (scriptPath) {
+          scriptPathsToDelete.push(scriptPath);
+        }
+      } else {
+        newCronEntries.push(line);
+      }
+    }
+
+    const newCronPath = join(tmpDir, "new_cron");
+    const shellScriptPath = join(tmpDir, "unschedule_tasks.sh");
+
+    fs.writeFileSync(newCronPath, newCronEntries.join("\n") + "\n", "utf-8");
+
+    const deleteCommands = scriptPathsToDelete.map(p => `rm -f "${p}"`).join("\n");
+    const shellScript = `#!/bin/bash
+  mv "${newCronPath}" "${this.cronFilePath}"
+  chown root:root "${this.cronFilePath}"
+  chmod 644 "${this.cronFilePath}"
+  ${deleteCommands}
+  systemctl restart ${getOS() === "debian" ? "cron" : "crond"}
+  `;
+
+    fs.writeFileSync(shellScriptPath, shellScript, { mode: 0o700 });
+
+    try {
+      execSync(`${this.pkexec} bash "${shellScriptPath}"`);
+      console.log("✅ Selected tasks unscheduled successfully.");
+    } catch (err) {
+      console.error("❌ Failed to unschedule selected tasks:", err);
+      throw err;
+    }
+  }
+  
 
   async updateSchedule(task: BackUpTask): Promise<void> {
     if (!fs.existsSync(this.cronFilePath)) {

@@ -8,8 +8,8 @@ const options = {
 };
 
 const dependencies = {
-  rocky: ['cifs-utils'],
-  debian: ['cifs-utils'],
+  rocky: ['cifs-utils', 'samba', 'samba-client'],
+  debian: ['cifs-utils', 'samba', 'smbclient'],
   mac: [],
 };
 

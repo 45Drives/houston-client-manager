@@ -1,14 +1,17 @@
 <template>
   <CardContainer class="">
     <template #header>
-      <div class="relative flex items-center justify-center h-18">
-          <div class="absolute left-0 bg-white p-1 px-4 rounded-lg">
+      <div class="relative flex items-center justify-center h-18  w-full">
+        <div class="absolute left-0 bg-white p-1 px-4 rounded-lg">
           <DynamicBrandingLogo :division="division" />
         </div>
         <p class="text-3xl font-semibold text-center">
           Choose Your Setup Option &nbsp;
-        <CommanderToolTip :message="`Choose how your storage server will be setup and configured.`" :width="600" />
+          <CommanderToolTip :message="`Choose how your storage server will be setup and configured.`" :width="600" />
         </p>
+        <div class="absolute right-0 top-1/2 -translate-y-1/2">
+          <GlobalSetupWizardMenu />
+        </div>
       </div>
     </template>
 
@@ -21,7 +24,8 @@
         </template>
         <div>
           <p>
-            Quick and effortless method to setup your backup plan 45Drives Best Practice. Select <b>SIMPLE</b> and we will configure the backup plan for you. 
+            Quick and effortless method to setup your backup plan 45Drives Best Practice. Select <b>SIMPLE</b> and we
+            will configure the backup plan for you.
           </p>
         </div>
 
@@ -38,7 +42,8 @@
 
         <div>
           <p>
-            Full control and flexibility? Select <b>CUSTOM</b> and you’ll have the options to choose your configuration details such as what time to run the backup.
+            Full control and flexibility? Select <b>CUSTOM</b> and you’ll have the options to choose your configuration
+            details such as what time to run the backup.
           </p>
         </div>
 
@@ -60,6 +65,7 @@ import { CommanderToolTip } from '../../components/commander';
 import { useWizardSteps, DynamicBrandingLogo } from '@45drives/houston-common-ui';
 import { divisionCodeInjectionKey } from '../../keys/injection-keys';
 import { inject } from 'vue';
+import GlobalSetupWizardMenu from '../../components/GlobalSetupWizardMenu.vue';
 const division = inject(divisionCodeInjectionKey);
 const { completeCurrentStep, prevStep } = useWizardSteps("backup");
 
