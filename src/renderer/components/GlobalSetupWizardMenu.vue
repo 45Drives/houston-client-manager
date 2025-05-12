@@ -12,21 +12,24 @@
                     left: `${menuPosition.left}px`
                 }">
                 <div class="mb-2">
-                    <button class="btn btn-primary w-full mb-2 relative" :class="buttonClass('storage')"
+                    <button class="btn btn-secondary w-full mb-2 relative" :class="buttonClass('storage')"
                         @click="showWizard('storage')">Setup Wizard</button>
-                    <button class="btn btn-primary w-full mb-2 relative" :class="buttonClass('backup')"
+                    <button class="btn btn-secondary w-full mb-2 relative" :class="buttonClass('backup')"
                         @click="showWizard('backup')">Backup Client</button>
-                    <button class="btn btn-primary w-full mb-2 relative" :class="buttonClass('restore-backup')"
+                    <button class="btn btn-secondary w-full mb-2 relative" :class="buttonClass('restore-backup')"
                         @click="showWizard('restore-backup')">Restore
                         Backup</button>
                 </div>
 
                 <div class="mb-2">
-                    <button class="btn btn-secondary w-full mb-2" @click="setTheme('theme-default')">Default
+                    <button class="btn w-full mb-2 theme-button-default"
+                        @click="setTheme('theme-default')">Default
                         Theme</button>
-                    <button class="btn btn-secondary w-full mb-2" @click="setTheme('theme-homelab')">45Homelab
+                    <button class="btn w-full mb-2 theme-button-homelab"
+                        @click="setTheme('theme-homelab')">45Homelab
                         Theme</button>
-                    <button class="btn btn-secondary w-full mb-2" @click="setTheme('theme-professional')">45Pro
+                    <button class="btn w-full mb-2 theme-button-professional"
+                        @click="setTheme('theme-professional')">45Pro
                         Theme</button>
                 </div>
 
@@ -183,6 +186,44 @@ function showWizard(type: 'storage' | 'backup' | 'restore-backup') {
 .fade-enter-from,
 .fade-leave-to {
     opacity: 0;
+}
+
+/* THEME BUTTONS: Theme Color Swatches */
+
+.theme-button-default {
+    background-color: #D92B2F;
+    border: 1px solid #D92B2F;
+    color: white;
+    transition: all 0.2s ease-in-out;
+}
+
+.theme-button-default:hover {
+    background-color: #b02428;
+    border-color: #b02428;
+}
+
+.theme-button-homelab {
+    background-color: #2563EB;
+    border: 1px solid #2563EB;
+    color: white;
+    transition: all 0.2s ease-in-out;
+}
+
+.theme-button-homelab:hover {
+    background-color: #1E4FCB;
+    border-color: #1E4FCB;
+}
+
+.theme-button-professional {
+    background-color: #65A443;
+    border: 1px solid #65A443;
+    color: white;
+    transition: all 0.2s ease-in-out;
+}
+
+.theme-button-professional:hover {
+    background-color: #4F8F37;
+    border-color: #4F8F37;
 }
 </style>
 
