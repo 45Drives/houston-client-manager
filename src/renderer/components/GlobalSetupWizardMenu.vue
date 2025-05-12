@@ -11,36 +11,35 @@
                     top: `${menuPosition.top}px`,
                     left: `${menuPosition.left}px`
                 }">
-                <div class="mb-2">
-                    <button class="btn btn-secondary w-full mb-2 relative" :class="buttonClass('storage')"
+                
+                <div class="mb-2 text-center items-center">
+                    <p class="text-xs text-default mb-1">Select Wizard</p>
+                    <button class="btn btn-secondary w-full mb-1" :class="buttonClass('storage')"
                         @click="showWizard('storage')">Setup Wizard</button>
-                    <button class="btn btn-secondary w-full mb-2 relative" :class="buttonClass('backup')"
+                    <button class="btn btn-secondary w-full mb-1" :class="buttonClass('backup')"
                         @click="showWizard('backup')">Backup Client</button>
-                    <button class="btn btn-secondary w-full mb-2 relative" :class="buttonClass('restore-backup')"
-                        @click="showWizard('restore-backup')">Restore
-                        Backup</button>
+                    <button class="btn btn-secondary w-full mb-1" :class="buttonClass('restore-backup')"
+                        @click="showWizard('restore-backup')">Restore Backup</button>
                 </div>
 
-                <div class="mb-2">
-                    <button class="btn w-full mb-2 theme-button-default"
-                        @click="setTheme('theme-default')">Default
-                        Theme</button>
-                    <button class="btn w-full mb-2 theme-button-homelab"
-                        @click="setTheme('theme-homelab')">45Homelab
-                        Theme</button>
-                    <button class="btn w-full mb-2 theme-button-professional"
-                        @click="setTheme('theme-professional')">45Pro
-                        Theme</button>
+                <div class="mb-2 text-center items-center">
+                    <p class="text-xs text-default mb-1">Themes</p>
+                    <button class="btn theme-btn theme-btn-default w-full mb-1"
+                        @click="setTheme('theme-default')">Default</button>
+                    <button class="btn theme-btn theme-btn-homelab w-full mb-1"
+                        @click="setTheme('theme-homelab')">45Homelab</button>
+                    <button class="btn theme-btn theme-btn-professional w-full mb-1"
+                        @click="setTheme('theme-professional')">45Pro</button>
                 </div>
 
                 <div class="mb-2 items-center">
                     <button
-                        class="w-full mb-2 flex flex-row items-center text-center justify-center space-x-2 text-white rounded-md"
+                        class="theme-btn text-xs w-full mb-1 flex flex-row items-center text-center justify-center space-x-2 text-white rounded-md"
                         @click="toggleDarkMode()" :class="darkModeButtonClass">
                         <transition name="fade" mode="out-in">
                             <component :is="darkMode ? SunIcon : MoonIcon" class="w-6 h-6" />
                         </transition>
-                        <span class="mb-0.5 font-semibold" :class="darkMode ? 'ml-6' : ' ml-4'">{{ darkModeLabel
+                        <span class="mb-0.5 font-semibold" :class="darkMode ? 'ml-5' : ' ml-4'">{{ darkModeLabel
                             }}</span>
                     </button>
                 </div>
@@ -154,19 +153,15 @@ function showWizard(type: 'storage' | 'backup' | 'restore-backup') {
 }
 
 .btn-sun {
-    background-color: #facc15;
-    /* background-color: #ffffff; */
-    border: 1px solid #eab308;
-    /* border: 1px solid #eeeeff; */
+    background-color: #fef9c3;
+    border: 1px solid #fcd34d;
     color: #1f2937;
     transition: all 0.2s ease-in-out;
 }
 
 .btn-sun:hover {
-    background-color: #eab308;
-    border-color: #ca8a04;
-    /* background-color: #ffffff;
-    border-color: #eeeeff; */
+    background-color: #fde68a;
+    border-color: #fbbf24;
     color: #111827;
 }
 
@@ -190,40 +185,54 @@ function showWizard(type: 'storage' | 'backup' | 'restore-backup') {
 
 /* THEME BUTTONS: Theme Color Swatches */
 
-.theme-button-default {
+.theme-btn-default {
     background-color: #D92B2F;
     border: 1px solid #D92B2F;
     color: white;
     transition: all 0.2s ease-in-out;
 }
 
-.theme-button-default:hover {
+.theme-btn-default:hover {
     background-color: #b02428;
     border-color: #b02428;
 }
 
-.theme-button-homelab {
+.theme-btn-homelab {
     background-color: #2563EB;
     border: 1px solid #2563EB;
     color: white;
     transition: all 0.2s ease-in-out;
 }
 
-.theme-button-homelab:hover {
+.theme-btn-homelab:hover {
     background-color: #1E4FCB;
     border-color: #1E4FCB;
 }
 
-.theme-button-professional {
+.theme-btn-professional {
     background-color: #65A443;
     border: 1px solid #65A443;
     color: white;
     transition: all 0.2s ease-in-out;
 }
 
-.theme-button-professional:hover {
+.theme-btn-professional:hover {
     background-color: #4F8F37;
     border-color: #4F8F37;
+}
+
+.theme-btn {
+    font-size: 0.75rem;
+    font-weight: bold;
+    padding: 0.3rem 0.5rem;
+    border-radius: 0.25rem;
+    opacity: 0.8;
+    transition: all 0.2s ease-in-out;
+}
+
+.theme-btn:hover {
+    opacity: 1;
+    transform: scale(1.02);
 }
 </style>
 

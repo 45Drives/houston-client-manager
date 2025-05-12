@@ -18,14 +18,22 @@
 
         <!-- Step 2 -->
         <p class="col-span-3 text-left text-2xl">
-          Take the supplied power cord and plug it into the back of the server power port.
-          Then, plug the other end of the power cord into a wall outlet.
+          <!-- Take the supplied power cord and plug it into the back of the server power port.
+          Then, plug the other end of the power cord into a wall outlet. -->
+          Take the supplied power cord and plug it into the power port on the back of the server. Then, connect the
+          other end to a wall outlet — or, for better protection, to a UPS (Uninterruptible Power Supply).
           <br>
           <br>
-          <b>NOTE:</b> You can also use a UPS (Uninterruptible Power Supply) for power-backup in the case of a power
-          outage.
+          <b>NOTE:</b>
+          <!-- You can also use a UPS (Uninterruptible Power Supply) for power-backup in the case of a power outage. -->
+          Using a UPS helps protect your server from sudden shutdowns caused by power loss or fluctuations. For best
+          results, plug the server into a battery-backed UPS outlet, and plug the UPS into the wall.
+          <!-- <CommanderToolTip
+            :message="`An Uninterruptible Power Supply (UPS) keeps your server running during power outages or fluctuations. It provides temporary power to prevent unexpected shutdowns, allowing time for safe shutdown or switch to backup power — protecting data integrity and hardware.`" /> -->
           <CommanderToolTip
-            :message="`An Uninterruptible Power Supply (UPS) keeps your server running during power outages or fluctuations. It provides temporary power to prevent unexpected shutdowns, allowing time for safe shutdown or switch to backup power — protecting data integrity and hardware.`" />
+            :message="`A UPS (Uninterruptible Power Supply) keeps your server running during power outages or surges. It gives you time to shut down safely or switch to another power source — protecting your data and hardware.
+            - To use a UPS, connect the server's power cable to a battery-backed outlet on the UPS.
+            - Then, plug the UPS into the wall. Some UPS models can also connect to your server via USB or Ethernet to trigger safe shutdown automatically.`" />
         </p>
         <img class="h-fit" src="../../assets/plugPower.png" alt="Plug Power" />
 
