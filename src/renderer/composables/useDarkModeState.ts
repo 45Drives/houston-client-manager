@@ -1,4 +1,4 @@
-import { onMounted, ref, watch } from "vue";
+/* import { onMounted, ref, watch } from "vue";
 const darkModeState = ref(window.matchMedia("(prefers-color-scheme: dark)").matches);
 
 export function useDarkModeState() {
@@ -28,4 +28,25 @@ export function useDarkModeState() {
   });
 
   return darkModeState;
+}
+ */
+
+import { ref, watch } from "vue";
+
+const darkModeState = ref(window.matchMedia("(prefers-color-scheme: dark)").matches);
+
+// Watch and apply the dark class to <html>
+watch(darkModeState, (enabled) => {
+  document.documentElement.classList.toggle("dark", enabled);
+});
+
+// Optional: call once at start
+document.documentElement.classList.toggle("dark", darkModeState.value);
+
+export function useDarkModeState() {
+  return darkModeState;
+}
+
+export function toggleDarkMode() {
+  darkModeState.value = !darkModeState.value;
 }

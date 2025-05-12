@@ -45,6 +45,22 @@ export class BackUpManagerMac implements BackUpManager {
     });
   }
 
+  async scheduleAllTasks(
+    tasks: BackUpTask[],
+    username: string,
+    password: string,
+    onProgress?: (step: number, total: number, message: string) => void
+  ): Promise<void> {
+    for (let i = 0; i < tasks.length; i++) {
+      const task = tasks[i];
+      await this.schedule(task, username, password);
+      if (onProgress) {
+        onProgress(i + 1, tasks.length, `Scheduled task for ${task.description}`);
+      }
+    }
+  }
+  
+
   unschedule(task: BackUpTask): void {
     const plistFileName = `com.backup-task.${this.safeTaskName(task.description)}.plist`;
     const plistFilePath = path.join(this.launchdDirectory, plistFileName);
@@ -58,6 +74,28 @@ export class BackUpManagerMac implements BackUpManager {
       this.runAsAdmin(command);
     }
   }
+
+  async unscheduleSelectedTasks(tasks: BackUpTask[]): Promise<void> {
+    const unloadCommands: string[] = [];
+
+    for (const task of tasks) {
+      const plistFileName = `com.backup-task.${this.safeTaskName(task.description)}.plist`;
+      const plistFilePath = path.join(this.launchdDirectory, plistFileName);
+
+      if (fs.existsSync(plistFilePath)) {
+        unloadCommands.push(`launchctl unload "${plistFilePath}"`);
+        unloadCommands.push(`rm -f "${plistFilePath}"`);
+      } else {
+        console.warn(`⚠️ Task plist not found: ${plistFilePath}`);
+      }
+    }
+
+    if (unloadCommands.length === 0) return;
+
+    const combinedCommand = unloadCommands.join(" && ");
+    this.runAsAdmin(combinedCommand, "Removing selected backup tasks...");
+  }
+  
 
   async updateSchedule(task: BackUpTask): Promise<void> {
     console.warn("🚧 updateSchedule is not yet implemented for macOS.");

@@ -1,13 +1,16 @@
 <template>
   <CardContainer>
     <template #header class="!text-center">
-      <div class="relative flex items-center justify-center h-18">
+      <div class="relative flex items-center justify-center h-18  w-full">
         <div class="absolute left-0 bg-white p-1 px-4 rounded-lg">
           <DynamicBrandingLogo :division="division" />
         </div>
         <p class="text-3xl font-semibold text-center">
           Summary
         </p>
+        <div class="absolute right-0 top-1/2 -translate-y-1/2">
+          <GlobalSetupWizardMenu />
+        </div>
       </div>
     </template>
 
@@ -36,22 +39,12 @@
           </div>
           <div class="text-start w-[50%] flex items-center">
             <text class="text-default font-semibold text-left">When:</text>
-            <text
-              class="text-default font-semibold text-left px-4">{{ `Backup
+            <text class="text-default font-semibold text-left px-4">{{ `Backup
               will run
               ${formatFrequency(task.schedule.repeatFrequency)} starting on
               ${task.schedule.startDate.toDateString()} at ${task.schedule.startDate.toLocaleTimeString([], {
-                hour:
-                  '2-digit', minute: '2-digit' })}`}}</text>
-
-            <!-- <text v-else class="text-default font-semibold text-left px-4">{{`Backup will happen ${formatFrequency(task.schedule.repeatFrequency)} at 9:00 AM starting ${task.schedule.startDate.toDateString()}`}}</text> -->
-            <!-- <text v-else class="text-default font-semibold text-left px-4">{{ `Backup will happen
-              ${formatFrequency(task.schedule.repeatFrequency)} at ${task.schedule.startDate.toLocaleTimeString([], {
               hour:
-                '2-digit', minute: '2-digit'
-            })} starting
-              ${task.schedule.startDate.toDateString()}`}}
-            </text> -->
+              '2-digit', minute: '2-digit' })}`}}</text>
 
           </div>
         </div>
@@ -59,13 +52,11 @@
     </div>
 
 
-
-
     <!-- Buttons -->
     <template #footer>
       <div class="button-group-row justify-between">
         <button @click="proceedToPreviousStep" class="btn btn-primary h-20 w-40">Back</button>
-        <button @click="handleNextClick" class="absolute btn right-[1rem] btn-secondary h-20 w-40">Next</button>
+        <button @click="handleNextClick" class="absolute btn right-[1rem] btn-primary h-20 w-40">Next</button>
       </div>
     </template>
 
@@ -76,10 +67,9 @@
 import { CardContainer, CommanderToolTip, confirm } from "@45drives/houston-common-ui";
 import { inject, ref } from "vue";
 import { useWizardSteps, DynamicBrandingLogo } from '@45drives/houston-common-ui';
-import { backUpSetupConfigKey } from "../../keys/injection-keys";
+import { backUpSetupConfigKey, divisionCodeInjectionKey } from "../../keys/injection-keys";
 import { formatFrequency } from "./utils";
-import { divisionCodeInjectionKey } from '../../keys/injection-keys';
-
+import GlobalSetupWizardMenu from '../../components/GlobalSetupWizardMenu.vue';
 const division = inject(divisionCodeInjectionKey);
 const { completeCurrentStep, prevStep } = useWizardSteps("backup");
 

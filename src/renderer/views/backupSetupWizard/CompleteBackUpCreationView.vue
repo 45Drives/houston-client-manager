@@ -1,13 +1,16 @@
 <template>
   <CardContainer>
     <template #header class="!text-center">
-      <div class="relative flex items-center justify-center h-18">
+      <div class="relative flex items-center justify-center h-18  w-full">
         <div class="absolute left-0 bg-white p-1 px-4 rounded-lg">
           <DynamicBrandingLogo :division="division" />
         </div>
         <p class="text-3xl font-semibold text-center">
           Congratulations
         </p>
+        <div class="absolute right-0 top-1/2 -translate-y-1/2">
+          <GlobalSetupWizardMenu />
+        </div>
       </div>
     </template>
 
@@ -40,15 +43,15 @@
         </div>
 
       </div>
-    </div> 
+    </div>
 
-      <!-- Go to Home Button (visible once complete) -->
-      <template #footer>
-        <div class="button-group-row justify-end">
-          <button :disabled="setupComplete !== 'yes'" class="btn btn-secondary w-40 h-20" @click="goHome">{{ "Finish!"
-            }}</button>
-        </div>
-      </template>
+    <!-- Go to Home Button (visible once complete) -->
+    <template #footer>
+      <div class="button-group-row justify-end">
+        <button :disabled="setupComplete !== 'yes'" class="btn btn-primary w-40 h-20" @click="goHome">{{ "Finish!"
+          }}</button>
+      </div>
+    </template>
 
   </CardContainer>
 
@@ -59,8 +62,8 @@ import { CardContainer } from "@45drives/houston-common-ui";
 import { ref, watch, inject, onActivated, onBeforeUnmount } from "vue";
 import { useWizardSteps, DynamicBrandingLogo } from "@45drives/houston-common-ui";
 import { EasySetupProgress, IPCRouter } from "@45drives/houston-common-lib";
-import { backUpSetupConfigKey } from "../../keys/injection-keys";
-import { divisionCodeInjectionKey } from '../../keys/injection-keys';
+import { backUpSetupConfigKey, divisionCodeInjectionKey } from "../../keys/injection-keys";
+import GlobalSetupWizardMenu from '../../components/GlobalSetupWizardMenu.vue';
 const division = inject(divisionCodeInjectionKey);
 const { reset } = useWizardSteps('backup');
 

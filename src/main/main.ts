@@ -12,6 +12,8 @@ import { setupSsh } from './setupSsh';
 import fetchBackups from './backup/FetchBackups';
 import fetchFilesInBackup from './backup/FetchFilesFromBackup';
 import restoreBackups from './backup/RestoreBackups';
+import { execSync } from 'child_process';
+import { checkBackupTaskStatus } from './backup/CheckSmbStatus';
 
 let discoveredServers: Server[] = [];
 
@@ -65,21 +67,32 @@ function createWindow() {
   IPCRouter.initBackend(mainWindow.webContents, ipcMain);
 
   IPCRouter.getInstance().addEventListener('action', async (data) => {
-
+    console.log('action data:', data);
     if (data === "requestBackUpTasks") {
       let backUpManager: BackUpManager | null = getBackUpManager();
 
-      if (backUpManager !== null) {
-        IPCRouter.getInstance().send('renderer', 'sendBackupTasks', await backUpManager.queryTasks());
+      if (backUpManager) {
+        const tasks = await backUpManager.queryTasks();
+
+        IPCRouter.getInstance().send('renderer', 'action', JSON.stringify({
+          type: 'sendBackupTasks',
+          tasks
+        }));
       }
     } else if (data === "requestHostname") {
       IPCRouter.getInstance().send('renderer', 'action', JSON.stringify({
         type: "sendHostname",
         hostname: await unwrap(server.getHostname())
       }));
+    } else if (data === "show_storage_setup_wizard" || data === "show_backup_setup_wizard" || data === "show_restore-backup_setup_wizard") {
+      IPCRouter.getInstance().send('renderer', 'action', data);
+      return;
     } else {
       try {
+        // console.log("[Main] 📩 Raw message received:", data);
+
         const message = JSON.parse(data);
+        // console.log("[Main] 📩 Parsed message:", message);
         if (message.type === 'configureBackUp') {
 
           message.config.backUpTasks.forEach(backUpTask => {
@@ -114,17 +127,49 @@ function createWindow() {
           await restoreBackups(message.data, IPCRouter.getInstance())
 
         } else if (message.type === 'removeBackUpTask') {
-          const task: BackUpTask = message.task
-
+          const task: BackUpTask = message.task;
           const backupManager = getBackUpManager();
-          if (backupManager) {
-            // console.log('unscheduling task:', task)
-            backupManager.unschedule(task)
-            mainWindow.webContents.send('notification', `Successfully removed ${task.source}->${task.target}!`);
-          } else {
-            mainWindow.webContents.send('notification', `Error: No Backup Manager was found able to handle this!`);
+
+          if (!backupManager) {
+            mainWindow.webContents.send('notification', `❌ No Backup Manager available.`);
+            return;
           }
 
+          try {
+            await backupManager.unschedule(task);
+            mainWindow.webContents.send('notification', `🗑️ Successfully removed ${task.source} → ${task.target}`);
+
+            // 🔄 After deletion, re-send updated tasks
+            const tasks = await backupManager.queryTasks();
+
+            IPCRouter.getInstance().send('renderer', 'action', JSON.stringify({
+              type: 'sendBackupTasks',
+              tasks
+            }));
+          } catch (err: any) {
+            mainWindow.webContents.send('notification', `❌ Error deleting task: ${err.message}`);
+            console.error("removeBackUpTask failed:", err);
+          }
+        } else if (message.type === 'removeMultipleBackUpTasks') {
+          // console.log("[Main] 🧠 Received removeMultipleBackUpTasks", message.tasks);
+          const tasks: BackUpTask[] = message.tasks;
+          const backupManager = getBackUpManager();
+          if (!backupManager) {
+            mainWindow.webContents.send('notification', `Error: No Backup Manager available.`);
+            return;
+          }
+          try {
+            if (backupManager?.unscheduleSelectedTasks) {
+              await backupManager.unscheduleSelectedTasks(tasks);
+              // console.log("[Main] ✅ Tasks unscheduled successfully");
+              mainWindow.webContents.send('notification', `Successfully removed ${tasks.length} backup task(s)!`);
+            } else {
+              mainWindow.webContents.send('notification', `Error: Backup Manager does not support bulk deletion.`);
+            }
+          } catch (err: any) {
+            mainWindow.webContents.send('notification', `Error: ${err.message}`);
+            console.error("updateBackUpTask failed:", err);
+          }
         } else if (message.type === 'updateBackUpTask') {
           const task: BackUpTask = message.task;
           const backupManager = getBackUpManager();
@@ -140,6 +185,70 @@ function createWindow() {
             const minute = date.getMinutes().toString().padStart(2, '0');
             const hour = date.getHours();
             mainWindow.webContents.send('notification', `Updated cron schedule for ${task.description} to ${hour}:${minute}`);
+          } catch (err: any) {
+            mainWindow.webContents.send('notification', `Error: ${err.message}`);
+            console.error("updateBackUpTask failed:", err);
+          }
+        } else if (message.type === 'openFolder') {
+          const folderPath: string = message.path;
+          const platform = getOS();
+          try {
+            if (platform === "win") {
+              execSync(`start "" "${folderPath}"`);
+            } else if (platform === "mac") {
+              execSync(`open "${folderPath}"`);
+            } else {
+              execSync(`xdg-open "${folderPath}"`);
+            }
+            mainWindow.webContents.send("notification", `📂 Opened folder: ${folderPath}`);
+          } catch (err) {
+            mainWindow.webContents.send("notification", `❌ Failed to open folder: ${folderPath}`);
+            console.error("Error opening folder:", folderPath, err);
+          }
+        } else if (message.type === 'checkBackUpStatuses') {
+          console.log("✅ Received checkBackUpStatuses")
+          const tasks: BackUpTask[] = message.tasks;
+          const updatedTasks: BackUpTask[] = [];
+          for (const task of tasks) {
+            try {
+              task.status = await checkBackupTaskStatus(task);
+            } catch (err) {
+              console.error(`Status check failed for task: ${task.description}`, err);
+              task.status = 'offline';
+            }
+            updatedTasks.push(task); // ✅ This line was missing
+          }
+
+          IPCRouter.getInstance().send('renderer', 'action', JSON.stringify({
+            type: 'backUpStatusesUpdated',
+            tasks: updatedTasks
+          }));
+        } else if (message.type === 'requestBackUpTasksWithStatus') {
+          const backUpManager = getBackUpManager();
+          try {
+            if (backUpManager !== null) {
+              const tasks = await backUpManager.queryTasks();
+
+              for (const task of tasks) {
+                try {
+                  task.status = await checkBackupTaskStatus(task);
+                } catch (err) {
+                  console.error(`Failed to check status for ${task.description}:`, err);
+                  task.status = 'offline';
+                }
+              }
+
+              IPCRouter.getInstance().send('renderer', 'action', JSON.stringify({
+                type: 'sendBackupTasks',
+                tasks
+              }));
+            }
+
+            const backupManager = getBackUpManager();
+            if (!backupManager) {
+              mainWindow.webContents.send('notification', `Error: No Backup Manager available.`);
+              return;
+            }
           } catch (err: any) {
             mainWindow.webContents.send('notification', `Error: ${err.message}`);
             console.error("updateBackUpTask failed:", err);

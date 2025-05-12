@@ -1,25 +1,32 @@
 <template>
   <CardContainer>
     <template #header>
-      <div class="relative flex items-center justify-center h-18">
-          <div class="absolute left-0 bg-white p-1 px-4 rounded-lg">
+      <div class="relative flex items-center justify-center h-18  w-full">
+        <div class="absolute left-0 bg-white p-1 px-4 rounded-lg">
           <DynamicBrandingLogo :division="division" />
         </div>
         <p class="text-3xl font-semibold text-center">
           Review Your Backups
         </p>
+        <div class="absolute right-0 top-1/2 -translate-y-1/2">
+          <GlobalSetupWizardMenu />
+        </div>
       </div>
     </template>
 
     <div class="flex flex-col h-full justify-center items-center text-default">
       <!-- Header with instructions -->
       <div>
-        <p class=" text-lg">
-          Please provide your username and password to access the backup folder on the server at
-          <strong class="text-blue-600">{{ backupTask.target }}</strong>
+        <p class="text-lg">
+          Please provide your username and password to access the backup folders on the server:
         </p>
-        <p class=" text-lg mt-2">
-          We will automatically open the backup folder once you provide your credentials.
+        <ul class="mt-2 list-disc list-inside text-blue-600">
+          <li v-for="task in backupTasks" :key="task.uuid">
+            {{ task.target }}
+          </li>
+        </ul>
+        <p class="text-lg mt-2">
+          The share will be mounted once, and all relevant folders will be opened.
         </p>
       </div>
 
@@ -38,7 +45,7 @@
 
       <!-- "Open" button -->
       <div class="mt-4 flex flex-row ">
-        <button  @click="handleOpen" :disabled="isButtonDisabled"
+        <button @click="handleOpen" :disabled="isButtonDisabled"
           class="w-full p-3 btn btn-secondary font-semibold rounded-md  disabled:cursor-not-allowed">
           Open
         </button>
@@ -63,18 +70,16 @@
 
 <script setup lang="ts">
 import CardContainer from '../../components/CardContainer.vue';
+import GlobalSetupWizardMenu from '../../components/GlobalSetupWizardMenu.vue';
 import { ref, computed, inject, watch } from 'vue';
 import { useWizardSteps, DynamicBrandingLogo } from '@45drives/houston-common-ui';
-import { IPCRouter } from '@45drives/houston-common-lib';
+import { BackUpTask, IPCRouter } from '@45drives/houston-common-lib';
 import { divisionCodeInjectionKey } from '../../keys/injection-keys';
 const division = inject(divisionCodeInjectionKey);
 const { prevStep, wizardData } = useWizardSteps("backup");
 
-const backupTask = computed(() => {
+const backupTasks = computed(() => wizardData as BackUpTask[]);
 
-  console.log(wizardData)
-  return wizardData;
-});  // if wizardData is a ref// Reactive variables for username and password
 const username = ref('');
 const password = ref('');
 const openingBackup = ref(false);
@@ -83,50 +88,54 @@ const openingBackup = ref(false);
 const isButtonDisabled = computed(() => !username.value || !password.value || openingBackup.value);
 
 // Method to handle the "Open" button action
+let smbMountListener: ((data: any) => void) | null = null;
+
 const handleOpen = () => {
-  if (username.value && password.value) {
-    // Trigger your backend logic for opening the server (you will handle the action)
-    // Pass username, password, and backupTask.target (URL) to your backend code
-    // For example: openBackupServer(username.value, password.value, props.backupTask.target);
-    console.log('Attempting to open server with:', {
-      username: username.value,
-      password: password.value,
-      target: backupTask.value?.target,
-    });
-    // console.log('backupTaskData:', backupTask.value);
-    // console.log("Target:", backupTask.value?.target);
+  if (!username.value || !password.value || backupTasks.value.length === 0) return;
 
-    const [host, path] = backupTask.value?.target.split(":");
-
-    console.log("Host:", host);  // Output: "hl4-test.local"
-
-    const share = path.split("/")[0];
-    console.log("Share:", share); // Output: "backups"
-
-    watch(username, () => openingBackup.value = false);
-    watch(password, () => openingBackup.value = false);
-    
-    IPCRouter.getInstance().addEventListener("action", data => {
-      try {
-        const response = JSON.parse(data);
-        if (response.action === "mountSmbResult") {
-          const result = response.result;
-          openingBackup.value = false;
-        }
-      } catch (e) {
-
-      }
-    });
-    IPCRouter.getInstance().send('backend', 'mountSambaClient',
-      {
-        smb_host: host,
-        smb_share: share,
-        smb_user: username.value,
-        smb_pass: password.value,
-      }
-    );
-    openingBackup.value = true;
+  // Remove previous listener if exists
+  if (smbMountListener) {
+    IPCRouter.getInstance().removeEventListener("action", smbMountListener);
   }
+
+  smbMountListener = (data) => {
+    try {
+      const response = JSON.parse(data);
+      if (response.action === "mountSmbResult") {
+        openingBackup.value = false;
+        smbMountListener = null;
+
+        const baseMountPath = `/mnt/${share}`;
+        for (const task of backupTasks.value) {
+          const relative = task.target.split(":")[1].split("/").slice(1).join("/");
+          const fullPath = `${baseMountPath}/${relative}`;
+
+          IPCRouter.getInstance().send("backend", "action", JSON.stringify({
+            type: "openFolder",
+            path: fullPath
+          }));
+        }
+      }
+    } catch (e) {
+      console.error("Failed to parse SMB mount result:", e);
+      openingBackup.value = false;
+    }
+  };
+
+  IPCRouter.getInstance().addEventListener("action", smbMountListener);
+
+  // Proceed with mount
+  const [host, fullPath] = backupTasks.value[0].target.split(":");
+  const share = fullPath.split("/")[0];
+
+  IPCRouter.getInstance().send("backend", "mountSambaClient", {
+    smb_host: host,
+    smb_share: share,
+    smb_user: username.value,
+    smb_pass: password.value
+  });
+
+  openingBackup.value = true;
 };
 
 const proceedToPreviousStep = async () => {
@@ -136,5 +145,5 @@ const proceedToPreviousStep = async () => {
 </script>
 
 <style scoped>
-/* Tailwind is utility-based, so no custom CSS is needed here */
+
 </style>

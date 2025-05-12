@@ -2,22 +2,22 @@
   <div class="flex flex-col">
     <div v-if="backUpTasks.length == 0" class="spinner"></div>
 
-    <!-- <div class="bg-well p-4 rounded-lg border border-default max-h-[45vh] overflow-y-auto w-full"> -->
     <div class="">
-      <div class="grid gap-4" :class="{
+      <div class="grid gap-2" :class="{
         'grid-cols-1': backUpTasks.length <= 2,
         'md:grid-cols-2': backUpTasks.length >= 3,
         'lg:grid-cols-3': backUpTasks.length >= 5
       }">
 
         <!-- Backup Card -->
-        <div v-for="task in backUpTasks" :key="task.source + task.target"
-          class="relative border border-default rounded-lg shadow-sm p-2 space-y-2 cursor-pointer items-center"
-          @click="handleSelection(task)"
-          :class="[(selectedBackUp?.source === task.source && selectedBackUp?.target === task.target ? 'btn-secondary' : 'bg-default')]">
-          <input type="checkbox" class="input-checkbox absolute top-2 left-2"
-            :checked="selectedBackUp?.source === task.source && selectedBackUp?.target === task.target"
-            @change.stop="handleSelection(task)" />
+        <div v-for="task in backUpTasks" :key="task.uuid"
+          class="relative border-4 rounded-lg shadow-sm p-2 space-y-2 cursor-pointer items-center bg-default"
+          :class="[selectedBackUps.some(t => t.uuid === task.uuid) ? 'border-primary' : 'border-default']"
+          @click="toggleSelection(task)">
+
+          <input type="checkbox" class="input-checkbox absolute top-2 left-2 z-10"
+            :checked="selectedBackUps.some(t => t.uuid === task.uuid)" @change.stop="toggleSelection(task)" />
+
           <div class="space-y-2 text-default">
             <div>
               <div class="text-label">Folder</div>
@@ -37,6 +37,16 @@
               </div>
             </div>
 
+            <div class="text-xs font-medium" :class="{
+              'text-success': task.status === 'online',
+              'text-warning': task.status === 'missing_folder',
+              'text-error': task.status === 'offline'
+            }">
+              Status:
+              <span>{{ task.status ?? 'checking...' }}</span>
+            </div>
+
+
             <div class="text-feedback font-semibold pt-2">
               Backup will happen
               {{ formatFrequency(task.schedule.repeatFrequency) }}
@@ -47,11 +57,13 @@
             </div>
           </div>
           <div class="flex justify-between items-center pt-2">
-            <button class="btn btn-primary text-sm relative" @click.stop="editSchedule(task)">
-              Edit Schedule
+            <button class="btn btn-secondary text-sm relative" @click.stop="editSchedule(task)">
+              <!-- Edit Schedule -->
+              <PencilIcon class="w-6 h-6 text-white" />
             </button>
-            <button @click.stop="deleteTask(task)" class="btn btn-danger text-sm">
-              Remove Task
+            <button @click.stop="deleteThisTask(task)" class="btn btn-danger text-sm">
+              <!-- Remove Task -->
+              <TrashIcon class="w-6 h-6 text-white" />
             </button>
           </div>
         </div>
@@ -74,14 +86,15 @@
 
 
 <script setup lang="ts">
-import { nextTick, onActivated, reactive, ref, watch } from 'vue';
+import { nextTick, onActivated, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
 import { BackUpTask, IPCRouter, unwrap } from '@45drives/houston-common-lib';
 import { Modal, confirm } from '@45drives/houston-common-ui';
 import { formatFrequency, deconstructFullTarget } from "./utils";
 import { SimpleCalendar } from "../../components/calendar";
+import { PencilIcon, TrashIcon } from '@heroicons/vue/24/outline';
 const backUpTasks = ref<BackUpTask[]>([]);
+const selectedBackUps = ref<BackUpTask[]>([]);
 
-const selectedBackUp = ref<BackUpTask | null>(null);
 const selectedTaskSchedule = ref<any>();
 const showCalendar = ref(false);
 let resolveCalendarPromise: ((value: boolean) => void) | null = null;
@@ -115,20 +128,22 @@ watch(backUpTasks, () => {
 
 // Define event emitter
 const emit = defineEmits<{
-  (event: 'backUpTaskSelected', backUpTask: BackUpTask | null): void;
+  (event: 'backUpTaskSelected', tasks: BackUpTask[]): void;
 }>();
 
-// Emit event when a backUpTask is selected
-const handleSelection = (backUpTask: BackUpTask) => {
-  if (selectedBackUp.value?.source === backUpTask.source && selectedBackUp.value?.target === backUpTask.target) {
-    selectedBackUp.value = null;
-    emit('backUpTaskSelected', null);
+
+const toggleSelection = (task: BackUpTask) => {
+  const index = selectedBackUps.value.findIndex(t => t.uuid === task.uuid);
+
+  if (index !== -1) {
+    selectedBackUps.value.splice(index, 1);
   } else {
-    selectedBackUp.value = backUpTask;
-    // console.log("selectedBackUp.value: " + selectedBackUp.value.target)
-    emit('backUpTaskSelected', backUpTask);
+    selectedBackUps.value.push(task);
   }
+
+  emit('backUpTaskSelected', [...selectedBackUps.value]);
 };
+
 onActivated(fetchBackupTasks); // Runs when the component is displayed again
 
 async function editSchedule(selectedBackUp: BackUpTask) {
@@ -157,7 +172,11 @@ async function editSchedule(selectedBackUp: BackUpTask) {
   }
 }
 
-const deleteTask = async (task: BackUpTask) => {
+const deleteThisTask = async (task: BackUpTask) => {
+  // console.log("[Child] 🔥 deleteThisTask executing");
+
+  // console.log("[Child] Selected for deletion:", task);
+
   const confirmed = await unwrap(confirm({
     header: "Delete Backup Task?",
     body: `Are you sure you want to delete the backup task from "${task.source}" to "${task.target}"? This action cannot be undone.`,
@@ -166,33 +185,148 @@ const deleteTask = async (task: BackUpTask) => {
     cancelButtonText: "Cancel"
   }));
 
-  if (confirmed === true) {
-    if (selectedBackUp.value == task) {
-      selectedBackUp.value = null;
-      emit('backUpTaskSelected', null);
-    }
-    backUpTasks.value = backUpTasks.value.filter(t => t.source !== task.source || t.target !== task.target);
-    IPCRouter.getInstance().send("backend", 'action', JSON.stringify(
-      {
-        type: "removeBackUpTask",
-        task: task
-      }
-    ))
-  }
+  if (!confirmed) return;
+
+  // Remove from selectedBackUps
+  selectedBackUps.value = selectedBackUps.value.filter(t => t.uuid !== task.uuid);
+
+  // Emit updated selection to parent
+  emit('backUpTaskSelected', [...selectedBackUps.value]);
+
+  pollingSuspended = true;
+  
+  // Send deletion to backend
+  IPCRouter.getInstance().send("backend", "action", JSON.stringify({
+    type: "removeBackUpTask",
+    task
+  }));
+  // console.log("[Child] 🚀 Sent removeBackUpTask:", task);
+
+  // 🔄 Refresh tasks from backend (small delay gives backend time to complete)
+  setTimeout(async () => {
+    await fetchBackupTasks();
+    pollingSuspended = false;
+  }, 1000); // short delay to ensure backend cleanup is done
 };
+
+const deleteSelectedTasks = async () => {
+  // console.log("[Child] 🔥 deleteSelectedTasks executing");
+
+  const count = selectedBackUps.value.length;
+  const cleanTasks = selectedBackUps.value.map(task => ({ ...task }));
+  // console.log("[Child] Selected for deletion:", count, cleanTasks);
+
+  if (count === 0) return;
+
+  const confirmed = await unwrap(confirm({
+    header: `Delete Selected Backup Task${(count > 1 ? 's' : '')}?`,
+    body: `Are you sure you want to delete ${count} selected backup task${(count > 1 ? 's' : '')}? This action cannot be undone.`,
+    dangerous: true,
+    confirmButtonText: "Delete",
+    cancelButtonText: "Cancel"
+  }));
+
+  if (!confirmed) return;
+
+  pollingSuspended = true;
+
+  // ✅ Send clean (non-reactive) copy
+  IPCRouter.getInstance().send("backend", "action", JSON.stringify({
+    type: "removeMultipleBackUpTasks",
+    tasks: cleanTasks
+  }));
+  // console.log("[Child] 🚀 Sent removeMultipleBackUpTasks:", cleanTasks);
+
+  // Clear selection immediately
+  selectedBackUps.value = [];
+  emit('backUpTaskSelected', []);
+
+  // Ask backend for fresh tasks
+  setTimeout(async () => {
+    await fetchBackupTasks();
+    pollingSuspended = false;
+  }, 1000);
+};
+
+
 
 function fetchBackupTasks() {
   IPCRouter.getInstance().send('backend', 'action', 'requestBackUpTasks');
-  IPCRouter.getInstance().addEventListener('sendBackupTasks', (backUpTasks2) => {
-    console.log("tasks from backend:", backUpTasks2);
-    backUpTasks2.forEach(backUpTask => {
-      backUpTask.schedule.startDate = new Date(backUpTask.schedule.startDate);
-    })
-    backUpTasks.value = backUpTasks2;
+}
+
+IPCRouter.getInstance().addEventListener('action', (raw: string) => {
+  const message = JSON.parse(raw);
+  if (message.type === 'backUpStatusesUpdated') {
+    const updated = message.tasks as BackUpTask[];
+    backUpTasks.value = updated.map(task => ({
+      ...task,
+      schedule: { ...task.schedule, startDate: new Date(task.schedule.startDate) }
+    }));
+  }
+});
+
+let pollingInterval: ReturnType<typeof setInterval>;
+
+onMounted(() => {
+  IPCRouter.getInstance().addEventListener('action', (raw: string) => {
+    try {
+      const msg = JSON.parse(raw);
+
+      switch (msg.type) {
+        case 'sendBackupTasks':
+          console.log("📥 Received backup tasks:", msg.tasks);
+          msg.tasks.forEach((task: BackUpTask) => {
+            if (task.schedule?.startDate) {
+              task.schedule.startDate = new Date(task.schedule.startDate);
+            }
+          });
+          backUpTasks.value = msg.tasks;
+          break;
+
+        case 'backUpStatusesUpdated':
+          console.log("📦 Statuses updated:", msg.tasks);
+          msg.tasks.forEach((updated: BackUpTask) => {
+            const index = backUpTasks.value.findIndex(t => t.uuid === updated.uuid);
+            if (index !== -1) {
+              backUpTasks.value[index].status = updated.status;
+            }
+          });
+          break;
+
+        default:
+          break;
+      }
+    } catch (e) {
+      console.warn("❌ Failed to parse IPC action message:", raw);
+    }
   });
+
+  // 🔄 Initial fetch
+  fetchBackupTasks();
+
+  // ⏲️ Start polling every 15 seconds
+  pollingInterval = setInterval(pollStatuses, 5000);
+});
+
+onUnmounted(() => {
+  clearInterval(pollingInterval);
+});
+
+let pollingSuspended = false;
+
+function pollStatuses() {
+  if (pollingSuspended || backUpTasks.value.length === 0) return;
+
+  IPCRouter.getInstance().send('backend', 'action', JSON.stringify({
+    type: 'checkBackUpStatuses',
+    tasks: backUpTasks.value.map(task => ({ ...task })) // plain copies
+  }));
 }
 
 
+defineExpose({
+  deleteSelectedTasks
+});
 
 
 </script>

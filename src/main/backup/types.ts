@@ -5,6 +5,7 @@ export interface BackUpManager {
   unschedule(task: BackUpTask): void
   schedule(task: BackUpTask, username: string, password: string): Promise<{stdout: string, stderr: string}>
   updateSchedule(task: BackUpTask): Promise<void>;
+  unscheduleSelectedTasks?(tasks: BackUpTask[]): Promise<void>;
 }
 
 export const backupTaskTag = "45drives-setup-wizard-backup-task"

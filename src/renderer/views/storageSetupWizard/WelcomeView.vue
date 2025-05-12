@@ -1,13 +1,16 @@
 <template>
   <CardContainer>
     <template #header>
-      <div class="relative flex items-center justify-center h-18">
+      <div class="relative flex items-center justify-center h-18  w-full">
         <div class="absolute left-0 bg-white p-1 px-4 rounded-lg">
-          <DynamicBrandingLogo />
+          <DynamicBrandingLogo :division="division" />
         </div>
         <p class="text-3xl font-semibold text-center">
           Welcome to the 45Drives Setup Wizard!
         </p>
+        <div class="absolute right-0 top-1/2 -translate-y-1/2">
+          <GlobalSetupWizardMenu />
+        </div>
       </div>
     </template>
 
@@ -24,7 +27,8 @@
       </p>
 
       <p class="w-9/12 text-2xl">
-        Our goal is to ensure a smooth setup so you can start using your storage server as a network attached storage (NAS)
+        Our goal is to ensure a smooth setup so you can start using your storage server as a network attached storage
+        (NAS)
         device with confidence.
       </p>
 
@@ -47,7 +51,7 @@
     <!-- Buttons -->
     <template #footer>
       <div class="button-group-row w-full justify-end">
-        <button @click="proceedToNextStep" class="btn btn-secondary w-40 h-20">
+        <button @click="proceedToNextStep" class="btn btn-primary w-40 h-20">
           Next
         </button>
       </div>
@@ -60,6 +64,11 @@
 import CardContainer from '../../components/CardContainer.vue';
 import { CommanderToolTip } from '../../components/commander';
 import { useWizardSteps, DynamicBrandingLogo } from '@45drives/houston-common-ui';
+import GlobalSetupWizardMenu from '../../components/GlobalSetupWizardMenu.vue';
+import { divisionCodeInjectionKey } from '../../keys/injection-keys';
+import { inject } from 'vue';
+
+const division = inject(divisionCodeInjectionKey);
 
 const { completeCurrentStep } = useWizardSteps("setup");
 
