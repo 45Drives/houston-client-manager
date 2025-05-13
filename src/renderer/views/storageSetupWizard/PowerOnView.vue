@@ -40,7 +40,7 @@
 
 <script setup lang="ts">
 import CardContainer from '../../components/CardContainer.vue';
-import { useWizardSteps, DynamicBrandingLogo } from '@45drives/houston-common-ui';
+import { useWizardSteps, DynamicBrandingLogo, useEnterToAdvance } from '@45drives/houston-common-ui';
 import GlobalSetupWizardMenu from '../../components/GlobalSetupWizardMenu.vue';
 import { divisionCodeInjectionKey } from '../../keys/injection-keys';
 import { inject } from 'vue';
@@ -57,7 +57,9 @@ const proceedToNextStep = async () => {
   completeCurrentStep();
 };
 
-
+useEnterToAdvance(async () => {
+  await proceedToNextStep();
+});
 </script>
 
 <style scoped></style>

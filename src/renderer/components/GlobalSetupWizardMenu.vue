@@ -11,16 +11,17 @@
                     top: `${menuPosition.top}px`,
                     left: `${menuPosition.left}px`
                 }">
-                
-                <div class="mb-2 text-center items-center">
+
+                <div v-if="!server" class="mb-2 text-center items-center">
                     <p class="text-xs text-default mb-1">Select Wizard</p>
-                    <button class="btn btn-secondary w-full mb-1" :class="buttonClass('storage')"
+                    <button class="btn btn-secondary wizard-btn w-full mb-1" :class="buttonClass('storage')"
                         @click="showWizard('storage')">Setup Wizard</button>
-                    <button class="btn btn-secondary w-full mb-1" :class="buttonClass('backup')"
+                    <button class="btn btn-secondary wizard-btn w-full mb-1" :class="buttonClass('backup')"
                         @click="showWizard('backup')">Backup Client</button>
-                    <button class="btn btn-secondary w-full mb-1" :class="buttonClass('restore-backup')"
+                    <button class="btn btn-secondary wizard-btn w-full mb-1" :class="buttonClass('restore-backup')"
                         @click="showWizard('restore-backup')">Restore Backup</button>
                 </div>
+                
 
                 <div class="mb-2 text-center items-center">
                     <p class="text-xs text-default mb-1">Themes</p>
@@ -43,30 +44,46 @@
                             }}</span>
                     </button>
                 </div>
-
             </div>
         </teleport>
     </div>
 </template>
 
 <script setup lang="ts">
-import { computed, ref, inject, type Ref, nextTick, onMounted, onBeforeUnmount} from 'vue'
+import { computed, ref, inject, type Ref, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import { IPCRouter } from '@45drives/houston-common-lib'
 import { Bars3Icon, MoonIcon, SunIcon } from '@heroicons/vue/24/outline'
 import { toggleDarkMode, useDarkModeState } from '../composables/useDarkModeState'
 import { currentWizardInjectionKey } from '../keys/injection-keys';
 
-const currentWizard = inject(currentWizardInjectionKey) as Ref<'storage' | 'backup' | 'restore-backup' | null>;
+interface GlobalSetupWizardMenuProps {
+    server?: boolean;
+}
+
+const props = defineProps<GlobalSetupWizardMenuProps>();
+
+const currentWizard = inject(
+    currentWizardInjectionKey,
+    ref('storage')
+) as Ref<'storage' | 'backup' | 'restore-backup' | null>;
+
 
 if (!currentWizard) {
     throw new Error("currentWizard was not provided");
 }
 
 const buttonClass = (type: 'storage' | 'backup' | 'restore-backup') => {
-    return currentWizard?.value === type
-        ? 'animate-glow'
-        : '';
-};
+    return [
+        'wizard-btn',
+        currentWizard?.value === type ? 'animate-glow' : ''
+    ].join(' ')
+}
+
+// const buttonClass = (type: 'storage' | 'backup' | 'restore-backup') => {
+//     return currentWizard?.value === type
+//         ? 'animate-glow'
+//         : '';
+// };
 
 const show = ref(false)
 const menuRef = ref<HTMLElement | null>(null)
@@ -183,6 +200,8 @@ function showWizard(type: 'storage' | 'backup' | 'restore-backup') {
     opacity: 0;
 }
 
+
+
 /* THEME BUTTONS: Theme Color Swatches */
 
 .theme-btn-default {
@@ -235,5 +254,3 @@ function showWizard(type: 'storage' | 'backup' | 'restore-backup') {
     transform: scale(1.02);
 }
 </style>
-
-  
