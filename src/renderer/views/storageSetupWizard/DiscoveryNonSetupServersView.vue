@@ -71,7 +71,7 @@
 
 <script setup lang="ts">
 import CardContainer from '../../components/CardContainer.vue';
-import { useWizardSteps, DynamicBrandingLogo } from '@45drives/houston-common-ui';
+import { useWizardSteps, DynamicBrandingLogo, useEnterToAdvance } from '@45drives/houston-common-ui';
 import HoustonServerListView from '../../components/HoustonServerListView.vue'
 import { Server } from '../../types';
 import { ref } from 'vue';
@@ -102,6 +102,11 @@ const handleServerSelected = async (server: Server | null) => {
   selectedServer.value = server;
 };
 
+useEnterToAdvance(() => {
+  if (selectedServer.value !== null) {
+    proceedToNextStep();
+  }
+});
 </script>
 
 <style scoped></style>

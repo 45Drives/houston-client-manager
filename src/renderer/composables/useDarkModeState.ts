@@ -47,6 +47,12 @@ export function useDarkModeState() {
   return darkModeState;
 }
 
+// export function toggleDarkMode() {
+//   darkModeState.value = !darkModeState.value;
+// }
+
 export function toggleDarkMode() {
-  darkModeState.value = !darkModeState.value;
+  const html = document.documentElement;
+  html.classList.toggle("dark");
+  darkModeState.value = html.classList.contains("dark");
 }

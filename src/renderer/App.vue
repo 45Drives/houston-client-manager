@@ -55,15 +55,13 @@
 import { onMounted, provide, ref, unref, watch } from 'vue';
 import { useDarkModeState } from './composables/useDarkModeState';
 import { useAdvancedModeState } from './composables/useAdvancedState';
-import { reportError, reportSuccess } from './components/NotificationView.vue';
-import NotificationView from './components/NotificationView.vue';
 import { Server, DivisionType } from './types';
-import { useWizardSteps, GlobalModalConfirm } from '@45drives/houston-common-ui'
+import { useWizardSteps, GlobalModalConfirm, reportError, reportSuccess } from '@45drives/houston-common-ui'
 import StorageSetupWizard from './views/storageSetupWizard/Wizard.vue';
 import BackUpSetupWizard from './views/backupSetupWizard/Wizard.vue';
 import RestoreBackUpWizard from './views/restoreBackupWizard/Wizard.vue';
 import { divisionCodeInjectionKey, currentServerInjectionKey, currentWizardInjectionKey } from './keys/injection-keys';
-import { IPCMessageRouterRenderer, IPCRouter, server } from '@45drives/houston-common-lib';
+import { IPCMessageRouterRenderer, IPCRouter } from '@45drives/houston-common-lib';
 
 IPCRouter.initRenderer();
 IPCRouter.getInstance().addEventListener("action", async (data) => {
@@ -281,21 +279,6 @@ watch(currentTheme, (theme) => {
 // Receive the discovered servers from the main process
 let discoveredServersChecked = false;
 window.electron.ipcRenderer.on('discovered-servers', (_event, discoveredServers: Server[]) => {
-  // if (!scanningNetworkForServers.value && !discoveredServersChecked) {
-  //   discoveredServersChecked = true;
-  //   const anyServersNotSetup = discoveredServers.some((server, _index, _array) => server.status !== "complete");
-  //   if (anyServersNotSetup) {
-  //     showWelcomeSetupWizard.value = true;
-  //     showBackUpSetupWizard.value = false;
-  //     showRestoreBackupWizard.value = false;
-  //     showWebView.value = false;
-  //   } else {
-  //     showRestoreBackupWizard.value = false;
-  //     showWelcomeSetupWizard.value = false;
-  //     showBackUpSetupWizard.value = true;
-  //     showWebView.value = false;
-  //   }
-  // }
   if (!scanningNetworkForServers.value && !discoveredServersChecked) {
     discoveredServersChecked = true;
     const anyServersNotSetup = discoveredServers.some((server) => server.status !== "complete");
