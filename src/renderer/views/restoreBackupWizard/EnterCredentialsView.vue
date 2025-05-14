@@ -34,13 +34,13 @@
         <div class="flex flex-col gap-6 w-full lg:w-2/5">
           <div>
             <label for="username" class="block mb-1 font-medium text-lg">Username</label>
-            <input v-model="restoreBackUpData.username" type="text" id="username"
+            <input v-model="restoreBackUpData.username" v-enter-next type="text" id="username"
               class="input-textlike p-3 border border-default rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               placeholder="Enter your username" />
           </div>
           <div>
             <label for="password" class="block mb-1 font-medium text-lg">Password</label>
-            <input v-model="restoreBackUpData.password" type="password" id="password"
+            <input v-model="restoreBackUpData.password" v-enter-next type="password" id="password"
               class="input-textlike p-3 border border-default rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               placeholder="Enter your password" />
           </div>
@@ -73,12 +73,12 @@
 
 import CardContainer from '../../components/CardContainer.vue';
 import { ref, computed, inject } from 'vue';
-import { useWizardSteps, DynamicBrandingLogo } from '@45drives/houston-common-ui';
+import { useWizardSteps, DynamicBrandingLogo, useAutoFocus, useEnterToAdvance } from '@45drives/houston-common-ui';
 import { divisionCodeInjectionKey, restoreBackUpSetupDataKey } from '../../keys/injection-keys';
 import HoustonServerListView from '../../components/HoustonServerListView.vue';
 import { Server } from '../../types';
 import GlobalSetupWizardMenu from '../../components/GlobalSetupWizardMenu.vue';
-
+useAutoFocus();
 const division = inject(divisionCodeInjectionKey);
 const restoreBackUpData = inject(restoreBackUpSetupDataKey)!;
 const { prevStep, nextStep, wizardData } = useWizardSteps("restore-backup");
@@ -100,6 +100,23 @@ const proceedToPreviousStep = async () => {
 const handleServerSelected = async (server: Server | null) => {
   restoreBackUpData.server = server;
 };
+
+useEnterToAdvance(
+  () => {
+    if (!isButtonDisabled) {
+      proceedToNextStep(); // Enter
+    }
+  },
+  200, // debounce time for Enter
+  () => {
+    if (!isButtonDisabled) {
+      proceedToNextStep(); // ArrowRight
+    }
+  },
+  () => {
+    proceedToPreviousStep(); // ArrowLeft
+  }
+);
 
 </script>
 

@@ -76,9 +76,16 @@ const proceedToNextStep =  () => {
   completeCurrentStep();
 };
 
-useEnterToAdvance( () => {
-  proceedToNextStep();
-});
+useEnterToAdvance(
+  () => {
+    proceedToNextStep(); // Enter
+  },
+  200, // debounce time for Enter
+  () => {
+    proceedToNextStep(); // ArrowRight
+  }
+);
+
 
 </script>
 

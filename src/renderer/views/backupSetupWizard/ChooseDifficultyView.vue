@@ -62,7 +62,7 @@
 <script setup lang="ts">
 import CardContainer from '../../components/CardContainer.vue';
 import { CommanderToolTip } from '../../components/commander';
-import { useWizardSteps, DynamicBrandingLogo } from '@45drives/houston-common-ui';
+import { useWizardSteps, DynamicBrandingLogo, useEnterToAdvance } from '@45drives/houston-common-ui';
 import { divisionCodeInjectionKey } from '../../keys/injection-keys';
 import { inject } from 'vue';
 import GlobalSetupWizardMenu from '../../components/GlobalSetupWizardMenu.vue';
@@ -82,4 +82,12 @@ const proceedToPreviousStep = () => {
   prevStep();
 };
 
+useEnterToAdvance(
+  () => { },     // Disable Enter
+  0,            // No debounce needed if Enter does nothing
+  () => { },     // Disable ArrowRight
+  () => {
+    proceedToPreviousStep(); // Enable only ArrowLeft
+  }
+);
 </script>

@@ -64,7 +64,7 @@
 </template>
 
 <script setup lang="ts">
-import { CardContainer, CommanderToolTip, confirm } from "@45drives/houston-common-ui";
+import { CardContainer, CommanderToolTip, confirm, useEnterToAdvance } from "@45drives/houston-common-ui";
 import { inject, ref } from "vue";
 import { useWizardSteps, DynamicBrandingLogo } from '@45drives/houston-common-ui';
 import { backUpSetupConfigKey, divisionCodeInjectionKey } from "../../keys/injection-keys";
@@ -84,8 +84,20 @@ const proceedToPreviousStep = () => {
 };
 
 const handleNextClick = async () => {
-
   proceedToNextStep();
 
 };
+
+useEnterToAdvance(
+  async () => {
+    await handleNextClick(); // Enter
+  },
+  200, // debounce time for Enter
+  async () => {
+    await handleNextClick(); // ArrowRight
+  },
+  async () => {
+    await proceedToPreviousStep(); // ArrowLeft
+  }
+);
 </script>

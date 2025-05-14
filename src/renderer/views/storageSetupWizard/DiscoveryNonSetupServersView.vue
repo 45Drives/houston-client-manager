@@ -102,11 +102,23 @@ const handleServerSelected = async (server: Server | null) => {
   selectedServer.value = server;
 };
 
-useEnterToAdvance(() => {
-  if (selectedServer.value !== null) {
-    proceedToNextStep();
+useEnterToAdvance(
+  () => {
+    if (selectedServer.value !== null) {
+      proceedToNextStep();
+    }
+  },
+  200, // debounce delay for Enter
+  () => {
+    if (selectedServer.value !== null) {
+      proceedToNextStep(); // right arrow key → acts like "Next"
+    }
+  },
+  () => {
+    goBackStep(); // left arrow key ← acts like "Back"
   }
-});
+);
+
 </script>
 
 <style scoped></style>

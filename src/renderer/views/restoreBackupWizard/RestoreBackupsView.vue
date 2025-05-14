@@ -110,7 +110,7 @@
 
 <script setup lang="ts">
 import { ref, computed, inject, onActivated } from 'vue'
-import { useWizardSteps, DynamicBrandingLogo, confirm, CardContainer } from '@45drives/houston-common-ui';
+import { useWizardSteps, DynamicBrandingLogo, confirm, CardContainer, useEnterToAdvance } from '@45drives/houston-common-ui';
 import { divisionCodeInjectionKey, restoreBackUpSetupDataKey } from '../../keys/injection-keys';
 import { IPCRouter, type BackupEntry, type FileEntry } from '@45drives/houston-common-lib';
 import GlobalSetupWizardMenu from '../../components/GlobalSetupWizardMenu.vue';
@@ -259,49 +259,22 @@ const restoreSelected = async () => {
   }))
 }
 
-/* async function restoreSelected() {
-
-  const confirmed = window.confirm('Restoring these files will overwrite existing files if they exist.');
-
-  if (!(await unwrap(
-    confirm({
-      header: "Proceed with Restoring Selected Files",
-      body:
-        "Restoring these files will overwrite existing files if they exist.",
-      dangerous: true,
-      confirmButtonText: "Continue anyway",
-    })
-  ))) {
-    return;
+useEnterToAdvance(
+  () => {
+    if (selectedBackup.value !== null) {
+      // restoreSelected();
+    }
+  },
+  200, // debounce delay for Enter
+  () => {
+    if (selectedBackup.value !== null) {
+      // restoreSelected(); // right arrow key → acts like "Next"
+    }
+  },
+  () => {
+    proceedToPreviousStep(); // left arrow key ← acts like "Back"
   }
-  // if (!confirmed) {
-  //   return;
-  // }
-  
-  if (!selectedBackup.value) return
-  const filesToRestore = selectedBackup.value.files.filter(file => file.selected)
-
-  restoreProgress.value = {
-    current: 0,
-    total: filesToRestore.length,
-    lastFile: ""
-  };
-
-  const restorePayload = {
-    smb_host: (restoreBackupsData.server?.serverName ?? "") + ".local",
-    smb_share: restoreBackupsData.server?.shareName ?? "",
-    smb_user: restoreBackupsData.username,
-    smb_pass: restoreBackupsData.password,
-    uuid: selectedBackup.value.uuid,
-    client: selectedBackup.value.client,
-    files: filesToRestore.map(file => file.path)
-  }
-
-  IPCRouter.getInstance().send("backend", "action", JSON.stringify({
-    type: "restoreBackups",
-    data: restorePayload
-  }))
-} */
+);
 </script>
 
 <style scoped>
