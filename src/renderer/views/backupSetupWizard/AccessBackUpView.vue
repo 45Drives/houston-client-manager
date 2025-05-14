@@ -31,7 +31,7 @@
       </div>
 
       <!-- Username and Password input fields -->
-      <div class="flex flex-col gap-4 mt-4 text-default">
+      <form @submit.prevent="handleOpen" class="flex flex-col gap-4 mt-4 text-default">
         <label for="username" class="font-semibold ">Username:</label>
         <input v-model="username" v-enter-next type="text" id="username"
           class="p-2 input-textlike rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -41,7 +41,8 @@
         <input v-model="password" v-enter-next type="password" id="password"
           class="p-2 input-textlike rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
           placeholder="Enter your password" />
-      </div>
+        <button type="submit" class="hidden">Submit</button>
+      </form>
 
       <!-- "Open" button -->
       <div class="mt-4 flex flex-row ">
@@ -149,7 +150,7 @@ useEnterToAdvance(
       handleOpen(); // Enter triggers "Open"
     }
   },
-  300,        // debounce
+  200,        // debounce
   () => { },   // Disable ArrowRight
   () => {
     proceedToPreviousStep(); // ← triggers Back
