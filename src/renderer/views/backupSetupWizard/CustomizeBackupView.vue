@@ -116,7 +116,7 @@
 </template>
 
 <script setup lang="ts">
-import { CardContainer, CommanderToolTip, Modal } from "@45drives/houston-common-ui";
+import { CardContainer, CommanderToolTip, Modal, useEnterToAdvance } from "@45drives/houston-common-ui";
 import { useWizardSteps, DynamicBrandingLogo } from '@45drives/houston-common-ui';
 import { inject, ref, reactive, watch, nextTick } from "vue";
 import { PlusIcon, MinusIcon } from "@heroicons/vue/20/solid";
@@ -390,5 +390,22 @@ const proceedToNextStep = () => {
 const proceedToPreviousStep = () => {
 	prevStep();
 };
+
+useEnterToAdvance(
+	() => {
+		if (backUpSetupConfig!.backUpTasks.length > 0) {
+			proceedToNextStep(); // Enter
+		}
+	},
+	200,
+	() => {
+		if (backUpSetupConfig!.backUpTasks.length > 0) {
+			proceedToNextStep(); // → Arrow
+		}
+	},
+	() => {
+		proceedToPreviousStep(); // ← Arrow
+	}
+);
 
 </script>

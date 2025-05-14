@@ -66,7 +66,7 @@
 <script setup lang="ts">
 import CardContainer from '../../components/CardContainer.vue';
 import { CommanderToolTip } from '../../components/commander';
-import { useWizardSteps, DynamicBrandingLogo } from '@45drives/houston-common-ui';
+import { useWizardSteps, DynamicBrandingLogo, useEnterToAdvance } from '@45drives/houston-common-ui';
 import { divisionCodeInjectionKey } from '../../keys/injection-keys';
 import { inject } from 'vue';
 import GlobalSetupWizardMenu from '../../components/GlobalSetupWizardMenu.vue';
@@ -77,6 +77,16 @@ const { completeCurrentStep } = useWizardSteps("backup");
 const proceedToNextStep = async () => {
   completeCurrentStep();
 };
+
+useEnterToAdvance(
+  () => {
+    proceedToNextStep(); // Enter
+  },
+  200, // debounce time for Enter
+  () => {
+    proceedToNextStep(); // ArrowRight
+  }
+);
 
 </script>
 

@@ -58,7 +58,7 @@
 </template>
 
 <script setup lang="ts">
-import { CardContainer } from "@45drives/houston-common-ui";
+import { CardContainer, useEnterToAdvance } from "@45drives/houston-common-ui";
 import { ref, watch, inject, onActivated, onBeforeUnmount } from "vue";
 import { useWizardSteps, DynamicBrandingLogo } from "@45drives/houston-common-ui";
 import { EasySetupProgress, IPCRouter } from "@45drives/houston-common-lib";
@@ -145,7 +145,20 @@ onBeforeUnmount(() => {
 });
 
 
-
+useEnterToAdvance(
+  () => {
+    if (setupComplete.value === "yes") {
+      goHome(); // Press Enter
+    }
+  },
+  300,
+  () => {
+    if (setupComplete.value === "yes") {
+      goHome(); // ArrowRight = Finish
+    }
+  },
+  undefined // no need to handle ArrowLeft on this screen
+);
 </script>
 
 <style scoped>

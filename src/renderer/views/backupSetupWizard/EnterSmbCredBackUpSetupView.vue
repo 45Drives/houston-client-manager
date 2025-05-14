@@ -25,12 +25,12 @@
       <!-- Username and Password input fields -->
       <div class="flex flex-col gap-4 mt-4 text-default">
         <label for="username" class="font-semibold ">Username:</label>
-        <input v-model="backUpSetupConfig.username" type="text" id="username"
+        <input v-enter-next v-model="backUpSetupConfig.username" type="text" id="username"
           class="p-2 input-textlike rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
           placeholder="Enter your username" />
 
         <label for="password" class="font-semibold ">Password:</label>
-        <input v-model="backUpSetupConfig.password" type="password" id="password"
+        <input v-enter-next v-model="backUpSetupConfig.password" type="password" id="password"
           class="p-2 input-textlike rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
           placeholder="Enter your password" />
       </div>
@@ -60,10 +60,10 @@
 
 import CardContainer from '../../components/CardContainer.vue';
 import { ref, computed, inject } from 'vue';
-import { useWizardSteps, DynamicBrandingLogo } from '@45drives/houston-common-ui';
+import { useWizardSteps, DynamicBrandingLogo, useAutoFocus, useEnterToAdvance } from '@45drives/houston-common-ui';
 import { backUpSetupConfigKey, divisionCodeInjectionKey } from '../../keys/injection-keys';
 import GlobalSetupWizardMenu from '../../components/GlobalSetupWizardMenu.vue';
-
+useAutoFocus();
 const division = inject(divisionCodeInjectionKey);
 const { prevStep, nextStep, wizardData } = useWizardSteps("backup");
 const backUpSetupConfig = inject(backUpSetupConfigKey)!;
@@ -101,6 +101,18 @@ const proceedToPreviousStep = async () => {
   prevStep();
 };
 
+useEnterToAdvance(
+  async () => {
+    await proceedToNextStep(); // Enter
+  },
+  200, // debounce time for Enter
+  async () => {
+    await proceedToNextStep(); // ArrowRight
+  },
+  async () => {
+    await proceedToPreviousStep(); // ArrowLeft
+  }
+);
 </script>
 
 <style scoped>

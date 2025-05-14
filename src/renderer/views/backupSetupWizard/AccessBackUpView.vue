@@ -33,12 +33,12 @@
       <!-- Username and Password input fields -->
       <div class="flex flex-col gap-4 mt-4 text-default">
         <label for="username" class="font-semibold ">Username:</label>
-        <input v-model="username" type="text" id="username"
+        <input v-model="username" v-enter-next type="text" id="username"
           class="p-2 input-textlike rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
           placeholder="Enter your username" />
 
         <label for="password" class="font-semibold ">Password:</label>
-        <input v-model="password" type="password" id="password"
+        <input v-model="password" v-enter-next type="password" id="password"
           class="p-2 input-textlike rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
           placeholder="Enter your password" />
       </div>
@@ -72,9 +72,10 @@
 import CardContainer from '../../components/CardContainer.vue';
 import GlobalSetupWizardMenu from '../../components/GlobalSetupWizardMenu.vue';
 import { ref, computed, inject, watch } from 'vue';
-import { useWizardSteps, DynamicBrandingLogo } from '@45drives/houston-common-ui';
+import { useWizardSteps, DynamicBrandingLogo, useEnterToAdvance, useAutoFocus } from '@45drives/houston-common-ui';
 import { BackUpTask, IPCRouter } from '@45drives/houston-common-lib';
 import { divisionCodeInjectionKey } from '../../keys/injection-keys';
+useAutoFocus();
 const division = inject(divisionCodeInjectionKey);
 const { prevStep, wizardData } = useWizardSteps("backup");
 
@@ -142,6 +143,18 @@ const proceedToPreviousStep = async () => {
   prevStep();
 };
 
+useEnterToAdvance(
+  () => {
+    if (!isButtonDisabled.value) {
+      handleOpen(); // Enter triggers "Open"
+    }
+  },
+  300,        // debounce
+  () => { },   // Disable ArrowRight
+  () => {
+    proceedToPreviousStep(); // ← triggers Back
+  }
+);
 </script>
 
 <style scoped>

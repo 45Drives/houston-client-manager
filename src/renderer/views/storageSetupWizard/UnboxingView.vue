@@ -77,9 +77,19 @@ const proceedToNextStep = async () => {
   completeCurrentStep();
 };
 
-useEnterToAdvance(async () => {
-  await proceedToNextStep();
-});
+useEnterToAdvance(
+  async () => {
+    await proceedToNextStep(); // Enter
+  },
+  200, // debounce time for Enter
+  async () => {
+    await proceedToNextStep(); // ArrowRight
+  },
+  async () => {
+    await goBackStep(); // ArrowLeft
+  }
+);
+
 </script>
 
 <style scoped></style>

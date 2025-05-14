@@ -66,7 +66,7 @@
 import CardContainer from '../../components/CardContainer.vue';
 import { CommanderToolTip } from '../../components/commander';
 import GlobalSetupWizardMenu from '../../components/GlobalSetupWizardMenu.vue';
-import { useWizardSteps, DynamicBrandingLogo } from '@45drives/houston-common-ui';
+import { useWizardSteps, DynamicBrandingLogo, useEnterToAdvance } from '@45drives/houston-common-ui';
 import { divisionCodeInjectionKey } from '../../keys/injection-keys';
 import { inject } from 'vue';
 const division = inject(divisionCodeInjectionKey);
@@ -75,6 +75,16 @@ const { completeCurrentStep } = useWizardSteps("restore-backup");
 const proceedToNextStep = async () => {
   completeCurrentStep();
 };
+
+useEnterToAdvance(
+  () => {
+    proceedToNextStep(); // Enter
+  },
+  200, // debounce time for Enter
+  () => {
+    proceedToNextStep(); // ArrowRight
+  }
+);
 </script>
 
 <style scoped></style>

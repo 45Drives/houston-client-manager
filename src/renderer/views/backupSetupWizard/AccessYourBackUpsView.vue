@@ -71,7 +71,7 @@
 <script setup lang="ts">
 import { BackUpTask } from '@45drives/houston-common-lib';
 import CardContainer from '../../components/CardContainer.vue';
-import { useWizardSteps, DynamicBrandingLogo, confirm } from '@45drives/houston-common-ui';
+import { useWizardSteps, DynamicBrandingLogo, confirm, useEnterToAdvance } from '@45drives/houston-common-ui';
 import BackUpListView from './BackUpListView.vue';
 import GlobalSetupWizardMenu from '../../components/GlobalSetupWizardMenu.vue';
 import { inject, ref } from 'vue';
@@ -113,6 +113,22 @@ const proceedToPreviousStep = async () => {
   prevStep();
 };
 
+useEnterToAdvance(
+  () => {
+    if (selectedBackUpTasks.value.length > 0) {
+      proceedToNextStep(); // Enter
+    }
+  },
+  300,
+  () => {
+    if (selectedBackUpTasks.value.length > 0) {
+      proceedToNextStep(); // → Arrow
+    }
+  },
+  () => {
+    proceedToPreviousStep(); // ← Arrow
+  }
+);
 </script>
 
 <style scoped></style>
