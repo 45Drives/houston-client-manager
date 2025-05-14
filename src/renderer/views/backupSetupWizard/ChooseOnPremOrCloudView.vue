@@ -2,7 +2,7 @@
   <CardContainer class="">
     <template #header>
       <div class="relative flex items-center justify-center h-18  w-full">
- <div class="absolute left-0 p-1 px-4 rounded-lg">
+        <div class="absolute left-0 p-1 px-4 rounded-lg">
           <DynamicBrandingLogo :division="division" />
         </div>
         <p class="text-3xl font-semibold text-center">
