@@ -53,7 +53,7 @@
 import { computed, ref, inject, type Ref, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import { IPCRouter } from '@45drives/houston-common-lib'
 import { Bars3Icon, MoonIcon, SunIcon } from '@heroicons/vue/24/outline'
-import { toggleDarkMode, useDarkModeState } from '../composables/useDarkModeState'
+import { toggleDarkMode, useDarkModeState } from '@45drives/houston-common-ui'
 import { currentWizardInjectionKey } from '../keys/injection-keys';
 
 interface GlobalSetupWizardMenuProps {
@@ -78,12 +78,6 @@ const buttonClass = (type: 'storage' | 'backup' | 'restore-backup') => {
         currentWizard?.value === type ? 'animate-glow' : ''
     ].join(' ')
 }
-
-// const buttonClass = (type: 'storage' | 'backup' | 'restore-backup') => {
-//     return currentWizard?.value === type
-//         ? 'animate-glow'
-//         : '';
-// };
 
 const show = ref(false)
 const menuRef = ref<HTMLElement | null>(null)

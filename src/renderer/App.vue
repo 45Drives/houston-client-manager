@@ -23,7 +23,7 @@
         <RestoreBackUpWizard id="restore-backup" :onComplete="onWizardComplete" />
       </div>
 
-      <webview v-show="showWebView && !loadingWebview && !waitingForServerReboot" id="myWebview" title="test"
+      <webview v-show="showWebView && !loadingWebview && !waitingForServerReboot" id="myWebview"
         :src="currentUrl" allowpopups nodeintegration allow-same-origin allow-scripts partition="persist:authSession"
         webpreferences="javascript=yes,webSecurity=no,enable-cookies=true,nodeIntegration=false,contextIsolation=true"
         ref="webview" @did-finish-load="onWebViewLoaded" />
@@ -53,10 +53,9 @@
 
 <script setup lang="ts">
 import { onMounted, provide, ref, unref, watch } from 'vue';
-import { useDarkModeState } from './composables/useDarkModeState';
 import { useAdvancedModeState } from './composables/useAdvancedState';
 import { Server, DivisionType } from './types';
-import { useWizardSteps, GlobalModalConfirm, reportError, reportSuccess } from '@45drives/houston-common-ui'
+import { useWizardSteps, GlobalModalConfirm, reportError, reportSuccess, useDarkModeState } from '@45drives/houston-common-ui'
 import StorageSetupWizard from './views/storageSetupWizard/Wizard.vue';
 import BackUpSetupWizard from './views/backupSetupWizard/Wizard.vue';
 import RestoreBackUpWizard from './views/restoreBackupWizard/Wizard.vue';

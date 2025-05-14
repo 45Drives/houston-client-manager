@@ -23,7 +23,7 @@
       </div>
 
       <!-- Username and Password input fields -->
-      <div class="flex flex-col gap-4 mt-4 text-default">
+      <form @submit.prevent="proceedToNextStep" class="flex flex-col gap-4 mt-4 text-default">
         <label for="username" class="font-semibold ">Username:</label>
         <input v-enter-next v-model="backUpSetupConfig.username" type="text" id="username"
           class="p-2 input-textlike rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -33,7 +33,9 @@
         <input v-enter-next v-model="backUpSetupConfig.password" type="password" id="password"
           class="p-2 input-textlike rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
           placeholder="Enter your password" />
-      </div>
+          
+        <button type="submit" class="hidden">Submit</button>
+      </form>
     </div>
 
     <!-- Buttons -->
@@ -102,15 +104,15 @@ const proceedToPreviousStep = async () => {
 };
 
 useEnterToAdvance(
-  async () => {
-    await proceedToNextStep(); // Enter
+  () => {
+    proceedToNextStep(); // Enter
   },
   200, // debounce time for Enter
-  async () => {
-    await proceedToNextStep(); // ArrowRight
+  () => {
+    proceedToNextStep(); // ArrowRight
   },
-  async () => {
-    await proceedToPreviousStep(); // ArrowLeft
+  () => {
+    proceedToPreviousStep(); // ArrowLeft
   }
 );
 </script>

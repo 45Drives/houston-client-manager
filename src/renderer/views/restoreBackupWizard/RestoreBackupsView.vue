@@ -2,7 +2,7 @@
   <CardContainer>
     <template #header class="!text-center">
       <div class="relative flex items-center justify-center h-18  w-full">
-        <div class="absolute left-0 bg-white p-1 px-4 rounded-lg">
+ <div class="absolute left-0 p-1 px-4 rounded-lg">
           <DynamicBrandingLogo :division="division" />
         </div>
         <p class="text-3xl font-semibold text-center">
@@ -215,8 +215,13 @@ function deselectAll() {
   selectedBackup.value?.files.forEach(file => file.selected = false)
 }
 
+const isConfirmOpen = ref(false);
+
 const restoreSelected = async () => {
   // const confirmed = window.confirm('Restoring these files will overwrite existing files if they exist.');
+  if (!selectedBackup.value) return;
+
+  isConfirmOpen.value = true;
 
   const confirmed = await 
     confirm({
@@ -227,14 +232,10 @@ const restoreSelected = async () => {
       confirmButtonText: "Houston, OBLITERATE!",
     }).unwrapOr(false)
   
-  if (!confirmed) {
-    return;
-  }
-  // if (!confirmed) {
-  //   return;
-  // }
+  isConfirmOpen.value = false;
 
-  if (!selectedBackup.value) return
+  if (!confirmed) return;
+
   const filesToRestore = selectedBackup.value.files.filter(file => file.selected)
 
   restoreProgress.value = {
@@ -261,20 +262,23 @@ const restoreSelected = async () => {
 
 useEnterToAdvance(
   () => {
-    if (selectedBackup.value !== null) {
-      // restoreSelected();
+    if (!isConfirmOpen.value && selectedBackup.value !== null) {
+      restoreSelected();
     }
   },
-  200, // debounce delay for Enter
+  200,
   () => {
-    if (selectedBackup.value !== null) {
-      // restoreSelected(); // right arrow key → acts like "Next"
+    if (!isConfirmOpen.value && selectedBackup.value !== null) {
+      restoreSelected();
     }
   },
   () => {
-    proceedToPreviousStep(); // left arrow key ← acts like "Back"
+    if (!isConfirmOpen.value) {
+      proceedToPreviousStep();
+    }
   }
 );
+
 </script>
 
 <style scoped>
