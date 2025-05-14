@@ -75,7 +75,7 @@ SMB_PASS='${password}'
 SOURCE='${task.source}/'
 TARGET='${target}'
 
-MOUNT_POINT="/mnt/backup_$$"
+MOUNT_POINT="/mnt/backup_${taskUUID}"
 
 mkdir -p "$MOUNT_POINT"
 
@@ -91,7 +91,17 @@ mkdir -p "$MOUNT_POINT/$TARGET"
 rsync -a${task.mirror ? ' --delete' : ''} "$SOURCE" "$MOUNT_POINT/$TARGET"
 
 umount "$MOUNT_POINT"
+if [ $? -ne 0 ]; then
+  echo "❌ Failed to unmount $MOUNT_POINT"
+  mount | grep "$MOUNT_POINT"
+  lsof +D "$MOUNT_POINT" 2>/dev/null || true
+fi
+
 rmdir "$MOUNT_POINT"
+if [ $? -ne 0 ]; then
+  echo "❌ Failed to remove mount point $MOUNT_POINT"
+  ls -la "$MOUNT_POINT"
+fi
 `;
 
       fs.writeFileSync(tempScriptPath, scriptContent, { mode: 0o700 });
