@@ -4,7 +4,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { BackUpTask } from '@45drives/houston-common-lib';
 
-export async function checkBackupTaskStatus(task: BackUpTask): Promise<'online' | 'offline' | 'missing_folder'> {
+export async function checkBackupTaskStatus(task: BackUpTask): Promise<'online' | 'offline_unreachable' | 'offline_invalid_credentials' | 'offline_connection_error' | 'missing_folder' | 'checking'> {
     const os = getOS();
     const [smbHost, smbSharePath] = task.target.split(":");
     const smbShare = smbSharePath.split("/")[0];
@@ -14,7 +14,7 @@ export async function checkBackupTaskStatus(task: BackUpTask): Promise<'online' 
     const scriptPath = path.join(getAppPath(), `run_backup_task_${task.uuid}.sh`);
     if (!fs.existsSync(scriptPath)) {
         console.warn(`Missing script: ${scriptPath}`);
-        return 'offline';
+        return 'offline_connection_error';
     }
 
     const content = fs.readFileSync(scriptPath, 'utf-8');
@@ -26,8 +26,8 @@ export async function checkBackupTaskStatus(task: BackUpTask): Promise<'online' 
 
     if (!username || !password) {
         console.warn(`Missing SMB credentials for ${task.uuid}`);
-        return 'offline';
-    }
+        return 'offline_invalid_credentials';
+      }
 
     let scriptAsset;
     if (os === 'win') {
@@ -38,24 +38,25 @@ export async function checkBackupTaskStatus(task: BackUpTask): Promise<'online' 
         scriptAsset = await getAsset("static", "check_smb_task_status.sh");
     }
 
+    // Prepare and run script
     return new Promise((resolve) => {
         const cmd = `${os === 'win' ? '' : 'bash'} "${scriptAsset}" "${smbHost}" "${smbShare}" "${targetPath}" "${username}" "${password}"`;
-
         exec(cmd, (error, stdout, stderr) => {
             console.log(`[SMB Check] stdout for ${task.uuid}:`, stdout);
             console.error(`[SMB Check] stderr for ${task.uuid}:`, stderr);
+
             if (error) {
                 console.error(`Status script failed for ${task.uuid}:`, stderr || error);
-                return resolve('offline');
+                return resolve('offline_connection_error');
             }
 
             try {
                 const json = JSON.parse(stdout.trim());
-                return resolve(json.status || 'offline');
+                return resolve(json.status || 'offline_connection_error');
             } catch (e) {
                 console.warn(`Non-JSON output from status check for ${task.uuid}:`, stdout);
-                return resolve('offline');
+                return resolve('offline_connection_error');
             }
-          });
+        });
     });
 }

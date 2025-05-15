@@ -24,16 +24,24 @@
 
       <!-- Username and Password input fields -->
       <form @submit.prevent="proceedToNextStep" class="flex flex-col gap-4 mt-4 text-default">
-        <label for="username" class="font-semibold ">Username:</label>
-        <input v-enter-next v-model="backUpSetupConfig.username" type="text" id="username"
-          class="p-2 input-textlike rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-          placeholder="Enter your username" />
-
-        <label for="password" class="font-semibold ">Password:</label>
-        <input v-enter-next v-model="backUpSetupConfig.password" type="password" id="password"
-          class="p-2 input-textlike rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-          placeholder="Enter your password" />
-          
+        <div class="grid relative grid-cols-[200px_1fr] items-center">
+          <label for="username" class="font-semibold ">Username:</label>
+          <input v-enter-next v-model="backUpSetupConfig.username" type="text" id="username"
+            class="p-2 input-textlike rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            placeholder="Enter your username" />
+        </div>
+        <div class="grid relative grid-cols-[200px_1fr] items-center">
+          <label for="password" class="font-semibold ">Password:</label>
+          <input v-model="backUpSetupConfig.password" v-enter-next :type="showPassword ? 'text' : 'password'"
+            id="password"
+            class="bg-default p-2 input-textlike rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            placeholder="Enter your password" />
+          <button type="button" @click="togglePassword"
+            class="absolute right-3 top-1/2 transform -translate-y-1/2 text-muted">
+            <EyeIcon v-if="!showPassword" class="w-5 h-5" />
+            <EyeSlashIcon v-if="showPassword" class="w-5 h-5" />
+          </button>
+        </div>
         <button type="submit" class="hidden">Submit</button>
       </form>
     </div>
@@ -62,6 +70,7 @@
 
 import CardContainer from '../../components/CardContainer.vue';
 import { ref, computed, inject } from 'vue';
+import { EyeIcon, EyeSlashIcon } from "@heroicons/vue/20/solid";
 import { useWizardSteps, DynamicBrandingLogo, useAutoFocus, useEnterToAdvance } from '@45drives/houston-common-ui';
 import { backUpSetupConfigKey, divisionCodeInjectionKey } from '../../keys/injection-keys';
 import GlobalSetupWizardMenu from '../../components/GlobalSetupWizardMenu.vue';
@@ -71,6 +80,10 @@ const { prevStep, nextStep, wizardData } = useWizardSteps("backup");
 const backUpSetupConfig = inject(backUpSetupConfigKey)!;
 
 const openingBackup = ref(false);
+const showPassword = ref(false);
+const togglePassword = () => {
+  showPassword.value = !showPassword.value;
+};
 
 // Check if the "Open" button should be disabled
 const isButtonDisabled = computed(() => !backUpSetupConfig?.username || !backUpSetupConfig?.password || openingBackup.value);
