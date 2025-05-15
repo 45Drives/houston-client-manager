@@ -36,16 +36,13 @@
                 {{ deconstructFullTarget(task.target)?.targetPath }}
               </div>
             </div>
-            <div>
-              <div class="text-xs font-medium" :class="{
-                'text-success': task.status === 'online',
-                'text-warning': task.status === 'missing_folder',
-                'text-error': task.status === 'offline'
-              }">
-                Status: <span>{{ getTaskStatusText(task) }}</span>
-              </div>
 
-
+            <div class="text-xs font-medium" :class="{
+              'text-success': task.status === 'online',
+              'text-warning': task.status === 'missing_folder',
+              'text-error': task.status && task.status !== 'online' && task.status !== 'missing_folder'
+            }">
+              Status: <span>{{ getTaskStatusText(task) }}</span>
             </div>
 
             <div class="text-feedback font-semibold pt-2">
@@ -90,7 +87,7 @@
 
 
 <script setup lang="ts">
-import { nextTick, onActivated, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
+import { nextTick, onActivated, onDeactivated, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
 import { BackUpTask, IPCRouter, unwrap } from '@45drives/houston-common-lib';
 import { Modal, confirm } from '@45drives/houston-common-ui';
 import { formatFrequency, deconstructFullTarget } from "./utils";
@@ -137,21 +134,20 @@ function isScheduledButNotRunYet(task: BackUpTask): boolean {
 }
 
 const getTaskStatusText = (task: BackUpTask): string => {
-  if (task.status === 'online') {
-    return 'Available (Online)';
-  } else if (task.status === 'offline') {
-    if (isScheduledButNotRunYet(task)) {
-      return "Scheduled but hasn't run yet.";
-    } else {
-      return 'Unavailable (Offline)';
-    }
-  } else if (task.status === 'missing_folder') {
-    if (isScheduledButNotRunYet(task)) {
-      return "Scheduled but hasn't run yet.";
-    }
-    return 'Unavailable (Folder Missing)';
-  } else {
-    return 'Checking status...';
+  switch (task.status) {
+    case 'online':
+      return 'Available (Online)';
+    case 'missing_folder':
+      return "Unavailable (Folder Missing)";
+    case 'offline_unreachable':
+      return "Unavailable (Host Unreachable)";
+    case 'offline_invalid_credentials':
+      return "Unavailable (Invalid Credentials)";
+    case 'offline_connection_error':
+      return "Unavailable (Connection Error)";
+    case 'checking':
+    default:
+      return "Checking status...";
   }
 };
 
@@ -377,6 +373,10 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
+  clearInterval(pollingInterval);
+});
+
+onDeactivated(() => {
   clearInterval(pollingInterval);
 });
 

@@ -240,7 +240,7 @@ function createWindow() {
               task.status = await checkBackupTaskStatus(task);
             } catch (err) {
               console.error(`Status check failed for task: ${task.description}`, err);
-              task.status = 'offline';
+              task.status = 'offline_connection_error';
             }
             updatedTasks.push(task); // ✅ This line was missing
           }
@@ -260,7 +260,7 @@ function createWindow() {
                   task.status = await checkBackupTaskStatus(task);
                 } catch (err) {
                   console.error(`Failed to check status for ${task.description}:`, err);
-                  task.status = 'offline';
+                  task.status = 'offline_connection_error';
                 }
               }
 

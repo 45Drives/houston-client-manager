@@ -26,4 +26,4 @@ powershell -NoProfile -Command ^
   "if (Test-Path 'TEMP:\%TARGET%') { Write-Output '{\"status\": \"online\"}' }" ^
   "else { Write-Output '{\"status\": \"missing_folder\"}' }" ^
   "Remove-PSDrive TEMP -Force -ErrorAction SilentlyContinue;" ^
-  "} catch { Write-Output '{\"status\": \"offline\", \"reason\": \"access_denied_or_invalid\"}' }"
+  "} catch { Write-Output '{\"status\": \"offline_invalid_credentials\"}' }"
