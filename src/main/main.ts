@@ -1,7 +1,8 @@
 import { app, BrowserWindow, ipcMain, dialog, powerSaveBlocker } from 'electron';
-import { join } from 'path';
+import path, { join } from 'path';
 import mdns from 'multicast-dns';
 import os from 'os';
+import fs from 'fs';
 import { Server } from './types';
 import mountSmbPopup from './smbMountPopup';
 import { IPCRouter } from '../../houston-common/houston-common-lib/lib/electronIPC/IPCRouter';
@@ -20,6 +21,31 @@ let discoveredServers: Server[] = [];
 const blockerId = powerSaveBlocker.start("prevent-app-suspension");
 
 app.commandLine.appendSwitch('ignore-certificate-errors', 'true');
+
+function checkLogDir() {
+  const platform = getOS();
+  let logDir = '';
+
+  try {
+    if (platform === 'win') {
+      logDir = path.join(process.env.ProgramData || 'C:\\ProgramData', 'houston-backups', 'logs');
+    } else if (platform === 'mac') {
+      logDir = '/var/log/';
+    } else {
+      logDir = '/var/log/houston/';
+    }
+
+    if (!fs.existsSync(logDir)) {
+      fs.mkdirSync(logDir, { recursive: true });
+    }
+
+    console.log(`✅ Log directory ensured: ${logDir}`);
+  } catch (error: any) {
+    console.error(`❌ Failed to create log directory (${logDir}):`, error.message);
+  }
+}
+
+checkLogDir();
 
 // app.commandLine.appendSwitch("disable-background-timer-throttling", 'true');
 // app.commandLine.appendSwitch("disable-renderer-backgrounding", "true");
@@ -253,9 +279,32 @@ function createWindow() {
             mainWindow.webContents.send('notification', `Error: ${err.message}`);
             console.error("updateBackUpTask failed:", err);
           }
+
+        } else if (message.type === 'runBackUpTaskNow') {
+          const backupManager = getBackUpManager();
+          const task: BackUpTask = message.task;
+
+          if (!backupManager || typeof (backupManager as any).runNow !== 'function') {
+            mainWindow.webContents.send('notification', `❌ Run Now not supported for this OS`);
+            return;
+          }
+
+          try {
+            console.log("▶️ Attempting to run backup:", task.description);
+            const result = await (backupManager as any).runNow(task);
+            console.log("✅ runNow completed:", result);
+            mainWindow.webContents.send('notification', `✅ Backup task "${task.description}" started successfully.`);
+          } catch (err: any) {
+            console.error("❌ runNow failed:", err);
+            console.log("Command stderr:", err.stderr);
+            console.log("Command stdout:", err.stdout);
+            // Fallback for meaningful message
+            const fallbackMsg = err?.stderr || err?.message || JSON.stringify(err);
+            mainWindow.webContents.send('notification', `❌ Failed to start task: ${fallbackMsg}`);
+          }
         }
 
-
+      
       } catch (error) {
         console.error("Failed to handle IPC action:", data, error);
       }

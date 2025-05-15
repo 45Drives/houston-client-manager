@@ -36,16 +36,17 @@
                 {{ deconstructFullTarget(task.target)?.targetPath }}
               </div>
             </div>
+            <div>
+              <div class="text-xs font-medium" :class="{
+                'text-success': task.status === 'online',
+                'text-warning': task.status === 'missing_folder',
+                'text-error': task.status === 'offline'
+              }">
+                Status: <span>{{ getTaskStatusText(task) }}</span>
+              </div>
 
-            <div class="text-xs font-medium" :class="{
-              'text-success': task.status === 'online',
-              'text-warning': task.status === 'missing_folder',
-              'text-error': task.status === 'offline'
-            }">
-              Status:
-              <span>{{ task.status ?? 'checking...' }}</span>
+
             </div>
-
 
             <div class="text-feedback font-semibold pt-2">
               Backup will happen
@@ -60,6 +61,9 @@
             <button class="btn btn-secondary text-sm relative" @click.stop="editSchedule(task)">
               <!-- Edit Schedule -->
               <PencilIcon class="w-6 h-6 text-white" />
+            </button>
+            <button @click.stop="backupNow(task)" class="btn btn-primary text-base">
+              Backup Now
             </button>
             <button @click.stop="deleteThisTask(task)" class="btn btn-danger text-sm">
               <!-- Remove Task -->
@@ -116,7 +120,6 @@ function handleCalendarClose(saved: boolean) {
 }
 
 watch(backUpTasks, () => {
-
   const buttons = document.querySelectorAll('.btn');
   buttons.forEach(button => {
     button.addEventListener('click', () => {
@@ -125,6 +128,34 @@ watch(backUpTasks, () => {
     });
   });
 })
+
+function isScheduledButNotRunYet(task: BackUpTask): boolean {
+  return (
+    task.status === 'missing_folder' &&
+    new Date(task.schedule.startDate).getTime() > Date.now()
+  );
+}
+
+const getTaskStatusText = (task: BackUpTask): string => {
+  if (task.status === 'online') {
+    return 'Available (Online)';
+  } else if (task.status === 'offline') {
+    if (isScheduledButNotRunYet(task)) {
+      return "Scheduled but hasn't run yet.";
+    } else {
+      return 'Unavailable (Offline)';
+    }
+  } else if (task.status === 'missing_folder') {
+    if (isScheduledButNotRunYet(task)) {
+      return "Scheduled but hasn't run yet.";
+    }
+    return 'Unavailable (Folder Missing)';
+  } else {
+    return 'Checking status...';
+  }
+};
+
+
 
 // Define event emitter
 const emit = defineEmits<{
@@ -172,82 +203,119 @@ async function editSchedule(selectedBackUp: BackUpTask) {
   }
 }
 
+
+let isHandlingNextClick = false;
+
 const deleteThisTask = async (task: BackUpTask) => {
   // console.log("[Child] 🔥 deleteThisTask executing");
 
   // console.log("[Child] Selected for deletion:", task);
+  if (isHandlingNextClick) return; // ⛔ prevent reentry
+  isHandlingNextClick = true;
 
-  const confirmed = await unwrap(confirm({
-    header: "Delete Backup Task?",
-    body: `Are you sure you want to delete the backup task from "${task.source}" to "${task.target}"? This action cannot be undone.`,
-    dangerous: true,
-    confirmButtonText: "Delete",
-    cancelButtonText: "Cancel"
-  }));
+  try {
+    const confirmed = await unwrap(confirm({
+      header: "Delete Backup Task?",
+      body: `Are you sure you want to delete the backup task from "${task.source}" to "${task.target}"? This action cannot be undone.`,
+      dangerous: true,
+      confirmButtonText: "Delete",
+      cancelButtonText: "Cancel"
+    }));
 
-  if (!confirmed) return;
+    if (!confirmed) return;
 
-  // Remove from selectedBackUps
-  selectedBackUps.value = selectedBackUps.value.filter(t => t.uuid !== task.uuid);
+    // Remove from selectedBackUps
+    selectedBackUps.value = selectedBackUps.value.filter(t => t.uuid !== task.uuid);
 
-  // Emit updated selection to parent
-  emit('backUpTaskSelected', [...selectedBackUps.value]);
+    // Emit updated selection to parent
+    emit('backUpTaskSelected', [...selectedBackUps.value]);
 
-  pollingSuspended = true;
-  
-  // Send deletion to backend
-  IPCRouter.getInstance().send("backend", "action", JSON.stringify({
-    type: "removeBackUpTask",
-    task
-  }));
-  // console.log("[Child] 🚀 Sent removeBackUpTask:", task);
+    pollingSuspended = true;
+    
+    // Send deletion to backend
+    IPCRouter.getInstance().send("backend", "action", JSON.stringify({
+      type: "removeBackUpTask",
+      task
+    }));
+    // console.log("[Child] 🚀 Sent removeBackUpTask:", task);
 
-  // 🔄 Refresh tasks from backend (small delay gives backend time to complete)
-  setTimeout(async () => {
-    await fetchBackupTasks();
-    pollingSuspended = false;
-  }, 1000); // short delay to ensure backend cleanup is done
+    // 🔄 Refresh tasks from backend (small delay gives backend time to complete)
+    setTimeout(() => {
+      fetchBackupTasks();
+      pollingSuspended = false;
+    }, 3000); // short delay to ensure backend cleanup is done
+  } finally {
+    // 🔓 Reallow clicks after dialog
+    isHandlingNextClick = false;
+  }
+
 };
 
 const deleteSelectedTasks = async () => {
-  // console.log("[Child] 🔥 deleteSelectedTasks executing");
+  if (isHandlingNextClick) return; // ⛔ prevent reentry
+  isHandlingNextClick = true;
 
-  const count = selectedBackUps.value.length;
-  const cleanTasks = selectedBackUps.value.map(task => ({ ...task }));
-  // console.log("[Child] Selected for deletion:", count, cleanTasks);
+  try {
+    const count = selectedBackUps.value.length;
+    if (count === 0) return;
 
-  if (count === 0) return;
+    const cleanTasks = selectedBackUps.value.map(task => ({ ...task }));
 
-  const confirmed = await unwrap(confirm({
-    header: `Delete Selected Backup Task${(count > 1 ? 's' : '')}?`,
-    body: `Are you sure you want to delete ${count} selected backup task${(count > 1 ? 's' : '')}? This action cannot be undone.`,
-    dangerous: true,
-    confirmButtonText: "Delete",
-    cancelButtonText: "Cancel"
-  }));
+    const confirmed = await unwrap(confirm({
+      header: `Delete Selected Backup Task${count > 1 ? 's' : ''}?`,
+      body: `Are you sure you want to delete ${count} selected backup task${count > 1 ? 's' : ''}? This action cannot be undone.`,
+      dangerous: true,
+      confirmButtonText: "Delete",
+      cancelButtonText: "Cancel"
+    }));
 
-  if (!confirmed) return;
+    if (!confirmed) return;
 
-  pollingSuspended = true;
+    pollingSuspended = true;
 
-  // ✅ Send clean (non-reactive) copy
-  IPCRouter.getInstance().send("backend", "action", JSON.stringify({
-    type: "removeMultipleBackUpTasks",
-    tasks: cleanTasks
-  }));
-  // console.log("[Child] 🚀 Sent removeMultipleBackUpTasks:", cleanTasks);
+    // Immediately clear selection in UI
+    selectedBackUps.value = [];
+    emit('backUpTaskSelected', []);
 
-  // Clear selection immediately
-  selectedBackUps.value = [];
-  emit('backUpTaskSelected', []);
+    // Send appropriate delete request
+    if (count === 1) {
+      IPCRouter.getInstance().send("backend", "action", JSON.stringify({
+        type: "removeBackUpTask",
+        task: cleanTasks[0]
+      }));
+    } else {
+      IPCRouter.getInstance().send("backend", "action", JSON.stringify({
+        type: "removeMultipleBackUpTasks",
+        tasks: cleanTasks
+      }));
+    }
 
-  // Ask backend for fresh tasks
-  setTimeout(async () => {
-    await fetchBackupTasks();
-    pollingSuspended = false;
-  }, 1000);
+    // Wait a bit longer to ensure backend has time to remove the task(s)
+    setTimeout(() => {
+      fetchBackupTasks();
+      pollingSuspended = false;
+    }, 3000); // You can tweak this (1500–2000ms tends to be safe)
+  } finally {
+    // 🔓 Reallow clicks after dialog
+    isHandlingNextClick = false;
+  }
 };
 
+
+function backupNow(task: BackUpTask) {
+  pollingSuspended = true;
+
+  IPCRouter.getInstance().send("backend", "action", JSON.stringify({
+    type: "runBackUpTaskNow",
+    task
+  }));
+
+  // Optional: Refresh task statuses shortly after run attempt
+  setTimeout(() => {
+    pollStatuses();
+    pollingSuspended = false;
+  }, 8000); // Delay to allow for execution + remount
+}
 
 
 function fetchBackupTasks() {

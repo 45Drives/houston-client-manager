@@ -107,15 +107,106 @@ export class BackUpManagerWin implements BackUpManager {
 
   }
 
+//   async schedule(task: BackUpTask, username: string, password: string): Promise<{ stdout: string, stderr: string }> {
+//     console.log("task.target", task.target);
+
+//     let targetPath = "/tank/" + task.target.split(":")[1];
+//     console.log("targetPath", targetPath)
+    
+//     let [smbHost, smbShare] = task.target.split(":");
+//     smbShare = smbShare.split("/")[0];
+
+//     // PowerShell script to create the task
+//     const powershellScript = `
+// $batFile  = "${getMountSmbScript()}"
+// $smbHost  = "${smbHost}"
+// $smbShare = "${smbShare}"
+// $username = "${username}"
+// $password = "${password}"
+
+// $user = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
+
+// ${this.addUserToBackupOperatorsGroup()}
+
+// ${this.getAddBackupGroupsToLogOnBatchAndService()}
+
+// Write-Host "user being used: $user"
+
+// $sourcePath = "${task.source}"
+// $destinationPath = "${getSmbTargetFromSmbTarget(task.target).replace(/\//g, "\\")}"
+// $mirror = ${task.mirror ? "$true" : "$false"}  # Set to $true if you want to mirror the directories
+
+// $actionScript = @"
+// @echo off
+// :: source = ${task.source}
+// :: target = ${task.target}
+// :: description = ${task.description}
+// :: mirror = ${task.mirror}
+// :: schedule = ${JSON.stringify(task.schedule)}
+// :: uuid = ${task.uuid}
+
+// :: Run your batch file and capture output
+// for /f "delims=" %%O in ('"$batFile" $smbHost $smbShare $username $password') do (
+//     set "json=%%O"
+// )
+
+// :: Save JSON to a temp file
+// set "tempfile=%TEMP%\\json.txt"
+// echo %json% > "%tempfile%"
+
+// :: Use PowerShell to read the file and parse JSON
+// for /f %%D in ('powershell -NoProfile -Command "Get-Content -Raw '%tempfile%' | ConvertFrom-Json | Select-Object -ExpandProperty DriveLetter"') do (
+//     set "drive=%%D"
+// )
+
+// :: Delete temp file
+// del "%tempfile%"
+
+// echo Drive letter is %drive%
+
+// if not defined drive (
+//     echo Failed to mount SMB share
+//     exit /b 1
+// )
+
+// mkdir "%drive%:$destinationPath"
+// xcopy "$sourcePath" "%drive%:$destinationPath" /E /I /Y
+// timeout /t 2 >nul
+// net use %drive%: /delete /y
+// "@
+
+// # Save script to a temp .bat file
+// $tempScriptPath = "${getAppPath()}\\run_backup_task_${task.uuid}.bat"
+// [System.IO.File]::WriteAllText($tempScriptPath, $actionScript)
+
+// ${this.scheduleToTaskTrigger(task.schedule)}
+
+// $action = New-ScheduledTaskAction -Execute "cmd.exe" -Argument "/C \`"$tempScriptPath\`""
+
+// $principal = New-ScheduledTaskPrincipal -UserId "$user" -LogonType S4U -RunLevel Highest
+
+// $task = Register-ScheduledTask -Action $action -Trigger $taskTrigger -Principal $principal -TaskName "${TASK_ID}_${task.uuid}"
+
+// ${this.dailyTaskTriggerUpdate(task.schedule)}
+
+// `;
+
+//     return this.runScriptAdmin(powershellScript, "create_task");
+//   }
+
+//new version with logging (need to test)
   async schedule(task: BackUpTask, username: string, password: string): Promise<{ stdout: string, stderr: string }> {
     console.log("task.target", task.target);
 
     let targetPath = "/tank/" + task.target.split(":")[1];
     console.log("targetPath", targetPath)
-    
+
     let [smbHost, smbShare] = task.target.split(":");
     smbShare = smbShare.split("/")[0];
 
+    const logDir = path.join('C:\\ProgramData', 'houston-backups', 'logs');
+    const logPath = path.join(logDir, `backup_task_${task.uuid}.log`);
+    
     // PowerShell script to create the task
     const powershellScript = `
 $batFile  = "${getMountSmbScript()}"
@@ -136,43 +227,49 @@ $sourcePath = "${task.source}"
 $destinationPath = "${getSmbTargetFromSmbTarget(task.target).replace(/\//g, "\\")}"
 $mirror = ${task.mirror ? "$true" : "$false"}  # Set to $true if you want to mirror the directories
 
+$logPath = "$env:ProgramData\\houston-backups\\logs"
+if (-not (Test-Path $logPath)) {
+  New-Item -ItemType Directory -Force -Path $logPath | Out-Null
+}
+$logFile = "$logPath\\backup_task_${task.uuid}.log"
+
 $actionScript = @"
 @echo off
-:: source = ${task.source}
-:: target = ${task.target}
-:: description = ${task.description}
-:: mirror = ${task.mirror}
-:: schedule = ${JSON.stringify(task.schedule)}
-:: uuid = ${task.uuid}
+setlocal EnableDelayedExpansion
+set LOG_FILE=%LOG_FILE%
 
-:: Run your batch file and capture output
+echo ===== %DATE% %TIME% Starting backup task: ${task.description} ===== >> "%LOG_FILE%" 2>&1
+
 for /f "delims=" %%O in ('"$batFile" $smbHost $smbShare $username $password') do (
     set "json=%%O"
 )
 
-:: Save JSON to a temp file
 set "tempfile=%TEMP%\\json.txt"
 echo %json% > "%tempfile%"
 
-:: Use PowerShell to read the file and parse JSON
 for /f %%D in ('powershell -NoProfile -Command "Get-Content -Raw '%tempfile%' | ConvertFrom-Json | Select-Object -ExpandProperty DriveLetter"') do (
     set "drive=%%D"
 )
 
-:: Delete temp file
 del "%tempfile%"
 
-echo Drive letter is %drive%
-
 if not defined drive (
-    echo Failed to mount SMB share
+    echo ERROR: Failed to mount SMB share >> "%LOG_FILE%"
     exit /b 1
 )
 
-mkdir "%drive%:$destinationPath"
-xcopy "$sourcePath" "%drive%:$destinationPath" /E /I /Y
-timeout /t 2 >nul
-net use %drive%: /delete /y
+set "DEST_PATH=%drive%:${getSmbTargetFromSmbTarget(task.target).replace(/\//g, "\\")}"
+mkdir "!DEST_PATH!" >> "%LOG_FILE%" 2>&1
+xcopy "${task.source}" "!DEST_PATH!" /E /I /Y >> "%LOG_FILE%" 2>&1
+
+if !ERRORLEVEL! NEQ 0 (
+  echo ERROR: xcopy failed with code !ERRORLEVEL! at %TIME% >> "%LOG_FILE%"
+) else (
+  echo SUCCESS: Backup completed at %TIME% >> "%LOG_FILE%"
+)
+
+net use !drive!: /delete /y >> "%LOG_FILE%" 2>&1
+endlocal
 "@
 
 # Save script to a temp .bat file
@@ -193,6 +290,14 @@ ${this.dailyTaskTriggerUpdate(task.schedule)}
 
     return this.runScriptAdmin(powershellScript, "create_task");
   }
+
+  runNow(task: BackUpTask): Promise<{ stdout: string; stderr: string }> {
+    const taskName = `${TASK_ID}_${task.uuid}`;
+    const powerShellScript = `Start-ScheduledTask -TaskName "${taskName}"`;
+
+    return this.runScriptAdmin(powerShellScript, `run_task_${task.uuid}`);
+  }
+  
 
   addUserToBackupOperatorsGroup() {
     return `
@@ -267,13 +372,22 @@ if (-not $hasBatchLogon -or -not $hasServiceLogon) {
   
 
   unschedule(task: BackUpTask): void {
-//     const powershellScript = `
-// Unregister-ScheduledTask -TaskName "${task.description}" -Confirm:$false
-// `;
     const taskName = `${TASK_ID}_${task.uuid}`;
     const powershellScript = `Unregister-ScheduledTask -TaskName "${taskName}" -Confirm:$false`;
 
-    this.runScriptAdmin(powershellScript, "unchedule_task");
+    this.runScriptAdmin(powershellScript, "unschedule_task");
+
+    // Delete the log file after task removal
+    const logFile = path.join(process.env.ProgramData || "C:\\ProgramData", "houston-backups", "logs", `backup_task_${task.uuid}.log`);
+    if (fs.existsSync(logFile)) {
+      try {
+        fs.unlinkSync(logFile);
+        console.log(`🧹 Removed log file: ${logFile}`);
+      } catch (err: any) {
+        console.error(`❌ Failed to delete log file: ${logFile}`, err.message);
+      }
+    }
+    
 
   }
 
@@ -309,6 +423,19 @@ $task | Set-ScheduledTask
       console.error("❌ Failed to unschedule selected tasks:", err);
       throw err;
     }
+
+    for (const task of tasks) {
+      const logFile = path.join(process.env.ProgramData || "C:\\ProgramData", "houston-backups", "logs", `backup_task_${task.uuid}.log`);
+      if (fs.existsSync(logFile)) {
+        try {
+          fs.unlinkSync(logFile);
+          console.log(`🧹 Removed log file: ${logFile}`);
+        } catch (err: any) {
+          console.error(`❌ Failed to delete log file: ${logFile}`, err.message);
+        }
+      }
+    }
+    
   }
   
 
