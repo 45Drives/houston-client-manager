@@ -60,6 +60,19 @@ export class BackUpManagerMac implements BackUpManager {
     }
   }
   
+  runNow(task: BackUpTask): Promise<{ stdout: string; stderr: string }> {
+    const label = `com.backup-task.${this.safeTaskName(task.description)}`;
+    const command = `launchctl kickstart -k system/${label}`;
+
+    return new Promise((resolve, reject) => {
+      try {
+        this.runAsAdmin(command, `Running backup task: ${label}`);
+        resolve({ stdout: "", stderr: "" });
+      } catch (error: any) {
+        reject(error);
+      }
+    });
+  }
 
   unschedule(task: BackUpTask): void {
     const plistFileName = `com.backup-task.${this.safeTaskName(task.description)}.plist`;

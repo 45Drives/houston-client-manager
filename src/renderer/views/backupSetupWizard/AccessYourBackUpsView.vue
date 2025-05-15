@@ -115,15 +115,15 @@ const proceedToPreviousStep = async () => {
 
 useEnterToAdvance(
   () => {
-    if (selectedBackUpTasks.value.length > 0) {
-      proceedToNextStep(); // Enter
-    }
+    // if (selectedBackUpTasks.value.length > 0) {
+    //   proceedToNextStep(); // Enter
+    // }
   },
   300,
   () => {
-    if (selectedBackUpTasks.value.length > 0) {
-      proceedToNextStep(); // → Arrow
-    }
+    // if (selectedBackUpTasks.value.length > 0) {
+    //   proceedToNextStep(); // → Arrow
+    // }
   },
   () => {
     proceedToPreviousStep(); // ← Arrow

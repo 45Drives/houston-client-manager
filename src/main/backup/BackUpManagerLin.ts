@@ -3,9 +3,9 @@ import { BackUpTask, backupTaskTag, TaskSchedule, IPCRouter } from "@45drives/ho
 import * as fs from "fs";
 import * as os from "os";
 import { writeFileSync, chmodSync } from 'fs';
-import { execSync } from "child_process";
+import { exec, execSync } from "child_process";
 import { getOS, getAppPath, getSmbTargetFromSmbTarget, reconstructFullTarget, runPrivilegedAppend, runPrivilegedReplaceFile } from "../utils";
-import { join } from "path";
+import path, { join } from "path";
 
 export class BackUpManagerLin implements BackUpManager {
   protected cronFilePath: string = "/etc/cron.d/houston-backup-manager";
@@ -62,54 +62,9 @@ export class BackUpManagerLin implements BackUpManager {
       const tempScriptPath = join(tmpDir, scriptName);
       const finalScriptPath = join(getAppPath(), scriptName);
 
-      const [smbHost, smbSharePart] = task.target.split(":");
-      const smbShare = smbSharePart.split("/")[0];
-      const target = getSmbTargetFromSmbTarget(task.target);
+      this.generateBackupScript(task, username, password, tempScriptPath);
 
-      const scriptContent = `#!/bin/bash
-
-SMB_HOST='${smbHost}'
-SMB_SHARE='${smbShare}'
-SMB_USER='${username}'
-SMB_PASS='${password}'
-SOURCE='${task.source}/'
-TARGET='${target}'
-
-MOUNT_POINT="/mnt/backup_${taskUUID}"
-
-mkdir -p "$MOUNT_POINT"
-
-mount -t cifs "//$SMB_HOST/$SMB_SHARE" "$MOUNT_POINT" \\
-  -o username="$SMB_USER",password="$SMB_PASS",rw,iocharset=utf8
-
-if [ $? -ne 0 ]; then
-  echo "Failed to mount //$SMB_HOST/$SMB_SHARE"
-  exit 1
-fi
-
-mkdir -p "$MOUNT_POINT/$TARGET"
-rsync -a${task.mirror ? ' --delete' : ''} "$SOURCE" "$MOUNT_POINT/$TARGET"
-
-umount "$MOUNT_POINT"
-if [ $? -ne 0 ]; then
-  echo "❌ Failed to unmount $MOUNT_POINT"
-  mount | grep "$MOUNT_POINT"
-  lsof +D "$MOUNT_POINT" 2>/dev/null || true
-fi
-
-rmdir "$MOUNT_POINT"
-if [ $? -ne 0 ]; then
-  echo "❌ Failed to remove mount point $MOUNT_POINT"
-  ls -la "$MOUNT_POINT"
-fi
-`;
-
-      fs.writeFileSync(tempScriptPath, scriptContent, { mode: 0o700 });
-
-      // const cronLine = `${this.scheduleToCron(task.schedule)} root ${finalScriptPath} # ${backupTaskTag} ${task.description}`;
-      const isoStart = task.schedule.startDate.toISOString();
-      const cronLine = `${this.scheduleToCron(task.schedule)} root ${finalScriptPath} # ${backupTaskTag} start=${isoStart} ${task.description}`;
-      cronEntries.push(cronLine);
+      cronEntries.push(this.generateCronLine(task, finalScriptPath));
 
       moveCommands.push(`mv "${tempScriptPath}" "${finalScriptPath}"`);
       moveCommands.push(`chmod 700 "${finalScriptPath}"`);
@@ -203,6 +158,17 @@ systemctl restart ${getOS() === "debian" ? "cron" : "crond"}
       console.error("❌ Failed to unschedule task:", err);
       throw err;
     }
+
+    const logPath = `/var/log/houston/backup_task_${task.uuid}.log`;
+    if (fs.existsSync(logPath)) {
+      try {
+        fs.unlinkSync(logPath);
+        console.log(`🧹 Removed log file: ${logPath}`);
+      } catch (err: any) {
+        console.error(`❌ Failed to delete log file: ${logPath}`, err.message);
+      }
+    }
+
   }
   
 
@@ -251,6 +217,19 @@ systemctl restart ${getOS() === "debian" ? "cron" : "crond"}
       console.error("❌ Failed to unschedule selected tasks:", err);
       throw err;
     }
+
+    for (const task of tasks) {
+      const logPath = `/var/log/houston/backup_task_${task.uuid}.log`;
+      if (fs.existsSync(logPath)) {
+        try {
+          fs.unlinkSync(logPath);
+          console.log(`🧹 Removed log file: ${logPath}`);
+        } catch (err: any) {
+          console.error(`❌ Failed to delete log file: ${logPath}`, err.message);
+        }
+      }
+    }
+    
   }
   
 
@@ -314,6 +293,17 @@ systemctl restart ${getOS() === "debian" ? "cron" : "crond"}
     runPrivilegedReplaceFile(updatedContent, this.cronFilePath, this.pkexec);
   }
 
+  runNow(task: BackUpTask): Promise<{ stdout: string; stderr: string }> {
+    const scriptPath = path.join(getAppPath(), `run_backup_task_${task.uuid}.sh`);
+    const command = `${this.pkexec} bash "${scriptPath}"`;
+
+    return new Promise((resolve, reject) => {
+      exec(command, (error, stdout, stderr) => {
+        if (error) return reject(error);
+        resolve({ stdout: stdout || "", stderr: stderr || "" });
+      });
+    });
+  }
 
   protected scheduleToCron(sched: TaskSchedule): string {
     switch (sched.repeatFrequency) {
@@ -331,127 +321,135 @@ systemctl restart ${getOS() === "debian" ? "cron" : "crond"}
   }
 
   protected backupTaskToCron(task: BackUpTask, smbUser: string, smb_pass: string): string {
-    console.log('task being converted to cron:', task);
-    if (task.source.includes("'")) {
-      throw new Error("Source cannot contain ' (single-quote)");
-    }
-    if (task.target.includes("'")) {
-      throw new Error("Target cannot contain ' (single-quote)");
+    if (task.source.includes("'") || task.target.includes("'")) {
+      throw new Error("Source/target cannot contain single quotes");
     }
 
-    console.log("task.target", task.target);
-
-    let targetPath = "/tank/" + task.target.split(":")[1];
-    console.log("targetPath", targetPath)
-
-    let [smbHost, smbShare] = task.target.split(":");
-    smbShare = smbShare.split("/")[0];
-
-    const taskUUID = task.uuid; // Only generate if not present
-    task.uuid = taskUUID; // Persist in the object
-
-    // Path to save the script
-    const scriptName = `run_backup_task_${taskUUID}.sh`;
+    const scriptName = `run_backup_task_${task.uuid}.sh`;
     const scriptPath = join(getAppPath(), scriptName);
 
+    this.generateBackupScript(task, smbUser, smb_pass, scriptPath);
+    return this.generateCronLine(task, scriptPath);
+  }
+  
+
+  protected generateBackupScript(task: BackUpTask, username: string, password: string, scriptPath: string): void {
+    const [smbHost, smbSharePart] = task.target.split(":");
+    const smbShare = smbSharePart.split("/")[0];
+    const target = getSmbTargetFromSmbTarget(task.target);
+    // const mountPoint = `/mnt/backup_${task.uuid}`;
+    // const mountPoint = `/mnt/backup_$$`;
+
+  //   const scriptContent = `#!/bin/bash
+  // SMB_HOST='${smbHost}'
+  // SMB_SHARE='${smbShare}'
+  // SMB_USER='${username}'
+  // SMB_PASS='${password}'
+  // SOURCE='${task.source}/'
+  // TARGET='${target}'
+  // MOUNT_POINT="/mnt/backup_$$"
+  
+  // cleanup() {
+  //   umount "$MOUNT_POINT" 2>/dev/null
+  //   sleep 1
+  //   mountpoint -q "$MOUNT_POINT" || rmdir "$MOUNT_POINT"
+  // }
+  // trap cleanup EXIT
+
+  // LOG_FILE="/var/log/houston/backup_task_${task.uuid}.log"
+  // mkdir -p "$(dirname "$LOG_FILE")"
+  // {
+  //   echo "===== $(date -Iseconds): Starting backup task '${task.description}' ====="
+
+  //   mkdir -p "$MOUNT_POINT"
+
+  //   mount -t cifs "//$SMB_HOST/$SMB_SHARE" "$MOUNT_POINT" \\
+  //     -o username="$SMB_USER",password="$SMB_PASS",rw,iocharset=utf8,uid=0,gid=0
+
+  //   if ! mountpoint -q "$MOUNT_POINT"; then
+  //     echo "ERROR: Failed to mount //$SMB_HOST/$SMB_SHARE"
+  //     exit 1
+  //   fi
+
+  //   mkdir -p "$MOUNT_POINT/$TARGET"
+  //   rsync -a${task.mirror ? ' --delete' : ''} "$SOURCE" "$MOUNT_POINT/$TARGET"
+
+  //   echo "SUCCESS: Backup completed at $(date -Iseconds)"
+  // } >> "$LOG_FILE" 2>&1
+  // `;
     const scriptContent = `#!/bin/bash
 SMB_HOST='${smbHost}'
 SMB_SHARE='${smbShare}'
-SMB_USER='${smbUser}'
-SMB_PASS='${smb_pass}'
-SOURCE='${task.source}'
-TARGET='${getSmbTargetFromSmbTarget(task.target)}'
-
+SMB_USER='${username}'
+SMB_PASS='${password}'
+SOURCE='${task.source}/'
+TARGET='${target}'
 MOUNT_POINT="/mnt/backup_$$"
 
-mkdir -p "$MOUNT_POINT"
+cleanup() {
+  echo "[CLEANUP] Unmounting and removing mount point..." >> "$LOG_FILE"
+  umount "$MOUNT_POINT" 2>> "$LOG_FILE"
+  sleep 1
+  if mountpoint -q "$MOUNT_POINT"; then
+    echo "[CLEANUP] Failed to unmount $MOUNT_POINT" >> "$LOG_FILE"
+  else
+    rmdir "$MOUNT_POINT"
+    echo "[CLEANUP] Cleanup complete." >> "$LOG_FILE"
+  fi
+}
+trap cleanup EXIT
 
-mount -t cifs "//$SMB_HOST/$SMB_SHARE" "$MOUNT_POINT" \\
-  -o username="$SMB_USER",password="$SMB_PASS",rw,iocharset=utf8
+LOG_FILE="/var/log/houston/backup_task_${task.uuid}.log"
+mkdir -p "$(dirname "$LOG_FILE")"
 
-if [ $? -ne 0 ]; then
-  echo "Failed to mount //$SMB_HOST/$SMB_SHARE"
-  exit 1
-fi
+{
+  echo "===== [$(date -Iseconds)] Starting backup task: '${task.description}' ====="
+  echo "[INFO] Source: $SOURCE"
+  echo "[INFO] Target: //$SMB_HOST/$SMB_SHARE/$TARGET"
+  echo "[INFO] Creating mount point: $MOUNT_POINT"
+  mkdir -p "$MOUNT_POINT"
 
-# Ensure destination directory exists
-mkdir -p "$MOUNT_POINT/$TARGET"
+  echo "[INFO] Attempting to mount SMB share..."
+  mount -t cifs "//$SMB_HOST/$SMB_SHARE" "$MOUNT_POINT" \\
+    -o username="$SMB_USER",password="$SMB_PASS",rw,iocharset=utf8
 
-# Perform rsync with optional --delete
-rsync -a${task.mirror ? ' --delete' : ''} "$SOURCE" "$MOUNT_POINT/$TARGET"
+  if ! mountpoint -q "$MOUNT_POINT"; then
+    echo "[ERROR] Failed to mount //$SMB_HOST/$SMB_SHARE at $MOUNT_POINT"
+    exit 1
+  fi
+  echo "[SUCCESS] SMB share mounted at $MOUNT_POINT"
 
-umount "$MOUNT_POINT"
-rmdir "$MOUNT_POINT"
+  mkdir -p "$MOUNT_POINT/$TARGET"
+  echo "[INFO] Starting rsync..."
+  rsync -a${task.mirror ? ' --delete' : ''} "$SOURCE" "$MOUNT_POINT/$TARGET"
+  RSYNC_STATUS=$?
+
+  if [ $RSYNC_STATUS -ne 0 ]; then
+    echo "[ERROR] rsync failed with exit code $RSYNC_STATUS"
+    exit $RSYNC_STATUS
+  else
+    echo "[SUCCESS] rsync completed successfully"
+  fi
+
+  echo "===== [$(date -Iseconds)] Backup task complete ====="
+} >> "$LOG_FILE" 2>&1
 `;
 
 
     writeFileSync(scriptPath, scriptContent, { mode: 0o700 });
-    chmodSync(scriptPath, 0o700); // Make sure it’s executable
-
-    
-    // const cronEntry = `${this.scheduleToCron(task.schedule)} root ${scriptPath} # ${backupTaskTag} ${task.description}`;
-
-    if (!task.schedule?.startDate || isNaN(new Date(task.schedule.startDate).getTime())) {
-      console.warn("⚠️ Invalid or missing startDate when creating cron:", task);
-    } else {
-      console.log("✅ startDate being added:", task.schedule.startDate.toISOString());
-    }
-
-    const isoStart = task.schedule.startDate.toISOString();
-    const cronEntry = `${this.scheduleToCron(task.schedule)} root ${scriptPath} # ${backupTaskTag} start=${isoStart} ${task.description}`;
-
-    console.log('backupTaskToCron Result:', cronEntry);
-
-    return cronEntry;
+    chmodSync(scriptPath, 0o700);
   }
 
+  protected generateCronLine(task: BackUpTask, scriptPath: string): string {
+    const cronTiming = this.scheduleToCron(task.schedule);
+    const isoStart = task.schedule.startDate.toISOString();
+    const comment = `# ${backupTaskTag} start=${isoStart} ${task.description}`;
+    return `${cronTiming} root ${scriptPath} ${comment}`;
+  }
+  
   protected cronToBackupTask(cron: string): BackUpTask | null {
-    // console.log('cronToBackupTask Called');
-    const hourRe = /^(\d+) \* \* \* \*/;
-    const dayRe = /^(\d+) (\d+) \* \* \*/;
-    const weekRe = /^(\d+) (\d+) \* \* (\d+)/;
-    const monthRe = /^(\d+) (\d+) (\d+) \* \*/;
-
-    let schedule: TaskSchedule;
-    let isoStartDate: Date | null = null;
-
-    // Try to extract ISO start date from comment
-    const isoMatch = cron.match(/start=([^\s]+)/);
-    if (isoMatch && isoMatch[1]) {
-      isoStartDate = new Date(isoMatch[1]);
-    }
-
-    let match: RegExpExecArray | null;
-
-    if ((match = hourRe.exec(cron))) {
-      const [minutes] = match.slice(1).map(Number);
-      const startDate = isoStartDate ?? new Date();
-      startDate.setMinutes(minutes);
-      schedule = { repeatFrequency: "hour", startDate };
-    } else if ((match = dayRe.exec(cron))) {
-      const [minutes, hours] = match.slice(1).map(Number);
-      const startDate = isoStartDate ?? new Date();
-      startDate.setMinutes(minutes);
-      startDate.setHours(hours);
-      schedule = { repeatFrequency: "day", startDate };
-    } else if ((match = weekRe.exec(cron))) {
-      const [minutes, hours, weekDay] = match.slice(1).map(Number);
-      const startDate = isoStartDate ?? new Date();
-      startDate.setMinutes(minutes);
-      startDate.setHours(hours);
-      const currentWeekDay = startDate.getDay();
-      startDate.setDate(startDate.getDate() + (weekDay - currentWeekDay));
-      schedule = { repeatFrequency: "week", startDate };
-    } else if ((match = monthRe.exec(cron))) {
-      const [minutes, hours, dayOfMonth] = match.slice(1).map(Number);
-      const startDate = isoStartDate ?? new Date();
-      startDate.setMinutes(minutes);
-      startDate.setHours(hours);
-      startDate.setDate(dayOfMonth);
-      schedule = { repeatFrequency: "month", startDate };
-    } else {
-      return null;
-    }
+    const schedule = this.parseCronSchedule(cron);
+    if (!schedule) return null;
 
     const commentMatch = cron.match(/#\s*(.*)$/);
     const description = commentMatch ? commentMatch[1].trim() : "Unnamed Backup";
@@ -472,13 +470,59 @@ rmdir "$MOUNT_POINT"
     return {
       schedule,
       mirror: scriptContent.includes("--delete"),
-      source: sourceMatch[1],
+      source: sourceMatch[1].replace(/\/+$/, ""), // remove trailing slash
       target: reconstructFullTarget(scriptPath),
       description,
       uuid
     };
   }
+  
+  protected parseCronSchedule(cron: string): TaskSchedule | null {
+    const hourRe = /^(\d+) \* \* \* \*/;
+    const dayRe = /^(\d+) (\d+) \* \* \*/;
+    const weekRe = /^(\d+) (\d+) \* \* (\d+)/;
+    const monthRe = /^(\d+) (\d+) (\d+) \* \*/;
 
+    let isoStartDate: Date | null = null;
+
+    const isoMatch = cron.match(/start=([^\s]+)/);
+    if (isoMatch && isoMatch[1]) {
+      isoStartDate = new Date(isoMatch[1]);
+    }
+
+    let match: RegExpExecArray | null;
+
+    if ((match = hourRe.exec(cron))) {
+      const [minutes] = match.slice(1).map(Number);
+      const startDate = isoStartDate ?? new Date();
+      startDate.setMinutes(minutes);
+      return { repeatFrequency: "hour", startDate };
+    } else if ((match = dayRe.exec(cron))) {
+      const [minutes, hours] = match.slice(1).map(Number);
+      const startDate = isoStartDate ?? new Date();
+      startDate.setMinutes(minutes);
+      startDate.setHours(hours);
+      return { repeatFrequency: "day", startDate };
+    } else if ((match = weekRe.exec(cron))) {
+      const [minutes, hours, weekDay] = match.slice(1).map(Number);
+      const startDate = isoStartDate ?? new Date();
+      startDate.setMinutes(minutes);
+      startDate.setHours(hours);
+      const currentWeekDay = startDate.getDay();
+      startDate.setDate(startDate.getDate() + (weekDay - currentWeekDay));
+      return { repeatFrequency: "week", startDate };
+    } else if ((match = monthRe.exec(cron))) {
+      const [minutes, hours, dayOfMonth] = match.slice(1).map(Number);
+      const startDate = isoStartDate ?? new Date();
+      startDate.setMinutes(minutes);
+      startDate.setHours(hours);
+      startDate.setDate(dayOfMonth);
+      return { repeatFrequency: "month", startDate };
+    }
+
+    return null;
+  }
+  
 
   protected reloadCron() {
     const os = getOS();

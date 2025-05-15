@@ -23,7 +23,10 @@ fi
 # Now check if folder exists
 FOLDER_CHECK=$(smbclient "//$SMB_HOST/$SMB_SHARE" -U "$USERNAME%$PASSWORD" -c "ls \"$TARGET_PATH\"" 2>&1)
 
-if echo "$FOLDER_CHECK" | grep -q "NT_STATUS_OBJECT_NAME_NOT_FOUND"; then
+# Double check credentials again
+if echo "$FOLDER_CHECK" | grep -q "NT_STATUS_LOGON_FAILURE\|NT_STATUS_ACCESS_DENIED"; then
+  echo '{"status": "offline", "reason": "invalid_credentials"}'
+elif echo "$FOLDER_CHECK" | grep -q "NT_STATUS_OBJECT_NAME_NOT_FOUND\|NT_STATUS_OBJECT_PATH_NOT_FOUND"; then
   echo '{"status": "missing_folder"}'
 elif echo "$FOLDER_CHECK" | grep -q "NT_STATUS"; then
   echo '{"status": "offline", "reason": "connection_error"}'

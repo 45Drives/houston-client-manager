@@ -33,9 +33,9 @@ export async function checkBackupTaskStatus(task: BackUpTask): Promise<'online' 
     if (os === 'win') {
         scriptAsset = await getAsset("static", "check_smb_task_status_win.bat");
     } else if (os === 'mac') {
-        scriptAsset = await getAsset("static", "check_smb_task_status_mac.sh");
+        scriptAsset = await getAsset("static", "check_smb_task_status.sh");
     } else {
-        scriptAsset = await getAsset("static", "check_smb_task_status_lin.sh");
+        scriptAsset = await getAsset("static", "check_smb_task_status.sh");
     }
 
     return new Promise((resolve) => {
