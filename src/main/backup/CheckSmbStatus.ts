@@ -4,7 +4,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { BackUpTask } from '@45drives/houston-common-lib';
 
-export async function checkBackupTaskStatus(task: BackUpTask): Promise<'online' | 'offline_unreachable' | 'offline_invalid_credentials' | 'offline_connection_error' | 'missing_folder' | 'checking'> {
+export async function checkBackupTaskStatus(task: BackUpTask): Promise<'online' | 'offline_unreachable' | 'offline_invalid_credentials' | 'offline_connection_error' | 'missing_folder' | 'checking' | 'offline_insufficient_permissions'> {
     const os = getOS();
     const [smbHost, smbSharePath] = task.target.split(":");
     const smbShare = smbSharePath.split("/")[0];

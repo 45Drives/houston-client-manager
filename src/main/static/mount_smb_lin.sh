@@ -8,10 +8,14 @@ if [ -z "$1" ]; then
     exit 1
 fi
 if [ -z "$2" ]; then
-    echo '{"error": "No username provided"}'
+    echo '{"error": "No share provided"}'
     exit 1
 fi
 if [ -z "$3" ]; then
+    echo '{"error": "No username provided"}'
+    exit 1
+fi
+if [ -z "$4" ]; then
     echo '{"error": "No password provided"}'
     exit 1
 fi
@@ -54,7 +58,7 @@ sudo chmod 600 "$CREDENTIALS_FILE"
 
 # Mount the SMB share
 # sudo mount -a
-sudo mount -t cifs "$SMB_PATH" "$MOUNT_POINT" -o credentials=$CREDENTIALS_FILE,vers=3.0,uid=$(id -u),gid=$(id -g),dir_mode=0775,file_mode=0664
+sudo mount -t cifs "$SMB_PATH" "$MOUNT_POINT" -o credentials=$CREDENTIALS_FILE,vers=3.0,sec=ntlmssp,uid=$(id -u),gid=$(id -g),dir_mode=0775,file_mode=0664
 
 # Check if mounting was successful
 if [ $? -eq 0 ]; then

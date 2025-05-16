@@ -411,7 +411,7 @@ mkdir -p "$(dirname "$LOG_FILE")"
 
   echo "[INFO] Attempting to mount SMB share..."
   mount -t cifs "//$SMB_HOST/$SMB_SHARE" "$MOUNT_POINT" \\
-    -o username="$SMB_USER",password="$SMB_PASS",rw,iocharset=utf8
+    -o username="$SMB_USER",password="$SMB_PASS",rw,iocharset=utf8,vers=3.0,sec=ntlmssp
 
   if ! mountpoint -q "$MOUNT_POINT"; then
     echo "[ERROR] Failed to mount //$SMB_HOST/$SMB_SHARE at $MOUNT_POINT"

@@ -138,11 +138,17 @@ const getTaskStatusText = (task: BackUpTask): string => {
     case 'online':
       return 'Available (Online)';
     case 'missing_folder':
-      return "Unavailable (Folder Missing)";
+      if (new Date(task.schedule.startDate).getTime() > Date.now()) {
+        return "Scheduled But Hasn't Run Yet"
+      } else {
+        return "Unavailable (Folder Missing)";
+      }
     case 'offline_unreachable':
       return "Unavailable (Host Unreachable)";
     case 'offline_invalid_credentials':
       return "Unavailable (Invalid Credentials)";
+    case 'offline_insufficient_permissions':
+      return "Unavailable (Insufficient Permissions)";
     case 'offline_connection_error':
       return "Unavailable (Connection Error)";
     case 'checking':
