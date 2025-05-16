@@ -23,8 +23,8 @@
         <RestoreBackUpWizard id="restore-backup" :onComplete="onWizardComplete" />
       </div>
 
-      <webview v-show="showWebView && !loadingWebview && !waitingForServerReboot" id="myWebview"
-        :src="currentUrl" allowpopups nodeintegration allow-same-origin allow-scripts partition="persist:authSession"
+      <webview v-show="showWebView && !loadingWebview && !waitingForServerReboot" id="myWebview" :src="currentUrl"
+        allowpopups nodeintegration allow-same-origin allow-scripts partition="persist:authSession"
         webpreferences="javascript=yes,webSecurity=no,enable-cookies=true,nodeIntegration=false,contextIsolation=true"
         ref="webview" @did-finish-load="onWebViewLoaded" />
 
@@ -49,13 +49,14 @@
     </div>
   </div>
   <GlobalModalConfirm />
+  <NotificationView />
 </template>
 
 <script setup lang="ts">
 import { onMounted, provide, ref, unref, watch } from 'vue';
 import { useAdvancedModeState } from './composables/useAdvancedState';
 import { Server, DivisionType } from './types';
-import { useWizardSteps, GlobalModalConfirm, reportError, reportSuccess, useDarkModeState } from '@45drives/houston-common-ui'
+import { useWizardSteps, GlobalModalConfirm, reportError, reportSuccess, useDarkModeState, NotificationView } from '@45drives/houston-common-ui'
 import StorageSetupWizard from './views/storageSetupWizard/Wizard.vue';
 import BackUpSetupWizard from './views/backupSetupWizard/Wizard.vue';
 import RestoreBackUpWizard from './views/restoreBackupWizard/Wizard.vue';
@@ -203,7 +204,7 @@ window.electron.ipcRenderer.on('client-ip', (_event, ip: string) => {
 });
 
 window.electron.ipcRenderer.on('notification', (_event, message: string) => {
-
+  console.log("[Renderer] 🔔 Received notification:", message);
   if (message.startsWith("Error")) {
 
     reportError(new Error(message))
@@ -259,6 +260,7 @@ onMounted(() => {
     attributeFilter: ['class']
   });
 
+  window.electron.ipcRenderer.send("renderer-ready", {});
 });
 
 watch(currentTheme, (theme) => {

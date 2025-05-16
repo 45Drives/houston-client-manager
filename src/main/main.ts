@@ -89,8 +89,34 @@ function createWindow() {
     }
   });
 
-
   IPCRouter.initBackend(mainWindow.webContents, ipcMain);
+
+  let rendererIsReady = false;
+  let bufferedNotifications: string[] = [];
+
+  ipcMain.on("renderer-ready", (event) => {
+    rendererIsReady = true;
+    bufferedNotifications.forEach(msg => {
+      event.sender.send("notification", msg);
+    });
+    bufferedNotifications = [];
+  });
+
+  function notify(message: string) {
+    console.log("[Main] 🔔 notify() called with:", message);
+
+    if (!mainWindow || !mainWindow.webContents || mainWindow.webContents.isDestroyed()) {
+      console.warn("[Main] ❌ mainWindow/webContents not ready");
+      return;
+    }
+    
+    if (rendererIsReady && mainWindow?.webContents) {
+      mainWindow.webContents.send("notification", message);
+    } else {
+      bufferedNotifications.push(message);
+    }
+  }
+  
 
   IPCRouter.getInstance().addEventListener('action', async (data) => {
     console.log('action data:', data);
@@ -157,13 +183,13 @@ function createWindow() {
           const backupManager = getBackUpManager();
 
           if (!backupManager) {
-            mainWindow.webContents.send('notification', `❌ No Backup Manager available.`);
+            notify(`❌ No Backup Manager available.`);
             return;
           }
 
           try {
             await backupManager.unschedule(task);
-            mainWindow.webContents.send('notification', `🗑️ Successfully removed ${task.source} → ${task.target}`);
+            notify(`🗑️ Successfully removed ${task.source} → ${task.target}`);
 
             // 🔄 After deletion, re-send updated tasks
             const tasks = await backupManager.queryTasks();
@@ -173,7 +199,7 @@ function createWindow() {
               tasks
             }));
           } catch (err: any) {
-            mainWindow.webContents.send('notification', `❌ Error deleting task: ${err.message}`);
+            notify(`❌ Error deleting task: ${err.message}`);
             console.error("removeBackUpTask failed:", err);
           }
         } else if (message.type === 'removeMultipleBackUpTasks') {
@@ -181,27 +207,27 @@ function createWindow() {
           const tasks: BackUpTask[] = message.tasks;
           const backupManager = getBackUpManager();
           if (!backupManager) {
-            mainWindow.webContents.send('notification', `Error: No Backup Manager available.`);
+            notify(`Error: No Backup Manager available.`);
             return;
           }
           try {
             if (backupManager?.unscheduleSelectedTasks) {
               await backupManager.unscheduleSelectedTasks(tasks);
               // console.log("[Main] ✅ Tasks unscheduled successfully");
-              mainWindow.webContents.send('notification', `Successfully removed ${tasks.length} backup task(s)!`);
+              notify(`Successfully removed ${tasks.length} backup task(s)!`);
             } else {
-              mainWindow.webContents.send('notification', `Error: Backup Manager does not support bulk deletion.`);
+              notify(`Error: Backup Manager does not support bulk deletion.`);
             }
           } catch (err: any) {
-            mainWindow.webContents.send('notification', `Error: ${err.message}`);
-            console.error("updateBackUpTask failed:", err);
+            notify(`Error: ${err.message}`);
+            console.error("removeMultipleBackUpTasks failed:", err);
           }
         } else if (message.type === 'updateBackUpTask') {
           const task: BackUpTask = message.task;
           const backupManager = getBackUpManager();
 
           if (!backupManager) {
-            mainWindow.webContents.send('notification', `Error: No Backup Manager available.`);
+            notify(`Error: No Backup Manager available.`);
             return;
           }
 
@@ -210,9 +236,9 @@ function createWindow() {
             const date = new Date(task.schedule.startDate);
             const minute = date.getMinutes().toString().padStart(2, '0');
             const hour = date.getHours();
-            mainWindow.webContents.send('notification', `Updated cron schedule for ${task.description} to ${hour}:${minute}`);
+            notify(`Updated cron schedule for ${task.description} to ${hour}:${minute}`);
           } catch (err: any) {
-            mainWindow.webContents.send('notification', `Error: ${err.message}`);
+            notify(`Error: ${err.message}`);
             console.error("updateBackUpTask failed:", err);
           }
         } else if (message.type === 'openFolder') {
@@ -226,9 +252,9 @@ function createWindow() {
             } else {
               execSync(`xdg-open "${folderPath}"`);
             }
-            mainWindow.webContents.send("notification", `📂 Opened folder: ${folderPath}`);
+            notify( `📂 Opened folder: ${folderPath}`);
           } catch (err) {
-            mainWindow.webContents.send("notification", `❌ Failed to open folder: ${folderPath}`);
+            notify( `❌ Failed to open folder: ${folderPath}`);
             console.error("Error opening folder:", folderPath, err);
           }
         } else if (message.type === 'checkBackUpStatuses') {
@@ -272,11 +298,11 @@ function createWindow() {
 
             const backupManager = getBackUpManager();
             if (!backupManager) {
-              mainWindow.webContents.send('notification', `Error: No Backup Manager available.`);
+              notify(`Error: No Backup Manager available.`);
               return;
             }
           } catch (err: any) {
-            mainWindow.webContents.send('notification', `Error: ${err.message}`);
+            notify(`Error: ${err.message}`);
             console.error("updateBackUpTask failed:", err);
           }
 
@@ -285,7 +311,7 @@ function createWindow() {
           const task: BackUpTask = message.task;
 
           if (!backupManager || typeof (backupManager as any).runNow !== 'function') {
-            mainWindow.webContents.send('notification', `❌ Run Now not supported for this OS`);
+            notify(`❌ Run Now not supported for this OS`);
             return;
           }
 
@@ -293,17 +319,16 @@ function createWindow() {
             console.log("▶️ Attempting to run backup:", task.description);
             const result = await (backupManager as any).runNow(task);
             console.log("✅ runNow completed:", result);
-            mainWindow.webContents.send('notification', `✅ Backup task "${task.description}" started successfully.`);
+            notify(`✅ Backup task "${task.description}" started successfully.`);
           } catch (err: any) {
             console.error("❌ runNow failed:", err);
             console.log("Command stderr:", err.stderr);
             console.log("Command stdout:", err.stdout);
             // Fallback for meaningful message
             const fallbackMsg = err?.stderr || err?.message || JSON.stringify(err);
-            mainWindow.webContents.send('notification', `❌ Failed to start task: ${fallbackMsg}`);
+            notify(`❌ Failed to start task: ${fallbackMsg}`);
           }
         }
-
       
       } catch (error) {
         console.error("Failed to handle IPC action:", data, error);

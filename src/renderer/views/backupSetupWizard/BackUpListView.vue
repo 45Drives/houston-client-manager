@@ -127,10 +127,7 @@ watch(backUpTasks, () => {
 })
 
 function isScheduledButNotRunYet(task: BackUpTask): boolean {
-  return (
-    task.status === 'missing_folder' &&
-    new Date(task.schedule.startDate).getTime() > Date.now()
-  );
+  return ( new Date(task.schedule.startDate).getTime() > Date.now() );
 }
 
 const getTaskStatusText = (task: BackUpTask): string => {
@@ -138,7 +135,7 @@ const getTaskStatusText = (task: BackUpTask): string => {
     case 'online':
       return 'Available (Online)';
     case 'missing_folder':
-      if (new Date(task.schedule.startDate).getTime() > Date.now()) {
+      if (isScheduledButNotRunYet(task)) {
         return "Scheduled But Hasn't Run Yet"
       } else {
         return "Unavailable (Folder Missing)";
