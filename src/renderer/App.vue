@@ -28,11 +28,11 @@
         webpreferences="javascript=yes,webSecurity=no,enable-cookies=true,nodeIntegration=false,contextIsolation=true"
         ref="webview" @did-finish-load="onWebViewLoaded" />
 
-      <div v-if="loadingWebview || waitingForServerReboot"
+
+      <div v-if="loadingWebview"
         class="absolute inset-0 z-40 bg-default flex flex-col items-center justify-center">
         <p class="text-2xl text-center">
           <template v-if="loadingWebview">Give us a few while we login...</template>
-          <template v-else-if="waitingForServerReboot">Waiting for {{ currentServer?.ip }} to reboot...</template>
         </p>
         <div id="spinner" class="spinner"></div>
       </div>
@@ -56,12 +56,12 @@
 import { onMounted, provide, ref, unref, watch } from 'vue';
 import { useAdvancedModeState } from './composables/useAdvancedState';
 import { Server, DivisionType } from './types';
-import { useWizardSteps, GlobalModalConfirm, reportError, reportSuccess, useDarkModeState, NotificationView } from '@45drives/houston-common-ui'
+import { useWizardSteps, GlobalModalConfirm, Notification, reportError, reportSuccess, useDarkModeState, NotificationView, pushNotification } from '@45drives/houston-common-ui'
 import StorageSetupWizard from './views/storageSetupWizard/Wizard.vue';
 import BackUpSetupWizard from './views/backupSetupWizard/Wizard.vue';
 import RestoreBackUpWizard from './views/restoreBackupWizard/Wizard.vue';
 import { divisionCodeInjectionKey, currentServerInjectionKey, currentWizardInjectionKey } from './keys/injection-keys';
-import { IPCMessageRouterRenderer, IPCRouter } from '@45drives/houston-common-lib';
+import { IPCMessageRouterRenderer, IPCRouter, server } from '@45drives/houston-common-lib';
 
 IPCRouter.initRenderer();
 IPCRouter.getInstance().addEventListener("action", async (data) => {
@@ -92,12 +92,17 @@ IPCRouter.getInstance().addEventListener("action", async (data) => {
     }
 
     if (data.endsWith("_reboot")) {
+      waitingForServerReboot.value = true;
+      currentWizard.value = "backup";
+      showWebView.value = false;
       await waitForServerRebootAndShowWizard();
     }
+
   } catch (error) {
     console.log(error)
   }
 });
+
 
 const currentWizard = ref<'storage' | 'backup' | 'restore-backup' | null>('backup');
 provide(currentWizardInjectionKey, currentWizard);
@@ -108,6 +113,29 @@ const showWizard = (type: 'storage' | 'backup' | 'restore-backup') => {
 };
 
 const waitingForServerReboot = ref(false);
+let rebootNotification: Notification | null = null;
+
+watch(waitingForServerReboot, () => {
+  if (waitingForServerReboot.value) {
+    if (!rebootNotification) {
+      rebootNotification = new Notification(
+        'Server Rebooting',
+        `Waiting for ${currentServer.value?.ip} to reboot...`,
+        'info',
+        'never'
+      );
+      pushNotification(rebootNotification);
+    }
+  } else {
+    if (rebootNotification) {
+      rebootNotification.remove();
+      rebootNotification = null;
+    }
+    pushNotification(new Notification('Server Available', `${currentServer.value?.ip} is now accessible!`, 'success', 8000));
+  }
+}, {});
+
+
 
 async function waitForServerRebootAndShowWizard() {
   const serverIp = currentServer.value?.ip;
@@ -203,29 +231,35 @@ window.electron.ipcRenderer.on('client-ip', (_event, ip: string) => {
   clientip.value = ip;
 });
 
+function isJsonString(str: string) {
+  try {
+    JSON.parse(str);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 window.electron.ipcRenderer.on('notification', (_event, message: string) => {
   console.log("[Renderer] 🔔 Received notification:", message);
+
   if (message.startsWith("Error")) {
-
-    reportError(new Error(message))
-  } else {
-    try {
-      const mJson = JSON.parse(message);
-
-      if (mJson.error) {
-        reportError(new Error(mJson.error));
-      } else {
-        reportSuccess(message);
-      }
-    } catch (_error) {
-      // assume it is just a success message
-      reportSuccess(message);
-    }
-
+    reportError(new Error(message));
+    return;
   }
 
+  if (isJsonString(message)) {
+    const mJson = JSON.parse(message);
+    if (mJson.error) {
+      reportError(new Error(mJson.error));
+    } else {
+      reportSuccess(message);
+    }
+  } else {
+    // Treat it as a simple success string
+    reportSuccess(message);
+  }
 });
-
 
 
 onMounted(() => {

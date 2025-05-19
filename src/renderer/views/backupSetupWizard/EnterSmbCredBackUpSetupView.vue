@@ -118,11 +118,15 @@ const proceedToPreviousStep = async () => {
 
 useEnterToAdvance(
   () => {
-    proceedToNextStep(); // Enter
+    if (!isButtonDisabled) {
+      proceedToNextStep(); // Enter
+    }
   },
   200, // debounce time for Enter
   () => {
-    proceedToNextStep(); // ArrowRight
+    if (!isButtonDisabled) {
+      proceedToNextStep(); // ArrowRight
+    }
   },
   () => {
     proceedToPreviousStep(); // ArrowLeft
