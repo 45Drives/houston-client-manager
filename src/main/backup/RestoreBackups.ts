@@ -2,6 +2,7 @@ import { getOS } from "../utils";
 import fsAsync from "fs/promises";
 import path from "path";
 import { IPCMessageRouter } from '../../..//houston-common/houston-common-lib/lib/electronIPC';
+import { execSync } from "child_process";
 
 export default async function restoreBackups(data: any, IPCRouter: IPCMessageRouter) {
   
@@ -41,6 +42,30 @@ export default async function restoreBackups(data: any, IPCRouter: IPCMessageRou
     }));
   }
 
+  // try {
+  //   const openPath = path.dirname(fixWinPath(data.files[0])); // Open first file's folder
+  //   openDirectory(openPath);
+
+  //   IPCRouter.send("renderer", "action", JSON.stringify({
+  //     type: "restoreCompleted",
+  //     folder: openPath
+  //   }));
+    
+  // } catch (e) {
+  //   console.error("Failed to open folder after restore:", e);
+  // }
+  try {
+    const firstFolder = path.dirname(fixWinPath(data.files[0]));
+
+    IPCRouter.send("renderer", "action", JSON.stringify({
+      type: "restoreCompleted",
+      folder: firstFolder,
+      allFolders: [...new Set(data.files.map(file => path.dirname(fixWinPath(file))))]  // unique folders
+    }));
+  } catch (e) {
+    console.error("Failed to prepare post-restore data:", e);
+  }
+
 }
 
 async function copyFile(sourcePath: string, copyToFilePath: string, originalFilePath: string) {
@@ -64,4 +89,20 @@ async function copyFile(sourcePath: string, copyToFilePath: string, originalFile
 
 function fixWinPath(str) {
   return str.replace(/^\\([A-Za-z])\\/, '$1:\\');
+}
+
+function openDirectory(folderPath: string) {
+  try {
+    const platform = getOS();
+    if (platform === "win") {
+      execSync(`start "" "${folderPath}"`);
+    } else if (platform === "mac") {
+      execSync(`open "${folderPath}"`);
+    } else {
+      execSync(`xdg-open "${folderPath}"`);
+    }
+    console.log("Opened folder:", folderPath);
+  } catch (err) {
+    console.error("Failed to open folder:", err);
+  }
 }
