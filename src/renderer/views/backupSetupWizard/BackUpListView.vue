@@ -242,7 +242,7 @@ const deleteThisTask = async (task: BackUpTask) => {
     setTimeout(() => {
       fetchBackupTasks();
       pollingSuspended = false;
-    }, 3000); // short delay to ensure backend cleanup is done
+    }, 1500); // short delay to ensure backend cleanup is done
   } finally {
     // 🔓 Reallow clicks after dialog
     isHandlingNextClick = false;
@@ -293,7 +293,7 @@ const deleteSelectedTasks = async () => {
     setTimeout(() => {
       fetchBackupTasks();
       pollingSuspended = false;
-    }, 3000); // You can tweak this (1500–2000ms tends to be safe)
+    }, 1500); // You can tweak this (1500–2000ms tends to be safe)
   } finally {
     // 🔓 Reallow clicks after dialog
     isHandlingNextClick = false;

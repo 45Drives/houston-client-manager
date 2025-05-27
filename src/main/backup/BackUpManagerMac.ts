@@ -74,7 +74,7 @@ export class BackUpManagerMac implements BackUpManager {
     });
   }
 
-  unschedule(task: BackUpTask): void {
+  async unschedule(task: BackUpTask): Promise<void> {
     const plistFileName = `com.backup-task.${this.safeTaskName(task.description)}.plist`;
     const plistFilePath = path.join(this.launchdDirectory, plistFileName);
 
