@@ -118,7 +118,7 @@ systemctl restart ${getOS() === "debian" ? "cron" : "crond"}
     }
   }
 
-  unschedule(task: BackUpTask): void {
+  async unschedule(task: BackUpTask): Promise<void> {
     if (!fs.existsSync(this.cronFilePath)) return;
 
     const cronFileContents = fs.readFileSync(this.cronFilePath, "utf-8");

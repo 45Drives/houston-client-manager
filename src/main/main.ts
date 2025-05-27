@@ -203,18 +203,27 @@ function createWindow() {
             console.error("removeBackUpTask failed:", err);
           }
         } else if (message.type === 'removeMultipleBackUpTasks') {
-          // console.log("[Main] 🧠 Received removeMultipleBackUpTasks", message.tasks);
           const tasks: BackUpTask[] = message.tasks;
           const backupManager = getBackUpManager();
+
           if (!backupManager) {
             notify(`Error: No Backup Manager available.`);
             return;
           }
+
           try {
             if (backupManager?.unscheduleSelectedTasks) {
               await backupManager.unscheduleSelectedTasks(tasks);
-              // console.log("[Main] ✅ Tasks unscheduled successfully");
+
               notify(`Successfully removed ${tasks.length} backup task(s)!`);
+
+              // 🔧 ADD THIS BLOCK
+              const updatedTasks = await backupManager.queryTasks();
+              IPCRouter.getInstance().send('renderer', 'action', JSON.stringify({
+                type: 'sendBackupTasks',
+                tasks: updatedTasks
+              }));
+
             } else {
               notify(`Error: Backup Manager does not support bulk deletion.`);
             }

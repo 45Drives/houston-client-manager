@@ -371,7 +371,7 @@ if (-not $hasBatchLogon -or -not $hasServiceLogon) {
   }
   
 
-  unschedule(task: BackUpTask): void {
+  async unschedule(task: BackUpTask): Promise<void> {
     const taskName = `${TASK_ID}_${task.uuid}`;
     const powershellScript = `Unregister-ScheduledTask -TaskName "${taskName}" -Confirm:$false`;
 
