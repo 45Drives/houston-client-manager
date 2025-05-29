@@ -1,43 +1,128 @@
 import { BackUpManager } from "./types";
-import { BackUpTask, backupTaskTag, TaskSchedule, IPCRouter } from "@45drives/houston-common-lib";
+import { BackUpTask, backupTaskTag, TaskSchedule } from "@45drives/houston-common-lib";
 import * as fs from "fs";
 import * as os from "os";
-import { writeFileSync, chmodSync } from 'fs';
 import { exec, execSync } from "child_process";
-import { getOS, getAppPath, getSmbTargetFromSmbTarget, reconstructFullTarget, runPrivilegedAppend, runPrivilegedReplaceFile } from "../utils";
+import { getOS, getAppPath, getSmbTargetFromSmbTarget, reconstructFullTarget } from "../utils";
+import { checkBackupTaskStatus } from './CheckSmbStatus';
 import path, { join } from "path";
 
+const SCRIPT_DIR = path.join(os.homedir(), ".local", "share", "houston-backups");
+const LOG_DIR = path.join(os.homedir(), ".local", "share", "houston-logs");
+
 export class BackUpManagerLin implements BackUpManager {
-  protected cronFilePath: string = "/etc/cron.d/houston-backup-manager";
   protected pkexec: string = "pkexec";
 
-  queryTasks(): Promise<BackUpTask[]> {
-    if (!fs.existsSync(this.cronFilePath)) {
-      return new Promise((resolve, _rejest) => {
-        resolve([])
-      });
+  // queryTasks(): Promise<BackUpTask[]> {
+  //   if (!fs.existsSync(SCRIPT_DIR)) return Promise.resolve([]);
+
+  //   const scriptFiles = fs.readdirSync(SCRIPT_DIR).filter(f => f.startsWith("run_backup_task_") && f.endsWith(".sh"));
+
+  //   const tasks = scriptFiles.map(filename => {
+  //     const scriptPath = path.join(SCRIPT_DIR, filename);
+  //     const content = fs.readFileSync(scriptPath, "utf-8");
+  //     const uuidMatch = filename.match(/run_backup_task_([a-f0-9\-]+)\.sh/);
+  //     const uuid = uuidMatch ? uuidMatch[1] : undefined;
+  //     const sourceMatch = content.match(/SOURCE='([^']+)'/);
+  //     const targetMatch = content.match(/TARGET='([^']+)'/);
+  //     const smbHostMatch = content.match(/SMB_HOST='([^']+)'/);
+  //     const smbShareMatch = content.match(/SMB_SHARE='([^']+)'/);
+  //     const descMatch = content.match(/Starting backup task: '([^']+)'/);
+  //     const mirror = content.includes("--delete");
+
+  //     if (!uuid || !sourceMatch || !targetMatch || !smbHostMatch || !smbShareMatch) return null;
+
+  //     return {
+  //       uuid,
+  //       source: sourceMatch[1].replace(/\/+$/, ""),
+  //       target: targetMatch[1],
+  //       host: smbHostMatch[1],
+  //       share: smbShareMatch[1],
+  //       mirror,
+  //       description: descMatch ? descMatch[1] : "Unnamed",
+  //       schedule: { repeatFrequency: "day", startDate: new Date() }, // Can't infer exact timing
+  //       status: "checking" // default while checking
+  //     };
+  //   }).filter(Boolean) as BackUpTask[];
+
+  //   return Promise.resolve(tasks);
+  // }
+
+  async queryTasks(): Promise<BackUpTask[]> {
+    if (!fs.existsSync(SCRIPT_DIR)) return [];
+
+    const scriptFiles = fs.readdirSync(SCRIPT_DIR).filter(f =>
+      f.startsWith("run_backup_task_") && f.endsWith(".sh")
+    );
+
+    const tasks: BackUpTask[] = [];
+
+    for (const filename of scriptFiles) {
+      try {
+        const scriptPath = path.join(SCRIPT_DIR, filename);
+        const content = fs.readFileSync(scriptPath, "utf-8");
+
+        const uuidMatch = filename.match(/run_backup_task_([a-f0-9\-]+)\.sh/);
+        const sourceMatch = content.match(/SOURCE='([^']+)'/);
+        const targetMatch = content.match(/TARGET='([^']+)'/);
+        const smbHostMatch = content.match(/SMB_HOST='([^']+)'/);
+        const smbShareMatch = content.match(/SMB_SHARE='([^']+)'/);
+        const descMatch = content.match(/Starting backup task: '([^']+)'/);
+        const mirror = content.includes("--delete");
+
+        if (!uuidMatch || !sourceMatch || !targetMatch || !smbHostMatch || !smbShareMatch) continue;
+
+        const task: BackUpTask = {
+          uuid: uuidMatch[1],
+          source: sourceMatch[1].replace(/\/+$/, ""),
+          target: targetMatch[1],
+          host: smbHostMatch[1],
+          share: smbShareMatch[1],
+          mirror,
+          description: descMatch ? descMatch[1] : "Unnamed",
+          schedule: { repeatFrequency: "day", startDate: new Date() },
+          status: "checking"
+        };
+
+        // 🔍 Perform status check
+        try {
+          task.status = await checkBackupTaskStatus(task);
+        } catch (err) {
+          console.warn(`Failed to check status for task ${task.uuid}:`, err);
+          task.status = "offline_connection_error";
+        }
+
+        tasks.push(task);
+      } catch (err) {
+        console.warn(`Error processing backup task file: ${filename}`, err);
+      }
     }
-    const cronFileContents = fs.readFileSync(this.cronFilePath, "utf-8");
-    const cronEntries = cronFileContents
-      .split(/[\r\n]+/)
-      .map((line) => line.trim())
-      .filter((line) => line.length > 0 && !line.startsWith('#'));
 
-    const tasks = cronEntries.map((cron) => this.cronToBackupTask(cron)).filter(task => task !== null) as BackUpTask[];
-
-    return new Promise((resolve, _rejest) => {
-      resolve(tasks)
-    });
+    return tasks;
   }
+  
 
   schedule(task: BackUpTask, username: string, password: string): Promise<{ stdout: string, stderr: string }> {
     return new Promise((resolve, reject) => {
-      const cron = this.backupTaskToCron(task, username, password);
-      // this.ensureCronFile();
-      // fs.appendFileSync(this.cronFilePath, cron + "\n", "utf-8");
-      runPrivilegedAppend(cron, this.cronFilePath, this.pkexec);
-      this.reloadCron();
-      resolve({ stdout: "", stderr: "" });
+      if (!fs.existsSync(SCRIPT_DIR)) fs.mkdirSync(SCRIPT_DIR, { recursive: true });
+      if (!fs.existsSync(LOG_DIR)) fs.mkdirSync(LOG_DIR, { recursive: true });
+
+      const scriptPath = path.join(SCRIPT_DIR, `run_backup_task_${task.uuid}.sh`);
+
+      const [smbHost, smbSharePart] = task.target.split(":");
+      const smbShare = smbSharePart.split("/")[0];
+      this.ensureFstabEntry(smbHost, smbShare, username, password);
+
+      this.generateBackupScript(task, username, password, scriptPath);
+
+      const cronLine = `${this.scheduleToCron(task.schedule)} bash \"${scriptPath}\"`;
+      const existingCrontab = execSync("crontab -l 2>/dev/null || true").toString()
+        .split("\n")
+        .filter(line => !line.includes(task.uuid));
+      existingCrontab.push(cronLine);
+
+      execSync(`echo "${existingCrontab.join("\n")}" | crontab -`);
+      resolve({ stdout: "Scheduled via user crontab", stderr: "" });
     });
   }
 
@@ -47,255 +132,100 @@ export class BackUpManagerLin implements BackUpManager {
     password: string,
     onProgress?: (step: number, total: number, message: string) => void
   ): Promise<void> {
-    const tmpDir = fs.mkdtempSync(join(os.tmpdir(), "backup-batch-"));
     const cronEntries: string[] = [];
-    const moveCommands: string[] = [];
+    const scriptDir = path.join(os.homedir(), ".local", "share", "houston-backups");
+    if (!fs.existsSync(scriptDir)) fs.mkdirSync(scriptDir, { recursive: true });
 
     let step = 0;
-    const total = tasks.length + 2; // +1 for final script, +1 for cron move
+    const total = tasks.length;
 
     for (const task of tasks) {
-      const taskUUID = task.uuid;
-      task.uuid = taskUUID;
+      const scriptPath = path.join(scriptDir, `run_backup_task_${task.uuid}.sh`);
 
-      const scriptName = `run_backup_task_${taskUUID}.sh`;
-      const tempScriptPath = join(tmpDir, scriptName);
-      const finalScriptPath = join(getAppPath(), scriptName);
+      const [smbHost, smbSharePart] = task.target.split(":");
+      const smbShare = smbSharePart.split("/")[0];
+      this.ensureFstabEntry(smbHost, smbShare, username, password);
 
-      this.generateBackupScript(task, username, password, tempScriptPath);
-
-      cronEntries.push(this.generateCronLine(task, finalScriptPath));
-
-      moveCommands.push(`mv "${tempScriptPath}" "${finalScriptPath}"`);
-      moveCommands.push(`chmod 700 "${finalScriptPath}"`);
-
-      if (onProgress) {
-        onProgress(++step, total, `Created task for ${task.description}`);
-      }
+      this.generateBackupScript(task, username, password, scriptPath);
+      const cronLine = `${this.scheduleToCron(task.schedule)} bash "${scriptPath}" # ${task.description}`;
+      cronEntries.push(cronLine);
+      if (onProgress) onProgress(++step, total, `Created and scheduled ${task.description}`);
     }
 
-    // Write cron file
-    const cronTmpPath = join(tmpDir, "houston-backup-manager");
-    let existingCron = "";
+    const existing = execSync("crontab -l 2>/dev/null || true").toString().split("\n")
+      .filter(line => !tasks.some(task => line.includes(`run_backup_task_${task.uuid}.sh`)));
 
-    if (fs.existsSync(this.cronFilePath)) {
-      existingCron = fs.readFileSync(this.cronFilePath, "utf-8").trim();
-    }
+    const finalCrontab = [...existing, ...cronEntries].join("\n") + "\n";
+    execSync(`echo "${finalCrontab}" | crontab -`);
 
-    const combinedCron = [
-      existingCron,
-      ...cronEntries
-    ].filter(Boolean).join("\n") + "\n";
-
-    fs.writeFileSync(cronTmpPath, combinedCron, "utf-8");
-
-    // Write final setup script to be run via pkexec
-    const setupScriptPath = join(tmpDir, "setup_all_tasks.sh");
-    const setupScript = `
-#!/bin/bash
-
-mv "${cronTmpPath}" "${this.cronFilePath}"
-chown root:root "${this.cronFilePath}"
-chmod 644 "${this.cronFilePath}"
-
-${moveCommands.join("\n")}
-
-systemctl restart ${getOS() === "debian" ? "cron" : "crond"}
-`;
-
-    fs.writeFileSync(setupScriptPath, setupScript, { mode: 0o700 });
-
-    try {
-      execSync(`${this.pkexec} bash "${setupScriptPath}"`);
-      console.log("✅ All tasks scheduled with one privilege prompt.");
-    } catch (err) {
-      console.error("❌ Failed to schedule tasks in batch mode:", err);
-      throw err;
-    }
-
-    if (onProgress) {
-      onProgress(step + 1, total, "All backup tasks scheduled successfully.");
-    }
+    if (onProgress) onProgress(step, total, "All tasks scheduled successfully.");
   }
 
-  async unschedule(task: BackUpTask): Promise<void> {
-    if (!fs.existsSync(this.cronFilePath)) return;
+  unschedule(task: BackUpTask): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const crontabLines = execSync("crontab -l 2>/dev/null || true").toString().split("\n");
+      const filtered = crontabLines.filter(line => !line.includes(task.uuid));
+      execSync(`echo "${filtered.join("\n")}" | crontab -`);
 
-    const cronFileContents = fs.readFileSync(this.cronFilePath, "utf-8");
-    const cronEntries = cronFileContents.split(/[\r\n]+/);
-    let scriptPathToDelete: string | null = null;
+      const scriptPath = path.join(SCRIPT_DIR, `run_backup_task_${task.uuid}.sh`);
+      const logPath = path.join(LOG_DIR, `backup_task_${task.uuid}.log`);
 
-    const newCronEntries = cronEntries.filter((line) => {
-      const shouldRemove = line.includes(`run_backup_task_${task.uuid}.sh`);
-      if (shouldRemove) {
-        const parts = line.split(" ");
-        const scriptPath = parts.find(p => p.includes(`run_backup_task_${task.uuid}.sh`));
-        if (scriptPath) scriptPathToDelete = scriptPath;
-      }
-      return !shouldRemove;
+      try { if (fs.existsSync(scriptPath)) fs.unlinkSync(scriptPath); } catch { }
+      try { if (fs.existsSync(logPath)) fs.unlinkSync(logPath); } catch { }
+      resolve();
     });
-
-    const tmpDir = fs.mkdtempSync(join(os.tmpdir(), "backup-unschedule-"));
-    const newCronPath = join(tmpDir, "new_cron");
-    const unscheduleScript = join(tmpDir, "unschedule.sh");
-
-    fs.writeFileSync(newCronPath, newCronEntries.join("\n") + "\n", "utf-8");
-
-    const shellScript = `#!/bin/bash
-  mv "${newCronPath}" "${this.cronFilePath}"
-  chown root:root "${this.cronFilePath}"
-  chmod 644 "${this.cronFilePath}"
-  ${scriptPathToDelete ? `rm -f "${scriptPathToDelete}"` : ""}
-  systemctl restart ${getOS() === "debian" ? "cron" : "crond"}
-  `;
-
-    fs.writeFileSync(unscheduleScript, shellScript, { mode: 0o700 });
-
-    try {
-      execSync(`${this.pkexec} bash "${unscheduleScript}"`);
-      console.log("✅ Task unscheduled with root permissions.");
-    } catch (err) {
-      console.error("❌ Failed to unschedule task:", err);
-      throw err;
-    }
-
-    const logPath = `/var/log/houston/backup_task_${task.uuid}.log`;
-    if (fs.existsSync(logPath)) {
-      try {
-        fs.unlinkSync(logPath);
-        console.log(`🧹 Removed log file: ${logPath}`);
-      } catch (err: any) {
-        console.error(`❌ Failed to delete log file: ${logPath}`, err.message);
-      }
-    }
-
   }
   
-
   async unscheduleSelectedTasks(tasks: BackUpTask[]): Promise<void> {
-    if (!fs.existsSync(this.cronFilePath)) return;
-
-    const cronFileContents = fs.readFileSync(this.cronFilePath, "utf-8");
-    const cronEntries = cronFileContents.split(/[\r\n]+/);
-
-    const tmpDir = fs.mkdtempSync(join(os.tmpdir(), "unschedule-batch-"));
-    const newCronEntries: string[] = [];
-    const scriptPathsToDelete: string[] = [];
-
-    for (const line of cronEntries) {
-      if (tasks.some(task => line.includes(`run_backup_task_${task.uuid}.sh`))) {
-        const parts = line.split(/\s+/);
-        const scriptPath = parts.find(p => p.includes(`run_backup_task_`) && p.endsWith('.sh'));
-        if (scriptPath) {
-          scriptPathsToDelete.push(scriptPath);
-        }
-      } else {
-        newCronEntries.push(line);
-      }
-    }
-
-    const newCronPath = join(tmpDir, "new_cron");
-    const shellScriptPath = join(tmpDir, "unschedule_tasks.sh");
-
-    fs.writeFileSync(newCronPath, newCronEntries.join("\n") + "\n", "utf-8");
-
-    const deleteCommands = scriptPathsToDelete.map(p => `rm -f "${p}"`).join("\n");
-    const shellScript = `#!/bin/bash
-  mv "${newCronPath}" "${this.cronFilePath}"
-  chown root:root "${this.cronFilePath}"
-  chmod 644 "${this.cronFilePath}"
-  ${deleteCommands}
-  systemctl restart ${getOS() === "debian" ? "cron" : "crond"}
-  `;
-
-    fs.writeFileSync(shellScriptPath, shellScript, { mode: 0o700 });
-
-    try {
-      execSync(`${this.pkexec} bash "${shellScriptPath}"`);
-      console.log("✅ Selected tasks unscheduled successfully.");
-    } catch (err) {
-      console.error("❌ Failed to unschedule selected tasks:", err);
-      throw err;
-    }
+    const crontabLines = execSync("crontab -l 2>/dev/null || true").toString().split("\n");
+    const newCrontab = crontabLines.filter(line =>
+      !tasks.some(task => line.includes(`run_backup_task_${task.uuid}.sh`))
+    );
+    execSync(`echo "${newCrontab.join("\n")}" | crontab -`);
 
     for (const task of tasks) {
-      const logPath = `/var/log/houston/backup_task_${task.uuid}.log`;
-      if (fs.existsSync(logPath)) {
-        try {
-          fs.unlinkSync(logPath);
-          console.log(`🧹 Removed log file: ${logPath}`);
-        } catch (err: any) {
-          console.error(`❌ Failed to delete log file: ${logPath}`, err.message);
-        }
-      }
+      const scriptPath = path.join(os.homedir(), ".local", "share", "houston-backups", `run_backup_task_${task.uuid}.sh`);
+      const logPath = path.join(os.homedir(), ".local", "share", "houston-logs", `backup_task_${task.uuid}.log`);
+      try { if (fs.existsSync(scriptPath)) fs.unlinkSync(scriptPath); } catch { }
+      try { if (fs.existsSync(logPath)) fs.unlinkSync(logPath); } catch { }
     }
-    
   }
   
-
+  
   async updateSchedule(task: BackUpTask): Promise<void> {
-    if (!fs.existsSync(this.cronFilePath)) {
-      throw new Error("Cron file not found.");
-    }
+    const crontabLines = execSync("crontab -l 2>/dev/null || true").toString().split("\n");
+    const updated = [...crontabLines]; // Copy
 
-    const cronLines = fs.readFileSync(this.cronFilePath, 'utf-8').split('\n');
-    const lineIndex = cronLines.findIndex(line =>
-      line.includes(`run_backup_task_${task.uuid}.sh`)
-    );
+    const index = updated.findIndex(line => line.includes(`run_backup_task_${task.uuid}.sh`));
+    if (index === -1) throw new Error(`Could not find matching cron entry for UUID ${task.uuid}`);
 
-    if (lineIndex === -1) {
-      throw new Error(`Could not find matching cron entry for UUID ${task.uuid}`);
-    }
+    const scriptPath = path.join(os.homedir(), ".local", "share", "houston-backups", `run_backup_task_${task.uuid}.sh`);
+    if (!fs.existsSync(scriptPath)) throw new Error(`Script not found at expected path: ${scriptPath}`);
 
-    const originalLine = cronLines[lineIndex];
-    const parts = originalLine.trim().split(/\s+/);
-    const scriptPath = parts.find(p => p.endsWith('.sh'));
+    const newTiming = (() => {
+      const date = new Date(task.schedule.startDate);
+      const min = date.getMinutes();
+      const hour = date.getHours();
+      const dom = date.getDate();
+      const dow = date.getDay();
+      switch (task.schedule.repeatFrequency) {
+        case "hour": return `${min} * * * *`;
+        case "day": return `${min} ${hour} * * *`;
+        case "week": return `${min} ${hour} * * ${dow}`;
+        case "month": return `${min} ${hour} ${dom} * *`;
+        default: throw new Error(`Unsupported repeat frequency: ${task.schedule.repeatFrequency}`);
+      }
+    })();
 
-    if (!scriptPath || !fs.existsSync(scriptPath)) {
-      throw new Error("Script not found at expected path.");
-    }
-
-    const date = new Date(task.schedule.startDate);
-    const minute = date.getMinutes();
-    const hour = date.getHours();
-    const dayOfMonth = date.getDate();
-    const dayOfWeek = date.getDay(); // 0 = Sunday
-
-    let cronTiming: string;
-
-    switch (task.schedule.repeatFrequency) {
-      case 'hour':
-        // Every hour at the specific minute
-        cronTiming = `${minute} * * * *`;
-        break;
-      case 'day':
-        // Daily at a specific time
-        cronTiming = `${minute} ${hour} * * *`;
-        break;
-      case 'week':
-        // Weekly on the same weekday as startDate
-        cronTiming = `${minute} ${hour} * * ${dayOfWeek}`;
-        break;
-      case 'month':
-        // Monthly on the same day of the month
-        cronTiming = `${minute} ${hour} ${dayOfMonth} * *`;
-        break;
-      default:
-        throw new Error(`Unsupported repeat frequency: ${task.schedule.repeatFrequency}`);
-    }
-
-    const comment = originalLine.includes('#') ? originalLine.substring(originalLine.indexOf('#')) : '';
-    const newLine = `${cronTiming} root ${scriptPath} ${comment}`;
-
-    cronLines[lineIndex] = newLine;
-    const updatedContent = cronLines.join('\n');
-
-    runPrivilegedReplaceFile(updatedContent, this.cronFilePath, this.pkexec);
+    const comment = updated[index].includes('#') ? updated[index].substring(updated[index].indexOf('#')) : '';
+    updated[index] = `${newTiming} bash "${scriptPath}" ${comment}`;
+    execSync(`echo "${updated.join("\n")}" | crontab -`);
   }
+  
 
   runNow(task: BackUpTask): Promise<{ stdout: string; stderr: string }> {
-    const scriptPath = path.join(getAppPath(), `run_backup_task_${task.uuid}.sh`);
-    const command = `${this.pkexec} bash "${scriptPath}"`;
+    const scriptPath = path.join(SCRIPT_DIR, `run_backup_task_${task.uuid}.sh`);
+    const command = `bash \"${scriptPath}\"`;
 
     return new Promise((resolve, reject) => {
       exec(command, (error, stdout, stderr) => {
@@ -304,6 +234,7 @@ systemctl restart ${getOS() === "debian" ? "cron" : "crond"}
       });
     });
   }
+
 
   protected scheduleToCron(sched: TaskSchedule): string {
     switch (sched.repeatFrequency) {
@@ -333,112 +264,98 @@ systemctl restart ${getOS() === "debian" ? "cron" : "crond"}
   }
   
 
+  protected ensureFstabEntry(smbHost: string, smbShare: string, username: string, password: string): void {
+    const credDir = "/etc/samba/houston-credentials";
+    const credFile = `${credDir}/${smbShare}.cred`;
+    const mountDir = `/mnt/houston-mounts/${smbShare}`;
+    const localUser = os.userInfo().username;
+
+    const uid = typeof process.getuid === 'function' ? process.getuid() : 1000;
+    const gid = typeof process.getgid === 'function' ? process.getgid() : 1000;
+
+    const fstabEntry = `//${smbHost}/${smbShare} ${mountDir} cifs credentials=${credFile},iocharset=utf8,rw,uid=${uid},gid=${gid},vers=3.0,user,noauto 0 0`;
+
+    const fstab = fs.readFileSync("/etc/fstab", "utf-8");
+    if (!fstab.includes(`//${smbHost}/${smbShare}`)) {
+      const tempScript = `/tmp/add_fstab_entry_${smbShare}.sh`;
+      const scriptContent = `#!/bin/bash
+mkdir -p "${credDir}"
+echo "username=${username}" > "${credFile}"
+echo "password=${password}" >> "${credFile}"
+sudo chown ${localUser}:${localUser} ${credFile}
+sudo chmod 600 ${credFile}
+mkdir -p "${mountDir}"
+echo "${fstabEntry}" >> /etc/fstab
+`;
+
+      fs.writeFileSync(tempScript, scriptContent, { mode: 0o700 });
+      execSync(`${this.pkexec} bash "${tempScript}"`);
+    }
+  }
+
   protected generateBackupScript(task: BackUpTask, username: string, password: string, scriptPath: string): void {
     const [smbHost, smbSharePart] = task.target.split(":");
     const smbShare = smbSharePart.split("/")[0];
+
+    // Ensure /etc/fstab and cred file are set up once during schedule
+    this.ensureFstabEntry(smbHost, smbShare, username, password);
+
+    const logPath = path.join(LOG_DIR, `backup_task_${task.uuid}.log`);
+    const mountDir = `/mnt/houston-mounts/${smbShare}`;
     const target = getSmbTargetFromSmbTarget(task.target);
-    // const mountPoint = `/mnt/backup_${task.uuid}`;
-    // const mountPoint = `/mnt/backup_$$`;
-
-  //   const scriptContent = `#!/bin/bash
-  // SMB_HOST='${smbHost}'
-  // SMB_SHARE='${smbShare}'
-  // SMB_USER='${username}'
-  // SMB_PASS='${password}'
-  // SOURCE='${task.source}/'
-  // TARGET='${target}'
-  // MOUNT_POINT="/mnt/backup_$$"
-  
-  // cleanup() {
-  //   umount "$MOUNT_POINT" 2>/dev/null
-  //   sleep 1
-  //   mountpoint -q "$MOUNT_POINT" || rmdir "$MOUNT_POINT"
-  // }
-  // trap cleanup EXIT
-
-  // LOG_FILE="/var/log/houston/backup_task_${task.uuid}.log"
-  // mkdir -p "$(dirname "$LOG_FILE")"
-  // {
-  //   echo "===== $(date -Iseconds): Starting backup task '${task.description}' ====="
-
-  //   mkdir -p "$MOUNT_POINT"
-
-  //   mount -t cifs "//$SMB_HOST/$SMB_SHARE" "$MOUNT_POINT" \\
-  //     -o username="$SMB_USER",password="$SMB_PASS",rw,iocharset=utf8,uid=0,gid=0
-
-  //   if ! mountpoint -q "$MOUNT_POINT"; then
-  //     echo "ERROR: Failed to mount //$SMB_HOST/$SMB_SHARE"
-  //     exit 1
-  //   fi
-
-  //   mkdir -p "$MOUNT_POINT/$TARGET"
-  //   rsync -a${task.mirror ? ' --delete' : ''} "$SOURCE" "$MOUNT_POINT/$TARGET"
-
-  //   echo "SUCCESS: Backup completed at $(date -Iseconds)"
-  // } >> "$LOG_FILE" 2>&1
-  // `;
     const scriptContent = `#!/bin/bash
 SMB_HOST='${smbHost}'
 SMB_SHARE='${smbShare}'
-SMB_USER='${username}'
-SMB_PASS='${password}'
 SOURCE='${task.source}/'
 TARGET='${target}'
-MOUNT_POINT="/mnt/backup_$$"
+LOG_FILE='${logPath}'
+MOUNT_DIR='${mountDir}'
+
+mkdir -p "$(dirname "$LOG_FILE")"
 
 cleanup() {
-  echo "[CLEANUP] Unmounting and removing mount point..." >> "$LOG_FILE"
-  umount "$MOUNT_POINT" 2>> "$LOG_FILE"
-  sleep 1
-  if mountpoint -q "$MOUNT_POINT"; then
-    echo "[CLEANUP] Failed to unmount $MOUNT_POINT" >> "$LOG_FILE"
-  else
-    rmdir "$MOUNT_POINT"
-    echo "[CLEANUP] Cleanup complete." >> "$LOG_FILE"
+  if [ -d "$MOUNT_DIR" ]; then
+    echo "[CLEANUP] Unmounting $MOUNT_DIR" >> "$LOG_FILE"
+    umount "$MOUNT_DIR" >> "$LOG_FILE" 2>&1
   fi
 }
 trap cleanup EXIT
 
-LOG_FILE="/var/log/houston/backup_task_${task.uuid}.log"
-mkdir -p "$(dirname "$LOG_FILE")"
-
 {
   echo "===== [$(date -Iseconds)] Starting backup task: '${task.description}' ====="
   echo "[INFO] Source: $SOURCE"
-  echo "[INFO] Target: //$SMB_HOST/$SMB_SHARE/$TARGET"
-  echo "[INFO] Creating mount point: $MOUNT_POINT"
-  mkdir -p "$MOUNT_POINT"
+  echo "[INFO] Target: $TARGET"
+  echo "[INFO] Mount directory: $MOUNT_DIR"
 
-  echo "[INFO] Attempting to mount SMB share..."
-  mount -t cifs "//$SMB_HOST/$SMB_SHARE" "$MOUNT_POINT" \\
-    -o username="$SMB_USER",password="$SMB_PASS",rw,iocharset=utf8,vers=3.0,sec=ntlmssp
+  mkdir -p "$MOUNT_DIR"
 
-  if ! mountpoint -q "$MOUNT_POINT"; then
-    echo "[ERROR] Failed to mount //$SMB_HOST/$SMB_SHARE at $MOUNT_POINT"
+  mount "$MOUNT_DIR" >> "$LOG_FILE" 2>&1
+  if ! mountpoint -q "$MOUNT_DIR"; then
+    echo "[ERROR] Failed to mount $MOUNT_DIR" >> "$LOG_FILE"
     exit 1
   fi
-  echo "[SUCCESS] SMB share mounted at $MOUNT_POINT"
+  echo "[SUCCESS] SMB share mounted at $MOUNT_DIR"
 
-  mkdir -p "$MOUNT_POINT/$TARGET"
-  echo "[INFO] Starting rsync..."
-  rsync -a${task.mirror ? ' --delete' : ''} "$SOURCE" "$MOUNT_POINT/$TARGET"
+  mkdir -p "$MOUNT_DIR/$TARGET"
+  echo "[INFO] Running rsync..."
+  rsync -a${task.mirror ? ' --delete' : ''} "$SOURCE" "$MOUNT_DIR/$TARGET" >> "$LOG_FILE" 2>&1
   RSYNC_STATUS=$?
 
   if [ $RSYNC_STATUS -ne 0 ]; then
-    echo "[ERROR] rsync failed with exit code $RSYNC_STATUS"
+    echo "[ERROR] rsync failed with exit code $RSYNC_STATUS" >> "$LOG_FILE"
     exit $RSYNC_STATUS
   else
-    echo "[SUCCESS] rsync completed successfully"
+    echo "[SUCCESS] rsync completed successfully" >> "$LOG_FILE"
   fi
 
-  echo "===== [$(date -Iseconds)] Backup task complete ====="
+  echo "===== [$(date -Iseconds)] Backup task completed ====="
 } >> "$LOG_FILE" 2>&1
 `;
 
-
-    writeFileSync(scriptPath, scriptContent, { mode: 0o700 });
-    chmodSync(scriptPath, 0o700);
+    fs.writeFileSync(scriptPath, scriptContent, { mode: 0o700 });
   }
+
+
 
   protected generateCronLine(task: BackUpTask, scriptPath: string): string {
     const cronTiming = this.scheduleToCron(task.schedule);
@@ -523,16 +440,4 @@ mkdir -p "$(dirname "$LOG_FILE")"
     return null;
   }
   
-
-  protected reloadCron() {
-    const os = getOS();
-
-
-    let cron = "crond"
-    if (os === "debian") {
-      cron = "cron"
-    }
-
-    execSync(`${this.pkexec} systemctl restart ${cron}`);
-  }
 }

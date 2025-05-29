@@ -22,7 +22,7 @@
         </p>
         <ul class="mt-2 list-disc list-inside text-blue-600">
           <li v-for="task in backupTasks" :key="task.uuid">
-            {{ task.target }}
+            {{ task.host }}:{{ task.share }}{{ task.target }}
           </li>
         </ul>
         <p class="text-lg mt-2">
@@ -105,30 +105,90 @@ const isButtonDisabled = computed(() => !username.value || !password.value || op
 // Method to handle the "Open" button action
 let smbMountListener: ((data: any) => void) | null = null;
 
+// const handleOpen = () => {
+//   if (!username.value || !password.value || backupTasks.value.length === 0) return;
+
+//   const host = backupTasks.value[0].host!;
+//   const share = backupTasks.value[0].share!;
+
+//   // Remove previous listener if exists
+//   if (smbMountListener) {
+//     IPCRouter.getInstance().removeEventListener("action", smbMountListener);
+//   }
+
+//   smbMountListener = (data) => {
+//     try {
+//       const response = JSON.parse(data);
+//       if (response.action === "mountSmbResult") {
+//         openingBackup.value = false;
+//         smbMountListener = null;
+
+//         const baseMountPath = `/mnt/houston-mounts/${share}`;
+//         for (const task of backupTasks.value) {
+//           const fullPath = `${baseMountPath}/${task.target}`;
+
+//           IPCRouter.getInstance().send("backend", "action", JSON.stringify({
+//             type: "openFolder",
+//             path: fullPath
+//           }));
+//         }
+//       }
+//     } catch (e) {
+//       console.error("Failed to parse SMB mount result:", e);
+//       openingBackup.value = false;
+//     }
+//   };
+
+//   IPCRouter.getInstance().addEventListener("action", smbMountListener);
+
+//   // Proceed with mount
+//   // const [host, fullPath] = backupTasks.value[0].target.split(":");
+//   // const share = fullPath.split("/")[0];
+
+//   IPCRouter.getInstance().send("backend", "mountSambaClient", {
+//     smb_host: host,
+//     smb_share: share,
+//     smb_user: username.value,
+//     smb_pass: password.value
+//   });
+
+//   openingBackup.value = true;
+// };
+
 const handleOpen = () => {
   if (!username.value || !password.value || backupTasks.value.length === 0) return;
 
-  // Remove previous listener if exists
   if (smbMountListener) {
     IPCRouter.getInstance().removeEventListener("action", smbMountListener);
   }
+
+  openingBackup.value = true;
+
+  const sharesMounted: Set<string> = new Set();
+  let remainingShares = new Set(backupTasks.value.map(task => `${task.host}:${task.share}`));
 
   smbMountListener = (data) => {
     try {
       const response = JSON.parse(data);
       if (response.action === "mountSmbResult") {
-        openingBackup.value = false;
-        smbMountListener = null;
+        const mountedShare = response.mountedShare; // pass this from backend
+        sharesMounted.add(mountedShare);
+        remainingShares.delete(mountedShare);
 
-        const baseMountPath = `/mnt/${share}`;
-        for (const task of backupTasks.value) {
-          const relative = task.target.split(":")[1].split("/").slice(1).join("/");
-          const fullPath = `${baseMountPath}/${relative}`;
+        if (remainingShares.size === 0) {
+          openingBackup.value = false;
+          smbMountListener = null;
 
-          IPCRouter.getInstance().send("backend", "action", JSON.stringify({
-            type: "openFolder",
-            path: fullPath
-          }));
+          for (const task of backupTasks.value) {
+            const subpath = task.target.split(":")[1].split("/").slice(1).join("/");
+            const mountPath = `/mnt/houston-mounts/${task.share}`;
+            const fullPath = `${mountPath}/${subpath}`;
+
+            IPCRouter.getInstance().send("backend", "action", JSON.stringify({
+              type: "openFolder",
+              path: fullPath
+            }));
+          }
         }
       }
     } catch (e) {
@@ -139,19 +199,20 @@ const handleOpen = () => {
 
   IPCRouter.getInstance().addEventListener("action", smbMountListener);
 
-  // Proceed with mount
-  const [host, fullPath] = backupTasks.value[0].target.split(":");
-  const share = fullPath.split("/")[0];
+  // Initiate mount requests for each unique share
+  const uniqueShares = new Set(backupTasks.value.map(task => `${task.host}:${task.share}`));
 
-  IPCRouter.getInstance().send("backend", "mountSambaClient", {
-    smb_host: host,
-    smb_share: share,
-    smb_user: username.value,
-    smb_pass: password.value
-  });
-
-  openingBackup.value = true;
+  for (const entry of uniqueShares) {
+    const [host, share] = entry.split(":");
+    IPCRouter.getInstance().send("backend", "mountSambaClient", {
+      smb_host: host,
+      smb_share: share,
+      smb_user: username.value,
+      smb_pass: password.value
+    });
+  }
 };
+
 
 const proceedToPreviousStep = async () => {
   prevStep();

@@ -327,6 +327,9 @@ function createWindow() {
           try {
             console.log("▶️ Attempting to run backup:", task.description);
             const result = await (backupManager as any).runNow(task);
+            if (result.stderr && result.stderr.trim() !== "") {
+              throw new Error(result.stderr);
+            }
             console.log("✅ runNow completed:", result);
             notify(`✅ Backup task "${task.description}" started successfully.`);
           } catch (err: any) {
