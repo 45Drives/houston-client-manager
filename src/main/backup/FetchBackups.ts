@@ -13,7 +13,7 @@ export default async function fetchBackupsFromServer(data: any, mainWindow: Brow
   const slash = getOS() === "win" ? "\\" : "/"
 
 
-  const backupRoot = getOS() === "win" ? `${slash}${slash}${data.smb_host}${slash}${data.smb_share}` : `/mnt/${data.smb_share}`;
+  const backupRoot = getOS() === "win" ? `${slash}${slash}${data.smb_host}${slash}${data.smb_share}` : `/mnt/houston-mounts/${data.smb_share}`;
   const uuidDirs = await fsAsync.readdir(backupRoot);
 
   for (const uuid of uuidDirs) {

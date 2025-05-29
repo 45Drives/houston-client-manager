@@ -36,7 +36,7 @@
       <br />
 
       <p class="text-center text-2xl">
-        Select one or more backup tasks to continue or delete. When ready, click <b>NEXT</b>>.
+        Select one or more backup tasks to continue or delete. When ready, click <b>NEXT</b>.
       </p>
 
 

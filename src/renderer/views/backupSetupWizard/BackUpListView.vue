@@ -29,11 +29,11 @@
             <div>
               <div class="text-label" :title="task.target">Backup Location</div>
               <div class="px-2 py-1 text-sm truncate"
-                :title="`${deconstructFullTarget(task.target)?.smbHost}:${deconstructFullTarget(task.target)?.smbShare}`">
-                {{ deconstructFullTarget(task.target)?.smbHost}}:{{deconstructFullTarget(task.target)?.smbShare }}
+                :title="`${task.host}:${task.share}`">
+                {{ task.host}}:{{task.share }}
               </div>
-              <div class="px-2 py-1 text-sm truncate" :title="deconstructFullTarget(task.target)?.targetPath">
-                {{ deconstructFullTarget(task.target)?.targetPath }}
+              <div class="px-2 py-1 text-sm truncate" :title="task.target">
+                {{ task.target }}
               </div>
             </div>
 
@@ -90,7 +90,7 @@
 import { nextTick, onActivated, onDeactivated, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
 import { BackUpTask, IPCRouter, unwrap } from '@45drives/houston-common-lib';
 import { Modal, confirm } from '@45drives/houston-common-ui';
-import { formatFrequency, deconstructFullTarget } from "./utils";
+import { formatFrequency } from "./utils";
 import { SimpleCalendar } from "../../components/calendar";
 import { PencilIcon, TrashIcon } from '@heroicons/vue/24/outline';
 const backUpTasks = ref<BackUpTask[]>([]);

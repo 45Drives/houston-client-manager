@@ -87,10 +87,14 @@
         </div>
       </div>
 
-      <div v-if="restoreProgress.total > 0" class="my-4 text-center">
+      <div v-if="restoreProgress.total > 0 && restoreProgress.current < restoreProgress.total" class="my-4 text-center">
         <p>Restoring file {{ restoreProgress.current }} of {{ restoreProgress.total }}...</p>
         <p><strong>{{ restoreProgress.lastFile }}</strong></p>
         <progress :value="restoreProgress.current" :max="restoreProgress.total" class="w-full"></progress>
+      </div>
+      <div v-if="restoreProgress.total > 0 && restoreProgress.current == restoreProgress.total">
+        <p>Restored {{ restoreProgress.current }} of {{ restoreProgress.total }} file(s).</p>
+        <p><strong>{{ restoreProgress.lastFile }}</strong></p>
       </div>
 
       <div v-if="showOpenFolderPrompt" class="text-center my-4 p-4 border rounded bg-yellow-100 text-black z-11">
