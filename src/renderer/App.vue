@@ -23,11 +23,14 @@
         <RestoreBackUpWizard id="restore-backup" :onComplete="onWizardComplete" />
       </div>
 
-      <webview v-show="showWebView && !loadingWebview && !waitingForServerReboot" id="myWebview" :src="currentUrl"
+      <!-- <webview v-show="showWebView && !loadingWebview && !waitingForServerReboot" id="myWebview" :src="currentUrl"
         allowpopups nodeintegration allow-same-origin allow-scripts partition="persist:authSession"
         webpreferences="javascript=yes,webSecurity=no,enable-cookies=true,nodeIntegration=false,contextIsolation=true"
-        ref="webview" @did-finish-load="onWebViewLoaded" />
-
+        ref="webview" @did-finish-load="onWebViewLoaded" /> -->
+      <webview v-show="showWebView && !loadingWebview && !waitingForServerReboot" id="myWebview" :src="currentUrl"
+        partition="persist:authSession"
+        webpreferences="contextIsolation=true, nodeIntegration=false, enableRemoteModule=false" ref="webview"
+        @did-finish-load="onWebViewLoaded" />
 
       <div v-if="loadingWebview"
         class="absolute inset-0 z-40 bg-default flex flex-col items-center justify-center">
