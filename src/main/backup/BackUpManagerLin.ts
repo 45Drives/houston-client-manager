@@ -126,11 +126,23 @@ export class BackUpManagerLin implements BackUpManager {
     if (onProgress) onProgress(step, total, "All tasks scheduled successfully.");
   }
 
+  applyCleanedCrontab(lines: string[]) {
+    const cleaned = lines.map(line => line.trim()).filter(line => line.length > 0);
+    const finalContent = cleaned.join("\n");
+
+    if (finalContent.trim().length === 0) {
+      execSync("crontab -r || true");
+    } else {
+      execSync(`echo "${finalContent}" | crontab -`);
+    }
+  }
+
   unschedule(task: BackUpTask): Promise<void> {
     return new Promise((resolve, reject) => {
       const crontabLines = execSync("crontab -l 2>/dev/null || true").toString().split("\n");
       const filtered = crontabLines.filter(line => !line.includes(task.uuid));
-      execSync(`echo "${filtered.join("\n")}" | crontab -`);
+
+      this.applyCleanedCrontab(filtered);
 
       const scriptPath = path.join(SCRIPT_DIR, `run_backup_task_${task.uuid}.sh`);
       const logPath = path.join(LOG_DIR, `backup_task_${task.uuid}.log`);
@@ -143,14 +155,15 @@ export class BackUpManagerLin implements BackUpManager {
   
   async unscheduleSelectedTasks(tasks: BackUpTask[]): Promise<void> {
     const crontabLines = execSync("crontab -l 2>/dev/null || true").toString().split("\n");
-    const newCrontab = crontabLines.filter(line =>
+    const filtered = crontabLines.filter(line =>
       !tasks.some(task => line.includes(`run_backup_task_${task.uuid}.sh`))
     );
-    execSync(`echo "${newCrontab.join("\n")}" | crontab -`);
+
+    this.applyCleanedCrontab(filtered);
 
     for (const task of tasks) {
-      const scriptPath = path.join(os.homedir(), ".local", "share", "houston-backups", `run_backup_task_${task.uuid}.sh`);
-      const logPath = path.join(os.homedir(), ".local", "share", "houston-logs", `backup_task_${task.uuid}.log`);
+      const scriptPath = path.join(SCRIPT_DIR, `run_backup_task_${task.uuid}.sh`);
+      const logPath = path.join(LOG_DIR, `backup_task_${task.uuid}.log`);
       try { if (fs.existsSync(scriptPath)) fs.unlinkSync(scriptPath); } catch { }
       try { if (fs.existsSync(logPath)) fs.unlinkSync(logPath); } catch { }
     }
