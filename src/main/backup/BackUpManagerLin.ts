@@ -13,41 +13,6 @@ const LOG_DIR = path.join(os.homedir(), ".local", "share", "houston-logs");
 export class BackUpManagerLin implements BackUpManager {
   protected pkexec: string = "pkexec";
 
-  // queryTasks(): Promise<BackUpTask[]> {
-  //   if (!fs.existsSync(SCRIPT_DIR)) return Promise.resolve([]);
-
-  //   const scriptFiles = fs.readdirSync(SCRIPT_DIR).filter(f => f.startsWith("run_backup_task_") && f.endsWith(".sh"));
-
-  //   const tasks = scriptFiles.map(filename => {
-  //     const scriptPath = path.join(SCRIPT_DIR, filename);
-  //     const content = fs.readFileSync(scriptPath, "utf-8");
-  //     const uuidMatch = filename.match(/run_backup_task_([a-f0-9\-]+)\.sh/);
-  //     const uuid = uuidMatch ? uuidMatch[1] : undefined;
-  //     const sourceMatch = content.match(/SOURCE='([^']+)'/);
-  //     const targetMatch = content.match(/TARGET='([^']+)'/);
-  //     const smbHostMatch = content.match(/SMB_HOST='([^']+)'/);
-  //     const smbShareMatch = content.match(/SMB_SHARE='([^']+)'/);
-  //     const descMatch = content.match(/Starting backup task: '([^']+)'/);
-  //     const mirror = content.includes("--delete");
-
-  //     if (!uuid || !sourceMatch || !targetMatch || !smbHostMatch || !smbShareMatch) return null;
-
-  //     return {
-  //       uuid,
-  //       source: sourceMatch[1].replace(/\/+$/, ""),
-  //       target: targetMatch[1],
-  //       host: smbHostMatch[1],
-  //       share: smbShareMatch[1],
-  //       mirror,
-  //       description: descMatch ? descMatch[1] : "Unnamed",
-  //       schedule: { repeatFrequency: "day", startDate: new Date() }, // Can't infer exact timing
-  //       status: "checking" // default while checking
-  //     };
-  //   }).filter(Boolean) as BackUpTask[];
-
-  //   return Promise.resolve(tasks);
-  // }
-
   async queryTasks(): Promise<BackUpTask[]> {
     if (!fs.existsSync(SCRIPT_DIR)) return [];
 
