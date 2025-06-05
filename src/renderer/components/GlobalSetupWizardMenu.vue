@@ -13,7 +13,9 @@
                 }">
 
                 <div v-if="!server" class="mb-2 text-center items-center">
-                    <p class="text-xs text-default mb-1">Select Wizard</p>
+                    <p class="text-xs text-default mb-1">Navigation</p>
+                    <button class="btn btn-secondary wizard-btn w-full mb-1" :class="buttonClass(null)"
+                        @click="showDashboard">Dashboard</button>
                     <button class="btn btn-secondary wizard-btn w-full mb-1" :class="buttonClass('storage')"
                         @click="showWizard('storage')">Setup Wizard</button>
                     <button class="btn btn-secondary wizard-btn w-full mb-1" :class="buttonClass('backup')"
@@ -21,7 +23,7 @@
                     <button class="btn btn-secondary wizard-btn w-full mb-1" :class="buttonClass('restore-backup')"
                         @click="showWizard('restore-backup')">Restore Backup</button>
                 </div>
-                
+
 
                 <div class="mb-2 text-center items-center">
                     <p class="text-xs text-default mb-1">Themes</p>
@@ -72,11 +74,16 @@ if (!currentWizard) {
     throw new Error("currentWizard was not provided");
 }
 
-const buttonClass = (type: 'storage' | 'backup' | 'restore-backup') => {
+const buttonClass = (type: 'storage' | 'backup' | 'restore-backup' | null) => {
     return [
         'wizard-btn',
         currentWizard?.value === type ? 'animate-glow' : ''
     ].join(' ')
+}
+
+function showDashboard() {
+    currentWizard.value = null;
+    IPCRouter.getInstance().send('renderer', 'action', 'show_dashboard');
 }
 
 const show = ref(false)
