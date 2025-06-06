@@ -144,7 +144,8 @@ function showWizard(type: 'storage' | 'backup' | 'restore-backup') {
         });
     } else {
         currentWizard.value = type;
-        IPCRouter.getInstance().send('renderer', 'action', `show_${type}_setup_wizard`);
+        // IPCRouter.getInstance().send('renderer', 'action', `show_${type}_setup_wizard`);
+        IPCRouter.getInstance().send('renderer', 'action', JSON.stringify({ type: 'show_wizard', wizard: type }));
     }
 }
 </script>

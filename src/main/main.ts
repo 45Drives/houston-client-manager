@@ -136,10 +136,12 @@ function createWindow() {
         type: "sendHostname",
         hostname: await unwrap(server.getHostname())
       }));
-    } else if (data === "show_storage_setup_wizard" || data === "show_backup_setup_wizard" || data === "show_restore-backup_setup_wizard") {
-      IPCRouter.getInstance().send('renderer', 'action', data);
-      return;
-    } else {
+    } 
+    // else if (data === "show_storage_setup_wizard" || data === "show_backup_setup_wizard" || data === "show_restore-backup_setup_wizard") {
+    //   IPCRouter.getInstance().send('renderer', 'action', data);
+    //   return;
+    // } 
+    else {
       try {
         // console.log("[Main] 📩 Raw message received:", data);
 
