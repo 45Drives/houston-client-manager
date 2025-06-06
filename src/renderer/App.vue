@@ -68,49 +68,60 @@ import { IPCMessageRouterRenderer, IPCRouter, server } from '@45drives/houston-c
 
 IPCRouter.initRenderer();
 IPCRouter.getInstance().addEventListener("action", async (data) => {
-  console.log("action in renderer: ", data);
   try {
-    if (
-      data === "setup_wizard_go_back" ||
-      data === "show_storage_setup_wizard"
-    ) {
-      currentWizard.value = "storage";
-      showWebView.value = false;
-      openStorageSetup(null);
-    } else if (data === "show_backup_setup_wizard") {
-      currentWizard.value = "backup";
-      showWebView.value = false;
-      openStorageSetup(null);
-    } else if (data === "show_restore-backup_setup_wizard") {
-      currentWizard.value = "restore-backup";
-      showWebView.value = false;
-      openStorageSetup(null);
-    } else if (data === "show_houston") {
-      currentWizard.value = null;
-      showWebView.value = true;
+    const message = typeof data === 'string' ? JSON.parse(data) : data;
+    console.log("📨 action in renderer:", message);
 
-      const serverIp = currentServer.value?.ip;
-      loadingWebview.value = true;
-      currentUrl.value = `https://${serverIp}:9090`;
-    }
+    switch (message.type) {
+      case 'show_wizard':
+      case 'wizard_go_back':
+        if (['storage', 'backup', 'restore-backup'].includes(message.wizard)) {
+          currentWizard.value = message.wizard;
+          showWebView.value = false;
+          openStorageSetup(null);
+        }
+        break;
 
-    if (data.endsWith("_reboot")) {
-      if (isRebootWatcherRunning.value) {
-        console.warn("Reboot watcher already running. Ignoring duplicate.");
-        return;
-      }
+      case 'reboot_and_show_wizard':
+        if (isRebootWatcherRunning.value) {
+          console.warn("Reboot watcher already running. Ignoring duplicate.");
+          return;
+        }
+        isRebootWatcherRunning.value = true;
+        currentWizard.value = message.wizard;
+        showWebView.value = false;
+        await waitForServerRebootAndShowWizard();
+        isRebootWatcherRunning.value = false;
+        break;
 
-      isRebootWatcherRunning.value = true;
-      currentWizard.value = "backup";
-      showWebView.value = false;
-      await waitForServerRebootAndShowWizard();
-      isRebootWatcherRunning.value = false; // ✅ reset after complete
+      case 'show_webview':
+        currentWizard.value = null;
+        showWebView.value = true;
+        loadingWebview.value = true;
+        currentUrl.value = `https://${currentServer.value?.ip}:9090`;
+        break;
+
+      case 'reboot_and_show_webview':
+        if (isRebootWatcherRunning.value) {
+          console.warn("Reboot watcher already running. Ignoring duplicate.");
+          return;
+        }
+        isRebootWatcherRunning.value = true;
+        currentWizard.value = null;
+        showWebView.value = true;
+        await waitForServerRebootAndShowWizard();
+        isRebootWatcherRunning.value = false;
+        break;
+
+      default:
+        console.warn("❓ Unhandled action type:", message.type);
     }
 
   } catch (error) {
-    console.log(error)
+    console.error("❌ IPC message parse or handling error:", data, error);
   }
 });
+
 
 const isRebootWatcherRunning = ref(false);
 
