@@ -56,7 +56,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, provide, ref, unref, watch } from 'vue';
+import { nextTick, onMounted, provide, ref, unref, watch } from 'vue';
 import { useAdvancedModeState } from './composables/useAdvancedState';
 import { Server, DivisionType } from './types';
 import { useWizardSteps, GlobalModalConfirm, Notification, reportError, reportSuccess, useDarkModeState, NotificationView, pushNotification } from '@45drives/houston-common-ui'
@@ -95,10 +95,16 @@ IPCRouter.getInstance().addEventListener("action", async (data) => {
     }
 
     if (data.endsWith("_reboot")) {
-      waitingForServerReboot.value = true;
+      if (isRebootWatcherRunning.value) {
+        console.warn("Reboot watcher already running. Ignoring duplicate.");
+        return;
+      }
+
+      isRebootWatcherRunning.value = true;
       currentWizard.value = "backup";
       showWebView.value = false;
       await waitForServerRebootAndShowWizard();
+      isRebootWatcherRunning.value = false; // ✅ reset after complete
     }
 
   } catch (error) {
@@ -106,19 +112,16 @@ IPCRouter.getInstance().addEventListener("action", async (data) => {
   }
 });
 
+const isRebootWatcherRunning = ref(false);
 
 const currentWizard = ref<'storage' | 'backup' | 'restore-backup' | null>('backup');
 provide(currentWizardInjectionKey, currentWizard);
-
-const showWizard = (type: 'storage' | 'backup' | 'restore-backup') => {
-  currentWizard.value = type;
-  showWebView.value = false;
-};
 
 const waitingForServerReboot = ref(false);
 let rebootNotification: Notification | null = null;
 
 watch(waitingForServerReboot, () => {
+  
   if (waitingForServerReboot.value) {
     if (!rebootNotification) {
       rebootNotification = new Notification(
@@ -133,20 +136,23 @@ watch(waitingForServerReboot, () => {
     if (rebootNotification) {
       rebootNotification.remove();
       rebootNotification = null;
+      // pushNotification(new Notification('Server Available', `${currentServer.value?.ip} is now accessible!`, 'success', 8000));
     }
-    pushNotification(new Notification('Server Available', `${currentServer.value?.ip} is now accessible!`, 'success', 8000));
   }
-}, {});
+}, { immediate: true });
 
 
+let lastToastShownIp: string | null = null;
 
 async function waitForServerRebootAndShowWizard() {
-  const serverIp = currentServer.value?.ip;
+  const server = currentServer.value;
+  const serverIp = server?.ip;
   if (!serverIp) {
     console.error("No current server IP found!");
-    waitingForServerReboot.value = false;
     return;
   }
+
+  waitingForServerReboot.value = true;
 
   const pingUrl = `https://${serverIp}:9090/`;
   const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -155,34 +161,58 @@ async function waitForServerRebootAndShowWizard() {
 
   let serverUp = false;
   const startTime = Date.now();
-  const timeout = 5 * 60 * 1000; // 5 minutes max wait
+  const timeout = 5 * 60 * 1000;
 
   while (!serverUp && (Date.now() - startTime) < timeout) {
     try {
-      const res = await fetch(pingUrl, { method: 'GET' });
+      const res = await fetch(pingUrl, { method: 'GET', cache: 'no-store' });
       if (res.ok) {
-        serverUp = true;
-        console.log("✅ Server is back online!");
-      } else {
-        console.log("Server not ready yet. Retrying...");
+        await sleep(5000);
+        const confirmRes = await fetch(pingUrl, { method: 'GET', cache: 'no-store' });
+        if (confirmRes.ok) {
+          serverUp = true;
+          break;
+        }
       }
     } catch {
-      console.log("Server still down, retrying...");
+      // ignored
     }
-    if (!serverUp) await sleep(5000);
+
+    await sleep(5000);
   }
 
   if (serverUp) {
     waitingForServerReboot.value = false;
     currentWizard.value = 'backup';
-    useWizardSteps("backup").reset()
-    // currentWizard.value = 'storage';
-    // useWizardSteps("setup").reset();
+    // useWizardSteps("backup").reset();
+
+    console.log("[Wizard] Server came back online. Triggering success notification.");
+
+    await nextTick();
+
+    // ✅ Trigger the "Server Available" toast directly here
+    if (serverIp !== lastToastShownIp) {
+      pushNotification(new Notification(
+        'Server Available',
+        `${serverIp} is now accessible!`,
+        'success',
+        8000
+      ));
+      lastToastShownIp = serverIp;
+    }
+
   } else {
     waitingForServerReboot.value = false;
     reportError(new Error("Server did not come back online within timeout."));
     currentWizard.value = 'storage';
-    useWizardSteps("setup").reset();
+    // useWizardSteps("setup").reset();
+  }
+
+  console.log("[Wizard] setting waitingForServerReboot = false");
+
+  if (rebootNotification) {
+    rebootNotification.remove();
+    rebootNotification = null;
   }
 }
 
