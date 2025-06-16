@@ -102,6 +102,22 @@ function createWindow() {
     bufferedNotifications = [];
   });
 
+  ipcMain.handle('get-os', () => getOS());
+
+  ipcMain.handle("backup:isFirstRunNeeded", (_evt, host, share) => {
+    const manager = getBackUpManager();
+    if (
+      manager &&
+      (getOS() === "rocky" || getOS() === "debian") &&
+      typeof manager.isFirstBackupNeeded === "function"
+    ) {
+      return manager.isFirstBackupNeeded(host, share); // MUST RETURN
+    }
+
+    return false;
+  });
+  
+
   function notify(message: string) {
     console.log("[Main] 🔔 notify() called with:", message);
 
@@ -137,10 +153,6 @@ function createWindow() {
         hostname: await unwrap(server.getHostname())
       }));
     } 
-    // else if (data === "show_storage_setup_wizard" || data === "show_backup_setup_wizard" || data === "show_restore-backup_setup_wizard") {
-    //   IPCRouter.getInstance().send('renderer', 'action', data);
-    //   return;
-    // } 
     else {
       try {
         // console.log("[Main] 📩 Raw message received:", data);
@@ -219,7 +231,6 @@ function createWindow() {
 
               notify(`Successfully removed ${tasks.length} backup task(s)!`);
 
-              // 🔧 ADD THIS BLOCK
               const updatedTasks = await backupManager.queryTasks();
               IPCRouter.getInstance().send('renderer', 'action', JSON.stringify({
                 type: 'sendBackupTasks',

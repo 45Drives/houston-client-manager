@@ -13,4 +13,7 @@ contextBridge.exposeInMainWorld('electron', {
       ipcRenderer.removeListener(channel, listener),    
   },
   selectFolder: () => ipcRenderer.invoke('dialog:openFolder'),
+  getOS: () => ipcRenderer.invoke('get-os'),
+  isFirstRunNeeded: (host: string, share: string) =>
+    ipcRenderer.invoke("backup:isFirstRunNeeded", host, share),
 });

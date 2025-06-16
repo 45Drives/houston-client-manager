@@ -9,3 +9,4 @@ export const divisionCodeInjectionKey: InjectionKey<Ref<DivisionType>> = Symbol(
 export const currentServerInjectionKey: InjectionKey<Ref<Server | null>> = Symbol('server-info');
 export const currentWizardInjectionKey: InjectionKey<Ref<'storage' | 'backup' | 'restore-backup' | null>> =
     Symbol('currentWizard');
+export const thisOsInjectionKey: InjectionKey<Ref<string>> = Symbol('this-os');

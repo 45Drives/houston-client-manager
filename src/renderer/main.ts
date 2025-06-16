@@ -5,6 +5,8 @@ import "./style.css";
 import App from './App.vue';
 import { enterNextDirective } from '@45drives/houston-common-ui'
 
+document.title = `45Drives Setup & Backup Wizard v${__APP_VERSION__}`;
+
 const app = createApp(App);
 app.directive('enter-next', enterNextDirective);
 app.mount('#app');
