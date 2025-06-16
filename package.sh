@@ -5,7 +5,7 @@ set -e
 # Configuration: Set your remote hosts https://frank:8006
 WIN_HOST="user@192.168.209.83"
 # MAC_HOST="45drives@192.168.210.11"
-MAC_HOST="protocase@192.168.9.9"
+# MAC_HOST="protocase@192.168.9.9"
 LINUX_HOST="root@192.168.13.13"
 # LINUX_HOST="root@192.168.207.44"
 

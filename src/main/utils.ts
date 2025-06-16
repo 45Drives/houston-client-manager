@@ -2,9 +2,6 @@ import { execSync } from 'child_process';
 import os from 'os';
 import path from 'path';
 import fs from 'fs';
-import asar from 'asar';
-import { writeFileSync } from "fs";
-import { join } from "path";
 
 export function getOS(): 'mac' | 'rocky' | 'debian' | 'win' {
   const platform = os.platform();
@@ -159,85 +156,4 @@ export function formatDateForTask(date) {
   const seconds = pad(date.getSeconds());
 
   return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
-}
-
-
-/**
- * Append a line to a root-owned file using a privileged script.
- * If the file doesn't exist, it will be created with correct permissions.
- */
-export function runPrivilegedAppend(line: string, targetFile: string, pkexec = "pkexec") {
-  const tmpDir = os.tmpdir();
-  const timestamp = Date.now();
-  const scriptPath = join(tmpDir, `append_cron_line_${timestamp}.sh`);
-
-  const escapedLine = line.replace(/'/g, "'\\''");
-
-  const scriptContent = `#!/bin/bash
-set -e
-
-# Create file if missing and set ownership/permissions
-if [ ! -f '${targetFile}' ]; then
-  touch '${targetFile}'
-  chmod 644 '${targetFile}'
-  chown root:root '${targetFile}'
-fi
-
-# Append the line
-echo '${escapedLine}' >> '${targetFile}'
-
-# Ensure permissions are enforced again just in case
-chmod 644 '${targetFile}'
-chown root:root '${targetFile}'
-`;
-
-  writeFileSync(scriptPath, scriptContent, { mode: 0o700 });
-
-  execSync(`${pkexec} bash "${scriptPath}"`);
-}
-
-
-/**
- * Atomically replace a root-owned system file with new content and optionally delete extra files.
- *
- * @param newContent - New content to write into the target file.
- * @param targetPath - Absolute path to the file to replace (e.g. /etc/cron.d/houston-backup-manager).
- * @param pkexecCmd - Privilege escalation command (defaults to 'pkexec').
- * @param options.deleteFiles - Array of additional file paths to delete (e.g. old scripts).
- */
-export function runPrivilegedReplaceFile(
-  newContent: string,
-  targetPath: string,
-  pkexecCmd: string = 'pkexec',
-  options: { deleteFiles?: string[] } = {}
-): void {
-  // Create a temporary working directory
-  const tmpDir = fs.mkdtempSync(join(os.tmpdir(), 'priv-replace-'));
-  const tmpFile = join(tmpDir, 'new_file');
-  const scriptFile = join(tmpDir, 'replace.sh');
-
-  // Write the new content to a temp file
-  fs.writeFileSync(tmpFile, newContent, { encoding: 'utf-8' });
-
-  // Prepare the shell script for privileged operations
-  const restartService = getOS() === 'debian' ? 'cron' : 'crond';
-  let script = `#!/bin/bash
-mv "${tmpFile}" "${targetPath}"
-chown root:root "${targetPath}"
-chmod 644 "${targetPath}"
-`;
-
-  // Optionally delete any extra files (e.g. orphaned scripts)
-  (options.deleteFiles || []).forEach(path => {
-    script += `rm -f "${path}"
-`;
-  });
-
-  // Restart cron service
-  script += `systemctl restart ${restartService}
-`;
-
-  // Write and execute the helper script under root
-  fs.writeFileSync(scriptFile, script, { mode: 0o700 });
-  execSync(`${pkexecCmd} bash "${scriptFile}"`, { stdio: 'inherit' });
 }

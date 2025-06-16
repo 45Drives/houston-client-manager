@@ -63,8 +63,16 @@ import { useWizardSteps, GlobalModalConfirm, Notification, reportError, reportSu
 import StorageSetupWizard from './views/storageSetupWizard/Wizard.vue';
 import BackUpSetupWizard from './views/backupSetupWizard/Wizard.vue';
 import RestoreBackUpWizard from './views/restoreBackupWizard/Wizard.vue';
-import { divisionCodeInjectionKey, currentServerInjectionKey, currentWizardInjectionKey } from './keys/injection-keys';
-import { IPCMessageRouterRenderer, IPCRouter, server } from '@45drives/houston-common-lib';
+import { divisionCodeInjectionKey, currentServerInjectionKey, currentWizardInjectionKey, thisOsInjectionKey } from './keys/injection-keys';
+import { IPCMessageRouterRenderer, IPCRouter } from '@45drives/houston-common-lib';
+
+const thisOS = ref<string>('');
+const setOs = (value: string) => {
+  thisOS.value = value;
+};
+
+
+provide(thisOsInjectionKey, thisOS);
 
 IPCRouter.initRenderer();
 IPCRouter.getInstance().addEventListener("action", async (data) => {
@@ -306,7 +314,15 @@ window.electron.ipcRenderer.on('notification', (_event, message: string) => {
 });
 
 
-onMounted(() => {
+onMounted(async () => {
+  if (window.electron) {
+    const osString = await window.electron.getOS();
+    setOs(osString);
+
+    // IPCRouter.getInstance().send('backend', 'action', 'requestBackUpTasks');
+    
+  }
+  
   setTimeout(() => {
     scanningNetworkForServers.value = false;
   }, 7000);

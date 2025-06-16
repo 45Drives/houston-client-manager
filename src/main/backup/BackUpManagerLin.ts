@@ -67,6 +67,34 @@ export class BackUpManagerLin implements BackUpManager {
   }
   
 
+
+  isFirstBackupNeeded(
+    smbHost: string,
+    smbShare: string
+  ): boolean {
+    const mountRoot = "/mnt/houston-mounts";
+    const credFile = `/etc/samba/houston-credentials/${smbShare}.cred`;
+    const fstabPath = "/etc/fstab";
+
+    try {
+      /* 1 ─ root mount directory */
+      if (!fs.existsSync(mountRoot)) return true;
+
+      /* 2 ─ credentials file for this share */
+      if (!fs.existsSync(credFile)) return true;
+
+      /* 3 ─ fstab line containing //host/share and our cred file */
+      const fstab = fs.readFileSync(fstabPath, "utf-8");
+      const hasLine = fstab.includes(`//${smbHost}/${smbShare}`)
+        && fstab.includes(`credentials=${credFile}`);
+      return !hasLine;                // if the line is missing → need first run
+    } catch (err) {
+      console.warn("isFirstBackupNeeded():", err);
+      return true;                    // be cautious if something goes wrong
+    }
+  }
+
+
   schedule(task: BackUpTask, username: string, password: string): Promise<{ stdout: string, stderr: string }> {
     return new Promise((resolve, reject) => {
       if (!fs.existsSync(SCRIPT_DIR)) fs.mkdirSync(SCRIPT_DIR, { recursive: true });
