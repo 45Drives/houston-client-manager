@@ -1,4 +1,5 @@
 import log from 'electron-log';
+log.transports.console.level = false;
 
 console.log = (...args) => log.info(...args);
 console.error = (...args) => log.error(...args);
