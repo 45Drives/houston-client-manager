@@ -15,23 +15,23 @@
     </template>
 
     <div class="flex flex-col h-fit justify-center items-center text-left">
-      <p class="w-9/12 text-2xl">
+      <p class="w-9/12 text-xl">
         You may have multiple 45Drives servers on your network that require setup.
       </p>
       <br />
-      <p class="w-9/12 text-2xl">
+      <p class="w-9/12 text-xl">
         This setup wizard is designed to setup one server at a time. Click the box next to the server you would like to
         setup first.
       </p>
       <br />
-      <p class="w-9/12 text-2xl">
+      <p class="w-9/12 text-xl">
         When you are finished setting the selected server up, simply re-run this program to start setting
         up the remaining server(s).
       </p>
 
       <div class="overflow-hidden w-full">
         <div class="max-h-[50vh] overflow-y-auto">
-          <HoustonServerListView class="w-1/3 px-5 justify-center text-2xl" :filterOutStorageSetupComplete="true"
+          <HoustonServerListView class="w-1/3 px-5 justify-center text-xl" :filterOutStorageSetupComplete="true"
             @serverSelected="handleServerSelected" />
         </div>
       </div>
@@ -39,12 +39,24 @@
 
       <br />
 
-      <p class="w-9/12 text-2xl">
+      <p class="w-9/12 text-xl">
         If your storage server is not appearing in the list above, please return to the Hardware Setup and ensure
         all
         steps were completed correctly.
         <a href="#" @click.prevent="onRestartSetup" class="text-blue-600 hover:underline">Start Over</a>
       </p>
+      <p class="w-9/12 text-xl">
+        Or, if you know the IP of a server you wish to manually add, enter it here:
+      </p>
+
+      <div class="flex gap-4 items-center mt-2">
+        <input v-model="manualIp" type="text" placeholder="192.168.1.123"
+          class="input-textlike border px-4 py-2 rounded text-xl w-72" />
+        <button @click="addManualIp" class="btn btn-primary px-6 py-2 text-xl">
+          Add Server
+        </button>
+      </div>
+
 
       <br />
 
@@ -72,6 +84,7 @@
 <script setup lang="ts">
 import CardContainer from '../../components/CardContainer.vue';
 import { useWizardSteps, DynamicBrandingLogo, useEnterToAdvance } from '@45drives/houston-common-ui';
+import { IPCRouter } from '@45drives/houston-common-lib';
 import HoustonServerListView from '../../components/HoustonServerListView.vue'
 import { Server } from '../../types';
 import { ref } from 'vue';
@@ -83,6 +96,30 @@ const division = inject(divisionCodeInjectionKey);
 
 const { completeCurrentStep, unCompleteCurrentStep, prevStep, reset } = useWizardSteps("setup");
 const selectedServer = ref<Server | null>(null);
+
+
+
+const manualIp = ref('');
+
+const addManualIp = async () => {
+  const ip = manualIp.value.trim();
+
+  if (!/^((25[0-5]|2[0-4]\d|1\d{2}|[1-9]?\d)\.){3}(25[0-5]|2[0-4]\d|1\d{2}|[1-9]?\d)$/.test(ip)) {
+    reportError(new Error("Please enter a valid IPv4 address."));
+    return;
+  }
+
+  IPCRouter.getInstance().send('backend', 'action', JSON.stringify({
+    type: 'addManualIP',
+    ip: manualIp.value
+  }));
+
+  // Automatically select it
+  // selectedServer.value = server;
+
+  // Clear input
+  manualIp.value = '';
+};
 
 const goBackStep = async () => {
   prevStep();

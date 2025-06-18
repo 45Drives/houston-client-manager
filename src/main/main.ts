@@ -1,6 +1,6 @@
 import log from 'electron-log';
 log.transports.console.level = false;
-
+process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 console.log = (...args) => log.info(...args);
 console.error = (...args) => log.error(...args);
 console.warn = (...args) => log.warn(...args);
@@ -14,11 +14,12 @@ process.on('unhandledRejection', (reason, promise) => {
   log.error('Unhandled Rejection at:', promise, 'reason:', reason);
 });
 
-import { app, BrowserWindow, ipcMain, dialog, powerSaveBlocker } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, powerSaveBlocker, webContents } from 'electron';
 import path, { join } from 'path';
 import mdns from 'multicast-dns';
 import os from 'os';
 import fs from 'fs';
+import net from 'net';
 import { Server } from './types';
 import mountSmbPopup from './smbMountPopup';
 import { IPCRouter } from '../../houston-common/houston-common-lib/lib/electronIPC/IPCRouter';
@@ -37,28 +38,7 @@ const blockerId = powerSaveBlocker.start("prevent-app-suspension");
 
 app.commandLine.appendSwitch('ignore-certificate-errors', 'true');
 
-// function checkLogDir() {
-//   const platform = getOS();
-//   let logDir = '';
 
-//   try {
-//     if (platform === 'win') {
-//       logDir = path.join(process.env.ProgramData || 'C:\\ProgramData', 'houston-backups', 'logs');
-//     } else if (platform === 'mac') {
-//       logDir = '/var/log/';
-//     } else {
-//       logDir = '/var/log/houston/';
-//     }
-
-//     if (!fs.existsSync(logDir)) {
-//       fs.mkdirSync(logDir, { recursive: true });
-//     }
-
-//     console.log(`✅ Log directory ensured: ${logDir}`);
-//   } catch (error: any) {
-//     console.error(`❌ Failed to create log directory (${logDir}):`, error.message);
-//   }
-// }
 function checkLogDir(): string {
   const platform = getOS();
   let logDir = '';
@@ -86,6 +66,29 @@ function checkLogDir(): string {
   return logDir;
 }
 
+function isPortOpen(ip: string, port: number, timeout = 2000): Promise<boolean> {
+  return new Promise((resolve) => {
+    const socket = new net.Socket();
+    socket.setTimeout(timeout);
+
+    socket.once('connect', () => {
+      socket.destroy();
+      resolve(true);
+    });
+
+    socket.once('timeout', () => {
+      socket.destroy();
+      resolve(false);
+    });
+
+    socket.once('error', () => {
+      socket.destroy();
+      resolve(false);
+    });
+
+    socket.connect(port, ip);
+  });
+}
 
 // checkLogDir();
 
@@ -129,6 +132,13 @@ const getLocalIP = () => {
   }
   return "127.0.0.1"; // Fallback
 };
+
+
+function getSubnetBase(ip: string): string {
+  const parts = ip.split('.');
+  return `${parts[0]}.${parts[1]}.${parts[2]}`;
+}
+
 
 function createWindow() {
   const mainWindow = new BrowserWindow({
@@ -412,6 +422,64 @@ function createWindow() {
             const fallbackMsg = err?.stderr || err?.message || JSON.stringify(err);
             notify(`❌ Failed to start task: ${fallbackMsg}`);
           }
+        } else if (message.type === 'addManualIP') {
+          const ip = message.ip;
+          try {
+            const res = await fetch(`https://${ip}:9090/`, {
+              method: 'GET',
+              cache: 'no-store',
+              signal: AbortSignal.timeout(3000),
+            });
+
+            if (res.ok) {
+              console.log("Server is reachable!");
+            } else {
+              console.warn("Server responded, but not with OK status.");
+            }
+
+            const server: Server = {
+              ip,
+              name: ip,
+              status: 'unknown',
+              setupComplete: false,
+              lastSeen: Date.now(),
+              serverName: ip,
+              shareName: '',
+              setupTime: '',
+              serverInfo: {
+                moboMake: '',
+                moboModel: '',
+                serverModel: '',
+                aliasStyle: '',
+                chassisSize: ''
+              }
+            };
+
+            let existingServer = discoveredServers.find((eServer) => eServer.ip === server.ip && eServer.name === server.name);
+
+            try {
+              if (!existingServer) {
+                discoveredServers.push(server);
+              } else {
+                existingServer.lastSeen = Date.now();
+                existingServer.status = server.status;
+                existingServer.setupComplete = server.status == 'complete' ? true : false;
+                existingServer.serverName = server.serverName;
+                existingServer.shareName = server.shareName;
+                existingServer.setupTime = server.setupTime;
+                existingServer.serverInfo = server.serverInfo;
+              }
+
+            } catch (error) {
+              console.error('Fetch error:', error);
+            }
+
+            mainWindow.webContents.send('discovered-servers', discoveredServers);
+
+          } catch (err) {
+            console.log('error:', err);
+            notify(`Error: Unable to find server at: https://${ip}:9090`)
+          }
         }
       
       } catch (error) {
@@ -595,6 +663,48 @@ function createWindow() {
     }
   });
 }
+
+ipcMain.handle("scan-network-fallback", async () => {
+  const ip = getLocalIP();
+  const subnet = getSubnetBase(ip);
+  const ips = Array.from({ length: 254 }, (_, i) => `${subnet}.${i + 1}`);
+
+  const scannedServers = await Promise.allSettled(
+    ips.map(async (ip) => {
+      const portOpen = await isPortOpen(ip, 9090);
+      if (!portOpen) return null;
+
+      try {
+        const res = await fetch(`https://${ip}:9090/`, {
+          method: 'GET',
+          cache: 'no-store',
+          signal: AbortSignal.timeout(3000),
+        });
+
+        if (!res.ok) return null;
+
+        return {
+          ip,
+          name: ip,
+          status: "unknown",
+          setupComplete: false,
+          serverName: ip,
+          shareName: null,
+          setupTime: null,
+          serverInfo: {},
+          lastSeen: Date.now(),
+        };
+      } catch {
+        return null;
+      }
+    })
+  );
+
+  return scannedServers
+    .map((result) => (result.status === 'fulfilled' ? result.value : null))
+    .filter(Boolean);
+});
+
 
 app.on('web-contents-created', (_event, contents) => {
   contents.on('will-attach-webview', (_wawevent, webPreferences, _params) => {
