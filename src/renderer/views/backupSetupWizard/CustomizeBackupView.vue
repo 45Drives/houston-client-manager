@@ -186,7 +186,7 @@ function areArraysEqual(arr1: Server[], arr2: Server[]): boolean {
 // Receive the discovered servers from the main process
 window.electron.ipcRenderer.on('discovered-servers', (_event, discoveredServers: Server[]) => {
   if (!areArraysEqual(discoveredServers, servers.value)) {
-	console.log("Discovered servers:", discoveredServers)
+	// console.log("Discovered servers:", discoveredServers)
     servers.value = discoveredServers;
 	selectedServer.value = discoveredServers[0];
 	
@@ -298,7 +298,7 @@ const handleFolderSelect = async () => {
 
 			const scheduleConfirmed = await toggleCalendarComponent();
 			if (!scheduleConfirmed) {
-				console.log("User cancelled scheduling, not adding task.");
+				// console.log("User cancelled scheduling, not adding task.");
 				return;
 			}
 
@@ -312,7 +312,7 @@ const handleFolderSelect = async () => {
 				uuid: crypto.randomUUID(),
 			};
 
-			console.log('New backup task:', newTask);
+			// console.log('New backup task:', newTask);
 
 			backUpSetupConfig.backUpTasks.push(newTask);
 			selectedFolders.value.push({ name: folderName, path: folderPath });
@@ -380,7 +380,7 @@ const proceedToNextStep = () => {
 			const slashOrNotSlash = targetDirForSourcePart.startsWith("/") ? "" : "/";
 
 			task.target = `${selectedServer.value!.name}.local:${selectedServer.value!.shareName!}/${task.uuid}/${hostname}${slashOrNotSlash}${targetDirForSourcePart}`;
-			console.log('target saved:', task.target);
+			// console.log('target saved:', task.target);
 		});
 
 	completeCurrentStep();

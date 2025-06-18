@@ -79,7 +79,7 @@ watch(setupComplete, (value) => {
 });
 
 function goHome(): void {
-  console.log("before clearing: ", backUpSetupConfig)
+  // console.log("before clearing: ", backUpSetupConfig)
 
   if (backUpSetupConfig) {
     for (const key in backUpSetupConfig) {
@@ -93,7 +93,7 @@ function goHome(): void {
     }
   }
 
-  console.log("after clearing: ", backUpSetupConfig);
+  // console.log("after clearing: ", backUpSetupConfig);
   reset();  // Assuming this is the wizard reset
 }
 

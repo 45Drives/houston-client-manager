@@ -28,12 +28,12 @@ export default async function fetchBackupsFromServer(data: any, mainWindow: Brow
       for (const entry of entries) {
         if (!await isDirectory(entry)) continue;
 
-        console.log(entry);
+        // console.log(entry);
 
         // Recursively gather files to find last modified time
         const allFiles = await getAllFiles(entry);
         const fileCount = allFiles.filter(file => !file.isDirectory()).length;
-        console.log("fileCount", fileCount)
+        // console.log("fileCount", fileCount)
         if (allFiles.length) {
           const times = await Promise.all(allFiles.map(async file => {
             const stat = await fsAsync.stat(file.parentPath);

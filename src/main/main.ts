@@ -1,3 +1,18 @@
+import log from 'electron-log';
+
+console.log = (...args) => log.info(...args);
+console.error = (...args) => log.error(...args);
+console.warn = (...args) => log.warn(...args);
+console.debug = (...args) => log.debug(...args);
+
+process.on('uncaughtException', (error) => {
+  log.error('Uncaught Exception:', error);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  log.error('Unhandled Rejection at:', promise, 'reason:', reason);
+});
+
 import { app, BrowserWindow, ipcMain, dialog, powerSaveBlocker } from 'electron';
 import path, { join } from 'path';
 import mdns from 'multicast-dns';
@@ -9,7 +24,6 @@ import { IPCRouter } from '../../houston-common/houston-common-lib/lib/electronI
 import { getOS } from './utils';
 import { BackUpManager, BackUpManagerLin, BackUpManagerMac, BackUpManagerWin, BackUpSetupConfigurator } from './backup';
 import { BackUpSetupConfig, BackUpTask, server, unwrap } from '@45drives/houston-common-lib';
-import { setupSsh } from './setupSsh';
 import fetchBackups from './backup/FetchBackups';
 import fetchFilesInBackup from './backup/FetchFilesFromBackup';
 import restoreBackups from './backup/RestoreBackups';
@@ -22,17 +36,41 @@ const blockerId = powerSaveBlocker.start("prevent-app-suspension");
 
 app.commandLine.appendSwitch('ignore-certificate-errors', 'true');
 
-function checkLogDir() {
+// function checkLogDir() {
+//   const platform = getOS();
+//   let logDir = '';
+
+//   try {
+//     if (platform === 'win') {
+//       logDir = path.join(process.env.ProgramData || 'C:\\ProgramData', 'houston-backups', 'logs');
+//     } else if (platform === 'mac') {
+//       logDir = '/var/log/';
+//     } else {
+//       logDir = '/var/log/houston/';
+//     }
+
+//     if (!fs.existsSync(logDir)) {
+//       fs.mkdirSync(logDir, { recursive: true });
+//     }
+
+//     console.log(`✅ Log directory ensured: ${logDir}`);
+//   } catch (error: any) {
+//     console.error(`❌ Failed to create log directory (${logDir}):`, error.message);
+//   }
+// }
+function checkLogDir(): string {
   const platform = getOS();
   let logDir = '';
+
+  const isRoot = process.getuid?.() === 0; // On Windows, this will be undefined
 
   try {
     if (platform === 'win') {
       logDir = path.join(process.env.ProgramData || 'C:\\ProgramData', 'houston-backups', 'logs');
-    } else if (platform === 'mac') {
-      logDir = '/var/log/';
-    } else {
+    } else if (isRoot) {
       logDir = '/var/log/houston/';
+    } else {
+      logDir = path.join(app.getPath('userData'), 'logs');
     }
 
     if (!fs.existsSync(logDir)) {
@@ -43,9 +81,28 @@ function checkLogDir() {
   } catch (error: any) {
     console.error(`❌ Failed to create log directory (${logDir}):`, error.message);
   }
+
+  return logDir;
 }
 
-checkLogDir();
+
+// checkLogDir();
+
+// const platform = getOS(); // returns 'win' | 'mac' | 'debian' | 'rocky' etc
+
+// log.transports.file.resolvePathFn = () => {
+//   if (platform === 'win') {
+//     return path.join(process.env.ProgramData || 'C:\\ProgramData', 'houston-backups', 'logs', 'main.log');
+//   } else if (platform === 'mac') {
+//     return '/var/log/houston-mac/main.log';
+//   } else {
+//     return '/var/log/houston/main.log'; // Linux default
+//   }
+// };
+
+// log.info("✅ Custom log path initialized.");
+// log.info("Logging to:", log.transports.file.getFile().path);
+
 
 // app.commandLine.appendSwitch("disable-background-timer-throttling", 'true');
 // app.commandLine.appendSwitch("disable-renderer-backgrounding", "true");
@@ -83,9 +140,10 @@ function createWindow() {
       contextIsolation: true,
       webviewTag: true,
       javascript: true,
-      webSecurity: false,
       backgroundThrottling: false,  // Disable throttling
-      partition: 'persist:your-cookie-partition'
+      partition: 'persist:your-cookie-partition',
+      webSecurity: true,                  // Enforces origin security
+      allowRunningInsecureContent: false, // Prevents HTTP inside HTTPS
     }
   });
 
@@ -119,7 +177,7 @@ function createWindow() {
   
 
   function notify(message: string) {
-    console.log("[Main] 🔔 notify() called with:", message);
+    // console.log("[Main] 🔔 notify() called with:", message);
 
     if (!mainWindow || !mainWindow.webContents || mainWindow.webContents.isDestroyed()) {
       console.warn("[Main] ❌ mainWindow/webContents not ready");
@@ -135,7 +193,7 @@ function createWindow() {
   
 
   IPCRouter.getInstance().addEventListener('action', async (data) => {
-    console.log('action data:', data);
+    // console.log('action data:', data);
     if (data === "requestBackUpTasks") {
       let backUpManager: BackUpManager | null = getBackUpManager();
 
@@ -280,7 +338,7 @@ function createWindow() {
             console.error("Error opening folder:", folderPath, err);
           }
         } else if (message.type === 'checkBackUpStatuses') {
-          console.log("✅ Received checkBackUpStatuses")
+          // console.log("✅ Received checkBackUpStatuses")
           const tasks: BackUpTask[] = message.tasks;
           const updatedTasks: BackUpTask[] = [];
           for (const task of tasks) {
@@ -347,8 +405,8 @@ function createWindow() {
             notify(`✅ Backup task "${task.description}" started successfully.`);
           } catch (err: any) {
             console.error("❌ runNow failed:", err);
-            console.log("Command stderr:", err.stderr);
-            console.log("Command stdout:", err.stdout);
+            // console.log("Command stderr:", err.stderr);
+            // console.log("Command stdout:", err.stdout);
             // Fallback for meaningful message
             const fallbackMsg = err?.stderr || err?.message || JSON.stringify(err);
             notify(`❌ Failed to start task: ${fallbackMsg}`);
@@ -496,7 +554,7 @@ function createWindow() {
       const data = await response.json();
 
       if (data.action) {
-        console.log("New action received:", server, data);
+        // console.log("New action received:", server, data);
 
         if (data.action === "mount_samba_client") {
           mountSmbPopup(data.smb_host, data.smb_share, data.smb_user, data.smb_pass, mainWindow);
@@ -545,6 +603,12 @@ app.on('web-contents-created', (_event, contents) => {
 
 
 app.whenReady().then(() => {
+  const resolvedLogDir = checkLogDir();
+
+  log.transports.file.resolvePathFn = () => path.join(resolvedLogDir, 'main.log');
+  log.info("🟢 Logging initialized.");
+  log.info("Log file path:", log.transports.file.getFile().path);
+
   ipcMain.handle("is-dev", async () => process.env.NODE_ENV === 'development');
 
   ipcMain.handle('dialog:openFolder', async () => {

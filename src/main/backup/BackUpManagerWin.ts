@@ -196,10 +196,10 @@ export class BackUpManagerWin implements BackUpManager {
 
 //new version with logging (need to test)
   async schedule(task: BackUpTask, username: string, password: string): Promise<{ stdout: string, stderr: string }> {
-    console.log("task.target", task.target);
+    // console.log("task.target", task.target);
 
     let targetPath = "/tank/" + task.target.split(":")[1];
-    console.log("targetPath", targetPath)
+    // console.log("targetPath", targetPath)
 
     let [smbHost, smbShare] = task.target.split(":");
     smbShare = smbShare.split("/")[0];
@@ -441,7 +441,7 @@ $task | Set-ScheduledTask
 
   protected scheduleToTaskTrigger(sched: TaskSchedule): string | undefined {
 
-    console.log(sched);
+    // console.log(sched);
 
     const startDate = formatDateForTask(sched.startDate); // e.g., "2025-02-25 10:00:00"
     switch (sched.repeatFrequency.toLowerCase()) {
@@ -612,7 +612,7 @@ if (Get-ScheduledTask -TaskName "${taskName}" -ErrorAction SilentlyContinue) {
 
       command = command.replace("/C ", '').replace("\"", "").replace("\"", "").trim();
 
-      console.log(command)
+      // console.log(command)
 
       // Path to your .bat file
       const batFilePath = command;

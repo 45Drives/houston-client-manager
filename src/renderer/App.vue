@@ -78,7 +78,7 @@ IPCRouter.initRenderer();
 IPCRouter.getInstance().addEventListener("action", async (data) => {
   try {
     const message = typeof data === 'string' ? JSON.parse(data) : data;
-    console.log("📨 action in renderer:", message);
+    // console.log("📨 action in renderer:", message);
 
     switch (message.type) {
       case 'show_wizard':
@@ -205,7 +205,7 @@ async function waitForServerRebootAndShowWizard() {
     currentWizard.value = 'backup';
     // useWizardSteps("backup").reset();
 
-    console.log("[Wizard] Server came back online. Triggering success notification.");
+    // console.log("[Wizard] Server came back online. Triggering success notification.");
 
     await nextTick();
 
@@ -227,7 +227,7 @@ async function waitForServerRebootAndShowWizard() {
     // useWizardSteps("setup").reset();
   }
 
-  console.log("[Wizard] setting waitingForServerReboot = false");
+  // console.log("[Wizard] setting waitingForServerReboot = false");
 
   if (rebootNotification) {
     rebootNotification.remove();
@@ -243,7 +243,7 @@ const aliasStyleToTheme: Record<string, string> = {
 };
 
 function applyThemeFromAliasStyle(aliasStyle?: string) {
-  console.log('detected alias style:', aliasStyle);
+  // console.log('detected alias style:', aliasStyle);
   const normalized = aliasStyle?.toLowerCase() || '';
   const themeClass = aliasStyleToTheme[normalized] || 'theme-default';
 
@@ -257,10 +257,10 @@ function applyThemeFromAliasStyle(aliasStyle?: string) {
   currentTheme.value = themeClass;
 }
 
-const isDev = ref(true);
+const isDev = ref(false);
 
 window.electron.ipcRenderer.invoke('is-dev').then(value => isDev.value = value);
-console.log(window.electron.ipcRenderer);
+// console.log(window.electron.ipcRenderer);
 
 const darkModeState = useDarkModeState();
 
@@ -293,7 +293,7 @@ function isJsonString(str: string) {
 }
 
 window.electron.ipcRenderer.on('notification', (_event, message: string) => {
-  console.log("[Renderer] 🔔 Received notification:", message);
+  // console.log("[Renderer] 🔔 Received notification:", message);
 
   if (message.startsWith("Error")) {
     reportError(new Error(message));
@@ -331,7 +331,7 @@ onMounted(async () => {
     const found = Array.from(document.documentElement.classList).find(cls =>
       cls.startsWith("theme-")
     );
-    console.log('found:', found);
+    // console.log('found:', found);
     currentTheme.value = found || "theme-default";
     switch (currentTheme.value) {
       case 'theme-homelab':
@@ -475,7 +475,7 @@ const onWebViewLoaded = async () => {
         });
         `)
     .then((result: any) => {
-      console.log("result", result);
+      // console.log("result", result);
       loadingWebview.value = false;
       webview.value.className = "h-[100vh] w-full";
     })

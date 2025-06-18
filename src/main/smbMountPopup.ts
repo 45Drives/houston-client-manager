@@ -15,7 +15,7 @@ async function mountSambaClient(smb_host: string, smb_share: string, smb_user: s
   if (platform === "win32") {
     return mountSambaClientWin(smb_host, smb_share, smb_user, smb_pass, mainWindow);
   } else if (platform === "linux") {
-    console.log(`passing host:${smb_host}, share:${smb_share}, user:${smb_user}, pass:${smb_pass} to script`);
+    // console.log(`passing host:${smb_host}, share:${smb_share}, user:${smb_user}, pass:${smb_pass} to script`);
     return mountSambaClientScript(smb_host, smb_share, smb_user, smb_pass, await getAsset("static", "mount_smb_lin.sh"), mainWindow);
   } else if (platform === "darwin") {
     return mountSambaClientScript(smb_host, smb_share, smb_user, smb_pass, await getAsset("static", "mount_smb_mac.sh"), mainWindow);
@@ -44,13 +44,13 @@ async function mountSambaClientWin(smb_host: string, smb_share: string, smb_user
 
 function mountSambaClientScript(smb_host: string, smb_share: string, smb_user: string, smb_pass: string, script: string, mainWindow: BrowserWindow): Promise<string> {
   return new Promise((resolve, reject) => {
-    console.log(`
-    Mounting Details:
-    SMB Host: ${smb_host}
-    SMB Share: ${smb_share}
-    SMB User: ${smb_user}
-    SMB Password: ${smb_pass}
-  `);
+  //   console.log(`
+  //   Mounting Details:
+  //   SMB Host: ${smb_host}
+  //   SMB Share: ${smb_share}
+  //   SMB User: ${smb_user}
+  //   SMB Password: ${smb_pass}
+  // `);
 
     installDepPopup();
 

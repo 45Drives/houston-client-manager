@@ -194,7 +194,7 @@ async function editSchedule(selectedBackUp: BackUpTask) {
     selectedBackUp.schedule.repeatFrequency = selectedTaskSchedule.value.repeatFrequency;
     selectedBackUp.schedule.startDate = selectedTaskSchedule.value.startDate;
 
-    console.log("Updating backup task with schedule:", selectedBackUp);
+    // console.log("Updating backup task with schedule:", selectedBackUp);
     IPCRouter.getInstance().send("backend", "action", JSON.stringify({
       type: "updateBackUpTask",
       task: selectedBackUp
@@ -341,7 +341,7 @@ onMounted(() => {
 
       switch (msg.type) {
         case 'sendBackupTasks':
-          console.log("📥 Received backup tasks:", msg.tasks);
+          // console.log("📥 Received backup tasks:", msg.tasks);
           msg.tasks.forEach((task: BackUpTask) => {
             if (task.schedule?.startDate) {
               task.schedule.startDate = new Date(task.schedule.startDate);
@@ -351,7 +351,7 @@ onMounted(() => {
           break;
 
         case 'backUpStatusesUpdated':
-          console.log("📦 Statuses updated:", msg.tasks);
+          // console.log("📦 Statuses updated:", msg.tasks);
           msg.tasks.forEach((updated: BackUpTask) => {
             const index = backUpTasks.value.findIndex(t => t.uuid === updated.uuid);
             if (index !== -1) {
