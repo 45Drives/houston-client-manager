@@ -43,6 +43,8 @@ const selectedServer = ref<Server | null>(null);
 
 // Receive the discovered servers from the main process
 window.electron.ipcRenderer.on('discovered-servers', async (_event, discoveredServers: Server[]) => {
+  // console.log("📡 Received discovered servers:", discoveredServers);
+
   const isDev = await window.electron.ipcRenderer.invoke("is-dev")
 
   if (isDev || !props.filterOutStorageSetupComplete) {

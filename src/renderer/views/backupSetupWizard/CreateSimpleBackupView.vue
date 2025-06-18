@@ -156,7 +156,7 @@ function areArraysEqual(arr1: Server[], arr2: Server[]): boolean {
 // Receive the discovered servers from the main process
 window.electron.ipcRenderer.on('discovered-servers', (_event, discoveredServers: Server[]) => {
 	if (!areArraysEqual(discoveredServers, servers.value)) {
-		console.log("Discovered servers:", discoveredServers)
+		// console.log("Discovered servers:", discoveredServers)
 		servers.value = discoveredServers;
 		if (discoveredServers.length > 0) {
 
@@ -191,7 +191,7 @@ watch(scheduleFrequency, (newSchedule) => {
 		backUpSetupConfig.backUpTasks = backUpSetupConfig.backUpTasks.map((task) => {
 			task.schedule.repeatFrequency = newSchedule;
 			task.schedule.startDate = getNextScheduleDate(newSchedule)
-			console.log("some update task.startDate:", task.schedule.startDate);
+			// console.log("some update task.startDate:", task.schedule.startDate);
 			return task;
 		});
 	}
@@ -282,7 +282,7 @@ const handleFolderSelect = async () => {
 				uuid: crypto.randomUUID(),
 			};
 
-			console.log("NewTask.Startdate:", newTask.schedule.startDate);
+			// console.log("NewTask.Startdate:", newTask.schedule.startDate);
 
 			backUpSetupConfig.backUpTasks.push(newTask);
 			selectedFolders.value.push({ name: folderName, path: folderPath });
@@ -338,7 +338,7 @@ function getNextScheduleDate(frequency: 'hour' | 'day' | 'week' | 'month'): Date
 			}
 			break;
 	}
-	console.log("nextDate ", nextDate)
+	// console.log("nextDate ", nextDate)
 
 	return nextDate;
 }
@@ -366,7 +366,7 @@ const proceedToNextStep = () => {
 			const slashOrNotSlash = targetDirForSourcePart.startsWith("/") ? "" : "/";
 
 			task.target = `${selectedServer.value!.name}.local:${selectedServer.value!.shareName!}/${task.uuid}/${hostname}${slashOrNotSlash}${targetDirForSourcePart}`;
-			console.log('target saved:', task.target);
+			// console.log('target saved:', task.target);
 		});
 
 	completeCurrentStep();

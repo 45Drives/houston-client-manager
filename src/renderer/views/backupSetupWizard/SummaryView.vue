@@ -82,16 +82,16 @@ const { completeCurrentStep, prevStep } = useWizardSteps("backup");
 const backUpSetupConfig = inject(backUpSetupConfigKey);
 
 onMounted(async () => {
-  console.log("backUpSetupConfig:", backUpSetupConfig);
+  // console.log("backUpSetupConfig:", backUpSetupConfig);
 
   const target = backUpSetupConfig?.backUpTasks?.[0]?.target;
-  console.log("Target for isFirstBackupRun check:", target);
+  // console.log("Target for isFirstBackupRun check:", target);
   if (!target) return;
 
   const [host, path] = target.split(":");
   const share = path.split("/")[0];
   const result = await window.electron.isFirstRunNeeded(host, share);
-  console.log("First run result:", result);
+  // console.log("First run result:", result);
 
   isFirstBackupRun.value = result;
 });

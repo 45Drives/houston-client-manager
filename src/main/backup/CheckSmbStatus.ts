@@ -61,7 +61,7 @@ export async function checkBackupTaskStatus(task: BackUpTask): Promise<'online' 
     return new Promise((resolve) => {
         const cmd = `${os === 'win' ? '' : 'bash'} "${scriptAsset}" "${smbHost}" "${smbShare}" "${targetPath}" "${username}" "${password}"`;
         exec(cmd, (error, stdout, stderr) => {
-            console.log(`[SMB Check] stdout for ${task.uuid}:`, stdout);
+            // console.log(`[SMB Check] stdout for ${task.uuid}:`, stdout);
             console.error(`[SMB Check] stderr for ${task.uuid}:`, stderr);
 
             if (error) {

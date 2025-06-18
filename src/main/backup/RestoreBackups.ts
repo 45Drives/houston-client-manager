@@ -6,26 +6,26 @@ import { execSync } from "child_process";
 
 export default async function restoreBackups(data: any, IPCRouter: IPCMessageRouter) {
   
-  console.log("restore backups")
+  // console.log("restore backups")
 
   const slash = getOS() === "win" ? "\\" : "/"
 
-  console.log(data)
+  // console.log(data)
   const basePath = getOS() === "win" ? `${slash}${slash}${data.smb_host}${slash}${data.smb_share}` : `/mnt/houston-mounts/${data.smb_share}`;
   const uuid = data.uuid;
   const client = data.client;
   let files: string[] = data.files;
 
-  console.log("uuid", uuid)
-  console.log("basePath", basePath)
-  console.log("files", files)
-  console.log("client", client)
+  // console.log("uuid", uuid)
+  // console.log("basePath", basePath)
+  // console.log("files", files)
+  // console.log("client", client)
 
   const folderPath = path.join(basePath, uuid, client);
 
   for (const file of files) {
 
-    console.log("processing:", file)
+    // console.log("processing:", file)
     let copyToFilePath = file;
     if (getOS() === "win") {
       copyToFilePath = fixWinPath(file);
@@ -33,7 +33,7 @@ export default async function restoreBackups(data: any, IPCRouter: IPCMessageRou
 
     const sourcePath = folderPath + file;
 
-    console.log("Copying " + sourcePath + " to " + copyToFilePath);
+    // console.log("Copying " + sourcePath + " to " + copyToFilePath);
 
 
     IPCRouter.send('renderer', 'action', JSON.stringify({
@@ -101,7 +101,7 @@ function openDirectory(folderPath: string) {
     } else {
       execSync(`xdg-open "${folderPath}"`);
     }
-    console.log("Opened folder:", folderPath);
+    // console.log("Opened folder:", folderPath);
   } catch (err) {
     console.error("Failed to open folder:", err);
   }

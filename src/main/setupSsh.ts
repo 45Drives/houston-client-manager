@@ -26,7 +26,7 @@ export async function setupSsh(server: Server) {
 
   // Generate SSH key if it doesn’t exist
   if (!fs.existsSync(sshKeyPath)) {
-    console.log("Generating SSH Key...", sshKeyPath);
+    // console.log("Generating SSH Key...", sshKeyPath);
     
     exec(
       `${ssh_keygen} -t rsa -b 4096 -f "${sshKeyPath}" -N ""`,
@@ -36,8 +36,7 @@ export async function setupSsh(server: Server) {
           console.error(`Error generating SSH key: ${error.message}`);
           return;
         }
-        console.log("SSH key generated successfully!");
-        console.log(stdout);
+        console.log("SSH key generated successfully!", stdout);
 
         putPublicKeyOnServer(server, sshKeyPubPath, sshKeyPath);
       }
@@ -55,7 +54,7 @@ function putPublicKeyOnServer(server: Server, publicKeyPath: string, privateKeyP
   // Initialize the SSH client
   const conn = new Client();
 
-  console.log("publickey:", publicKey);
+  // console.log("publickey:", publicKey);
   conn.on('ready', () => {
     console.log('SSH connection established!');
 

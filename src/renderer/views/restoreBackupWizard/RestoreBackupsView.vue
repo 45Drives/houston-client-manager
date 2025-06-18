@@ -164,7 +164,7 @@ function toggleFileSelection(file: FileEntry) {
 onActivated(() => {
 
   loading.value = true;
-  console.log("activated!")
+  // console.log("activated!")
 
   IPCRouter.getInstance().addEventListener("action", data => {
     try {
@@ -175,7 +175,7 @@ onActivated(() => {
       } else if (response.type === "fetchBackupsFromServerResult") {
         backups.value = response.result as BackupEntry[];
       } else if (response.type === "restoreBackupsResult") {
-        console.log("restore happened")
+        // console.log("restore happened")
         restoreProgress.value.current++;
         restoreProgress.value.lastFile = response.value.file;
         // Optional: track errors
@@ -212,7 +212,7 @@ async function selectBackup(backup: BackupEntry) {
 }
 
 async function fetchBackupFiles(backup: BackupEntry) {
-  console.log("fetchFilesFromBackup")
+  // console.log("fetchFilesFromBackup")
   IPCRouter.getInstance().send("backend", 'action', JSON.stringify(
     {
       type: "fetchFilesFromBackup",

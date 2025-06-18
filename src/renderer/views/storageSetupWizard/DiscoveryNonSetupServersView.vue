@@ -89,7 +89,7 @@ const goBackStep = async () => {
 };
 
 const proceedToNextStep = async () => {
-  console.log("Next Button on Discovery clicked.")
+  // console.log("Next Button on Discovery clicked.")
   unCompleteCurrentStep()
   completeCurrentStep(true, selectedServer.value as Record<string, any>);
 };
