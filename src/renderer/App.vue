@@ -71,6 +71,7 @@ const setOs = (value: string) => {
   thisOS.value = value;
 };
 
+const fallbackTriggered = ref(false);
 
 provide(thisOsInjectionKey, thisOS);
 
@@ -326,6 +327,29 @@ onMounted(async () => {
   setTimeout(() => {
     scanningNetworkForServers.value = false;
   }, 7000);
+
+  setTimeout(async () => {
+    if (!discoveredServersChecked && !fallbackTriggered.value) {
+      fallbackTriggered.value = true;
+      try {
+        const fallbackServers = await window.electron.ipcRenderer.invoke("scan-network-fallback");
+        if (fallbackServers.length > 0) {
+          window.electron.ipcRenderer.send("discovered-servers", fallbackServers);
+          pushNotification(new Notification(
+            'Fallback Discovery',
+            `Found ${fallbackServers.length} server(s) using IP scan.`,
+            'success',
+            6000
+          ));
+        } else {
+          reportError(new Error("No servers found via fallback scan."));
+        }
+      } catch (err) {
+        console.error("Fallback scan failed:", err);
+        reportError(new Error("Fallback scan failed."));
+      }
+    }
+  }, 8000); // Run fallback ~1 second after mDNS timeout
 
   const updateTheme = () => {
     const found = Array.from(document.documentElement.classList).find(cls =>
