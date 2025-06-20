@@ -32,7 +32,7 @@
           <!-- <HoustonServerListView class="w-1/3 px-5 justify-center text-xl" :filterOutStorageSetupComplete="true"
             @serverSelected="handleServerSelected" /> -->
           <HoustonServerListView class="w-1/3 px-5 justify-center text-xl" :filterOutStorageSetupComplete="false"
-            :selectedServer="selectedServer" @serverSelected="handleServerSelected" />
+            :key="serverListKey" :selectedServer="selectedServer" @serverSelected="handleServerSelected" />
         </div>
       </div>
 
@@ -49,36 +49,36 @@
       </p> -->
       <p class="w-9/12 text-xl text-center">
         If your storage server is not appearing in the list above, please return to the Hardware Setup and ensure
-        all steps were completed correctly.<br />
+        all steps were completed correctly.
+        <br />
         <a href="#" @click.prevent="onRestartSetup" class="text-blue-600 hover:underline">Start Over</a>
+        <br>
+        <b>Otherwise you can manually add a server with the below steps.</b>
       </p>
 
       <div class="bg-well p-2 rounded-md mt-2">
         <p class="w-full text-xl">
-          Or, if you know the IP of an existing server you wish to manually add and re-initialize, enter it here along
+          If you have an existing server you wish to connect to and re-initialize, enter it here along
           with root/admin login credentials.
         </p>
         <p class="w-full text-md mt-2 italic text-center">
           Your credentials will only be used once to copy a secure SSH key and install required tools on the server if
-          needed. This make take a few minutes if nothing at all is installed.
+          needed. This make take a few minutes if nothing is installed yet.
           <br />
           This will setup <b>ZFS</b>, <b>Samba</b>, <b>Cockpit</b>, and the <b>45Drives Setup Module</b>.
         </p>
 
         <div class="w-full flex flex-row items-center justify-center gap-6 mt-1">
-          <!-- IP -->
           <div class="w-64">
             <input v-model="manualIp" type="text" placeholder="192.168.1.123" tabindex="1"
               class="input-textlike border px-4 py-1 rounded text-xl w-full" />
           </div>
 
-          <!-- Username -->
           <div class="w-64">
             <input v-model="manualUsername" type="text" placeholder="root" tabindex="2"
               class="input-textlike border px-4 py-1 rounded text-xl w-full" />
           </div>
 
-          <!-- Password -->
           <div class="w-64 relative">
             <input v-model="manualPassword" v-enter-next :type="showPassword ? 'text' : 'password'" id="password"
               tabindex="3" class="input-textlike border px-4 py-1 rounded text-xl w-full" placeholder="••••••••" />
@@ -89,10 +89,15 @@
             </button>
           </div>
 
-          <!-- Add Server -->
-          <button @click="addManualIp" :disabled="!canAdd" class="btn btn-primary px-6 py-1 text-xl whitespace-nowrap">
-            Add Server
-          </button>
+          <div class="button-group-row">
+            <button @click="addManualIp" :disabled="!canAdd"
+              class="btn btn-primary px-6 py-1 text-xl whitespace-nowrap">
+              Add Server
+            </button>
+            <button @click="onRescanServers" class="btn btn-secondary px-6 py-1 text-xl whitespace-nowrap">
+              Rescan Servers
+            </button>
+          </div>
         </div>
 
         <p v-if="statusMessage" class="text-lg text-center mt-2">
@@ -174,6 +179,23 @@ const canAdd = computed(
     !manualCredentials.value[manualIp.value]
 );
 
+const serverListKey = ref(0);
+
+function onRescanServers() {
+  // clear manual entries
+  manuallyAddedIp.value = '';
+  manualCredentials.value = {};
+  // clear selection
+  selectedServer.value = null;
+  // bump key → remount HoustonServerListView
+  serverListKey.value += 1;
+  // tell backend to re-discover
+  IPCRouter.getInstance().send(
+    'backend',
+    'action',
+    JSON.stringify({ type: 'rescanServers' })
+  );
+}
 
 interface InstallResult {
   success: boolean;
