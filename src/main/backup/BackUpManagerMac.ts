@@ -45,19 +45,41 @@ export class BackUpManagerMac implements BackUpManager {
     });
   }
 
-  async scheduleAllTasks(
+   async scheduleAllTasks(
     tasks: BackUpTask[],
     username: string,
     password: string,
     onProgress?: (step: number, total: number, message: string) => void
   ): Promise<void> {
+    const tmpDir = "/tmp/houston-backup-plists";
+    fs.mkdirSync(tmpDir, { recursive: true });
+
+    // 1) Write every plist into /tmp
     for (let i = 0; i < tasks.length; i++) {
       const task = tasks[i];
-      await this.schedule(task, username, password);
-      if (onProgress) {
-        onProgress(i + 1, tasks.length, `Scheduled task for ${task.description}`);
-      }
+      const name = `com.backup-task.${this.safeTaskName(task.description)}.plist`;
+      const tmpPath = path.join(tmpDir, name);
+      fs.writeFileSync(tmpPath, this.backupTaskToPlist(task), "utf-8");
+      if (onProgress) onProgress(i + 1, tasks.length, `Prepared ${name}`);
     }
+
+    // 2) Build one giant shell command that installs them all
+    const cmds = tasks.map(task => {
+      const name = `com.backup-task.${this.safeTaskName(task.description)}.plist`;
+      const tmpPath = path.join(tmpDir, name);
+      const dest   = path.join(this.launchdDirectory, name);
+      return [
+        `mkdir -p "${this.launchdDirectory}"`,
+        `cp "${tmpPath}" "${dest}"`,
+        `chmod 644 "${dest}"`,
+        `chown root:wheel "${dest}"`,
+        `launchctl load "${dest}"`
+      ].join(" && ");
+    }).join(" && ");
+
+    // 3) One prompt for all tasks
+    this.runAsAdmin(cmds, "Installing all backup tasks in bulk…");
+    if (onProgress) onProgress(tasks.length, tasks.length, "All tasks installed");
   }
   
   runNow(task: BackUpTask): Promise<{ stdout: string; stderr: string }> {

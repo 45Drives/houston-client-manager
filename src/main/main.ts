@@ -92,29 +92,6 @@ function isPortOpen(ip: string, port: number, timeout = 2000): Promise<boolean> 
   });
 }
 
-// checkLogDir();
-
-// const platform = getOS(); // returns 'win' | 'mac' | 'debian' | 'rocky' etc
-
-// log.transports.file.resolvePathFn = () => {
-//   if (platform === 'win') {
-//     return path.join(process.env.ProgramData || 'C:\\ProgramData', 'houston-backups', 'logs', 'main.log');
-//   } else if (platform === 'mac') {
-//     return '/var/log/houston-mac/main.log';
-//   } else {
-//     return '/var/log/houston/main.log'; // Linux default
-//   }
-// };
-
-// log.info("✅ Custom log path initialized.");
-// log.info("Logging to:", log.transports.file.getFile().path);
-
-
-// app.commandLine.appendSwitch("disable-background-timer-throttling", 'true');
-// app.commandLine.appendSwitch("disable-renderer-backgrounding", "true");
-// app.commandLine.appendSwitch("disable-backgrounding-occluded-windows", 'true');
-// app.commandLine.appendSwitch("use-gl", "desktop");
-
 // Timeout duration in milliseconds (e.g., 30 seconds)
 const TIMEOUT_DURATION = 10000;
 const serviceType = '_houstonserver._tcp.local'; // Define the service you're looking for
@@ -160,6 +137,61 @@ function createWindow() {
     }
   });
 
+  async function doFallbackScan(): Promise<Server[]> {
+    const ip = getLocalIP();
+    const subnet = getSubnetBase(ip);
+    const ips = Array.from({ length: 254 }, (_, i) => `${subnet}.${i + 1}`);
+
+    // exactly your old logic, with proper serverInfo defaults
+    const scanned = await Promise.allSettled(
+      ips.map(async candidateIp => {
+        const portOpen = await isPortOpen(candidateIp, 9090);
+        if (!portOpen) return null;
+
+        try {
+          const res = await fetch(`https://${candidateIp}:9090/`, {
+            method: 'GET',
+            cache: 'no-store',
+            signal: AbortSignal.timeout(3000),
+          });
+          if (!res.ok) return null;
+
+          return {
+            ip: candidateIp,
+            name: candidateIp,
+            status: 'unknown',
+            setupComplete: false,
+            serverName: candidateIp,
+            shareName: '',
+            setupTime: '',
+            serverInfo: {
+              moboMake: '',
+              moboModel: '',
+              serverModel: '',
+              aliasStyle: '',
+              chassisSize: '',
+            },
+            lastSeen: Date.now(),
+          } as Server;
+
+        } catch {
+          return null;
+        }
+      })
+    );
+
+    const fallbackServers = scanned
+      .map(r => r.status === 'fulfilled' ? r.value : null)
+      .filter((s): s is Server => s !== null);
+
+    if (fallbackServers.length) {
+      discoveredServers = fallbackServers;
+      mainWindow.webContents.send('discovered-servers', discoveredServers);
+    }
+
+    return fallbackServers;
+  }
+
   IPCRouter.initBackend(mainWindow.webContents, ipcMain);
 
   let rendererIsReady = false;
@@ -198,7 +230,11 @@ function createWindow() {
 
     return false;
   });
+
   
+  ipcMain.handle('scan-network-fallback', async () => {
+    return await doFallbackScan();
+  });
 
   function notify(message: string) {
     // console.log("[Main] 🔔 notify() called with:", message);
@@ -505,6 +541,24 @@ function createWindow() {
           }
 
           mainWindow.webContents.send('discovered-servers', discoveredServers);
+
+        } else if (message.type === 'rescanServers') {
+          // clear & notify
+          discoveredServers = [];
+          mainWindow.webContents.send('discovered-servers', discoveredServers);
+
+          // kick mDNS
+          mDNSClient.query({ questions: [{ name: serviceType, type: 'PTR' }] });
+
+          // after timeout: if still empty, call the same fallback fn
+          setTimeout(async () => {
+            if (discoveredServers.length === 0) {
+              const fallback = await doFallbackScan();
+              if (fallback.length) {
+                mainWindow.webContents.send('discovered-servers', fallback);
+              }
+            }
+          }, TIMEOUT_DURATION);
         }
       
       } catch (error) {
@@ -698,48 +752,6 @@ function createWindow() {
     }
   });
 }
-
-ipcMain.handle("scan-network-fallback", async () => {
-  const ip = getLocalIP();
-  const subnet = getSubnetBase(ip);
-  const ips = Array.from({ length: 254 }, (_, i) => `${subnet}.${i + 1}`);
-
-  const scannedServers = await Promise.allSettled(
-    ips.map(async (ip) => {
-      const portOpen = await isPortOpen(ip, 9090);
-      if (!portOpen) return null;
-
-      try {
-        const res = await fetch(`https://${ip}:9090/`, {
-          method: 'GET',
-          cache: 'no-store',
-          signal: AbortSignal.timeout(3000),
-        });
-
-        if (!res.ok) return null;
-
-        return {
-          ip,
-          name: ip,
-          status: "unknown",
-          setupComplete: false,
-          serverName: ip,
-          shareName: null,
-          setupTime: null,
-          serverInfo: {},
-          lastSeen: Date.now(),
-        };
-      } catch {
-        return null;
-      }
-    })
-  );
-
-  return scannedServers
-    .map((result) => (result.status === 'fulfilled' ? result.value : null))
-    .filter(Boolean);
-});
-
 
 app.on('web-contents-created', (_event, contents) => {
   contents.on('will-attach-webview', (_wawevent, webPreferences, _params) => {
