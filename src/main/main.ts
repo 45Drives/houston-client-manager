@@ -31,6 +31,8 @@ import fetchFilesInBackup from './backup/FetchFilesFromBackup';
 import restoreBackups from './backup/RestoreBackups';
 import { execSync } from 'child_process';
 import { checkBackupTaskStatus } from './backup/CheckSmbStatus';
+import { installServerDepsRemotely } from './installServerDeps';
+import { checkSSH } from './setupSsh';
 
 let discoveredServers: Server[] = [];
 
@@ -171,6 +173,17 @@ function createWindow() {
     bufferedNotifications = [];
   });
 
+  ipcMain.handle('install-cockpit-module', async (_event, { host, username, password }) => {
+    // 4. Store manual creds for login UI (if needed)
+    mainWindow.webContents.send('store-manual-creds', {
+      ip: host,
+      username,
+      password,
+    });
+
+    return await installServerDepsRemotely({ host, username, password });
+  });
+  
   ipcMain.handle('get-os', () => getOS());
 
   ipcMain.handle("backup:isFirstRunNeeded", (_evt, host, share) => {
@@ -423,63 +436,75 @@ function createWindow() {
             notify(`❌ Failed to start task: ${fallbackMsg}`);
           }
         } else if (message.type === 'addManualIP') {
-          const ip = message.ip;
+          const { ip, manuallyAdded } = message as { ip: string; manuallyAdded?: boolean };
+
+          // 1) Try Cockpit’s HTTPS on 9090, but DON’T let a throw skip the SSH probe
+          let httpsReachable = false;
           try {
             const res = await fetch(`https://${ip}:9090/`, {
               method: 'GET',
               cache: 'no-store',
               signal: AbortSignal.timeout(3000),
             });
-
-            if (res.ok) {
-              console.log("Server is reachable!");
-            } else {
-              console.warn("Server responded, but not with OK status.");
-            }
-
-            const server: Server = {
-              ip,
-              name: ip,
-              status: 'unknown',
-              setupComplete: false,
-              lastSeen: Date.now(),
-              serverName: ip,
-              shareName: '',
-              setupTime: '',
-              serverInfo: {
-                moboMake: '',
-                moboModel: '',
-                serverModel: '',
-                aliasStyle: '',
-                chassisSize: ''
-              }
-            };
-
-            let existingServer = discoveredServers.find((eServer) => eServer.ip === server.ip && eServer.name === server.name);
-
-            try {
-              if (!existingServer) {
-                discoveredServers.push(server);
-              } else {
-                existingServer.lastSeen = Date.now();
-                existingServer.status = server.status;
-                existingServer.setupComplete = server.status == 'complete' ? true : false;
-                existingServer.serverName = server.serverName;
-                existingServer.shareName = server.shareName;
-                existingServer.setupTime = server.setupTime;
-                existingServer.serverInfo = server.serverInfo;
-              }
-
-            } catch (error) {
-              console.error('Fetch error:', error);
-            }
-
-            mainWindow.webContents.send('discovered-servers', discoveredServers);
-
+            httpsReachable = res.ok;
+            console.log('HTTPS check:', res.ok ? 'OK' : `status ${res.status}`);
           } catch (err) {
-            console.log('error:', err);
-            notify(`Error: Unable to find server at: https://${ip}:9090`)
+            console.warn('HTTPS check failed:', err);
           }
+
+          // 2) If no HTTPS, fall back to SSH
+          let reachable = httpsReachable;
+          if (!reachable) {
+            console.log('Falling back to SSH probe on port 22…');
+            reachable = await checkSSH(ip, 3000);
+            console.log(`SSH probe ${reachable ? 'succeeded' : 'failed'}`);
+          }
+
+          // 3) If _still_ unreachable, bail
+          if (!reachable) {
+            return notify(`Error: Unable to reach ${ip} via HTTPS (9090) or SSH (22)`);
+          }
+
+          // 4) success! add to discoveredServers
+          const server: Server = {
+            ip,
+            name: ip,
+            status: 'unknown',
+            setupComplete: false,
+            lastSeen: Date.now(),
+            serverName: ip,
+            shareName: '',
+            setupTime: '',
+            serverInfo: {
+              moboMake: '',
+              moboModel: '',
+              serverModel: '',
+              aliasStyle: '',
+              chassisSize: '',
+            },
+            manuallyAdded: manuallyAdded === true,
+          };
+
+          let existingServer = discoveredServers.find((eServer) => eServer.ip === server.ip && eServer.name === server.name);
+
+          try {
+            if (!existingServer) {
+              discoveredServers.push(server);
+            } else {
+              existingServer.lastSeen = Date.now();
+              existingServer.status = server.status;
+              existingServer.setupComplete = server.status == 'complete' ? true : false;
+              existingServer.serverName = server.serverName;
+              existingServer.shareName = server.shareName;
+              existingServer.setupTime = server.setupTime;
+              existingServer.serverInfo = server.serverInfo;
+            }
+
+          } catch (error) {
+            console.error('Fetch error:', error);
+          }
+
+          mainWindow.webContents.send('discovered-servers', discoveredServers);
         }
       
       } catch (error) {
@@ -509,39 +534,49 @@ function createWindow() {
 
   // Set up mDNS for service discovery
   const mDNSClient = mdns(); // Correctly call as a function
+  mDNSClient.query({ questions: [{ name: serviceType, type: 'PTR' }] });
+
 
   // Start listening for devices
   mDNSClient.on('response', async (response) => {
+    // Combine answers + additionals into one array
+    const records = [
+      ...response.answers,
+      ...(response.additionals ?? []),
+    ];
 
     server_search:
-    for (const answer1 of response.answers) {
+    for (const answer1 of records) {
       if (answer1.type === 'SRV' && answer1.name.includes(serviceType)) {
-
-        // Find related 'A' and 'TXT' records in the same response
-        const ipAnswer = response.answers.find(a => a.type === 'A');
-        const txtAnswer = response.answers.find(a => a.type === 'TXT');
+        // Find related 'A' and 'TXT' records in the combined list
+        const ipAnswer = records.find(a => a.type === 'A' && a.name === (answer1.data as any).target);
+        const txtAnswer = records.find(a => a.type === 'TXT' && a.name === answer1.name);
 
         if (ipAnswer && ipAnswer.data) {
-          const serverIp = ipAnswer.data;
-          const serverName = ipAnswer.name;
+          const serverIp = ipAnswer.data as string;
+          const instance = answer1.name;    // e.g. "hl4-test._houstonserver._tcp.local"
 
-          // Parse txt record fields if present
+          // Parse TXT into a map
           const txtRecord: Record<string, string> = {};
-          if (txtAnswer && txtAnswer.data) {
-            txtAnswer.data.forEach((entry: Buffer) => {
-              const entryStr = entry.toString();
-              const [key, value] = entryStr.split('=');
-              txtRecord[key] = value;
+          if (txtAnswer && Array.isArray(txtAnswer.data)) {
+            txtAnswer.data.forEach((buf: Buffer) => {
+              const [k, v] = buf.toString().split('=');
+              txtRecord[k] = v;
             });
           }
 
+          // Derive a friendly name (strip off the "._houstonserver._tcp.local" suffix)
+          const [bare] = instance.split('._');
+          const displayName = `${bare}.local`;
+
+          // Build your Server exactly as before, using displayName
           const server: Server = {
             ip: serverIp,
-            name: serverName,
-            status: "unknown",
+            name: displayName,
+            status: 'unknown',  // overwritten below
             lastSeen: Date.now(),
             setupComplete: txtRecord.setupComplete === 'true',
-            serverName: txtRecord.serverName || serverName,
+            serverName: txtRecord.serverName || displayName,
             shareName: txtRecord.shareName,
             setupTime: txtRecord.setupTime,
             serverInfo: {
@@ -549,35 +584,39 @@ function createWindow() {
               moboModel: txtRecord.moboModel,
               serverModel: txtRecord.serverModel,
               aliasStyle: txtRecord.aliasStyle,
-              chassisSize: txtRecord.chassisSize
-            }
+              chassisSize: txtRecord.chassisSize,
+            },
+            manuallyAdded: false,
           };
 
-          let existingServer = discoveredServers.find((eServer) => eServer.ip === server.ip && eServer.name === server.name);
-
+          // ———— your existing fetch logic ————
           try {
             const fetchResponse = await fetch(`http://${server.ip}:9095/setup-status`);
             if (fetchResponse.ok) {
               const setupStatusResponse = await fetchResponse.json();
-              server.status = setupStatusResponse.status ?? "unknown";
+              server.status = setupStatusResponse.status ?? 'unknown';
             } else {
               console.warn(`HTTP error! server: ${server.name} status: ${fetchResponse.status}`);
             }
-
-            if (!existingServer) {
-              discoveredServers.push(server);
-            } else {
-              existingServer.lastSeen = Date.now();
-              existingServer.status = server.status;
-              existingServer.setupComplete = server.status == 'complete' ? true : false;
-              existingServer.serverName = server.serverName;
-              existingServer.shareName = server.shareName;
-              existingServer.setupTime = server.setupTime;
-              existingServer.serverInfo = server.serverInfo;
-            }
-
           } catch (error) {
             console.error('Fetch error:', error);
+          }
+          // — end fetch logic —
+
+          // upsert into discoveredServers
+          const existing = discoveredServers.find(s => s.ip === server.ip && s.name === server.name);
+          if (!existing) {
+            discoveredServers.push(server);
+          } else {
+            Object.assign(existing, {
+              lastSeen: server.lastSeen,
+              status: server.status,
+              setupComplete: server.setupComplete,
+              serverName: server.serverName,
+              shareName: server.shareName,
+              setupTime: server.setupTime,
+              serverInfo: server.serverInfo,
+            });
           }
 
           break server_search;
@@ -597,25 +636,20 @@ function createWindow() {
     })
   }, 5000);
 
-  // Periodically check for inactive servers and remove them if necessary
+
   const clearInactiveServerInterval = setInterval(() => {
-    const currentTime = Date.now();
+    const now = Date.now()
 
-    // Filter out inactive servers
-    const filterdDiscoveredServers = discoveredServers.filter((server) => {
-      if (currentTime - server.lastSeen > TIMEOUT_DURATION) {
-        console.log(`Removing inactive server: ${server}`);
-        return false;
-      }
-      return true;
-    });
+    // only keep servers that are still “fresh” OR that have manuallyAdded === true
+    discoveredServers = discoveredServers.filter(srv =>
+      now - srv.lastSeen <= TIMEOUT_DURATION
+      || (srv as any).manuallyAdded === true
+    )
 
-    if (filterdDiscoveredServers.length !== discoveredServers.length) {
-      discoveredServers = filterdDiscoveredServers;
-      mainWindow.webContents.send('discovered-servers', discoveredServers);
-    }
-
-  }, 5000);
+    // push the updated list back to the renderer
+    mainWindow.webContents.send('discovered-servers', discoveredServers)
+  }, 5000)
+  
 
   async function pollActions(server: Server) {
     try {
@@ -645,12 +679,13 @@ function createWindow() {
     }))
   });
 
-  // Poll every 5 seconds
   const pollActionInterval = setInterval(async () => {
     for (let server of discoveredServers) {
+      // don’t poll actions on manual servers
+      if ((server as any).manuallyAdded) continue
       await pollActions(server)
     }
-  }, 5000);
+  }, 5000)
 
   app.on('window-all-closed', function () {
     ipcMain.removeAllListeners('message')

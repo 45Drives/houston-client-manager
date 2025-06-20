@@ -1,104 +1,81 @@
 import { exec } from "child_process";
 import path from "path";
 import fs from "fs";
-import { Server } from "./types";
-import { Client } from 'ssh2';
 import { getAppPath, getOS } from "./utils";
+import { NodeSSH } from 'node-ssh';
+import { getAsset } from './utils';
+import net from 'net';
 
-const username = "root";
-const password = "password";
-
-// Paths
-export async function setupSsh(server: Server) {
-  // Determine the base path
-  let basePath = getAppPath();
-
-  const cwRsyncPath = path.join(basePath,  "static");
-  const sshKeyPath = path.join(basePath,  ".ssh", "id_rsa");
-  const sshKeyPubPath = path.join(basePath,  ".ssh", "id_rsa.pub");
-  const ssh_keygen = getOS() === "win" ? `"${path.join(cwRsyncPath, "bin", "ssh-keygen.exe")}"` : "ssh-keygen";
-
-  // Ensure .ssh directory exists
-  const sshDir = path.join(basePath,  ".ssh");
-  if (!fs.existsSync(sshDir)) {
-    fs.mkdirSync(sshDir, { recursive: true });
-  }
-
-  // Generate SSH key if it doesn’t exist
-  if (!fs.existsSync(sshKeyPath)) {
-    // console.log("Generating SSH Key...", sshKeyPath);
-    
-    exec(
-      `${ssh_keygen} -t rsa -b 4096 -f "${sshKeyPath}" -N ""`,
-      { cwd: cwRsyncPath },
-      (error, stdout, stderr) => {
-        if (error) {
-          console.error(`Error generating SSH key: ${error.message}`);
-          return;
-        }
-        console.log("SSH key generated successfully!", stdout);
-
-        putPublicKeyOnServer(server, sshKeyPubPath, sshKeyPath);
-      }
-    );
-  } else {
-    putPublicKeyOnServer(server, sshKeyPubPath, sshKeyPath);
-  }
-}
-function putPublicKeyOnServer(server: Server, publicKeyPath: string, privateKeyPath) {
-  // Read the public key
-  const publicKey = fs.readFileSync(publicKeyPath, 'utf8').trim();
-  const privateKey = fs.readFileSync(privateKeyPath, 'utf8').trim();
-
-  const host = server.ip;
-  // Initialize the SSH client
-  const conn = new Client();
-
-  // console.log("publickey:", publicKey);
-  conn.on('ready', () => {
-    console.log('SSH connection established!');
-
-    // Command to create the .ssh directory and add the public key to authorized_keys
-    const command = `
-    mkdir -p ~/.ssh && 
-    grep -qxF "${publicKey}" ~/.ssh/authorized_keys || echo "${publicKey}" >> ~/.ssh/authorized_keys && 
-    chmod 700 ~/.ssh && 
-    chmod 600 ~/.ssh/authorized_keys
-    `;
-
-    conn.exec(command, (err, stream) => {
-      if (err) {
-        console.error('Error executing command:', err);
-        return;
-      }
-
-      stream.on('close', (code, signal) => {
-        if (code === 0) {
-          console.log('Public key added to authorized_keys successfully!');
-        } else {
-          console.log(`Command failed with exit code ${code}`);
-        }
-
-        // End the SSH session
-        conn.end();
-      });
-
-      // Log any error output
-      stream.on('data', (data) => {
-        console.log('STDOUT:', data.toString());
-      });
-      stream.stderr.on('data', (data) => {
-        console.error('STDERR:', data.toString());
-      });
-    });
-  }).on('error', (err) => {
-    console.error('SSH connection error:', err);
-  }).connect({
-    host,
-    port: 22,
-    username,
-    password,
-    privateKey
+export function checkSSH(host: string, timeout = 3000): Promise<boolean> {
+  return new Promise((resolve) => {
+    const sock = new net.Socket();
+    sock.setTimeout(timeout);
+    sock.once('connect', () => { sock.destroy(); resolve(true) });
+    sock.once('error', () => { sock.destroy(); resolve(false) });
+    sock.once('timeout', () => { sock.destroy(); resolve(false) });
+    sock.connect(22, host);
   });
 }
+// 🧩 Generates + uploads SSH key
+export async function setupSshKey(host: string, username: string, password: string): Promise<void> {
+  const ssh = new NodeSSH();
+  const sshDir = path.join(getAppPath(), ".ssh");
+  const privateKeyPath = path.join(sshDir, "id_rsa");
+  const publicKeyPath = path.join(sshDir, "id_rsa.pub");
 
+  if (!fs.existsSync(sshDir)) fs.mkdirSync(sshDir, { recursive: true });
+
+  if (!fs.existsSync(privateKeyPath)) {
+    const sshKeygen = getOS() === 'win'
+      ? `"${path.join(getAppPath(), 'static', 'bin', 'ssh-keygen.exe')}"`
+      : 'ssh-keygen';
+
+    await new Promise<void>((resolve, reject) => {
+      exec(`${sshKeygen} -t rsa -b 4096 -f "${privateKeyPath}" -N ""`, (err) => {
+        if (err) reject(err);
+        else resolve();
+      });
+    });
+  }
+
+  const publicKey = fs.readFileSync(publicKeyPath, 'utf8');
+
+  await ssh.connect({
+    host,
+    username,
+    password
+  });
+
+  await ssh.execCommand(`
+    mkdir -p ~/.ssh &&
+    grep -qxF "${publicKey.trim()}" ~/.ssh/authorized_keys || echo "${publicKey.trim()}" >> ~/.ssh/authorized_keys &&
+    chmod 700 ~/.ssh && chmod 600 ~/.ssh/authorized_keys
+  `);
+
+  ssh.dispose();
+}
+
+
+// 🧩 Upload and run install script
+export async function runBootstrapScript(host: string, username: string, privateKeyPath: string): Promise<void> {
+  const ssh = new NodeSSH();
+  const scriptLocalPath = await getAsset("static", "setup-super-simple.sh");
+  const scriptRemotePath = '/tmp/setup-super-simple.sh';
+
+  await ssh.connect({ host, username, privateKey: fs.readFileSync(privateKeyPath, 'utf8') });
+  await ssh.putFile(scriptLocalPath, scriptRemotePath);
+
+  console.log(`[${host}] Starting bootstrap…`);
+  await ssh.exec(
+    `sudo ${scriptRemotePath}`,
+    [],                     // no extra args
+    {
+      cwd: '/tmp',
+      onStdout(chunk) { console.log(`[${host}] ${chunk.toString().trim()}`); },
+      onStderr(chunk) { console.error(`[${host}] ${chunk.toString().trim()}`); },
+    }
+  );
+
+  console.log(`[${host}] Bootstrap complete.`);
+  ssh.dispose();
+}

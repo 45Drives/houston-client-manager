@@ -134,7 +134,7 @@ IPCRouter.getInstance().addEventListener("action", async (data) => {
 
 const isRebootWatcherRunning = ref(false);
 
-const currentWizard = ref<'storage' | 'backup' | 'restore-backup' | null>('backup');
+const currentWizard = ref<'storage' | 'backup' | 'restore-backup' | null>('storage');
 provide(currentWizardInjectionKey, currentWizard);
 
 const waitingForServerReboot = ref(false);
@@ -407,15 +407,23 @@ window.electron.ipcRenderer.on('discovered-servers', (_event, discoveredServers:
 
 });
 
+const manualCreds = ref<{ ip: string; username: string; password: string } | null>(null);
+
+window.electron.ipcRenderer.on('store-manual-creds', (_event, data) => {
+  manualCreds.value = data;
+});
+
 // Handle server click to open the website
 const openStorageSetup = (server: Server | null) => {
 
   currentServer.value = server;
   let newUrl = "";
   if (server) {
-    const prodURL = 'super-simple-setup';
-    const devURL = 'super-simple-setup-test';
-    newUrl = `https://${server.ip}:9090/${(isDev.value ? devURL : prodURL)}#dark=${darkModeState.value}&advanced=${advancedState.value}&client_ip=${clientip.value}&server_ip=${server.ip}`;
+    // const prodURL = 'super-simple-setup';
+    // const devURL = 'super-simple-setup-test';
+    // newUrl = `https://${server.ip}:9090/${(isDev.value ? devURL : prodURL)}#dark=${darkModeState.value}&advanced=${advancedState.value}&client_ip=${clientip.value}&server_ip=${server.ip}`;
+
+    newUrl = `https://${server.ip}:9090/super-simple-setup#dark=${darkModeState.value}&advanced=${advancedState.value}&client_ip=${clientip.value}&server_ip=${server.ip}`;
 
   } else {
     currentUrl.value = "";
@@ -427,11 +435,11 @@ const openStorageSetup = (server: Server | null) => {
   }
 
 };
-
 const onWebViewLoaded = async () => {
+  const user = manualCreds.value?.username ?? "root";
+  const pass = manualCreds.value?.password ?? "password";
 
   const routerRenderer = IPCRouter.getInstance() as IPCMessageRouterRenderer;
-
   routerRenderer.setCockpitWebView(webview.value);
 
   if (currentUrl.value.endsWith(":9090")) {
@@ -439,81 +447,79 @@ const onWebViewLoaded = async () => {
     webview.value.className = "h-[100vh] w-full";
     return;
   }
-  webview.value.executeJavaScript(`
-        new Promise((resolve, reject) => {
-    if (!document.querySelector("#login")) {
-      setTimeout(() => {
-        [...document.querySelectorAll('#main > div')].forEach((e) => {
-          if (e.id !== 'content') e.style.display = 'none';
-        });
 
-        [...document.querySelectorAll('#main > nav')].forEach((e) => {
-          if (e.id !== 'content') e.style.display = 'none';              });
+  const loginScript = `
+    new Promise((resolve, reject) => {
+      if (!document.querySelector("#login")) {
+        setTimeout(() => {
+          [...document.querySelectorAll('#main > div')].forEach((e) => {
+            if (e.id !== 'content') e.style.display = 'none';
+          });
 
-              document.querySelector('#main').style.gridTemplateAreas = '"header" "main"';
-              document.querySelector('#main').style.gridTemplateColumns = '1fr';
+          [...document.querySelectorAll('#main > nav')].forEach((e) => {
+            if (e.id !== 'content') e.style.display = 'none';
+          });
 
-              resolve("View modified and visible.");
-            }, 500);
-          
-          } else {
+          document.querySelector('#main').style.gridTemplateAreas = '"header" "main"';
+          document.querySelector('#main').style.gridTemplateColumns = '1fr';
 
-            console.log("Login UI showing")
-            const usernameField = document.querySelector("#login-user-input");
-            const passwordField = document.querySelector("#login-password-input");
-            const loginButton = document.querySelector("#login-button");
-            const loginForm  = document.querySelector("form");
+          resolve("View modified and visible.");
+        }, 500);
+      } else {
+        console.log("Login UI showing");
+        const usernameField = document.querySelector("#login-user-input");
+        const passwordField = document.querySelector("#login-password-input");
+        const loginButton = document.querySelector("#login-button");
+        const loginForm  = document.querySelector("form");
 
-            if (usernameField && passwordField && loginButton) {
-              usernameField.value = "root";  // Insert your username
-              passwordField.value = "password";  // Insert your password
+        if (usernameField && passwordField && loginButton) {
+          usernameField.value = "${user}";
+          passwordField.value = "${pass}";
 
-              // Dispatch input events to ensure the values are recognized
-              usernameField.dispatchEvent(new Event("input", { bubbles: true }));
-              passwordField.dispatchEvent(new Event("input", { bubbles: true }));
-              
-              // Watch for login result
-              const observer = new MutationObserver(() => {
-                const loginError = document.querySelector("#login-error-message");
-                if (loginError && loginError.textContent.includes("Wrong user name")) {
-                  observer.disconnect();
-                  [...document.querySelectorAll('#main > div')].forEach((e) => {
-                    if (e.id !== 'content') e.style.display = 'block';
-                  });
-                  reject("Login failed: Wrong user name or password.");
-                } else if (!document.querySelector("#login")) {
-                  observer.disconnect();
-                  resolve("Login successful: login form disappeared.");
-                }
+          usernameField.dispatchEvent(new Event("input", { bubbles: true }));
+          passwordField.dispatchEvent(new Event("input", { bubbles: true }));
+
+          const observer = new MutationObserver(() => {
+            const loginError = document.querySelector("#login-error-message");
+            if (loginError && loginError.textContent.includes("Wrong user name")) {
+              observer.disconnect();
+              [...document.querySelectorAll('#main > div')].forEach((e) => {
+                if (e.id !== 'content') e.style.display = 'block';
               });
-
-              observer.observe(document.body, { childList: true, subtree: true });
-              setTimeout(() => {
-                loginButton.click();
-                loginForm.submit(); // Submit the form programmatically
-              }, 500); // Small delay to ensure input is registered
-            } else {
-              console.error("Login fields or button not found.");
+              reject("Login failed: Wrong user name or password.");
+            } else if (!document.querySelector("#login")) {
+              observer.disconnect();
+              resolve("Login successful: login form disappeared.");
             }
-          }
-        });
-        `)
+          });
+
+          observer.observe(document.body, { childList: true, subtree: true });
+          setTimeout(() => {
+            loginButton.click();
+            loginForm.submit();
+          }, 500);
+        } else {
+          console.error("Login fields or button not found.");
+        }
+      }
+    });
+  `;
+
+  await webview.value.executeJavaScript(loginScript)
     .then((result: any) => {
-      // console.log("result", result);
       loadingWebview.value = false;
       webview.value.className = "h-[100vh] w-full";
     })
     .catch((error: any) => {
-      console.error("Error:", error);
+      console.error("Webview login error:", error);
       loadingWebview.value = false;
       webview.value.className = "h-[100vh] w-full";
     });
 
-    if (isDev.value) {
-
-      webview.value.openDevTools();
-    }
-}
+  if (isDev.value) {
+    webview.value.openDevTools();
+  }
+};
 
 const onWizardComplete = (server: Server) => {
   const realServer = unref(server);

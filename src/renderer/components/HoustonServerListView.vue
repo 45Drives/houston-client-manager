@@ -1,8 +1,7 @@
 <template>
-  <!-- List of servers to click -->
   <div class="flex flex-col items-center justify-center w-full mt-4">
     <div class="font-bold text-center text-xl mb-2 border-b-2 border-default pb-1 w-full max-w-md">
-      45Drives Servers
+      Detected 45Drives Servers
     </div>
 
     <div v-if="servers.length === 0" class="spinner my-4"></div>
@@ -16,78 +15,55 @@
         </tr>
       </thead>
       <tbody>
-        <tr v-for="server in servers" :key="server.ip" class="hover:bg-accent cursor-pointer"
-          @click="handleSelection(server)">
+        <tr v-for="srv in servers" :key="srv.ip" class="hover:bg-accent cursor-pointer" @click="onSelect(srv)"
+          :class="{ 'bg-accent': isSelected(srv) }">
           <td class="border border-default p-2 text-center">
-            <input type="checkbox" :checked="selectedServer?.ip === server.ip" @click.stop
-              @change="handleSelection(server)" class="form-checkbox h-5 w-5 text-blue-600" />
+            <input type="checkbox" :checked="isSelected(srv)" @click.stop="onSelect(srv)"
+              class="form-checkbox h-5 w-5 text-blue-600" />
           </td>
-          <td class="border border-default p-2 text-center">{{ server.name }}</td>
-          <td class="border border-default p-2 text-center">{{ server.ip }}</td>
+          <td class="border border-default p-2 text-center">{{ srv.name }}</td>
+          <td class="border border-default p-2 text-center">{{ srv.ip }}</td>
         </tr>
       </tbody>
     </table>
   </div>
-
-
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue';
-import { Server } from '../types'
+import { ref, withDefaults, defineProps, defineEmits, watch } from 'vue'
+import type { Server } from '../types'
 
-const props = defineProps<{ filterOutStorageSetupComplete: boolean }>();
+// 1) defineProps + withDefaults to make `selectedServer` optional (defaults to null)
+const props = withDefaults(
+  defineProps<{
+    filterOutStorageSetupComplete: boolean
+    selectedServer?: Server | null
+  }>(),
+  { selectedServer: null }
+)
 
-const servers = ref<Server[]>([]);
-const selectedServer = ref<Server | null>(null);
+// 2) event to send selection back up
+const emit = defineEmits<{
+  (e: 'serverSelected', srv: Server | null): void
+}>()
 
-// Receive the discovered servers from the main process
-// window.electron.ipcRenderer.on('discovered-servers', async (_event, discoveredServers: Server[]) => {
-//   // console.log("📡 Received discovered servers:", discoveredServers);
-
-//   const isDev = await window.electron.ipcRenderer.invoke("is-dev")
-
-//   if (isDev || !props.filterOutStorageSetupComplete) {
-
-//     servers.value = discoveredServers;
-//   } else {
-
-//     servers.value = discoveredServers.filter(server => server.status !== "complete");
-//   }
-
-// });
-
-window.electron.ipcRenderer.on('discovered-servers', (_event, discoveredServers: Server[]) => {
-  servers.value = discoveredServers;
-});
-
-watch(servers, () => {
-  const buttons = document.querySelectorAll('.btn');
-  buttons.forEach(button => {
-    button.addEventListener('click', () => {
-      buttons.forEach(btn => btn.classList.remove('selected'));
-      button.classList.add('selected');
-    });
-  });
+// 3) manage your discovered servers (unchanged)
+const servers = ref<Server[]>([])
+window.electron.ipcRenderer.on('discovered-servers', (_e, list: Server[]) => {
+  servers.value = props.filterOutStorageSetupComplete
+    ? list.filter((s) => s.status !== 'complete')
+    : list
 })
 
-// Define event emitter
-const emit = defineEmits<{
-  (event: 'serverSelected', server: Server | null): void;
-}>();
+// 4) helper to test if this row is selected
+const isSelected = (srv: Server) =>
+  props.selectedServer?.ip === srv.ip
 
-// Emit event when a server is selected
-const handleSelection = (server: Server) => {
-  // If the same server is clicked again, toggle selection
-  if (selectedServer.value?.ip === server.ip) {
-    selectedServer.value = null;
-    emit('serverSelected', null);
-  } else {
-    selectedServer.value = server;
-    emit('serverSelected', server);
-  }
-};
-
+// 5) on click, toggle; emit null to unselect
+function onSelect(srv: Server) {
+  const next = isSelected(srv) ? null : srv
+  emit('serverSelected', next)
+}
 </script>
 
 <style scoped></style>
