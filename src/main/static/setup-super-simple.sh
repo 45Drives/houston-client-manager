@@ -1,65 +1,64 @@
-#!/bin/bash
+#!/usr/bin/env bash
 set -euo pipefail
 
-# 🔐 Self-elevate if not root
+# Self-elevate
 if [ "$EUID" -ne 0 ]; then
   echo "[INFO] Re-running script with sudo…"
   exec sudo "$0" "$@"
 fi
 
-# ────────────────────────────────────────────────────────────────────
-# 1) Detect OS
-# ────────────────────────────────────────────────────────────────────
-if [ -f /etc/os-release ]; then
+# 1) Detect OS + set package-tool vars
+if   [[ -f /etc/os-release ]]; then
+  # shellcheck disable=SC1091
   . /etc/os-release
-  OS_ID=$ID
+  case "$ID" in
+    rocky|rhel|centos|almalinux|fedora)
+      OS_FAMILY=rhel
+      PKG_INSTALL="dnf install -y"
+      PKG_QUERY="rpm -q"
+      FIREWALL_CMD=firewall-cmd
+      ZFS_REPO_RPM="https://zfsonlinux.org/epel/zfs-release-$(rpm -E '%{rhel}').noarch.rpm"
+      ;;
+    debian|ubuntu)
+      OS_FAMILY=debian
+      PKG_INSTALL="apt update -y && apt install -y"
+      PKG_QUERY="dpkg -s"
+      ;;
+    *)
+      echo "[ERROR] Unsupported OS: $ID"
+      exit 1
+      ;;
+  esac
 else
   echo "[ERROR] Cannot detect OS (missing /etc/os-release)"
   exit 1
 fi
-echo "[INFO] Detected OS: $OS_ID"
 
-# Classify package manager & service names
-if [[ "$OS_ID" =~ ^(rocky|rhel|centos|almalinux|fedora)$ ]]; then
-  PKG="dnf"
-  COCKPIT_SVC="cockpit.socket"
-  ZFS_PKGS="kernel-devel dkms zfs"
-  REPO_RPM_URL="https://zfsonlinux.org/epel/zfs-release-$(rpm -E '%{rhel}').noarch.rpm"
-  ZFS_SVCS=(zfs-import-cache zfs-import-scan zfs-mount zfs-zed)
-  SMB_PKGS="samba"
-  SMB_SVCS=(smb nmb)
-  FIREWALL_CMD="firewall-cmd"
-elif [[ "$OS_ID" =~ ^(debian|ubuntu)$ ]]; then
-  PKG="apt"
-  COCKPIT_SVC="cockpit.socket"
-  ZFS_PKGS="zfsutils-linux zfs-dkms"
-  ZFS_SVCS=(zfs-import-cache zfs-import-scan zfs-mount zfs-zed)
-  SMB_PKGS="samba"
-  SMB_SVCS=(smbd nmbd)
-else
-  echo "[ERROR] Unsupported OS: $OS_ID"
-  exit 1
-fi
+echo "[INFO] Detected OS family: $OS_FAMILY"
 
-# ────────────────────────────────────────────────────────────────────
-# 2) 45Drives repo setup (idempotent)
-# ────────────────────────────────────────────────────────────────────
+# 2) Helper to install if missing
+install_pkg() {
+  local pkg="$1"
+  # PKG_QUERY retcode 0 means “installed”
+  if ! $PKG_QUERY "$pkg" &>/dev/null; then
+    echo "[INFO] Installing $pkg…"
+    $PKG_INSTALL "$pkg"
+  else
+    echo "[INFO] $pkg already installed."
+  fi
+}
+
+# 3) 45Drives repo (same as you had)
 add_45drives_repos() {
-  if ! grep -q "repo.45drives.com" /etc/yum.repos.d/* 2>/dev/null && ! grep -q "repo.45drives.com" /etc/apt/sources.list* 2>/dev/null; then
+  if ! grep -q "repo.45drives.com" /etc/*-release* /etc/yum.repos.d/* /etc/apt/* 2>/dev/null; then
     echo "[INFO] Adding 45Drives package repository…"
-    if curl -sSL https://repo.45drives.com/setup | bash; then
-      echo "[INFO] 45Drives repo configured."
-    else
-      echo "[WARN] Failed to add 45Drives repo, but continuing..."
-    fi
+    curl -fsSL https://repo.45drives.com/setup | bash || echo "[WARN] Could not add 45Drives repo"
   else
     echo "[INFO] 45Drives repo already present."
   fi
 }
 
-# ────────────────────────────────────────────────────────────────────
-# 3) Install Node.js 18
-# ────────────────────────────────────────────────────────────────────
+# 4) Node.js 18 (unchanged)
 install_nodejs_18() {
   local maj
   if command -v node >/dev/null; then
@@ -85,34 +84,19 @@ install_nodejs_18() {
   fi
 }
 
-# ────────────────────────────────────────────────────────────────────
-# 4) Install & enable Cockpit + super-simple-setup
-# ────────────────────────────────────────────────────────────────────
+
+# 5) Cockpit
 install_cockpit() {
-  if ! rpm -q cockpit &>/dev/null && ! dpkg -l | grep -qw cockpit; then
-    echo "[INFO] Installing Cockpit…"
-    if [[ "$PKG" == "dnf" ]]; then
-      dnf install -y cockpit
-    else
-      apt update -y
-      apt install -y cockpit
-    fi
-  else
-    echo "[INFO] Cockpit package already installed."
-  fi
+  install_pkg cockpit
+  systemctl enable --now cockpit.socket \
+    || echo "[WARN] Could not enable/start cockpit.socket"
 
-  if ! systemctl is-enabled --quiet "$COCKPIT_SVC"; then
-    echo "[INFO] Enabling & starting $COCKPIT_SVC…"
-    systemctl enable --now "$COCKPIT_SVC" || echo "[WARN] Could not enable/start $COCKPIT_SVC"
-  else
-    echo "[INFO] $COCKPIT_SVC already enabled."
-  fi
-
-  if [[ "$PKG" == "dnf" && -x "$(command -v $FIREWALL_CMD)" ]]; then
+  # open firewall on RHEL-family
+  if [[ $OS_FAMILY == rhel && -x "$(command -v "$FIREWALL_CMD")" ]]; then
     if ! $FIREWALL_CMD --list-services --permanent | grep -qw cockpit; then
       echo "[INFO] Opening firewall for Cockpit…"
-      $FIREWALL_CMD --add-service=cockpit --permanent || true
-      $FIREWALL_CMD --reload || true
+      $FIREWALL_CMD --add-service=cockpit --permanent \
+        && $FIREWALL_CMD --reload
     else
       echo "[INFO] Cockpit firewall rule already present."
     fi
@@ -120,73 +104,44 @@ install_cockpit() {
 }
 
 install_cockpit_module() {
-  if ! rpm -q cockpit-super-simple-setup &>/dev/null && ! dpkg -l | grep -qw cockpit-super-simple-setup; then
-    echo "[INFO] Installing cockpit-super-simple-setup…"
-    if [[ "$PKG" == "dnf" ]]; then
-      dnf install -y cockpit-super-simple-setup || echo "[WARN] Failed to install cockpit-super-simple-setup"
-    else
-      apt install -y cockpit-super-simple-setup || echo "[WARN] Failed to install cockpit-super-simple-setup"
-    fi
-  else
-    echo "[INFO] cockpit-super-simple-setup already installed."
-  fi
+  install_pkg cockpit-super-simple-setup
 }
 
-# ────────────────────────────────────────────────────────────────────
-# 5) Install & enable ZFS
-# ────────────────────────────────────────────────────────────────────
+# 6) ZFS
 install_zfs() {
-  if ! command -v zfs >/dev/null; then
+  if ! command -v zfs &>/dev/null; then
     echo "[INFO] Installing ZFS…"
-    if [[ "$PKG" == "dnf" ]]; then
-      if ! dnf install -y "$REPO_RPM_URL"; then
-        echo "[WARN] Could not fetch ZFS-release RPM, skipping repo setup"
-      fi
-      dnf install -y $ZFS_PKGS || { echo "[ERROR] Could not install ZFS packages"; return 1; }
+    if [[ $OS_FAMILY == rhel ]]; then
+      dnf install -y "$ZFS_REPO_RPM" \
+        || echo "[WARN] Could not install ZFS-release RPM"
+      dnf install -y kernel-devel dkms zfs \
+        || { echo "[ERROR] Could not install ZFS packages"; return 1; }
     else
       apt update -y
-      apt install -y $ZFS_PKGS || { echo "[ERROR] Could not install ZFS packages"; return 1; }
+      apt install -y zfsutils-linux zfs-dkms \
+        || { echo "[ERROR] Could not install ZFS packages"; return 1; }
     fi
-
-    echo "zfs" > /etc/modules-load.d/zfs.conf || true
+    echo zfs > /etc/modules-load.d/zfs.conf
     modprobe zfs || echo "[WARN] modprobe zfs failed"
   else
     echo "[INFO] ZFS already installed: $(zfs --version | head -1)"
   fi
 
-  for svc in "${ZFS_SVCS[@]}"; do
-    if ! systemctl is-enabled --quiet "$svc"; then
-      echo "[INFO] Enabling & starting ZFS service: $svc"
-      systemctl enable --now "$svc" || echo "[WARN] Could not enable/start $svc"
-    else
-      echo "[INFO] ZFS service $svc already enabled."
-    fi
+  for svc in zfs-import-cache zfs-import-scan zfs-mount zfs-zed; do
+    systemctl enable --now "$svc" \
+      || echo "[WARN] Could not enable/start $svc"
   done
 }
 
-# ────────────────────────────────────────────────────────────────────
-# 6) Install & enable Samba
-# ────────────────────────────────────────────────────────────────────
+# 7) Samba
 install_samba() {
-  if ! rpm -q samba &>/dev/null && ! dpkg -l | grep -qw samba; then
-    echo "[INFO] Installing Samba…"
-    if [[ "$PKG" == "dnf" ]]; then
-      dnf install -y $SMB_PKGS || echo "[WARN] Samba install failed"
-    else
-      apt update -y
-      apt install -y $SMB_PKGS || echo "[WARN] Samba install failed"
-    fi
-  else
-    echo "[INFO] Samba package already installed."
-  fi
+  install_pkg samba
+  local svcs=( smb nmb )
+  if [[ $OS_FAMILY == debian ]]; then svcs=( smbd nmbd ); fi
 
-  for svc in "${SMB_SVCS[@]}"; do
-    if ! systemctl is-enabled --quiet "$svc"; then
-      echo "[INFO] Enabling & starting SMB service: $svc"
-      systemctl enable --now "$svc" || echo "[WARN] Could not enable/start $svc"
-    else
-      echo "[INFO] SMB service $svc already enabled."
-    fi
+  for svc in "${svcs[@]}"; do
+    systemctl enable --now "$svc" \
+      || echo "[WARN] Could not enable/start $svc"
   done
 }
 
@@ -200,5 +155,5 @@ install_cockpit_module
 install_zfs
 install_samba
 
-echo "[INFO] All done!  🎉"
+echo "[INFO] All done! 🎉"
 echo "Access Cockpit at: https://$(hostname -I | awk '{print $1}'):9090"
