@@ -18,52 +18,94 @@
       <p class="w-9/12 text-xl">
         You may have multiple 45Drives servers on your network that require setup.
       </p>
-      <br />
-      <p class="w-9/12 text-xl">
+      <p class="w-9/12 text-xl mt-2">
         This setup wizard is designed to setup one server at a time. Click the box next to the server you would like to
         setup first.
       </p>
-      <br />
-      <p class="w-9/12 text-xl">
+      <p class="w-9/12 text-xl mt-2">
         When you are finished setting the selected server up, simply re-run this program to start setting
         up the remaining server(s).
       </p>
 
       <div class="overflow-hidden w-full">
         <div class="max-h-[50vh] overflow-y-auto">
-          <HoustonServerListView class="w-1/3 px-5 justify-center text-xl" :filterOutStorageSetupComplete="true"
-            @serverSelected="handleServerSelected" />
+          <!-- <HoustonServerListView class="w-1/3 px-5 justify-center text-xl" :filterOutStorageSetupComplete="true"
+            @serverSelected="handleServerSelected" /> -->
+          <HoustonServerListView class="w-1/3 px-5 justify-center text-xl" :filterOutStorageSetupComplete="false"
+            :selectedServer="selectedServer" @serverSelected="handleServerSelected" />
         </div>
       </div>
 
 
       <br />
 
-      <p class="w-9/12 text-xl">
+      <!-- <p class="w-9/12 text-xl">
         If your storage server is not appearing in the list above, please return to the Hardware Setup and ensure
         all
         steps were completed correctly.
         <a href="#" @click.prevent="onRestartSetup" class="text-blue-600 hover:underline">Start Over</a>
-      </p>
-      <p class="w-9/12 text-xl">
-        Or, if you know the IP of a server you wish to manually add, enter it here:
+        Or, if you know the IP of an existing server you wish to manually add and re-initialize, enter it here: (and the
+        login credentials to connect, if so)
+      </p> -->
+      <p class="w-9/12 text-xl text-center">
+        If your storage server is not appearing in the list above, please return to the Hardware Setup and ensure
+        all steps were completed correctly.<br />
+        <a href="#" @click.prevent="onRestartSetup" class="text-blue-600 hover:underline">Start Over</a>
       </p>
 
-      <div class="flex gap-4 items-center mt-2">
-        <input v-model="manualIp" type="text" placeholder="192.168.1.123"
-          class="input-textlike border px-4 py-2 rounded text-xl w-72" />
-        <button @click="addManualIp" class="btn btn-primary px-6 py-2 text-xl">
-          Add Server
-        </button>
+      <div class="bg-well p-2 rounded-md mt-2">
+        <p class="w-full text-xl">
+          Or, if you know the IP of an existing server you wish to manually add and re-initialize, enter it here along
+          with root/admin login credentials.
+        </p>
+        <p class="w-full text-md mt-2 italic text-center">
+          Your credentials will only be used once to copy a secure SSH key and install required tools on the server if
+          needed. This make take a few minutes if nothing at all is installed.
+          <br />
+          This will setup <b>ZFS</b>, <b>Samba</b>, <b>Cockpit</b>, and the <b>45Drives Setup Module</b>.
+        </p>
+
+        <div class="w-full flex flex-row items-center justify-center gap-6 mt-1">
+          <!-- IP -->
+          <div class="w-64">
+            <input v-model="manualIp" type="text" placeholder="192.168.1.123" tabindex="1"
+              class="input-textlike border px-4 py-1 rounded text-xl w-full" />
+          </div>
+
+          <!-- Username -->
+          <div class="w-64">
+            <input v-model="manualUsername" type="text" placeholder="root" tabindex="2"
+              class="input-textlike border px-4 py-1 rounded text-xl w-full" />
+          </div>
+
+          <!-- Password -->
+          <div class="w-64 relative">
+            <input v-model="manualPassword" v-enter-next :type="showPassword ? 'text' : 'password'" id="password"
+              tabindex="3" class="input-textlike border px-4 py-1 rounded text-xl w-full" placeholder="••••••••" />
+            <button type="button" @click="togglePassword"
+              class="absolute right-3 top-1/2 transform -translate-y-1/2 text-muted">
+              <EyeIcon v-if="!showPassword" class="w-5 h-5" />
+              <EyeSlashIcon v-if="showPassword" class="w-5 h-5" />
+            </button>
+          </div>
+
+          <!-- Add Server -->
+          <button @click="addManualIp" :disabled="!canAdd" class="btn btn-primary px-6 py-1 text-xl whitespace-nowrap">
+            Add Server
+          </button>
+        </div>
+
+        <p v-if="statusMessage" class="text-lg text-center mt-2">
+          {{ statusMessage }}
+        </p>
       </div>
 
-
-      <br />
-
-      <p class="text-center text-2xl">
-        Once you have one of the boxes checked, click <b>NEXT</b>.
-      </p>
-
+      <div v-if="isInstalling" class="justify-self-center spinner"></div>
+      <div v-else>
+        <p class="text-center text-xl mt-1">
+          Once you have one of the boxes checked, click <b>NEXT</b>.
+        </p>
+      </div>
     </div>
 
     <!-- Buttons -->
@@ -73,8 +115,17 @@
           Back
         </button>
 
-        <button :disabled="selectedServer === null" @click="proceedToNextStep" class="btn btn-primary w-40 h-20">
+        <!-- <button :disabled="selectedServer === null" @click="proceedToNextStep" class="btn btn-primary w-40 h-20">
           Next
+        </button> -->
+        <button class="btn btn-primary w-40 h-20 flex items-center justify-center"
+          :disabled="!selectedServer || isInstalling" @click="proceedToNextStep">
+          <template v-if="isInstalling">
+            Installing…
+          </template>
+          <template v-else>
+            Next
+          </template>
         </button>
       </div>
     </template>
@@ -86,20 +137,77 @@ import CardContainer from '../../components/CardContainer.vue';
 import { useWizardSteps, DynamicBrandingLogo, useEnterToAdvance } from '@45drives/houston-common-ui';
 import { IPCRouter } from '@45drives/houston-common-lib';
 import HoustonServerListView from '../../components/HoustonServerListView.vue'
+import { EyeIcon, EyeSlashIcon } from "@heroicons/vue/20/solid";
 import { Server } from '../../types';
-import { ref } from 'vue';
+import { computed, ref } from 'vue';
 import GlobalSetupWizardMenu from '../../components/GlobalSetupWizardMenu.vue';
 import { divisionCodeInjectionKey } from '../../keys/injection-keys';
 import { inject } from 'vue';
 
 const division = inject(divisionCodeInjectionKey);
+const showPassword = ref(false);
+const togglePassword = () => {
+  showPassword.value = !showPassword.value;
+};
+const statusMessage = ref('');
+const isInstalling = ref(false)
 
 const { completeCurrentStep, unCompleteCurrentStep, prevStep, reset } = useWizardSteps("setup");
-const selectedServer = ref<Server | null>(null);
+// const selectedServer = ref<Server | null>(null);
 
-
+const selectedServer = ref<(Server & {
+  username?: string;
+  password?: string;
+  manuallyAdded?: boolean;
+}) | null>(null);
 
 const manualIp = ref('');
+const manuallyAddedIp = ref('');
+const manualUsername = ref('');
+const manualPassword = ref('');
+const manualCredentials = ref<Record<string, { username: string; password: string }>>({});
+const canAdd = computed(
+  () =>
+    manualIp.value !== '' &&
+    manualUsername.value.trim() !== '' &&
+    manualPassword.value.trim() !== '' &&
+    !manualCredentials.value[manualIp.value]
+);
+
+
+interface InstallResult {
+  success: boolean;
+  error?: string;
+}
+
+const installModule = async (): Promise<InstallResult> => {
+  isInstalling.value = true
+  statusMessage.value = "Connecting to server, uploading SSH key and installing packages…"
+  try {
+    const result = await IPCRouter
+      .getInstance()
+      .invoke<InstallResult>('install-cockpit-module', {
+        host: selectedServer.value!.ip,
+        username: selectedServer.value!.username,
+        password: selectedServer.value!.password
+      })
+
+    console.log("🚀 installModule result:", result)
+    if (!result.success) {
+      statusMessage.value = result.error || "Installation failed."
+    } else {
+      statusMessage.value = "Module installed and SSH key uploaded!"
+    }
+    return result
+  } catch (err: any) {
+    console.error("❌ Manual IP install failed:", err)
+    statusMessage.value = "Could not connect or authenticate."
+    return { success: false, error: err.message }
+  } finally {
+    isInstalling.value = false
+  }
+}
+
 
 const addManualIp = async () => {
   const ip = manualIp.value.trim();
@@ -109,34 +217,66 @@ const addManualIp = async () => {
     return;
   }
 
+  if (!manualUsername.value.trim() || !manualPassword.value.trim()) {
+    reportError(new Error("Username and password are required."));
+    return;
+  }
+
+  manuallyAddedIp.value = ip;
+
+  const newSrv: Server = {
+    ip,
+    name: ip,
+    lastSeen: Date.now(),
+    status: "unknown",
+    manuallyAdded: true
+  };
+
+
   IPCRouter.getInstance().send('backend', 'action', JSON.stringify({
     type: 'addManualIP',
-    ip: manualIp.value
+    ip: manualIp.value,
+    manuallyAdded: true
   }));
 
-  // Automatically select it
-  // selectedServer.value = server;
-
-  // Clear input
+  selectedServer.value = newSrv;
+  selectedServer.value.username = manualUsername.value;
+  selectedServer.value.password = manualPassword.value;
   manualIp.value = '';
+  manualUsername.value = '';
+  manualPassword.value = '';
 };
 
-const goBackStep = async () => {
-  prevStep();
-};
+
+const goBackStep = () => prevStep();
 
 const proceedToNextStep = async () => {
-  // console.log("Next Button on Discovery clicked.")
+  if (selectedServer.value?.manuallyAdded) {
+    const result = await installModule()
+    if (!result.success) {
+      // stop here so we don’t advance
+      return
+    }
+  }
   unCompleteCurrentStep()
-  completeCurrentStep(true, selectedServer.value as Record<string, any>);
-};
-
-const onRestartSetup = async () => {
-  reset();
+  completeCurrentStep(true, selectedServer.value as Record<string, any>)
 }
 
-const handleServerSelected = async (server: Server | null) => {
-  selectedServer.value = server;
+const onRestartSetup = () => reset();
+
+const handleServerSelected = (server: Server | null) => {
+  if (server && server.ip === manuallyAddedIp.value) {
+    // Re-selecting the manually‐added server: restore its username/password
+    selectedServer.value = {
+      ...server,
+      manuallyAdded: true,
+      username: manualUsername.value,
+      password: manualPassword.value,
+    };
+  } else {
+    // selecting a normal server, or un-selecting (null)
+    selectedServer.value = server;
+  }
 };
 
 useEnterToAdvance(
@@ -156,6 +296,27 @@ useEnterToAdvance(
   }
 );
 
+
 </script>
 
-<style scoped></style>
+<style scoped>
+.spinner {
+  border: 4px solid rgba(0, 0, 0, 0.1);
+  border-left-color: #2c3e50;
+  border-radius: 50%;
+  width: 40px;
+  height: 40px;
+  animation: spin 1s linear infinite;
+  margin: 20px;
+}
+
+@keyframes spin {
+  0% {
+    transform: rotate(0deg);
+  }
+
+  100% {
+    transform: rotate(360deg);
+  }
+}
+</style>

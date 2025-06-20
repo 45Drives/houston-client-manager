@@ -14,6 +14,7 @@ export interface Server {
     aliasStyle: string;
     chassisSize: string;
   };
+  manuallyAdded?: boolean;
 }
 
 export type DivisionType = 'default' | 'enterprise' | 'homelab' | 'professional';
