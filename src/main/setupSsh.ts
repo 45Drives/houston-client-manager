@@ -5,6 +5,7 @@ import { getAppPath, getOS } from "./utils";
 import { NodeSSH } from 'node-ssh';
 import { getAsset } from './utils';
 import net from 'net';
+import { app } from 'electron';
 
 export function checkSSH(host: string, timeout = 3000): Promise<boolean> {
   return new Promise((resolve) => {
@@ -19,7 +20,8 @@ export function checkSSH(host: string, timeout = 3000): Promise<boolean> {
 // 🧩 Generates + uploads SSH key
 export async function setupSshKey(host: string, username: string, password: string): Promise<void> {
   const ssh = new NodeSSH();
-  const sshDir = path.join(getAppPath(), ".ssh");
+  // const sshDir = path.join(getAppPath(), ".ssh");
+  const sshDir = path.join(app.getPath('userData'), '.ssh');
   const privateKeyPath = path.join(sshDir, "id_rsa");
   const publicKeyPath = path.join(sshDir, "id_rsa.pub");
 

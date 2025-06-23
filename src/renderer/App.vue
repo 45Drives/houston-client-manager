@@ -56,14 +56,14 @@
 </template>
 
 <script setup lang="ts">
-import { nextTick, onMounted, provide, ref, unref, watch } from 'vue';
+import { nextTick, onMounted, provide, reactive, ref, unref, watch } from 'vue';
 import { useAdvancedModeState } from './composables/useAdvancedState';
-import { Server, DivisionType } from './types';
+import { Server, DivisionType, DiscoveryState } from './types';
 import { useWizardSteps, GlobalModalConfirm, Notification, reportError, reportSuccess, useDarkModeState, NotificationView, pushNotification } from '@45drives/houston-common-ui'
 import StorageSetupWizard from './views/storageSetupWizard/Wizard.vue';
 import BackUpSetupWizard from './views/backupSetupWizard/Wizard.vue';
 import RestoreBackUpWizard from './views/restoreBackupWizard/Wizard.vue';
-import { divisionCodeInjectionKey, currentServerInjectionKey, currentWizardInjectionKey, thisOsInjectionKey } from './keys/injection-keys';
+import { divisionCodeInjectionKey, currentServerInjectionKey, currentWizardInjectionKey, thisOsInjectionKey, discoveryStateInjectionKey } from './keys/injection-keys';
 import { IPCMessageRouterRenderer, IPCRouter } from '@45drives/houston-common-lib';
 
 const thisOS = ref<string>('');
@@ -71,7 +71,11 @@ const setOs = (value: string) => {
   thisOS.value = value;
 };
 
-const fallbackTriggered = ref(false);
+const discoveryState = reactive<DiscoveryState>({
+  servers: [],
+  fallbackTriggered: false,
+})
+provide(discoveryStateInjectionKey, discoveryState)
 
 provide(thisOsInjectionKey, thisOS);
 
@@ -260,7 +264,7 @@ function applyThemeFromAliasStyle(aliasStyle?: string) {
 
 const isDev = ref(false);
 
-window.electron.ipcRenderer.invoke('is-dev').then(value => isDev.value = value);
+// window.electron.ipcRenderer.invoke('is-dev').then(value => isDev.value = value);
 // console.log(window.electron.ipcRenderer);
 
 const darkModeState = useDarkModeState();
@@ -328,28 +332,57 @@ onMounted(async () => {
     scanningNetworkForServers.value = false;
   }, 7000);
 
-  setTimeout(async () => {
-    if (!discoveredServersChecked && !fallbackTriggered.value) {
-      fallbackTriggered.value = true;
-      try {
-        const fallbackServers = await window.electron.ipcRenderer.invoke("scan-network-fallback");
-        if (fallbackServers.length > 0) {
-          window.electron.ipcRenderer.send("discovered-servers", fallbackServers);
-          pushNotification(new Notification(
-            'Fallback Discovery',
-            `Found ${fallbackServers.length} server(s) using IP scan.`,
-            'success',
-            6000
-          ));
+  window.electron.ipcRenderer.on(
+    'discovered-servers',
+    (_evt, mdnsList: Server[]) => {
+      mdnsList.forEach(m => {
+        const idx = discoveryState.servers.findIndex(s => s.ip === m.ip)
+        if (idx > -1) {
+          const current = discoveryState.servers[idx];
+          const hasRealHostname = m.name && m.name !== m.ip;
+          // merge logic: only replace if the new one has better info
+          const updated = {
+            ...current,
+            ...m,
+            name: hasRealHostname ? m.name : current.name,
+            fallbackAdded: hasRealHostname ? false : current.fallbackAdded,
+          };
+
+          discoveryState.servers.splice(idx, 1, updated);
         } else {
-          reportError(new Error("No servers found via fallback scan."));
+          discoveryState.servers.push(m);
         }
-      } catch (err) {
-        console.error("Fallback scan failed:", err);
-        reportError(new Error("Fallback scan failed."));
-      }
+      });
+      discoveryState.servers.sort((a, b) => {
+        if (a.name === a.ip && b.name !== b.ip) return 1;
+        if (a.name !== a.ip && b.name === b.ip) return -1;
+        return 0;
+      });
     }
-  }, 8000); // Run fallback ~1 second after mDNS timeout
+  )
+
+  setTimeout(async () => {
+    if (discoveryState.fallbackTriggered) return
+    discoveryState.fallbackTriggered = true
+    try {
+      const fallback: Server[] = await window.electron.ipcRenderer.invoke('scan-network-fallback')
+      const toAdd = fallback.filter(fb =>
+        !discoveryState.servers.some(existing => existing.ip === fb.ip)
+      )
+      if (toAdd.length) {
+        discoveryState.servers.push(...toAdd)
+        pushNotification(new Notification(
+          'Fallback Discovery',
+          `Found ${toAdd.length} additional server(s) via IP scan.`,
+          'success',
+          6000
+        ))
+      }
+    } catch (err) {
+      console.error('Fallback scan failed:', err)
+      reportError(new Error('Fallback scan failed.'))
+    }
+  }, 10000)
 
   const updateTheme = () => {
     const found = Array.from(document.documentElement.classList).find(cls =>
@@ -400,8 +433,9 @@ let discoveredServersChecked = false;
 window.electron.ipcRenderer.on('discovered-servers', (_event, discoveredServers: Server[]) => {
   if (!scanningNetworkForServers.value && !discoveredServersChecked) {
     discoveredServersChecked = true;
-    const anyServersNotSetup = discoveredServers.some((server) => server.status !== "complete");
-    currentWizard.value = anyServersNotSetup ? 'storage' : 'backup';
+    // const anyServersNotSetup = discoveredServers.some((server) => server.status !== "complete");
+    // currentWizard.value = anyServersNotSetup ? 'storage' : 'backup';
+    currentWizard.value = 'storage';
     showWebView.value = false;
   }
 

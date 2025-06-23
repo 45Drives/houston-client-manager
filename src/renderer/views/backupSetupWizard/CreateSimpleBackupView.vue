@@ -112,11 +112,11 @@
 
 <script setup lang="ts">
 import { CardContainer, CommanderToolTip, confirm, useEnterToAdvance } from "@45drives/houston-common-ui";
-import { inject, onMounted, ref, watch } from "vue";
+import { computed, inject, onMounted, ref, watch } from "vue";
 import { PlusIcon, MinusIcon } from "@heroicons/vue/20/solid";
 import { useWizardSteps, DynamicBrandingLogo } from '@45drives/houston-common-ui';
-import { Server } from '../../types'
-import { backUpSetupConfigKey, divisionCodeInjectionKey } from "../../keys/injection-keys";
+import { Server, DiscoveryState } from '../../types'
+import { backUpSetupConfigKey, divisionCodeInjectionKey, discoveryStateInjectionKey } from "../../keys/injection-keys";
 import MessageDialog from '../../components/MessageDialog.vue';
 import { BackUpTask, IPCMessageRouter, IPCRouter, server, unwrap } from "@45drives/houston-common-lib";
 import GlobalSetupWizardMenu from '../../components/GlobalSetupWizardMenu.vue';
@@ -132,56 +132,74 @@ const backUpSetupConfig = inject(backUpSetupConfigKey);
 const selectedFolders = ref<{ name: string; path: string }[]>([]);
 const scheduleFrequency = ref<"hour" | "day" | "week" | "month">("hour");
 
-const servers = ref<Server[]>([]);
+// const servers = ref<Server[]>([]);
+const discoveryState = inject<DiscoveryState>(discoveryStateInjectionKey)!
+const servers = computed(() => discoveryState.servers)
 const selectedServer = ref<Server | null>(null);
 const isSelectingFolder = ref(false);
 const messageFolderAlreadyAdded = ref<InstanceType<typeof MessageDialog> | null>(null);
 const messageSubFolderAlreadyAdded = ref<InstanceType<typeof MessageDialog> | null>(null);
 const messageParentFolderAlreadyAdded = ref<InstanceType<typeof MessageDialog> | null>(null);
 
-function areArraysEqual(arr1: Server[], arr2: Server[]): boolean {
-	if (arr1.length !== arr2.length) {
-		return false; // Arrays have different lengths
+// function areArraysEqual(arr1: Server[], arr2: Server[]): boolean {
+// 	if (arr1.length !== arr2.length) {
+// 		return false; // Arrays have different lengths
+// 	}
+
+// 	return arr1.every((value, index) => {
+// 		const server1: Server = value;
+// 		const server2: Server = arr2[index];
+
+// 		return server1.ip === server2.ip;
+
+// 	});
+// }
+
+// // Receive the discovered servers from the main process
+// window.electron.ipcRenderer.on('discovered-servers', (_event, discoveredServers: Server[]) => {
+// 	if (!areArraysEqual(discoveredServers, servers.value)) {
+// 		// console.log("Discovered servers:", discoveredServers)
+// 		servers.value = discoveredServers;
+// 		if (discoveredServers.length > 0) {
+
+// 			const tasks = backUpSetupConfig?.backUpTasks;
+// 			if (tasks && tasks.length > 0) {
+
+// 				const task = tasks[0];
+// 				const target = task.target;
+
+// 				const potentialServer = discoveredServers.find(server => target.includes(server.ip));
+// 				if (potentialServer) {
+
+// 					selectedServer.value = potentialServer;
+// 				} else {
+// 					selectedServer.value = discoveredServers[0];
+// 				}
+
+// 			} else {
+
+// 				selectedServer.value = discoveredServers[0];
+// 			}
+
+// 		}
+// 	}
+// });
+
+watch(servers, (discoveredServers) => {
+	if (discoveredServers.length === 0) {
+		selectedServer.value = null
+		return
 	}
 
-	return arr1.every((value, index) => {
-		const server1: Server = value;
-		const server2: Server = arr2[index];
-
-		return server1.ip === server2.ip;
-
-	});
-}
-
-// Receive the discovered servers from the main process
-window.electron.ipcRenderer.on('discovered-servers', (_event, discoveredServers: Server[]) => {
-	if (!areArraysEqual(discoveredServers, servers.value)) {
-		// console.log("Discovered servers:", discoveredServers)
-		servers.value = discoveredServers;
-		if (discoveredServers.length > 0) {
-
-			const tasks = backUpSetupConfig?.backUpTasks;
-			if (tasks && tasks.length > 0) {
-
-				const task = tasks[0];
-				const target = task.target;
-
-				const potentialServer = discoveredServers.find(server => target.includes(server.ip));
-				if (potentialServer) {
-
-					selectedServer.value = potentialServer;
-				} else {
-					selectedServer.value = discoveredServers[0];
-				}
-
-			} else {
-
-				selectedServer.value = discoveredServers[0];
-			}
-
-		}
+	const tasks = backUpSetupConfig?.backUpTasks
+	if (tasks && tasks.length > 0) {
+		const target = tasks[0].target
+		const match = discoveredServers.find(srv => target.includes(srv.ip))
+		selectedServer.value = match ?? discoveredServers[0]
+	} else {
+		selectedServer.value = discoveredServers[0]
 	}
-});
+}, { immediate: true })
 
 //  Watch and Update Tasks When Schedule Changes
 watch(scheduleFrequency, (newSchedule) => {
