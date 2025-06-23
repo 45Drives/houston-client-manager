@@ -36,7 +36,7 @@ import { checkSSH } from './setupSsh';
 
 let discoveredServers: Server[] = [];
 
-const blockerId = powerSaveBlocker.start("prevent-app-suspension");
+// const blockerId = powerSaveBlocker.start("prevent-app-suspension");
 
 app.commandLine.appendSwitch('ignore-certificate-errors', 'true');
 
@@ -137,10 +137,13 @@ function createWindow() {
     }
   });
 
+
   async function doFallbackScan(): Promise<Server[]> {
     const ip = getLocalIP();
     const subnet = getSubnetBase(ip);
-    const ips = Array.from({ length: 254 }, (_, i) => `${subnet}.${i + 1}`);
+    const ips = Array
+      .from({ length: 254 }, (_, i) => `${subnet}.${i + 1}`)
+      .filter(candidate => candidate !== ip);
 
     // exactly your old logic, with proper serverInfo defaults
     const scanned = await Promise.allSettled(
@@ -172,6 +175,7 @@ function createWindow() {
               chassisSize: '',
             },
             lastSeen: Date.now(),
+            fallbackAdded: true
           } as Server;
 
         } catch {
@@ -519,9 +523,11 @@ function createWindow() {
               chassisSize: '',
             },
             manuallyAdded: manuallyAdded === true,
+            fallbackAdded: false,
           };
 
-          let existingServer = discoveredServers.find((eServer) => eServer.ip === server.ip && eServer.name === server.name);
+          // let existingServer = discoveredServers.find((eServer) => eServer.ip === server.ip && eServer.name === server.name);
+          let existingServer = discoveredServers.find(eServer => eServer.ip === server.ip);
 
           try {
             if (!existingServer) {
@@ -537,7 +543,7 @@ function createWindow() {
             }
 
           } catch (error) {
-            console.error('Fetch error:', error);
+            console.error('Add Manual Server-> Fetch error:', error);
           }
 
           mainWindow.webContents.send('discovered-servers', discoveredServers);
@@ -641,24 +647,27 @@ function createWindow() {
               chassisSize: txtRecord.chassisSize,
             },
             manuallyAdded: false,
+            fallbackAdded: false,
           };
 
-          // ———— your existing fetch logic ————
-          try {
-            const fetchResponse = await fetch(`http://${server.ip}:9095/setup-status`);
-            if (fetchResponse.ok) {
-              const setupStatusResponse = await fetchResponse.json();
-              server.status = setupStatusResponse.status ?? 'unknown';
-            } else {
-              console.warn(`HTTP error! server: ${server.name} status: ${fetchResponse.status}`);
+          if (!server.manuallyAdded && !server.fallbackAdded) {
+            try {
+              const fetchResponse = await fetch(`http://${server.ip}:9095/setup-status`);
+              if (fetchResponse.ok) {
+                const setupStatusResponse = await fetchResponse.json();
+                server.status = setupStatusResponse.status ?? 'unknown';
+              } else {
+                console.warn(`HTTP error! server: ${server.name} status: ${fetchResponse.status}`);
+              }
+            } catch (error) {
+              // console.error('Server Search -> Fetch error:', error);
             }
-          } catch (error) {
-            console.error('Fetch error:', error);
           }
-          // — end fetch logic —
 
           // upsert into discoveredServers
-          const existing = discoveredServers.find(s => s.ip === server.ip && s.name === server.name);
+          // const existing = discoveredServers.find(s => s.ip === server.ip && s.name === server.name);
+          const existing = discoveredServers.find(s => s.ip === server.ip);
+
           if (!existing) {
             discoveredServers.push(server);
           } else {
@@ -705,8 +714,34 @@ function createWindow() {
   }, 5000)
   
 
+  // async function pollActions(server: Server) {
+  //   try {
+  //     const response = await fetch(`http://${server.ip}:9095/actions?client_ip=${getLocalIP()}`);
+  //     const data = await response.json();
+
+  //     if (data.action) {
+  //       // console.log("New action received:", server, data);
+
+  //       if (data.action === "mount_samba_client") {
+  //         mountSmbPopup(data.smb_host, data.smb_share, data.smb_user, data.smb_pass, mainWindow);
+  //       } else {
+  //         console.log("Unknown new actions.", server);
+  //       }
+  //     }
+  //   } catch (error) {
+  //     console.error("Error polling actions:", server, error);
+  //   }
+  // }
   async function pollActions(server: Server) {
+    // const url = `http://${server.ip}:9095/actions?client_ip=${getLocalIP()}`;
+    // console.log(`→ [pollActions] attempting fetch: ${url}`);
+
     try {
+      // const response = await fetch(url, { cache: 'no-store', signal: AbortSignal.timeout(3000) });
+      // if (!response.ok) {
+      //   // console.warn(`⚠️  [pollActions] non-OK status for ${server.ip}: ${response.status}`);
+      //   return;
+      // }
       const response = await fetch(`http://${server.ip}:9095/actions?client_ip=${getLocalIP()}`);
       const data = await response.json();
 
@@ -720,7 +755,7 @@ function createWindow() {
         }
       }
     } catch (error) {
-      console.error("Error polling actions:", server, error);
+      // console.error(`❌ [pollActions] fetch failed for ${server.ip}`, error);
     }
   }
 
@@ -733,13 +768,37 @@ function createWindow() {
     }))
   });
 
+  // const pollActionInterval = setInterval(async () => {
+  //   for (let server of discoveredServers) {
+  //     // don’t poll actions on manual servers
+  //     if (!server.manuallyAdded && !server.fallbackAdded) continue
+  //     await pollActions(server)
+  //   }
+  // }, 5000)
   const pollActionInterval = setInterval(async () => {
     for (let server of discoveredServers) {
-      // don’t poll actions on manual servers
-      if ((server as any).manuallyAdded) continue
+      if ((server as any).manuallyAdded || (server as any).fallbackAdded) continue
       await pollActions(server)
+      // const meta = server as any;
+
+      // // Skip manual or fallback entries entirely
+      // if (meta.manuallyAdded || meta.fallbackAdded) {
+      //   // console.log(`⏭  [pollInterval] skipping ${server.ip} (manuallyAdded=${!!meta.manuallyAdded}, fallbackAdded=${!!meta.fallbackAdded})`);
+      //   continue;
+      // }
+
+      // // Quick port‐open check before HTTP
+      // const portIsUp = await isPortOpen(server.ip, 9095, 1000);
+      // if (!portIsUp) {
+      //   // console.log(`🚪 [pollInterval] port 9095 closed on ${server.ip}, skipping HTTP probe`);
+      //   continue;
+      // }
+
+      // // All checks passed, do the action poll
+      // await pollActions(server);
     }
-  }, 5000)
+  }, 5000);
+  
 
   app.on('window-all-closed', function () {
     ipcMain.removeAllListeners('message')

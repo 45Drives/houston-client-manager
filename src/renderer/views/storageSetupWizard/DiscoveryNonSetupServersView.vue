@@ -27,7 +27,7 @@
         up the remaining server(s).
       </p>
 
-      <div class="overflow-hidden w-full">
+      <div class="overflow-hidden w-full -mt-2">
         <div class="max-h-[50vh] overflow-y-auto">
           <!-- <HoustonServerListView class="w-1/3 px-5 justify-center text-xl" :filterOutStorageSetupComplete="true"
             @serverSelected="handleServerSelected" /> -->
@@ -75,13 +75,18 @@
           </div>
 
           <div class="w-64">
-            <input v-model="manualUsername" type="text" placeholder="root" tabindex="2"
-              class="input-textlike border px-4 py-1 rounded text-xl w-full" />
+            <input v-model="manualUsername" type="text" placeholder="root" tabindex="2" :class="[
+              'input-textlike px-4 py-1 rounded text-xl w-full border',
+              credsRequired && 'focus:ring-2 focus:ring-yellow-400 outline outline-2 outline-yellow-400'
+            ]" />
           </div>
 
           <div class="w-64 relative">
             <input v-model="manualPassword" v-enter-next :type="showPassword ? 'text' : 'password'" id="password"
-              tabindex="3" class="input-textlike border px-4 py-1 rounded text-xl w-full" placeholder="••••••••" />
+              tabindex="3" :class="[
+                'input-textlike px-4 py-1 rounded text-xl w-full border',
+              credsRequired && 'focus:ring-2 focus:ring-yellow-400 outline outline-2 outline-yellow-400'
+              ]" placeholder="••••••••" />
             <button type="button" @click="togglePassword"
               class="absolute right-3 top-1/2 transform -translate-y-1/2 text-muted">
               <EyeIcon v-if="!showPassword" class="w-5 h-5" />
@@ -90,9 +95,13 @@
           </div>
 
           <div class="button-group-row">
-            <button @click="addManualIp" :disabled="!canAdd"
+            <button v-if="!selectedServer?.fallbackAdded" @click="addManualIp" :disabled="!canAdd"
               class="btn btn-primary px-6 py-1 text-xl whitespace-nowrap">
               Add Server
+            </button>
+            <button v-else @click="saveServerCredentials(manualIp, manualUsername, manualPassword)" :disabled="!canAdd"
+              class="btn btn-primary px-2 py-1 text-xl whitespace-nowrap">
+              Use Credentials
             </button>
             <button @click="onRescanServers" class="btn btn-secondary px-6 py-1 text-xl whitespace-nowrap">
               Rescan Servers
@@ -164,6 +173,7 @@ const selectedServer = ref<(Server & {
   username?: string;
   password?: string;
   manuallyAdded?: boolean;
+  fallbackAdded?: boolean;
 }) | null>(null);
 
 const manualIp = ref('');
@@ -171,13 +181,27 @@ const manuallyAddedIp = ref('');
 const manualUsername = ref('');
 const manualPassword = ref('');
 const manualCredentials = ref<Record<string, { username: string; password: string }>>({});
-const canAdd = computed(
-  () =>
-    manualIp.value !== '' &&
-    manualUsername.value.trim() !== '' &&
-    manualPassword.value.trim() !== '' &&
-    !manualCredentials.value[manualIp.value]
-);
+
+const canAdd = computed(() => {
+  if (!credsRequired.value) return false;
+  return !!manualUsername.value.trim() && !!manualPassword.value.trim();
+});
+
+const credsRequired = computed(() => {
+  return !!(selectedServer.value?.manuallyAdded || selectedServer.value?.fallbackAdded);
+});
+
+function saveServerCredentials(ip: string, username: string, password: string) {
+  manualCredentials.value[ip] = { username, password };
+  // mark it so that proceedToNextStep() knows it needs an install
+  if (selectedServer.value && selectedServer.value.ip === ip) {
+    selectedServer.value.fallbackAdded = selectedServer.value.fallbackAdded ?? false;
+    selectedServer.value.manuallyAdded = !selectedServer.value.fallbackAdded ? true : false;
+  }
+  manualIp.value = '';
+  manualUsername.value = '';
+  manualPassword.value = '';
+}
 
 const serverListKey = ref(0);
 
@@ -202,102 +226,143 @@ interface InstallResult {
   error?: string;
 }
 
-const installModule = async (): Promise<InstallResult> => {
-  isInstalling.value = true
-  statusMessage.value = "Connecting to server, uploading SSH key and installing packages…"
+const installModule = async (
+  host: string,
+  username: string,
+  password: string
+): Promise<InstallResult> => {
+  isInstalling.value = true;
+  statusMessage.value = "Connecting to server, uploading SSH key and installing packages…";
+
   try {
     const result = await IPCRouter
       .getInstance()
-      .invoke<InstallResult>('install-cockpit-module', {
-        host: selectedServer.value!.ip,
-        username: selectedServer.value!.username,
-        password: selectedServer.value!.password
-      })
+      .invoke<InstallResult>("install-cockpit-module", {
+        host,
+        username,
+        password,
+      });
 
-    console.log("🚀 installModule result:", result)
+    // console.log("🚀 installModule result:", result);
     if (!result.success) {
-      statusMessage.value = result.error || "Installation failed."
+      statusMessage.value = result.error || "Installation failed.";
     } else {
-      statusMessage.value = "Module installed and SSH key uploaded!"
+      statusMessage.value = "Modules installed and SSH key uploaded!";
     }
-    return result
+    return result;
   } catch (err: any) {
-    console.error("❌ Manual IP install failed:", err)
-    statusMessage.value = "Could not connect or authenticate."
-    return { success: false, error: err.message }
+    console.error("❌ installModule failed:", err);
+    statusMessage.value = "Could not connect or authenticate.";
+    return { success: false, error: err.message };
   } finally {
-    isInstalling.value = false
+    isInstalling.value = false;
   }
-}
+};
 
-
-const addManualIp = async () => {
+async function addManualIp() {
   const ip = manualIp.value.trim();
-
+  
   if (!/^((25[0-5]|2[0-4]\d|1\d{2}|[1-9]?\d)\.){3}(25[0-5]|2[0-4]\d|1\d{2}|[1-9]?\d)$/.test(ip)) {
-    reportError(new Error("Please enter a valid IPv4 address."));
-    return;
+      reportError(new Error("Please enter a valid IPv4 address."));
+      return;
   }
 
-  if (!manualUsername.value.trim() || !manualPassword.value.trim()) {
-    reportError(new Error("Username and password are required."));
-    return;
-  }
+  // fire off backend discovery for this IP
+  IPCRouter.getInstance().send(
+    'backend',
+    'action',
+    JSON.stringify({ type: 'addManualIP', ip, manuallyAdded: true })
+  );
 
-  manuallyAddedIp.value = ip;
-
-  const newSrv: Server = {
+  // create a minimal Server object locally
+  const srv: Server & { manuallyAdded: true; fallbackAdded: false } = {
     ip,
     name: ip,
     lastSeen: Date.now(),
-    status: "unknown",
-    manuallyAdded: true
+    status: 'unknown',
+    manuallyAdded: true,
+    fallbackAdded: false,
   };
 
+  // select it
+  selectedServer.value = srv;
 
-  IPCRouter.getInstance().send('backend', 'action', JSON.stringify({
-    type: 'addManualIP',
-    ip: manualIp.value,
-    manuallyAdded: true
-  }));
+  // cache its creds immediately
+  saveServerCredentials(ip, manualUsername.value, manualPassword.value);
 
-  selectedServer.value = newSrv;
-  selectedServer.value.username = manualUsername.value;
-  selectedServer.value.password = manualPassword.value;
+  // clear the form
   manualIp.value = '';
   manualUsername.value = '';
   manualPassword.value = '';
-};
+}
 
 
 const goBackStep = () => prevStep();
 
 const proceedToNextStep = async () => {
-  if (selectedServer.value?.manuallyAdded) {
-    const result = await installModule()
-    if (!result.success) {
-      // stop here so we don’t advance
-      return
+  const srv = selectedServer.value!;
+  // if this host needs installing, make sure we have creds
+  if (srv.manuallyAdded || srv.fallbackAdded) {
+    if (!manualCredentials.value[srv.ip] && (!manualPassword.value || !manualUsername.value)) {
+      reportError(new Error("For IP-detected servers, username and password are required."));
+      return;
+    } else if (!manualCredentials.value[srv.ip] && (manualPassword.value || manualUsername.value)) {
+      reportError(new Error("Click Use Credentials to associate them with the selected server IP."));
+      return;
     }
+  } 
+
+  // now do your existing installModule flow, pulling creds from the cache:
+  if (srv.manuallyAdded || srv.fallbackAdded) {
+    const { username, password } = manualCredentials.value[srv.ip];
+    const result = await installModule(srv.ip, username, password);
+    if (!result.success) return;
   }
-  unCompleteCurrentStep()
-  completeCurrentStep(true, selectedServer.value as Record<string, any>)
-}
+
+  unCompleteCurrentStep();
+  completeCurrentStep(true, srv as Record<string, any>);
+};
 
 const onRestartSetup = () => reset();
 
 const handleServerSelected = (server: Server | null) => {
-  if (server && server.ip === manuallyAddedIp.value) {
-    // Re-selecting the manually‐added server: restore its username/password
+  if (server && (server.manuallyAdded || server.fallbackAdded)) {
+    // 1) Re-selecting a manual or fallback node:
+    //    – keep its flags on selectedServer
+    //    – show its IP in the box
+    //    – restore creds if we have them, else clear username/password
     selectedServer.value = {
       ...server,
-      manuallyAdded: true,
+      manuallyAdded: server.manuallyAdded,
+      fallbackAdded: server.fallbackAdded,
       username: manualUsername.value,
       password: manualPassword.value,
     };
-  } else {
-    // selecting a normal server, or un-selecting (null)
+
+    manualIp.value = server.ip;
+
+    const cached = manualCredentials.value[server.ip];
+    if (cached) {
+      manualUsername.value = cached.username;
+      manualPassword.value = cached.password;
+    } else {
+      manualUsername.value = '';
+      manualPassword.value = '';
+    }
+
+  } else if (server) {
+    // 2) Picking a plain discovered node:
+    //    – just select it and wipe the form
     selectedServer.value = server;
+    manualIp.value = '';
+    manualUsername.value = '';
+    manualPassword.value = '';
+  } else {
+    // 3) Deselecting
+    selectedServer.value = null;
+    manualIp.value = '';
+    manualUsername.value = '';
+    manualPassword.value = '';
   }
 };
 
@@ -329,7 +394,7 @@ useEnterToAdvance(
   width: 40px;
   height: 40px;
   animation: spin 1s linear infinite;
-  margin: 20px;
+  margin: 5px;
 }
 
 @keyframes spin {

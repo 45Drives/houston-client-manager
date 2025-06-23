@@ -1,5 +1,5 @@
 import type { InjectionKey, Reactive, Ref } from "vue";
-import type { DivisionType, Server } from "../types";
+import type { DivisionType, Server, DiscoveryState } from "../types";
 import type { BackUpSetupConfig } from "@45drives/houston-common-lib";
 import { RestoreBackupSetupData } from "../views/restoreBackupWizard/types";
 
@@ -10,3 +10,5 @@ export const currentServerInjectionKey: InjectionKey<Ref<Server | null>> = Symbo
 export const currentWizardInjectionKey: InjectionKey<Ref<'storage' | 'backup' | 'restore-backup' | null>> =
     Symbol('currentWizard');
 export const thisOsInjectionKey: InjectionKey<Ref<string>> = Symbol('this-os');
+export const discoveryStateInjectionKey: InjectionKey<DiscoveryState> =
+    Symbol('discovery-state')
