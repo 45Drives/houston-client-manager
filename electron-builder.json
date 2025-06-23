@@ -20,7 +20,7 @@
         ],
         "entitlements": "entitlements.mac.plist",
         "entitlementsInherit": "entitlements.mac.plist",
-        "icon": "icon.ico"
+        "icon": "icon540x540.ico"
     },
     "win": {
         "target": "nsis",
