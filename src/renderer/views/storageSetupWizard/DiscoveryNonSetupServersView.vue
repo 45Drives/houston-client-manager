@@ -95,11 +95,11 @@
           </div>
 
           <div class="button-group-row">
-            <button v-if="!selectedServer?.fallbackAdded" @click="addManualIp" :disabled="!canAdd"
+            <button v-if="!selectedServer?.fallbackAdded" @click="addManualIp" :disabled="!canAddServer"
               class="btn btn-primary px-6 py-1 text-xl whitespace-nowrap">
               Add Server
             </button>
-            <button v-else @click="saveServerCredentials(manualIp, manualUsername, manualPassword)" :disabled="!canAdd"
+            <button v-else @click="saveServerCredentials(manualIp, manualUsername, manualPassword)" :disabled="!canUseCredentials"
               class="btn btn-primary px-2 py-1 text-xl whitespace-nowrap">
               Use Credentials
             </button>
@@ -182,9 +182,23 @@ const manualUsername = ref('');
 const manualPassword = ref('');
 const manualCredentials = ref<Record<string, { username: string; password: string }>>({});
 
-const canAdd = computed(() => {
-  if (!credsRequired.value) return false;
-  return !!manualUsername.value.trim() && !!manualPassword.value.trim();
+const canAddServer = computed(() => {
+  const ip = manualIp.value.trim();
+  const username = manualUsername.value.trim();
+  const password = manualPassword.value.trim();
+
+  const ipValid = /^((25[0-5]|2[0-4]\d|1\d{2}|[1-9]?\d)\.){3}(25[0-5]|2[0-4]\d|1\d{2}|[1-9]?\d)$/.test(ip);
+
+  if (!ipValid) return false;
+
+  // If IP is present and valid, username and password must also be present
+  return !!username && !!password;
+});
+
+const canUseCredentials = computed(() => {
+  return credsRequired.value &&
+    !!manualUsername.value.trim() &&
+    !!manualPassword.value.trim();
 });
 
 const credsRequired = computed(() => {
