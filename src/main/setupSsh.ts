@@ -59,7 +59,7 @@ export async function setupSshKey(host: string, username: string, password: stri
 
 
 // 🧩 Upload and run install script
-export async function runBootstrapScript(host: string, username: string, privateKeyPath: string): Promise<void> {
+export async function runBootstrapScript(host: string, username: string, privateKeyPath: string): Promise<boolean> {
   const ssh = new NodeSSH();
   const scriptLocalPath = await getAsset("static", "setup-super-simple.sh");
   const scriptRemotePath = '/tmp/setup-super-simple.sh';
@@ -67,17 +67,28 @@ export async function runBootstrapScript(host: string, username: string, private
   await ssh.connect({ host, username, privateKey: fs.readFileSync(privateKeyPath, 'utf8') });
   await ssh.putFile(scriptLocalPath, scriptRemotePath);
 
-  console.log(`[${host}] Starting bootstrap…`);
+  let rebootRequired = false;
+
   await ssh.exec(
-    `sudo ${scriptRemotePath}`,
-    [],                     // no extra args
+    `sudo bash ${scriptRemotePath}`,
+    [],
     {
       cwd: '/tmp',
-      onStdout(chunk) { console.log(`[${host}] ${chunk.toString().trim()}`); },
-      onStderr(chunk) { console.error(`[${host}] ${chunk.toString().trim()}`); },
+      onStdout(chunk) {
+        const line = chunk.toString().trim();
+        console.log(`[${host}] ${line}`);
+        if (line.includes('[REBOOT_NEEDED]')) {
+          rebootRequired = true;
+        }
+      },
+      onStderr(chunk) {
+        console.error(`[${host}] ${chunk.toString().trim()}`);
+      },
     }
   );
 
-  console.log(`[${host}] Bootstrap complete.`);
   ssh.dispose();
+
+  // Return this info
+  return rebootRequired;
 }

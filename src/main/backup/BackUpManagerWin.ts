@@ -89,13 +89,21 @@ export class BackUpManagerWin implements BackUpManager {
               return null;
             }
 
-            return {
-              description: actionDetails.description,
-              schedule: trigger,
-              source: actionDetails.source,
-              target: actionDetails.target,
-              mirror: actionDetails.mirror
+            const backUpTask: BackUpTask = {
+              description: actionDetails.description!,
+              schedule: trigger!,
+              source: actionDetails.source!,
+              target: actionDetails.target!,
+              mirror: actionDetails.mirror!,
+              uuid: TASK_ID
             };
+
+            // … add the ISO start-date if the script included it
+            if ((actionDetails as any).START_DATE) {
+              backUpTask.schedule.startDate = new Date((actionDetails as any).START_DATE);
+            }
+
+            return backUpTask;
           }).filter(task => task !== null) as BackUpTask[];
 
         } catch (parseError) {
@@ -226,6 +234,7 @@ Write-Host "user being used: $user"
 $sourcePath = "${task.source}"
 $destinationPath = "${getSmbTargetFromSmbTarget(task.target).replace(/\//g, "\\")}"
 $mirror = ${task.mirror ? "$true" : "$false"}  # Set to $true if you want to mirror the directories
+$startDateIso = "${task.schedule.startDate.toISOString()}"
 
 $logPath = "$env:ProgramData\\houston-backups\\logs"
 if (-not (Test-Path $logPath)) {
@@ -237,6 +246,8 @@ $actionScript = @"
 @echo off
 setlocal EnableDelayedExpansion
 set LOG_FILE=%LOG_FILE%
+
+:: START_DATE = ${task.schedule.startDate.toISOString()}
 
 echo ===== %DATE% %TIME% Starting backup task: ${task.description} ===== >> "%LOG_FILE%" 2>&1
 

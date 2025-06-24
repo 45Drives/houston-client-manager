@@ -10,7 +10,7 @@
         "shortcutName": "45Drives Setup Wizard"
     },
     "mac": {
-        "identity": "Developer ID Application: Protocase Incorporated (CNDSVW45N4)",
+        "identity": "Protocase Incorporated (CNDSVW45N4)",
         "hardenedRuntime": true,
         "gatekeeperAssess": false,
         "category": "public.app-category.utilities",
@@ -20,7 +20,8 @@
         ],
         "entitlements": "entitlements.mac.plist",
         "entitlementsInherit": "entitlements.mac.plist",
-        "icon": "icon.ico"
+        "icon": "icon.ico",
+        "sign": "scripts/customSign.js"
     },
     "win": {
         "target": "nsis",

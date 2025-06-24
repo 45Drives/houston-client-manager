@@ -34,9 +34,15 @@
 								<CommanderToolTip
 									:message="`This is the designated backup storage location you set up earlier.`" />
 							</div>
-							<select v-model="selectedServer"
+							<!-- <select v-model="selectedServer"
 								class="bg-default h-[3rem] text-default rounded-lg px-4 flex-1 border border-default">
 								<option v-for="item in servers" :key="item.ip" :value="item">
+									{{ `\\\\${item.name}\\${item.shareName}` }}
+								</option>
+							</select> -->
+							<select v-model="selectedServerIp"
+								class="bg-default h-[3rem] text-default rounded-lg px-4 flex-1 border border-default">>
+								<option v-for="item in servers" :key="item.ip" :value="item.ip">
 									{{ `\\\\${item.name}\\${item.shareName}` }}
 								</option>
 							</select>
@@ -135,7 +141,7 @@ const scheduleFrequency = ref<"hour" | "day" | "week" | "month">("hour");
 // const servers = ref<Server[]>([]);
 const discoveryState = inject<DiscoveryState>(discoveryStateInjectionKey)!
 const servers = computed(() => discoveryState.servers)
-const selectedServer = ref<Server | null>(null);
+
 const isSelectingFolder = ref(false);
 const messageFolderAlreadyAdded = ref<InstanceType<typeof MessageDialog> | null>(null);
 const messageSubFolderAlreadyAdded = ref<InstanceType<typeof MessageDialog> | null>(null);
@@ -185,21 +191,54 @@ const messageParentFolderAlreadyAdded = ref<InstanceType<typeof MessageDialog> |
 // 	}
 // });
 
+// const selectedServer = ref<Server | null>(null);
+// const hasManualSelection = ref(false)
+
+// watch(selectedServer, () => {
+// 	hasManualSelection.value = true
+// })
+
+// watch(servers, (discoveredServers) => {
+// 	if (discoveredServers.length === 0) {
+// 		selectedServer.value = null
+// 		hasManualSelection.value = false
+// 		return
+// 	}
+
+// 	if (!hasManualSelection.value) {
+// 		const tasks = backUpSetupConfig?.backUpTasks
+// 		if (tasks && tasks.length > 0) {
+// 			const target = tasks[0].target
+// 			const match = discoveredServers.find(srv => target.includes(srv.ip))
+// 			selectedServer.value = match ?? discoveredServers[0]
+// 		} else {
+// 			selectedServer.value = discoveredServers[0]
+// 		}
+// 	}
+// })
+
+
+const selectedServerIp = ref('');
+
+const selectedServer = computed(() =>
+	servers.value.find(srv => srv.ip === selectedServerIp.value) ?? null
+);
+
 watch(servers, (discoveredServers) => {
 	if (discoveredServers.length === 0) {
-		selectedServer.value = null
-		return
+		selectedServerIp.value = '';
+		return;
 	}
 
-	const tasks = backUpSetupConfig?.backUpTasks
-	if (tasks && tasks.length > 0) {
-		const target = tasks[0].target
-		const match = discoveredServers.find(srv => target.includes(srv.ip))
-		selectedServer.value = match ?? discoveredServers[0]
-	} else {
-		selectedServer.value = discoveredServers[0]
+	// Only set if nothing is selected
+	if (!selectedServerIp.value) {
+		const tasks = backUpSetupConfig?.backUpTasks;
+		const target = tasks?.[0]?.target;
+		const match = discoveredServers.find(srv => target?.includes(srv.ip));
+		selectedServerIp.value = match?.ip ?? discoveredServers[0].ip;
 	}
-}, { immediate: true })
+});
+
 
 //  Watch and Update Tasks When Schedule Changes
 watch(scheduleFrequency, (newSchedule) => {
@@ -295,7 +334,7 @@ const handleFolderSelect = async () => {
 				schedule: { startDate: getNextScheduleDate(scheduleFrequency.value), repeatFrequency: scheduleFrequency.value },
 				description: `Backup task for ${folderName}`,
 				source: folderPath,
-				target: `\\\\${selectedServer.value?.name}.local\\${selectedServer.value?.shareName}`,
+				target: `\\\\${selectedServer.value?.name}\\${selectedServer.value?.shareName}`,
 				mirror: false,
 				uuid: crypto.randomUUID(),
 			};
@@ -383,8 +422,8 @@ const proceedToNextStep = () => {
 			const targetDirForSourcePart = sanitizeFilePath(task.source);
 			const slashOrNotSlash = targetDirForSourcePart.startsWith("/") ? "" : "/";
 
-			task.target = `${selectedServer.value!.name}.local:${selectedServer.value!.shareName!}/${task.uuid}/${hostname}${slashOrNotSlash}${targetDirForSourcePart}`;
-			// console.log('target saved:', task.target);
+			task.target = `${selectedServer.value!.name}:${selectedServer.value!.shareName!}/${task.uuid}/${hostname}${slashOrNotSlash}${targetDirForSourcePart}`;
+			console.log('task saved:', task);
 		});
 
 	completeCurrentStep();

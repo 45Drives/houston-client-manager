@@ -202,8 +202,16 @@ const canUseCredentials = computed(() => {
 });
 
 const credsRequired = computed(() => {
-  return !!(selectedServer.value?.manuallyAdded || selectedServer.value?.fallbackAdded);
+  const srv = selectedServer.value;
+  if (!srv) return false;
+
+  // Only show highlight if it's a fallback server OR a manually added one without saved creds
+  const needsCreds = srv.fallbackAdded || srv.manuallyAdded;
+  const hasCachedCreds = manualCredentials.value[srv.ip];
+
+  return needsCreds && !hasCachedCreds;
 });
+
 
 function saveServerCredentials(ip: string, username: string, password: string) {
   manualCredentials.value[ip] = { username, password };
@@ -238,7 +246,10 @@ function onRescanServers() {
 interface InstallResult {
   success: boolean;
   error?: string;
+  rebootRequired?: boolean;
 }
+
+const rebootFunction = inject<() => Promise<void>>('reboot-function')!;
 
 const installModule = async (
   host: string,
@@ -260,6 +271,9 @@ const installModule = async (
     // console.log("🚀 installModule result:", result);
     if (!result.success) {
       statusMessage.value = result.error || "Installation failed.";
+    } else if (result.rebootRequired) {
+      statusMessage.value = "Setup installed. Server will reboot to finish enabling ZFS…";
+      await rebootFunction();
     } else {
       statusMessage.value = "Modules installed and SSH key uploaded!";
     }
