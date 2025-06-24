@@ -1,159 +1,145 @@
 #!/usr/bin/env bash
+# setup-super-simple.sh  (smart, resilient version)
+# ────────────────────────────────────────────────────────────────────
+# Installs: 45Drives repo • Node.js18 • Cockpit(+module) • Samba • ZFS
+# Adds sanity-checks first, so repeated runs are safe (idempotent).
+# ────────────────────────────────────────────────────────────────────
 set -euo pipefail
 
-# Self-elevate
-if [ "$EUID" -ne 0 ]; then
-  echo "[INFO] Re-running script with sudo…"
-  exec sudo "$0" "$@"
-fi
+# ───────────────────────── Self-elevate ────────────────────────────
+[[ $EUID -ne 0 ]] && { echo "[INFO] Re-running with sudo…"; exec sudo "$0" "$@"; }
 
-# 1) Detect OS + set package-tool vars
-if   [[ -f /etc/os-release ]]; then
-  # shellcheck disable=SC1091
+# ───────────────────────── Detect distro ───────────────────────────
+if [[ -f /etc/os-release ]]; then
   . /etc/os-release
-  case "$ID" in
+  case $ID in
     rocky|rhel|centos|almalinux|fedora)
       OS_FAMILY=rhel
       PKG_INSTALL="dnf install -y"
       PKG_QUERY="rpm -q"
       FIREWALL_CMD=firewall-cmd
-      ZFS_REPO_RPM="https://zfsonlinux.org/epel/zfs-release-$(rpm -E '%{rhel}').noarch.rpm"
       ;;
     debian|ubuntu)
       OS_FAMILY=debian
-      PKG_INSTALL="apt update -y && apt install -y"
+      PKG_INSTALL="apt -y update && apt -y install"
       PKG_QUERY="dpkg -s"
       ;;
-    *)
-      echo "[ERROR] Unsupported OS: $ID"
-      exit 1
-      ;;
+    *) echo "[ERROR] Unsupported OS $ID"; exit 1 ;;
   esac
 else
-  echo "[ERROR] Cannot detect OS (missing /etc/os-release)"
-  exit 1
+  echo "[ERROR] /etc/os-release missing"; exit 1
 fi
-
 echo "[INFO] Detected OS family: $OS_FAMILY"
 
-# 2) Helper to install if missing
-install_pkg() {
-  local pkg="$1"
-  # PKG_QUERY retcode 0 means “installed”
-  if ! $PKG_QUERY "$pkg" &>/dev/null; then
-    echo "[INFO] Installing $pkg…"
-    $PKG_INSTALL "$pkg"
-  else
-    echo "[INFO] $pkg already installed."
-  fi
+# ─────────────────── Helper: install only if missing ───────────────
+install_pkg() { $PKG_QUERY "$1" &>/dev/null && { echo "[INFO] $1 already present"; } || eval "$PKG_INSTALL $1"; }
+
+ensure_kernel_headers() {
+  local running=$(uname -r)
+  [[ $OS_FAMILY == rhel ]] || { install_pkg "linux-headers-$(uname -r)"; return; }
+
+  dnf install -y "kernel-devel-$running" "kernel-headers-$running" || true
+  [[ -d /usr/src/kernels/$running ]] && return
+
+  echo "[WARN] Exact headers for $running not in repos – installing latest kernel/headers"
+  dnf install -y kernel kernel-devel kernel-headers
+  touch /run/reboot_required
 }
 
-# 3) 45Drives repo (same as you had)
-add_45drives_repos() {
-  if ! grep -q "repo.45drives.com" /etc/*-release* /etc/yum.repos.d/* /etc/apt/* 2>/dev/null; then
-    echo "[INFO] Adding 45Drives package repository…"
-    curl -fsSL https://repo.45drives.com/setup | bash || echo "[WARN] Could not add 45Drives repo"
-  else
-    echo "[INFO] 45Drives repo already present."
+fetch_zfs_repo_rpm() {
+  local new="https://zfsonlinux.org/epel/zfs-release-2-3$(rpm --eval '%{dist}').noarch.rpm"
+  local old="https://zfsonlinux.org/epel/zfs-release-$(rpm -E '%{rhel}').noarch.rpm"
+  echo "[INFO] Fetching ZFS repo RPM…"
+  if ! dnf install -y "$new" 2>&1 | tee /tmp/zfsrepo.log | grep -Eq '^Error.*404'; then
+    return
   fi
+  echo "[WARN] $new returned 404 – falling back to legacy URL"
+  dnf install -y "$old"
 }
 
-# 4) Node.js 18 (unchanged)
-install_nodejs_18() {
-  local maj
-  if command -v node >/dev/null; then
-    maj=$(node -v | cut -d. -f1 | tr -d v)
-  else
-    maj=0
-  fi
+preflight() {
+  echo "┌────────────── PRE-FLIGHT ──────────────"
+  printf "Kernel          : %s\n" "$(uname -r)"
+  $PKG_QUERY kernel-devel &>/dev/null \
+    && printf "kernel-devel    : %s\n" "$(rpm -q kernel-devel | tail -1)" \
+    || echo  "kernel-devel    : NOT installed"
+  command -v zfs >/dev/null && echo "ZFS binary      : present" || echo "ZFS binary      : missing"
+  echo "└─────────────────────────────────────────"
+}
+preflight
 
-  if [ "$maj" -lt 18 ]; then
-    echo "[INFO] Installing Node.js 18…"
-    if [[ "$PKG" == "dnf" ]]; then
-      dnf remove -y nodejs npm nodejs-full-i18n || true
-      curl -fsSL https://rpm.nodesource.com/setup_18.x | bash - || true
-      dnf install -y nodejs
-    else
-      apt remove -y nodejs npm || true
-      curl -fsSL https://deb.nodesource.com/setup_18.x | bash - || true
-      apt update -y
-      apt install -y nodejs
-    fi
+# ───────────────── 1) 45Drives repo ────────────────────────────────
+add_45drives_repo() {
+  grep -Rqs repo.45drives.com /etc/yum.repos.d /etc/apt || {
+    echo "[INFO] Enabling 45Drives repo…"
+    curl -fsSL https://repo.45drives.com/setup | bash
+  }
+}
+add_45drives_repo
+
+# ───────────────── 2) Node.js 18 LTS ───────────────────────────────
+install_nodejs18() {
+  local v=${1:-18}
+  local current=0
+  command -v node &>/dev/null && current=$(node -v | cut -d. -f1 | tr -d v)
+  [[ $current -ge $v ]] && { echo "[INFO] Node.js >=$v already"; return; }
+
+  echo "[INFO] Installing Node.js $v…"
+  if [[ $OS_FAMILY == rhel ]]; then
+    curl -fsSL https://rpm.nodesource.com/setup_${v}.x | bash -
+    dnf install -y nodejs
   else
-    echo "[INFO] Node.js >=18 already installed: $(node -v)"
+    curl -fsSL https://deb.nodesource.com/setup_${v}.x | bash -
+    apt -y update && apt -y install nodejs
   fi
 }
+install_nodejs18 18
 
-
-# 5) Cockpit
+# ───────────────── 3) Cockpit & module ─────────────────────────────
 install_cockpit() {
   install_pkg cockpit
-  systemctl enable --now cockpit.socket \
-    || echo "[WARN] Could not enable/start cockpit.socket"
-
-  # open firewall on RHEL-family
-  if [[ $OS_FAMILY == rhel && -x "$(command -v "$FIREWALL_CMD")" ]]; then
-    if ! $FIREWALL_CMD --list-services --permanent | grep -qw cockpit; then
-      echo "[INFO] Opening firewall for Cockpit…"
-      $FIREWALL_CMD --add-service=cockpit --permanent \
-        && $FIREWALL_CMD --reload
-    else
-      echo "[INFO] Cockpit firewall rule already present."
-    fi
+  systemctl enable --now cockpit.socket || true
+  if [[ $OS_FAMILY == rhel && -x $(command -v $FIREWALL_CMD) ]]; then
+    systemctl is-active --quiet firewalld && \
+      $FIREWALL_CMD --quiet --permanent --add-service=cockpit && $FIREWALL_CMD --reload || true
   fi
 }
+install_cockpit
+install_pkg cockpit-super-simple-setup
 
-install_cockpit_module() {
-  install_pkg cockpit-super-simple-setup
-}
-
-# 6) ZFS
-install_zfs() {
-  if ! command -v zfs &>/dev/null; then
-    echo "[INFO] Installing ZFS…"
-    if [[ $OS_FAMILY == rhel ]]; then
-      dnf install -y "$ZFS_REPO_RPM" \
-        || echo "[WARN] Could not install ZFS-release RPM"
-      dnf install -y kernel-devel dkms zfs \
-        || { echo "[ERROR] Could not install ZFS packages"; return 1; }
-    else
-      apt update -y
-      apt install -y zfsutils-linux zfs-dkms \
-        || { echo "[ERROR] Could not install ZFS packages"; return 1; }
-    fi
-    echo zfs > /etc/modules-load.d/zfs.conf
-    modprobe zfs || echo "[WARN] modprobe zfs failed"
-  else
-    echo "[INFO] ZFS already installed: $(zfs --version | head -1)"
-  fi
-
-  for svc in zfs-import-cache zfs-import-scan zfs-mount zfs-zed; do
-    systemctl enable --now "$svc" \
-      || echo "[WARN] Could not enable/start $svc"
-  done
-}
-
-# 7) Samba
+# ───────────────── 4) Samba ────────────────────────────────────────
 install_samba() {
   install_pkg samba
-  local svcs=( smb nmb )
-  if [[ $OS_FAMILY == debian ]]; then svcs=( smbd nmbd ); fi
-
-  for svc in "${svcs[@]}"; do
-    systemctl enable --now "$svc" \
-      || echo "[WARN] Could not enable/start $svc"
-  done
+  local svcs=(smb nmb); [[ $OS_FAMILY == debian ]] && svcs=(smbd nmbd)
+  systemctl enable --now "${svcs[@]}" || true
 }
-
-# ────────────────────────────────────────────────────────────────────
-# Run everything
-# ────────────────────────────────────────────────────────────────────
-add_45drives_repos
-install_nodejs_18
-install_cockpit
-install_cockpit_module
-install_zfs
 install_samba
 
-echo "[INFO] All done! 🎉"
-echo "Access Cockpit at: https://$(hostname -I | awk '{print $1}'):9090"
+# ───────────────── 5) ZFS (+reboot logic) ──────────────────────────
+install_zfs() {
+  ensure_kernel_headers
+  [[ $OS_FAMILY == rhel ]] && fetch_zfs_repo_rpm
+  install_pkg zfs         # userland + DKMS
+
+  echo zfs > /etc/modules-load.d/zfs.conf
+  dkms autoinstall || true
+  modprobe zfs 2>/dev/null || touch /run/reboot_required
+
+  if ! zfs version &>/dev/null; then
+    echo "[WARN] ZFS still not usable – rebooting"
+    touch /run/reboot_required
+  fi
+
+  if [[ -f /run/reboot_required ]]; then
+    echo "[INFO] Reboot required for kernel/ZFS; rebooting in 5 s"
+    sleep 5
+    echo "[REBOOT REQUIRED]"
+    reboot
+  fi
+
+  echo "[INFO] ZFS ready: $(zfs version | head -1)"
+  systemctl enable --now zfs-import-cache zfs-import-scan zfs-mount zfs-zed || true
+}
+install_zfs
+
+echo "[INFO] Setup complete! Access Cockpit at: https://$(hostname -I | awk '{print $1}'):9090"

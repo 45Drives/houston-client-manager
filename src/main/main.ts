@@ -1,5 +1,5 @@
 import log from 'electron-log';
-log.transports.console.level = false;
+// log.transports.console.level = false;
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 console.log = (...args) => log.info(...args);
 console.error = (...args) => log.error(...args);
@@ -442,11 +442,11 @@ function createWindow() {
 
             const backupManager = getBackUpManager();
             if (!backupManager) {
-              notify(`Error: No Backup Manager available.`);
+              reportError(`Error: No Backup Manager available.`);
               return;
             }
           } catch (err: any) {
-            notify(`Error: ${err.message}`);
+            reportError(`Error: ${err.message}`);
             console.error("updateBackUpTask failed:", err);
           }
 
@@ -455,7 +455,7 @@ function createWindow() {
           const task: BackUpTask = message.task;
 
           if (!backupManager || typeof (backupManager as any).runNow !== 'function') {
-            notify(`❌ Run Now not supported for this OS`);
+            reportError(`❌ Run Now not supported for this OS`);
             return;
           }
 
@@ -473,7 +473,7 @@ function createWindow() {
             // console.log("Command stdout:", err.stdout);
             // Fallback for meaningful message
             const fallbackMsg = err?.stderr || err?.message || JSON.stringify(err);
-            notify(`❌ Failed to start task: ${fallbackMsg}`);
+            reportError(`❌ Failed to start task: ${fallbackMsg}`);
           }
         } else if (message.type === 'addManualIP') {
           const { ip, manuallyAdded } = message as { ip: string; manuallyAdded?: boolean };

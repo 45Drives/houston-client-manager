@@ -126,6 +126,22 @@ IPCRouter.getInstance().addEventListener("action", async (data) => {
         isRebootWatcherRunning.value = false;
         break;
 
+      case 'sendBackupTasks':
+        // console.log("📦 Received tasks:", message.tasks);
+        break;
+
+      case 'sendHostname':
+        // console.log("🖥️ Hostname received:", message.hostname);
+        break;
+
+      case 'backUpSetupStatus':
+        // console.log("🔄 Setup progress:", message.status);
+        break;
+
+      case 'backUpStatusesUpdated':
+        // console.log("📋 Updated task statuses:", message.tasks);
+        break;
+        
       default:
         console.warn("❓ Unhandled action type:", message.type);
     }
@@ -239,6 +255,80 @@ async function waitForServerRebootAndShowWizard() {
     rebootNotification = null;
   }
 }
+
+async function waitForServerReboot() {
+  const server = currentServer.value;
+  const serverIp = server?.ip;
+  if (!serverIp) {
+    console.error("No current server IP found!");
+    return;
+  }
+
+  // waitingForServerReboot.value = true;
+
+  const pingUrl = `https://${serverIp}:9090/`;
+  const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+  console.log(`Waiting for server at ${pingUrl} to reboot...`);
+
+  let serverUp = false;
+  const startTime = Date.now();
+  const timeout = 5 * 60 * 1000;
+
+  while (!serverUp && (Date.now() - startTime) < timeout) {
+    try {
+      const res = await fetch(pingUrl, { method: 'GET', cache: 'no-store' });
+      if (res.ok) {
+        await sleep(5000);
+        const confirmRes = await fetch(pingUrl, { method: 'GET', cache: 'no-store' });
+        if (confirmRes.ok) {
+          serverUp = true;
+          break;
+        }
+      }
+    } catch {
+      // ignored
+    }
+
+    await sleep(5000);
+  }
+
+  if (serverUp) {
+    // waitingForServerReboot.value = false;
+    // currentWizard.value = 'backup';
+    // useWizardSteps("backup").reset();
+
+    // console.log("[Wizard] Server came back online. Triggering success notification.");
+
+    await nextTick();
+
+    // ✅ Trigger the "Server Available" toast directly here
+    if (serverIp !== lastToastShownIp) {
+      pushNotification(new Notification(
+        'Server Available',
+        `${serverIp} is now accessible!`,
+        'success',
+        8000
+      ));
+      lastToastShownIp = serverIp;
+    }
+
+  } else {
+    waitingForServerReboot.value = false;
+    reportError(new Error("Server did not come back online within timeout."));
+    currentWizard.value = 'storage';
+    // useWizardSteps("setup").reset();
+  }
+
+  // console.log("[Wizard] setting waitingForServerReboot = false");
+
+  if (rebootNotification) {
+    rebootNotification.remove();
+    rebootNotification = null;
+  }
+}
+
+provide('reboot-function', waitForServerReboot);
 
 const currentTheme = ref("theme-default");
 

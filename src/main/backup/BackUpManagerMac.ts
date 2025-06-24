@@ -180,6 +180,11 @@ export class BackUpManagerMac implements BackUpManager {
         <string>/var/log/${this.safeTaskName(task.description)}.err</string>
         <key>RunAtLoad</key>
         <true/>
+        <key>EnvironmentVariables</key>
+        <dict>
+          <key>START_DATE</key>
+          <string>${task.schedule.startDate.toISOString()}</string>
+        </dict>
       </dict>
     </plist>`;
   }
@@ -203,7 +208,7 @@ export class BackUpManagerMac implements BackUpManager {
     const plistFilePath = path.join(this.launchdDirectory, fileName);
     const plistContents = fs.readFileSync(plistFilePath, "utf-8");
 
-    let parsedPlist;
+    let parsedPlist: any;
     try {
       parsedPlist = plist.parse(plistContents);
     } catch (error) {
@@ -211,25 +216,28 @@ export class BackUpManagerMac implements BackUpManager {
       return null;
     }
 
-    // Extract ProgramArguments (source and target paths)
-    const programArguments = parsedPlist['ProgramArguments'];
+    /* ---------- program arguments (rsync) ---------- */
+    const programArguments = parsedPlist.ProgramArguments;
     if (!programArguments || programArguments.length < 4) {
-      console.error('ProgramArguments not found or malformed in plist');
+      console.error("ProgramArguments not found or malformed in plist");
       return null;
     }
+    const source = programArguments[2]; // third element
+    const target = programArguments[3]; // fourth element
 
-    const source = programArguments[2]; // The third element in the array is the source path
-    const target = programArguments[3]; // The fourth element in the array is the target path
+    /* ---------- schedule ---------- */
+    const sci = parsedPlist.StartCalendarInterval || {};
+    const minute = sci.Minute ?? 0;
+    const hour = sci.Hour ?? 0;
+    const day = sci.Day ?? 1;
 
-    // Extract schedule information from StartCalendarInterval
-    const schedule = parsedPlist['StartCalendarInterval'] || {};
-    const minute = schedule['Minute'] || 0;
-    const hour = schedule['Hour'] || 0;
-    const day = schedule['Day'] || 1; // Default to 1st day of the month
+    /* Prefer the ISO timestamp we stored in EnvironmentVariables */
+    const startDateStr =
+      parsedPlist.EnvironmentVariables?.START_DATE as string | undefined;
 
     const taskSchedule: TaskSchedule = {
-      repeatFrequency: "hour", // Default, adjust based on more complex logic if needed
-      startDate: new Date(),
+      repeatFrequency: "hour",           // refine later if you add week/month logic
+      startDate: startDateStr ? new Date(startDateStr) : new Date(),
     };
 
     taskSchedule.startDate.setMinutes(minute);
@@ -237,12 +245,15 @@ export class BackUpManagerMac implements BackUpManager {
     taskSchedule.startDate.setDate(day);
 
     return {
+      uuid: crypto.randomUUID(),
+      description: fileName
+        .replace("com.backup-task.", "")
+        .replace(".plist", ""),
       schedule: taskSchedule,
       source,
       target,
-      description: fileName.replace("com.backup-task.", "").replace(".plist", ""),
       mirror: plistContents.includes("--delete"),
-      uuid: crypto.randomUUID()
     };
   }
+  
 }

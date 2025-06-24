@@ -4,8 +4,8 @@ set -e
 
 # Configuration: Set your remote hosts https://frank:8006
 WIN_HOST="user@192.168.207.47"
-MAC_HOST="45drives@192.168.210.11"
-# MAC_HOST="protocase@192.168.9.9"
+# MAC_HOST="45drives@192.168.210.11"
+MAC_HOST="protocase@192.168.9.9"
 # LINUX_HOST="root@192.168.13.13"
 LINUX_HOST="root@192.168.123.5"
 
@@ -71,10 +71,14 @@ ssh "$MAC_HOST" "
 
     echo 'Installing dependencies and building...'
     cd \"${REMOTE_BUILD_DIR}\"
-    
+    corepack enable
+    corepack prepare yarn@4.6.0 --activate
+
     echo 'Final npm install and build...'
     yarn install && yarn build:mac
 "
-/usr/bin/scp -r "$MAC_HOST:$REMOTE_BUILD_DIR/dist/45drives-setup-wizard*" "$LOCAL_OUTPUT_DIR/mac/"
+rsync -avz --progress $MAC_HOST:"$REMOTE_BUILD_DIR/dist/45drives-setup-wizard*" ./builds/mac/
+
+
 
 echo "✅ All builds completed. Output is in: $LOCAL_OUTPUT_DIR"

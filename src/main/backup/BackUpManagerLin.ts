@@ -32,6 +32,8 @@ export class BackUpManagerLin implements BackUpManager {
         const targetMatch = content.match(/TARGET='([^']+)'/);
         const smbHostMatch = content.match(/SMB_HOST='([^']+)'/);
         const smbShareMatch = content.match(/SMB_SHARE='([^']+)'/);
+        const startDateMatch = content.match(/START_DATE='([^']+)'/);
+        const startDate = startDateMatch ? new Date(startDateMatch[1]) : new Date();
         const descMatch = content.match(/Starting backup task: '([^']+)'/);
         const mirror = content.includes("--delete");
 
@@ -45,7 +47,7 @@ export class BackUpManagerLin implements BackUpManager {
           share: smbShareMatch[1],
           mirror,
           description: descMatch ? descMatch[1] : "Unnamed",
-          schedule: { repeatFrequency: "day", startDate: new Date() },
+          schedule: { repeatFrequency: "day", startDate: startDate},
           status: "checking"
         };
 
@@ -316,6 +318,7 @@ SOURCE='${task.source}/'
 TARGET='${target}'
 LOG_FILE='${logPath}'
 MOUNT_DIR='${mountDir}'
+START_DATE='${task.schedule.startDate}'
 
 mkdir -p "$(dirname "$LOG_FILE")"
 

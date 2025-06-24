@@ -45,9 +45,9 @@ export async function installServerDepsRemotely({
             ".ssh",
             "id_rsa"
         );
-        await runBootstrapScript(host, username, privateKeyPath);
+        const rebootRequired = await runBootstrapScript(host, username, privateKeyPath);
 
-        return { success: true };
+        return { success: true, reboot: rebootRequired };
     } catch (err: any) {
         return { success: false, error: err.message || err };
     }
