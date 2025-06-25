@@ -386,6 +386,7 @@ function createWindow() {
             console.error("updateBackUpTask failed:", err);
           }
         } else if (message.type === 'openFolder') {
+          // console.log('Attempting to open folder path:', message.path);
           const folderPath: string = message.path;
           const platform = getOS();
           try {
@@ -487,7 +488,7 @@ function createWindow() {
               signal: AbortSignal.timeout(3000),
             });
             httpsReachable = res.ok;
-            console.log('HTTPS check:', res.ok ? 'OK' : `status ${res.status}`);
+            // console.log('HTTPS check:', res.ok ? 'OK' : `status ${res.status}`);
           } catch (err) {
             console.warn('HTTPS check failed:', err);
           }
@@ -495,9 +496,9 @@ function createWindow() {
           // 2) If no HTTPS, fall back to SSH
           let reachable = httpsReachable;
           if (!reachable) {
-            console.log('Falling back to SSH probe on port 22…');
+            // console.log('Falling back to SSH probe on port 22…');
             reachable = await checkSSH(ip, 3000);
-            console.log(`SSH probe ${reachable ? 'succeeded' : 'failed'}`);
+            // console.log(`SSH probe ${reachable ? 'succeeded' : 'failed'}`);
           }
 
           // 3) If _still_ unreachable, bail
@@ -672,6 +673,7 @@ function createWindow() {
             discoveredServers.push(server);
           } else {
             Object.assign(existing, {
+              name: displayName,
               lastSeen: server.lastSeen,
               status: server.status,
               setupComplete: server.setupComplete,
@@ -679,6 +681,7 @@ function createWindow() {
               shareName: server.shareName,
               setupTime: server.setupTime,
               serverInfo: server.serverInfo,
+              fallbackAdded: false
             });
           }
 
@@ -761,7 +764,7 @@ function createWindow() {
 
   IPCRouter.getInstance().addEventListener('mountSambaClient', async (data) => {
     const result = await mountSmbPopup(data.smb_host, data.smb_share, data.smb_user, data.smb_pass, mainWindow);
-
+    // console.log('mountSambaClient result:', result);
     IPCRouter.getInstance().send("renderer", "action", JSON.stringify({
       action: "mountSmbResult",
       result: result

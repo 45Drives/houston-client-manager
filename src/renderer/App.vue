@@ -427,15 +427,17 @@ onMounted(async () => {
     (_evt, mdnsList: Server[]) => {
       mdnsList.forEach(m => {
         const idx = discoveryState.servers.findIndex(s => s.ip === m.ip)
+
         if (idx > -1) {
           const current = discoveryState.servers[idx];
           const hasRealHostname = m.name && m.name !== m.ip;
+
           // merge logic: only replace if the new one has better info
           const updated = {
             ...current,
             ...m,
             name: hasRealHostname ? m.name : current.name,
-            fallbackAdded: hasRealHostname ? false : current.fallbackAdded,
+            fallbackAdded: m.fallbackAdded ?? (hasRealHostname ? false : current.fallbackAdded),
           };
 
           discoveryState.servers.splice(idx, 1, updated);
@@ -472,7 +474,7 @@ onMounted(async () => {
       console.error('Fallback scan failed:', err)
       reportError(new Error('Fallback scan failed.'))
     }
-  }, 10000)
+  }, 1200)
 
   const updateTheme = () => {
     const found = Array.from(document.documentElement.classList).find(cls =>

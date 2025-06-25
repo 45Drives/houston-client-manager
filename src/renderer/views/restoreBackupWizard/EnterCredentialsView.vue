@@ -27,7 +27,7 @@
         <!-- Server Selection -->
         <div class="w-full lg:w-2/5">
           <HoustonServerListView class="w-full text-xl" :filterOutStorageSetupComplete="false"
-            @serverSelected="handleServerSelected" />
+            @serverSelected="handleServerSelected" :selectedServer="restoreBackUpData.server" />
         </div>
 
         <!-- Username & Password -->
