@@ -170,8 +170,21 @@ const handleOpen = () => {
   smbMountListener = (data) => {
     try {
       const response = JSON.parse(data);
+      // console.log('smbMountListener response:', response);
       if (response.action === "mountSmbResult") {
-        const mountedShare = response.mountedShare; // pass this from backend
+        let mountInfo: { MountPoint: string; smb_server: string };
+
+        if (typeof response.result === "string") {
+          mountInfo = JSON.parse(response.result);   // parse the inner JSON
+        } else {
+          mountInfo = response.result;
+        }
+
+        const shareName = mountInfo.MountPoint.split("/").pop();
+        const mountedShare = `${mountInfo.smb_server}:${shareName}`;
+
+        // console.log('mountedShare:', mountedShare);
+
         sharesMounted.add(mountedShare);
         remainingShares.delete(mountedShare);
 
@@ -180,10 +193,9 @@ const handleOpen = () => {
           smbMountListener = null;
 
           for (const task of backupTasks.value) {
-            const subpath = task.target.split(":")[1].split("/").slice(1).join("/");
             const mountPath = `/mnt/houston-mounts/${task.share}`;
-            const fullPath = `${mountPath}/${subpath}`;
-
+            const fullPath = `${mountPath}/${task.target}`;
+            console.log('fullPath being sent to openFolder:', fullPath);
             IPCRouter.getInstance().send("backend", "action", JSON.stringify({
               type: "openFolder",
               path: fullPath

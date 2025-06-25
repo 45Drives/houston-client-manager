@@ -76,7 +76,7 @@ export async function runBootstrapScript(host: string, username: string, private
       cwd: '/tmp',
       onStdout(chunk) {
         const line = chunk.toString().trim();
-        console.log(`[${host}] ${line}`);
+        // console.log(`[${host}] ${line}`);
         if (line.includes('[REBOOT_NEEDED]')) {
           rebootRequired = true;
         }

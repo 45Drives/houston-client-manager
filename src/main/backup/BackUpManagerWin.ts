@@ -79,7 +79,7 @@ export class BackUpManagerWin implements BackUpManager {
             }
             const actionDetails = this.parseBackupCommand(command)
             if (!actionDetails) {
-              console.log("task.Actions:", command)
+              // console.log("task.Actions:", command)
               return null;
             }
             const trigger = this.convertTriggersToTaskSchedule(task.Triggers);
