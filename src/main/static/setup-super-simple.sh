@@ -6,6 +6,13 @@
 # ────────────────────────────────────────────────────────────────────
 set -euo pipefail
 
+# ───── stdout/stderr go to both console and log, line-buffered ─────
+LOG=/var/log/setup-super-simple-$(date +%F_%H%M).log
+exec > >(stdbuf -oL -eL tee -a "$LOG") 2>&1
+
+# ───── tell the caller we are alive as soon as possible ────────────
+echo "[BOOTSTRAP_STARTED] $(date)"
+
 # ───────────────────────── Self-elevate ────────────────────────────
 [[ $EUID -ne 0 ]] && { echo "[INFO] Re-running with sudo…"; exec sudo "$0" "$@"; }
 
@@ -70,12 +77,67 @@ preflight
 
 # ───────────────── 1) 45Drives repo ────────────────────────────────
 add_45drives_repo() {
-  grep -Rqs repo.45drives.com /etc/yum.repos.d /etc/apt || {
-    echo "[INFO] Enabling 45Drives repo…"
-    curl -fsSL https://repo.45drives.com/setup | bash
-  }
+  # Common helpers
+  local today ts
+  today=$(date +%Y-%m-%d)
+  ts=$(date +%s)
+
+  if [[ $OS_FAMILY == rhel ]]; then
+    echo "[INFO] Checking 45Drives repo for RHEL/Rocky/CentOS…"
+    if [[ ! -e /etc/yum.repos.d/45drives-enterprise.repo ]]; then
+      echo "[INFO] No existing 45Drives repo file – installing new one."
+    else
+      echo "[INFO] Existing 45Drives repo found – archiving to /opt/45drives/archives/repos."
+      mkdir -p /opt/45drives/archives/repos
+      mv /etc/yum.repos.d/45drives*.repo /opt/45drives/archives/repos/45drives-"${today}"-"${ts}".repo
+    fi
+
+    curl -fsSL https://repo.45drives.com/repofiles/rocky/45drives-enterprise.repo \
+         -o /etc/yum.repos.d/45drives-enterprise.repo
+
+    echo "[INFO] Cleaning yum/dnf metadata…"
+    (command -v dnf &>/dev/null && dnf clean all -y) || yum clean all -y
+    echo "[INFO] 45Drives repo ready."
+    return
+  fi
+
+  if [[ $OS_FAMILY == debian ]]; then
+    local CODENAME
+    CODENAME=$(grep -oP '^VERSION_CODENAME=\K.+' /etc/os-release || true)
+    echo "[INFO] Checking 45Drives repo for Debian/Ubuntu (${CODENAME:-unknown})…"
+
+    if [[ ! -f /etc/apt/sources.list.d/45drives-enterprise-${CODENAME}.list ]]; then
+      echo "[INFO] No existing 45Drives repo file – installing new one."
+    else
+      echo "[INFO] Existing 45Drives repo found – archiving to /opt/45drives/archives/repos."
+      mkdir -p /opt/45drives/archives/repos
+      mv /etc/apt/sources.list.d/45drives*.list \
+         /opt/45drives/archives/repos/45drives-"${today}"-"${ts}".list
+    fi
+
+    echo "[INFO] Ensuring CA certs and gnupg are present…"
+    apt -y update
+    apt -y install ca-certificates gnupg
+
+    echo "[INFO] Installing 45Drives GPG key…"
+    wget -qO - https://repo.45drives.com/key/gpg.asc \
+      | gpg --batch --yes --dearmor \
+      -o /usr/share/keyrings/45drives-archive-keyring.gpg
+
+    echo "[INFO] Installing repo file…"
+    curl -fsSL https://repo.45drives.com/repofiles/"${ID}"/45drives-enterprise-"${CODENAME}".list \
+         -o /etc/apt/sources.list.d/45drives-enterprise-"${CODENAME}".list
+
+    echo "[INFO] Updating APT metadata…"
+    apt -y update
+    echo "[INFO] 45Drives repo ready."
+    return
+  fi
+
+  echo "[WARN] 45Drives repo: unsupported distribution – skipped."
 }
 add_45drives_repo
+
 
 # ───────────────── 2) Node.js 18 LTS ───────────────────────────────
 install_nodejs18() {
@@ -99,7 +161,7 @@ install_nodejs18 18
 install_cockpit() {
   install_pkg cockpit
   systemctl enable --now cockpit.socket || true
-  if [[ $OS_FAMILY == rhel && -x $(command -v $FIREWALL_CMD) ]]; then
+  if [[ $OS_FAMILY == rhel && -x $(command -v "$FIREWALL_CMD") ]]; then
     systemctl is-active --quiet firewalld && \
       $FIREWALL_CMD --quiet --permanent --add-service=cockpit && $FIREWALL_CMD --reload || true
   fi
@@ -122,7 +184,11 @@ install_zfs() {
   install_pkg zfs         # userland + DKMS
 
   echo zfs > /etc/modules-load.d/zfs.conf
-  dkms autoinstall || true
+
+  dkms autoinstall 2>&1 \
+  | grep -vE 'Deprecated feature: (REMAKE_INITRD|MODULES_CONF_ALIAS_TYPE)' \
+  || true 
+
   modprobe zfs 2>/dev/null || touch /run/reboot_required
 
   if ! zfs version &>/dev/null; then
@@ -131,9 +197,8 @@ install_zfs() {
   fi
 
   if [[ -f /run/reboot_required ]]; then
-    echo "[INFO] Reboot required for kernel/ZFS; rebooting in 5 s"
+    echo "[REBOOT_NEEDED]"
     sleep 5
-    echo "[REBOOT REQUIRED]"
     reboot
   fi
 
@@ -143,3 +208,4 @@ install_zfs() {
 install_zfs
 
 echo "[INFO] Setup complete! Access Cockpit at: https://$(hostname -I | awk '{print $1}'):9090"
+echo "[BOOTSTRAP_DONE]"
