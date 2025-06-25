@@ -19,7 +19,7 @@ export function checkSSH(host: string, timeout = 3000): Promise<boolean> {
 }
 // 🧩 Generates + uploads SSH key
 export async function setupSshKey(host: string, username: string, password: string): Promise<void> {
-  const ssh = new NodeSSH();
+  const ssh = await connectWithPassword({ host, username: username, password: password });
   // const sshDir = path.join(getAppPath(), ".ssh");
   const sshDir = path.join(app.getPath('userData'), '.ssh');
   const privateKeyPath = path.join(sshDir, "id_rsa");
@@ -42,11 +42,11 @@ export async function setupSshKey(host: string, username: string, password: stri
 
   const publicKey = fs.readFileSync(publicKeyPath, 'utf8');
 
-  await ssh.connect({
-    host,
-    username,
-    password
-  });
+  // await ssh.connect({
+  //   host,
+  //   username,
+  //   password
+  // });
 
   await ssh.execCommand(`
     mkdir -p ~/.ssh &&
@@ -57,38 +57,72 @@ export async function setupSshKey(host: string, username: string, password: stri
   ssh.dispose();
 }
 
+async function connectWithPassword({
+  host,
+  username,
+  password,
+}: {
+  host: string;
+  username: string;
+  password: string;
+}) {
+  const ssh = new NodeSSH();
+  await ssh.connect({
+    host,
+    username,
+    password,                   // plain “password” auth
+    tryKeyboard: true,          // allow keyboard-interactive fallback
+    onKeyboardInteractive(
+      _name, _instr, _lang, prompts, finish,
+    ) {
+      // answer every prompt with the same password
+      finish(prompts.map(() => password));
+    },
+    readyTimeout: 20_000,
+  });
+  return ssh;
+}
+
 
 // 🧩 Upload and run install script
-export async function runBootstrapScript(host: string, username: string, privateKeyPath: string): Promise<boolean> {
+export async function runBootstrapScript(
+  host: string,
+  username: string,
+  privateKeyPath: string,
+): Promise<boolean> {
   const ssh = new NodeSSH();
   const scriptLocalPath = await getAsset("static", "setup-super-simple.sh");
-  const scriptRemotePath = '/tmp/setup-super-simple.sh';
+  const scriptRemotePath = "/tmp/setup-super-simple.sh";
 
-  await ssh.connect({ host, username, privateKey: fs.readFileSync(privateKeyPath, 'utf8') });
+  await ssh.connect({
+    host,
+    username,
+    privateKey: fs.readFileSync(privateKeyPath, "utf8"),
+    readyTimeout: 20_000,
+  });
   await ssh.putFile(scriptLocalPath, scriptRemotePath);
 
   let rebootRequired = false;
 
   await ssh.exec(
-    `sudo bash ${scriptRemotePath}`,
-    [],
+    // run line-buffered
+    `stdbuf -oL -eL bash ${scriptRemotePath}`,
+    [],                               // no positional parameters
     {
       cwd: '/tmp',
+      stream: 'both',                 // get both stdout and stderr
+      execOptions: { pty: true },     // ← THIS is the only change
       onStdout(chunk) {
         const line = chunk.toString().trim();
-        // console.log(`[${host}] ${line}`);
-        if (line.includes('[REBOOT_NEEDED]')) {
-          rebootRequired = true;
-        }
+        console.log(`[${host}] ${line}`);
+        if (line.includes('[REBOOT_NEEDED]')) rebootRequired = true;
       },
       onStderr(chunk) {
-        console.error(`[${host}] ${chunk.toString().trim()}`);
+        console.warn(`[${host}] ${chunk.toString().trim()}`);
       },
-    }
+    },
   );
 
   ssh.dispose();
-
-  // Return this info
   return rebootRequired;
 }

@@ -217,7 +217,14 @@ function createWindow() {
       password,
     });
 
-    return await installServerDepsRemotely({ host, username, password });
+    try {
+      const res = await installServerDepsRemotely({ host, username, password });
+      console.log("✅ install-cockpit-module →", res);
+      return res;
+    } catch (err) {
+      console.error("❌ install-cockpit-module error:", err);
+      throw err;            // so the renderer gets the real stack
+    }
   });
   
   ipcMain.handle('get-os', () => getOS());

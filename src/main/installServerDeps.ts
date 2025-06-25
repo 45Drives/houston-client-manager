@@ -49,6 +49,12 @@ export async function installServerDepsRemotely({
 
         return { success: true, reboot: rebootRequired };
     } catch (err: any) {
-        return { success: false, error: err.message || err };
+        console.error(
+            "SSH failure:",
+            err.level,            // e.g. 'client-authentication'
+            err.description,      // e.g. 'All configured authentication methods failed'
+            err.message,          // e.g. 'Permission denied'
+        );
+        return { success: false, error: err.message || String(err) };
     }
 }

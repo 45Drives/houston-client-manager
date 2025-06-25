@@ -19,8 +19,15 @@ app.directive('enter-next', enterNextDirective);
 app.mount('#app');
 document.documentElement.classList.add('theme-default');
 
-app.config.warnHandler = (msg, vm, trace) => {
-    if (!msg.includes('Extraneous non-props attributes')) {
-        console.warn(`[Vue warn]: ${msg}${trace}`);
-    }
-};
+const IGNORE = [
+    'setup() return property "_" should not start with "$" or "_"',
+    'Extraneous non-props attributes'
+]
+
+app.config.warnHandler = (msg, instance, trace) => {
+    // swallow any warning whose text matches one of the patterns
+    if (IGNORE.some(p => msg.includes(p))) return
+
+    // otherwise let it through
+    console.warn(`[Vue warn]: ${msg}${trace}`)
+  }

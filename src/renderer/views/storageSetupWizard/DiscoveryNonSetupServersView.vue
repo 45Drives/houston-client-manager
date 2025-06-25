@@ -268,10 +268,10 @@ const installModule = async (
         password,
       });
 
-    // console.log("🚀 installModule result:", result);
+    console.log("🚀 installModule result:", result);
     if (!result.success) {
       statusMessage.value = result.error || "Installation failed.";
-    } else if (result.rebootRequired) {
+    } else if (result.reboot) {
       statusMessage.value = "Setup installed. Server will reboot to finish enabling ZFS…";
       await rebootFunction();
     } else {
