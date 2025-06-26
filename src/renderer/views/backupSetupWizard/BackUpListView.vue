@@ -168,6 +168,7 @@ const toggleSelection = (task: BackUpTask) => {
   if (index !== -1) {
     selectedBackUps.value.splice(index, 1);
   } else {
+    console.log('task selected:', task);
     selectedBackUps.value.push(task);
   }
 

@@ -1,5 +1,5 @@
 import log from 'electron-log';
-// log.transports.console.level = false;
+log.transports.console.level = false;
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 console.log = (...args) => log.info(...args);
 console.error = (...args) => log.error(...args);
@@ -48,13 +48,27 @@ function checkLogDir(): string {
   const isRoot = process.getuid?.() === 0; // On Windows, this will be undefined
 
   try {
-    if (platform === 'win') {
-      logDir = path.join(process.env.ProgramData || 'C:\\ProgramData', 'houston-backups', 'logs');
-    } else if (isRoot) {
-      logDir = '/var/log/houston/';
-    } else {
-      logDir = path.join(app.getPath('userData'), 'logs');
-    }
+    switch (platform) {
+      case 'win':   // e.g. C:\ProgramData\houston-backups\logs
+        logDir = path.join(
+          process.env.ProgramData || 'C:\\ProgramData',
+          'houston-backups',
+          'logs'
+        );
+        break;
+
+      case 'mac':   // follow macOS conventions
+        logDir = isRoot
+          ? '/Library/Logs/houston'                           // system-wide
+          : path.join(app.getPath('home'), 'Library/Logs', 'houston'); // per-user
+        break;
+
+      default:      // Linux / BSD
+        logDir = isRoot
+          ? '/var/log/houston'
+          : path.join(app.getPath('userData'), 'logs');
+        break;
+    }  
 
     if (!fs.existsSync(logDir)) {
       fs.mkdirSync(logDir, { recursive: true });

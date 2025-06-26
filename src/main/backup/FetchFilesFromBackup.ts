@@ -5,10 +5,20 @@ import fs from 'fs';
 
 export default async function fetchBackupsFromFile(data: any) {
 
-  const slash = getOS() === "win" ? "\\" : "/"
+  // const slash = getOS() === "win" ? "\\" : "/"
   
   // console.log(data)
-  const basePath = getOS() === "win" ? `${slash}${slash}${data.smb_host}${slash}${data.smb_share}` : `/mnt/houston-mounts/${data.smb_share}`;
+  // const basePath = getOS() === "win" ? `${slash}${slash}${data.smb_host}${slash}${data.smb_share}` : `/mnt/houston-mounts/${data.smb_share}`;
+  let basePath: string;
+  if (getOS() === "win") {
+    basePath = `\\\\${data.smb_host}\\${data.smb_share}`;
+  } else if (getOS() === "mac") {
+    basePath = path.join("/Volumes", data.smb_share);
+  } else {
+    // linux
+    basePath = `/mnt/houston-mounts/${data.smb_share}`;
+  }
+  
   const uuid = data.uuid;
 
   // console.log("uuid", uuid)

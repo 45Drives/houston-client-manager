@@ -125,25 +125,9 @@ IPCRouter.getInstance().addEventListener("action", async (data) => {
         await waitForServerRebootAndShowWizard();
         isRebootWatcherRunning.value = false;
         break;
-
-      case 'sendBackupTasks':
-        // console.log("📦 Received tasks:", message.tasks);
-        break;
-
-      case 'sendHostname':
-        // console.log("🖥️ Hostname received:", message.hostname);
-        break;
-
-      case 'backUpSetupStatus':
-        // console.log("🔄 Setup progress:", message.status);
-        break;
-
-      case 'backUpStatusesUpdated':
-        // console.log("📋 Updated task statuses:", message.tasks);
-        break;
         
       default:
-        console.warn("❓ Unhandled action type:", message.type);
+        console.warn("Other action type:", message.type);
     }
 
   } catch (error) {
@@ -525,9 +509,9 @@ let discoveredServersChecked = false;
 window.electron.ipcRenderer.on('discovered-servers', (_event, discoveredServers: Server[]) => {
   if (!scanningNetworkForServers.value && !discoveredServersChecked) {
     discoveredServersChecked = true;
-    // const anyServersNotSetup = discoveredServers.some((server) => server.status !== "complete");
-    // currentWizard.value = anyServersNotSetup ? 'storage' : 'backup';
-    currentWizard.value = 'storage';
+    const anyServersNotSetup = discoveredServers.some((server) => server.status !== "complete");
+    currentWizard.value = anyServersNotSetup ? 'storage' : 'backup';
+    // currentWizard.value = 'storage';
     showWebView.value = false;
   }
 
