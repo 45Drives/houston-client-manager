@@ -203,6 +203,23 @@ async function editSchedule(selectedBackUp: BackUpTask) {
   }
 }
 
+function waitForNextMessage(type: string): Promise < any > {
+  return new Promise((resolve) => {
+    const handler = (raw: string) => {
+      try {
+        const msg = JSON.parse(raw);
+        if (msg.type === type) {
+          IPCRouter.getInstance().removeEventListener('action', handler);
+          resolve(msg);
+        }
+      } catch (e) {
+        console.warn("Failed to parse IPC message in waitForNextMessage", raw);
+      }
+    };
+
+    IPCRouter.getInstance().addEventListener('action', handler);
+  });
+}
 
 let isHandlingNextClick = false;
 
@@ -231,19 +248,25 @@ const deleteThisTask = async (task: BackUpTask) => {
     emit('backUpTaskSelected', [...selectedBackUps.value]);
 
     pollingSuspended = true;
-    
-    // Send deletion to backend
+
+    // Send deletion
     IPCRouter.getInstance().send("backend", "action", JSON.stringify({
       type: "removeBackUpTask",
       task
     }));
-    // console.log("[Child] 🚀 Sent removeBackUpTask:", task);
 
-    // 🔄 Refresh tasks from backend (small delay gives backend time to complete)
-    setTimeout(() => {
-      fetchBackupTasks();
-      pollingSuspended = false;
-    }, 1500); // short delay to ensure backend cleanup is done
+    // ✅ Wait for updated tasks from backend
+    const result = await waitForNextMessage("sendBackupTasks");
+
+    result.tasks.forEach((task: BackUpTask) => {
+      if (task.schedule?.startDate) {
+        task.schedule.startDate = new Date(task.schedule.startDate);
+      }
+    });
+
+    backUpTasks.value = result.tasks;
+    pollingSuspended = false;
+
   } finally {
     // 🔓 Reallow clicks after dialog
     isHandlingNextClick = false;
@@ -277,7 +300,7 @@ const deleteSelectedTasks = async () => {
     selectedBackUps.value = [];
     emit('backUpTaskSelected', []);
 
-    // Send appropriate delete request
+    // Send deletion
     if (count === 1) {
       IPCRouter.getInstance().send("backend", "action", JSON.stringify({
         type: "removeBackUpTask",
@@ -290,11 +313,18 @@ const deleteSelectedTasks = async () => {
       }));
     }
 
-    // Wait a bit longer to ensure backend has time to remove the task(s)
-    setTimeout(() => {
-      fetchBackupTasks();
-      pollingSuspended = false;
-    }, 1500); // You can tweak this (1500–2000ms tends to be safe)
+    // ✅ Wait for updated tasks from backend
+    const result = await waitForNextMessage("sendBackupTasks");
+
+    result.tasks.forEach((task: BackUpTask) => {
+      if (task.schedule?.startDate) {
+        task.schedule.startDate = new Date(task.schedule.startDate);
+      }
+    });
+
+    backUpTasks.value = result.tasks;
+    pollingSuspended = false;
+
   } finally {
     // 🔓 Reallow clicks after dialog
     isHandlingNextClick = false;

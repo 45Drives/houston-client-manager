@@ -358,7 +358,7 @@ trap cleanup EXIT
   fi
 
   echo "===== [$(date -Iseconds)] Backup task completed ====="
-} >> "$LOG_FILE" 2>&1
+} >> "$LOG_FILE" 2>&1 | tee /dev/fd/1
 `;
 
     fs.writeFileSync(scriptPath, scriptContent, { mode: 0o700 });

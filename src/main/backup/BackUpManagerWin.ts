@@ -97,12 +97,13 @@ export class BackUpManagerWin implements BackUpManager {
     const lines: string[] = [];
     lines.push('@echo off');
     lines.push(`set LOG_FILE=${logPath}`);
-    lines.push(`echo ===== %DATE% %TIME% Starting ${task.description} =====>>%LOG_FILE% 2>&1`);
-    lines.push(`call "${mountScript}" ${host} ${share} >>%LOG_FILE% 2>&1`);
-    lines.push('if errorlevel 1 ( echo ERROR: mount failed >>%LOG_FILE% 2>&1 & exit /b 1 )');
-    lines.push(`xcopy "${task.source}" "%DriveLetter%\\${dest}" /E /I /Y >>%LOG_FILE% 2>&1`);
-    lines.push('if errorlevel 1 ( echo ERROR: xcopy failed >>%LOG_FILE% 2>&1 ) else ( echo SUCCESS: backup complete >>%LOG_FILE% 2>&1 )');
-    lines.push('net use %DriveLetter%: /delete /y >>%LOG_FILE% 2>&1');
+    lines.push(`powershell -Command "Write-Output '===== %DATE% %TIME% Starting ${task.description} =====' | Tee-Object -FilePath '%LOG_FILE%' -Append"`);
+    lines.push(`powershell -Command "cmd /c \\"call ${mountScript} ${host} ${share}\\" | Tee-Object -FilePath '%LOG_FILE%' -Append"`);
+    lines.push('if errorlevel 1 ( powershell -Command "Write-Output \'ERROR: mount failed\' | Tee-Object -FilePath \'%LOG_FILE%\' -Append" & exit /b 1 )');
+    lines.push(`powershell -Command "xcopy '${task.source}' '%DriveLetter%\\${dest}' /E /I /Y | Tee-Object -FilePath '%LOG_FILE%' -Append"`);
+    lines.push('if errorlevel 1 ( powershell -Command "Write-Output \'ERROR: xcopy failed\' | Tee-Object -FilePath \'%LOG_FILE%\' -Append" ) else ( powershell -Command "Write-Output \'SUCCESS: backup complete\' | Tee-Object -FilePath \'%LOG_FILE%\' -Append" )');
+    lines.push(`powershell -Command "net use %DriveLetter%: /delete /y | Tee-Object -FilePath '%LOG_FILE%' -Append"`);
+
     fs.writeFileSync(batPath, lines.join("\r\n"), { mode: 0o700 });
 
     // register in Task Scheduler

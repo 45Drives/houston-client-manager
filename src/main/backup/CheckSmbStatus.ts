@@ -1,4 +1,4 @@
-import { exec } from 'child_process';
+import { exec, execSync } from 'child_process';
 import { getOS, getAsset, getAppPath } from '../utils';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -52,7 +52,13 @@ export async function checkBackupTaskStatus(task: BackUpTask): Promise<'online' 
     if (os === 'win') {
         scriptAsset = await getAsset("static", "check_smb_task_status_win.bat");
     } else if (os === 'mac') {
-        scriptAsset = await getAsset("static", "check_smb_task_status.sh");
+        const hasSMB = hasSmbClient();
+        if (hasSMB) {
+            scriptAsset = await getAsset("static", "check_smb_task_status.sh");
+        } else {
+            console.warn("smbclient is not installed. Please install it via Homebrew: brew install samba");
+            return 'offline_connection_error';
+        }
     } else {
         scriptAsset = await getAsset("static", "check_smb_task_status.sh");
     }
@@ -62,11 +68,13 @@ export async function checkBackupTaskStatus(task: BackUpTask): Promise<'online' 
         const cmd = `${os === 'win' ? '' : 'bash'} "${scriptAsset}" "${smbHost}" "${smbShare}" "${targetPath}" "${username}" "${password}"`;
         exec(cmd, (error, stdout, stderr) => {
             console.log(`[SMB Check] stdout for ${task.uuid}:`, stdout);
-            console.error(`[SMB Check] stderr for ${task.uuid}:`, stderr);
-            console.error(`[SMB Check] error for ${task.uuid}:`, error);
+
+            if (stderr) {
+                console.warn(`[SMB Check] stderr for ${task.uuid}:`, stderr);
+            }
 
             if (error) {
-                console.error(`Status script failed for ${task.uuid}:`, stderr || error);
+                console.error(`[SMB Check] error for ${task.uuid}:`, error);
                 return resolve('offline_connection_error');
             }
 
@@ -78,7 +86,16 @@ export async function checkBackupTaskStatus(task: BackUpTask): Promise<'online' 
             } catch (e) {
                 console.warn(`Non-JSON output from status check for ${task.uuid}:`, stdout);
                 return resolve('offline_connection_error');
-              }
+            }
         });
     });
 }
+
+function hasSmbClient(): boolean {
+    try {
+        execSync('which smbclient', { stdio: 'ignore' });
+        return true;
+    } catch {
+        return false;
+    }
+  }
