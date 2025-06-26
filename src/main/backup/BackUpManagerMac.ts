@@ -1,3 +1,19 @@
+import log from 'electron-log';
+log.transports.console.level = false;
+process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+console.log = (...args) => log.info(...args);
+console.error = (...args) => log.error(...args);
+console.warn = (...args) => log.warn(...args);
+console.debug = (...args) => log.debug(...args);
+
+process.on('uncaughtException', (error) => {
+  log.error('Uncaught Exception:', error);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  log.error('Unhandled Rejection at:', promise, 'reason:', reason);
+});
+
 import { BackUpManager } from "./types";
 import { BackUpTask, TaskSchedule } from "@45drives/houston-common-lib";
 import * as fs from "fs";
@@ -28,6 +44,18 @@ export class BackUpManagerMac implements BackUpManager {
     const uid = typeof process.getuid === "function" ? process.getuid()! : 0;
     return `gui/${uid}`;
   })();
+
+  private storeCredentials(host: string, username: string, password: string): void {
+    try {
+      execSync(`security add-internet-password -s ${host} -a ${username} -w ${password} -T /sbin/mount_smbfs`, {
+        stdio: 'ignore'
+      });
+    } catch (err: any) {
+      if (!err.message.includes('The specified item already exists')) {
+        throw err; // Ignore duplicate errors, rethrow others
+      }
+    }
+  }
 
   /* ------------------------------------------------------------------ */
   /*                            PUBLIC API                              */
@@ -65,12 +93,15 @@ export class BackUpManagerMac implements BackUpManager {
   }
 
   async schedule(
-    task: BackUpTask
+    task: BackUpTask, username: string, password: string
   ): Promise<{ stdout: string; stderr: string }> {
     fs.mkdirSync(this.launchdDirectory, { recursive: true });
     fs.mkdirSync(this.logDirectory, { recursive: true });
-    
 
+    const [smbHost, smbSharePart] = task.target.split(":");
+    const smbShare = smbSharePart.split("/")[0];
+
+    this.storeCredentials(smbHost, username, password);
     const plistString = this.backupTaskToPlist(task);
     const plistFilename = `com.backup-task.${this.safeTaskName(task.description)}.plist`;
     const plistPath = path.join(this.launchdDirectory, plistFilename);
@@ -83,19 +114,25 @@ export class BackUpManagerMac implements BackUpManager {
 
   async scheduleAllTasks(
     tasks: BackUpTask[],
+    username: string,
+    password: string,
     onProgress?: (step: number, total: number, message: string) => void
   ): Promise<void> {
     fs.mkdirSync(this.launchdDirectory, { recursive: true });
     fs.mkdirSync(this.logDirectory, { recursive: true });
+    const total = tasks.length;
 
-    for (let i = 0; i < tasks.length; i++) {
+    for (let i = 0; i < total; i++) {
       const t = tasks[i];
+      const [host, smbSharePart] = t.target.split(":");
+      this.storeCredentials(host, username, password);
       const plistFilename = `com.backup-task.${this.safeTaskName(t.description)}.plist`;
       const plistPath = path.join(this.launchdDirectory, plistFilename);
       fs.writeFileSync(plistPath, this.backupTaskToPlist(t), "utf-8");
       this.loadPlist(plistPath);
-      if (onProgress) onProgress(i + 1, tasks.length, `Installed ${plistFilename}`);
+      onProgress?.(i + 1, total, `Installed ${plistFilename}`);
     }
+    onProgress?.(total, total, "All tasks scheduled successfully.");
   }
 
   async runNow(task: BackUpTask): Promise<{ stdout: string; stderr: string }> {
@@ -123,11 +160,10 @@ export class BackUpManagerMac implements BackUpManager {
     }
   }
 
-  async updateSchedule(task: BackUpTask): Promise<void> {
+  async updateSchedule(task: BackUpTask, username: string, password: string): Promise<void> {
     await this.unschedule(task);
-    await this.schedule(task);
+    await this.schedule(task, username, password);
   }
-
 
 
   /* ------------------------------------------------------------------ */

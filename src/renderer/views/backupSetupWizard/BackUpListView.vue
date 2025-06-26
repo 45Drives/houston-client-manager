@@ -83,18 +83,25 @@
         class="border-2 border-default rounded-md w-full" />
     </div>
   </Modal>
+  <CredentialsModal ref="credsModalRef"/>
 </template>
 
 
 <script setup lang="ts">
-import { nextTick, onActivated, onDeactivated, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
+import { inject, nextTick, onActivated, onDeactivated, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
 import { BackUpTask, IPCRouter, unwrap } from '@45drives/houston-common-lib';
 import { Modal, confirm } from '@45drives/houston-common-ui';
+import CredentialsModal from "../../components/CredentialsModal.vue";
 import { formatFrequency } from "./utils";
 import { SimpleCalendar } from "../../components/calendar";
 import { PencilIcon, TrashIcon } from '@heroicons/vue/24/outline';
+import { thisOsInjectionKey } from '../../keys/injection-keys';
+import { user } from 'cockpit';
 const backUpTasks = ref<BackUpTask[]>([]);
 const selectedBackUps = ref<BackUpTask[]>([]);
+const thisOs = inject(thisOsInjectionKey);
+
+const credsModalRef = ref<InstanceType<typeof CredentialsModal> | null>(null);
 
 const selectedTaskSchedule = ref<any>();
 const showCalendar = ref(false);
@@ -194,12 +201,26 @@ async function editSchedule(selectedBackUp: BackUpTask) {
   if (scheduleConfirmed && selectedBackUp) {
     selectedBackUp.schedule.repeatFrequency = selectedTaskSchedule.value.repeatFrequency;
     selectedBackUp.schedule.startDate = selectedTaskSchedule.value.startDate;
+    const isLinux = thisOs?.value === 'rocky' || thisOs?.value === 'debian';
 
-    // console.log("Updating backup task with schedule:", selectedBackUp);
-    IPCRouter.getInstance().send("backend", "action", JSON.stringify({
-      type: "updateBackUpTask",
-      task: selectedBackUp
-    }));
+    // if (!isLinux) {
+      const credentials = await credsModalRef.value?.open();
+      if (!credentials) return;
+
+      IPCRouter.getInstance().send("backend", "action", JSON.stringify({
+        type: "updateBackUpTask",
+        task: selectedBackUp,
+        username: credentials.username,
+        password: credentials.password
+      }));
+    // } else {
+    //   IPCRouter.getInstance().send("backend", "action", JSON.stringify({
+    //     type: "updateBackUpTask",
+    //     task: selectedBackUp, 
+    //     username: "",
+    //     password: ""
+    //   }));
+    // }
   }
 }
 

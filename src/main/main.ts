@@ -389,6 +389,8 @@ function createWindow() {
           }
         } else if (message.type === 'updateBackUpTask') {
           const task: BackUpTask = message.task;
+          const username: string = message.username;
+          const password: string = message.password;
           const backupManager = getBackUpManager();
 
           if (!backupManager) {
@@ -397,7 +399,7 @@ function createWindow() {
           }
 
           try {
-            await backupManager.updateSchedule(task);
+            await backupManager.updateSchedule(task, username, password);
             const date = new Date(task.schedule.startDate);
             const minute = date.getMinutes().toString().padStart(2, '0');
             const hour = date.getHours();

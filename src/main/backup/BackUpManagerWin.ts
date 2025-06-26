@@ -1,3 +1,19 @@
+import log from 'electron-log';
+log.transports.console.level = false;
+process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+console.log = (...args) => log.info(...args);
+console.error = (...args) => log.error(...args);
+console.warn = (...args) => log.warn(...args);
+console.debug = (...args) => log.debug(...args);
+
+process.on('uncaughtException', (error) => {
+  log.error('Uncaught Exception:', error);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  log.error('Unhandled Rejection at:', promise, 'reason:', reason);
+});
+
 import { BackUpManager } from "./types";
 import { BackUpTask, TaskSchedule } from "@45drives/houston-common-lib";
 import { formatDateForTask, getMountSmbScript, getSmbTargetFromSmbTarget } from "../utils";
@@ -6,7 +22,6 @@ import fs from 'fs';
 import os from 'os';
 import { exec } from "child_process";
 import { checkBackupTaskStatus } from './CheckSmbStatus';
-
 
 /**
  * BackUpManager implementation for **Windows** (user‑context Task Scheduler)
@@ -22,6 +37,13 @@ export class BackUpManagerWin implements BackUpManager {
     "houston-backups",
     "logs"
   );
+
+  private async storeCredentials(host: string, username: string, password: string): Promise<void> {
+    const ps = `cmdkey /add:${host} /user:${username} /pass:${password}`;
+    return new Promise((resolve, reject) => {
+      exec(`powershell -NoProfile -Command "${ps}"`, (err) => err ? reject(err) : resolve());
+    });
+  }
 
   /** Discover ScheduledTasks and build BackUpTask objects */
   async queryTasks(): Promise<BackUpTask[]> {
@@ -79,18 +101,21 @@ export class BackUpManagerWin implements BackUpManager {
 
   /** Schedule a task with a batch file that logs to disk */
   async schedule(
-    task: BackUpTask
+    task: BackUpTask, username: string, password: string
   ): Promise<{ stdout: string; stderr: string }> {
     // ensure log dir
     fs.mkdirSync(this.logDirectory, { recursive: true });
+    const [host, sharePart] = task.target.split(':');
+    const share = sharePart.split('/')[0];
+
+    await this.storeCredentials(host, username, password);
     const logPath = path.join(this.logDirectory, `backup_task_${task.uuid}.log`);
 
     // create batch script
     const batName = `run_backup_task_${task.uuid}.bat`;
     const batPath = path.join(os.tmpdir(), batName);
     const mountScript = getMountSmbScript();
-    const [host, sharePart] = task.target.split(':');
-    const share = sharePart.split('/')[0];
+
     const dest = getSmbTargetFromSmbTarget(task.target).replace(/\//g, "\\");
     const iso = task.schedule.startDate.toISOString();
 
@@ -120,14 +145,20 @@ export class BackUpManagerWin implements BackUpManager {
   }
 
   async scheduleAllTasks(
-    tasks: BackUpTask[],
+    tasks: BackUpTask[], username: string, password: string,
     onProgress?: (step: number, total: number, message: string) => void
   ): Promise<void> {
     fs.mkdirSync(this.logDirectory, { recursive: true });
-    for (let i = 0; i < tasks.length; i++) {
-      await this.schedule(tasks[i]);
-      onProgress?.(i + 1, tasks.length, `Scheduled ${tasks[i].description}`);
+
+    const total = tasks.length;
+
+    for (let i = 0; i < total; i++) {
+      const task = tasks[i];
+      await this.schedule(task, username, password);
+      onProgress?.(i + 1, total, `Scheduled ${task.description}`);
     }
+
+    onProgress?.(total, total, "All tasks scheduled successfully.");
   }
 
   async runNow(task: BackUpTask): Promise<{ stdout: string; stderr: string }> {
@@ -148,9 +179,9 @@ export class BackUpManagerWin implements BackUpManager {
   }
 
 
-  async updateSchedule(task: BackUpTask): Promise<void> {
+  async updateSchedule(task: BackUpTask, username: string, password: string): Promise<void> {
     await this.unschedule(task);
-    await this.schedule(task);
+    await this.schedule(task, username, password);
   }
 
 

@@ -27,13 +27,17 @@
         allowpopups nodeintegration allow-same-origin allow-scripts partition="persist:authSession"
         webpreferences="javascript=yes,webSecurity=no,enable-cookies=true,nodeIntegration=false,contextIsolation=true"
         ref="webview" @did-finish-load="onWebViewLoaded" /> -->
-      <webview v-show="showWebView && !loadingWebview && !waitingForServerReboot" id="myWebview" :src="currentUrl"
+
+      <!-- <webview v-show="showWebView && !loadingWebview && !waitingForServerReboot" id="myWebview" :src="currentUrl"
         partition="persist:authSession"
+        webpreferences="contextIsolation=true, nodeIntegration=false, enableRemoteModule=false" ref="webview"
+        @did-finish-load="onWebViewLoaded" /> -->
+      <webview :style="{ visibility: showWebView && !loadingWebview && !waitingForServerReboot ? 'visible' : 'hidden' }"
+        class="absolute inset-0 w-full h-full" id="myWebview" :src="currentUrl" partition="persist:authSession"
         webpreferences="contextIsolation=true, nodeIntegration=false, enableRemoteModule=false" ref="webview"
         @did-finish-load="onWebViewLoaded" />
 
-      <div v-if="loadingWebview"
-        class="absolute inset-0 z-40 bg-default flex flex-col items-center justify-center">
+      <div v-if="loadingWebview" class="absolute inset-0 z-40 bg-default flex flex-col items-center justify-center">
         <p class="text-2xl text-center">
           <template v-if="loadingWebview">Give us a few while we login...</template>
         </p>
@@ -555,6 +559,7 @@ const onWebViewLoaded = async () => {
   if (currentUrl.value.endsWith(":9090")) {
     loadingWebview.value = false;
     webview.value.className = "h-[100vh] w-full";
+    webview.value.style.visibility = "visible";
     return;
   }
 
@@ -619,11 +624,13 @@ const onWebViewLoaded = async () => {
     .then((result: any) => {
       loadingWebview.value = false;
       webview.value.className = "h-[100vh] w-full";
+      webview.value.style.visibility = "visible";
     })
     .catch((error: any) => {
       console.error("Webview login error:", error);
       loadingWebview.value = false;
       webview.value.className = "h-[100vh] w-full";
+      webview.value.style.visibility = "visible";
     });
 
   if (isDev.value) {
