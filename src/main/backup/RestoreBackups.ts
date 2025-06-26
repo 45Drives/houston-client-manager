@@ -8,10 +8,20 @@ export default async function restoreBackups(data: any, IPCRouter: IPCMessageRou
   
   // console.log("restore backups")
 
-  const slash = getOS() === "win" ? "\\" : "/"
+  // const slash = getOS() === "win" ? "\\" : "/"
 
   // console.log(data)
-  const basePath = getOS() === "win" ? `${slash}${slash}${data.smb_host}${slash}${data.smb_share}` : `/mnt/houston-mounts/${data.smb_share}`;
+  // const basePath = getOS() === "win" ? `${slash}${slash}${data.smb_host}${slash}${data.smb_share}` : `/mnt/houston-mounts/${data.smb_share}`;
+  let basePath: string;
+  if (getOS() === "win") {
+    basePath = `\\\\${data.smb_host}\\${data.smb_share}`;
+  } else if (getOS() === "mac") {
+    basePath = path.join("/Volumes", data.smb_share);
+  } else {
+    // linux
+    basePath = `/mnt/houston-mounts/${data.smb_share}`;
+  }
+  
   const uuid = data.uuid;
   const client = data.client;
   let files: string[] = data.files;

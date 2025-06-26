@@ -71,6 +71,12 @@ ssh "$MAC_HOST" "
 
     echo 'Installing dependencies and building...'
     cd \"${REMOTE_BUILD_DIR}\"
+
+    echo '🔧 Scrubbing stale Corepack/Yarn links…'
+    sudo rm -f /usr/local/bin/{yarn,yarnpkg,pnpm,pnpx,corepack} 2>/dev/null || true
+    brew unlink --force yarn 2>/dev/null || true 
+
+    echo '🔧 (Re)-enabling Corepack…'
     corepack enable
     corepack prepare yarn@4.6.0 --activate
 

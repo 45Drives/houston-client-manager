@@ -3,147 +3,156 @@ import { BackUpTask, TaskSchedule } from "@45drives/houston-common-lib";
 import * as fs from "fs";
 import { execSync } from "child_process";
 import * as path from "path";
-import * as plist from 'plist';
+import * as os from "os";
+import * as plist from "plist";
+import crypto from "crypto";
 import { getRsync } from "../utils";
+import { checkBackupTaskStatus } from "./CheckSmbStatus";
 
+/**
+ * BackUpManager implementation for **macOS** (user‑domain / no sudo prompts)
+ * -----------------------------------------------------------------------
+ *  • Jobs live in ~/Library/LaunchAgents → the logged‑in user can freely
+ *    create / remove / run them without authentication dialogs.
+ *  • Task objects mirror the Linux structure (`host`, `share`, `status`, …)
+ *    so the UI can treat both platforms identically.
+ */
 export class BackUpManagerMac implements BackUpManager {
-  protected launchdDirectory: string = "/Library/LaunchDaemons";
+  /** ~/Library/LaunchAgents */
+  protected launchdDirectory = path.join(os.homedir(), "Library", "LaunchAgents");
+  protected logDirectory = path.join(os.homedir(), ".local", "share", "houston-logs");
 
-  queryTasks(): Promise<BackUpTask[]> {
-    const launchdFiles = fs.readdirSync(this.launchdDirectory);
-    const tasks = launchdFiles
-      .filter(file => file.startsWith("com.backup-task"))
-      .map(file => this.launchdToBackupTask(file))
-      .filter(task => task !== null) as BackUpTask[];
+  /** launchctl domain for current user (GUI session) */
+  private launchctlDomain: string = (() => {
+    // On macOS, process.getuid() exists; guard against undefined in other environments
+    const uid = typeof process.getuid === "function" ? process.getuid()! : 0;
+    return `gui/${uid}`;
+  })();
 
-    return new Promise((resolve, _rejest) => {
-      resolve(tasks)
-    });
-  }
+  /* ------------------------------------------------------------------ */
+  /*                            PUBLIC API                              */
+  /* ------------------------------------------------------------------ */
 
-  schedule(task: BackUpTask, username: string, password: string): Promise<{ stdout: string, stderr: string }> {
-    const plist = this.backupTaskToPlist(task);
-    const plistFileName = `com.backup-task.${this.safeTaskName(task.description)}.plist`;
-    const tempPlistPath = path.join("/tmp", plistFileName);
-    const launchdPlistPath = path.join(this.launchdDirectory, plistFileName);
+  /**
+   * Discover every Houston backup LaunchAgent and reconstruct a BackUpTask.
+   * Performs an async SMB availability check to populate `status`.
+   */
+  async queryTasks(): Promise<BackUpTask[]> {
+    if (!fs.existsSync(this.launchdDirectory)) return [];
 
-    // Write to a temp file first
-    fs.writeFileSync(tempPlistPath, plist, "utf-8");
+    const agentFiles = fs
+      .readdirSync(this.launchdDirectory)
+      .filter((f) => f.startsWith("com.backup-task") && f.endsWith(".plist"));
 
-    const command = [
-      `mkdir -p "${this.launchdDirectory}"`,
-      `chmod 755 "${this.launchdDirectory}"`,
-      `cp "${tempPlistPath}" "${launchdPlistPath}"`,
-      `chmod 644 "${launchdPlistPath}"`,
-      `chown root:wheel "${launchdPlistPath}"`,
-      `launchctl load "${launchdPlistPath}"`
-    ].join(" && ");
+    const tasks: BackUpTask[] = [];
 
-    return new Promise((resolve, reject) => {
-      this.runAsAdmin(command)
-      resolve({ stdout: "", stderr: "" });
-    });
-  }
+    for (const file of agentFiles) {
+      const task = this.launchdToBackupTask(file);
+      if (!task) continue;
 
-   async scheduleAllTasks(
-    tasks: BackUpTask[],
-    username: string,
-    password: string,
-    onProgress?: (step: number, total: number, message: string) => void
-  ): Promise<void> {
-    const tmpDir = "/tmp/houston-backup-plists";
-    fs.mkdirSync(tmpDir, { recursive: true });
+      /* 🔍 Status check mirrors Linux behaviour */
+      try {
+        task.status = await checkBackupTaskStatus(task);
+      } catch (err) {
+        console.warn(`Failed to check status for task ${task.uuid}:`, err);
+        task.status = "offline_connection_error";
+      }
 
-    // 1) Write every plist into /tmp
-    for (let i = 0; i < tasks.length; i++) {
-      const task = tasks[i];
-      const name = `com.backup-task.${this.safeTaskName(task.description)}.plist`;
-      const tmpPath = path.join(tmpDir, name);
-      fs.writeFileSync(tmpPath, this.backupTaskToPlist(task), "utf-8");
-      if (onProgress) onProgress(i + 1, tasks.length, `Prepared ${name}`);
+      tasks.push(task);
     }
 
-    // 2) Build one giant shell command that installs them all
-    const cmds = tasks.map(task => {
-      const name = `com.backup-task.${this.safeTaskName(task.description)}.plist`;
-      const tmpPath = path.join(tmpDir, name);
-      const dest   = path.join(this.launchdDirectory, name);
-      return [
-        `mkdir -p "${this.launchdDirectory}"`,
-        `cp "${tmpPath}" "${dest}"`,
-        `chmod 644 "${dest}"`,
-        `chown root:wheel "${dest}"`,
-        `launchctl load "${dest}"`
-      ].join(" && ");
-    }).join(" && ");
-
-    // 3) One prompt for all tasks
-    this.runAsAdmin(cmds, "Installing all backup tasks in bulk…");
-    if (onProgress) onProgress(tasks.length, tasks.length, "All tasks installed");
+    return tasks;
   }
-  
-  runNow(task: BackUpTask): Promise<{ stdout: string; stderr: string }> {
-    const label = `com.backup-task.${this.safeTaskName(task.description)}`;
-    const command = `launchctl kickstart -k system/${label}`;
 
-    return new Promise((resolve, reject) => {
-      try {
-        this.runAsAdmin(command, `Running backup task: ${label}`);
-        resolve({ stdout: "", stderr: "" });
-      } catch (error: any) {
-        reject(error);
-      }
-    });
+  async schedule(
+    task: BackUpTask
+  ): Promise<{ stdout: string; stderr: string }> {
+    fs.mkdirSync(this.launchdDirectory, { recursive: true });
+    fs.mkdirSync(this.logDirectory, { recursive: true });
+    
+
+    const plistString = this.backupTaskToPlist(task);
+    const plistFilename = `com.backup-task.${this.safeTaskName(task.description)}.plist`;
+    const plistPath = path.join(this.launchdDirectory, plistFilename);
+
+    fs.writeFileSync(plistPath, plistString, "utf-8");
+    this.loadPlist(plistPath);
+
+    return { stdout: "", stderr: "" };
+  }
+
+  async scheduleAllTasks(
+    tasks: BackUpTask[],
+    onProgress?: (step: number, total: number, message: string) => void
+  ): Promise<void> {
+    fs.mkdirSync(this.launchdDirectory, { recursive: true });
+    fs.mkdirSync(this.logDirectory, { recursive: true });
+
+    for (let i = 0; i < tasks.length; i++) {
+      const t = tasks[i];
+      const plistFilename = `com.backup-task.${this.safeTaskName(t.description)}.plist`;
+      const plistPath = path.join(this.launchdDirectory, plistFilename);
+      fs.writeFileSync(plistPath, this.backupTaskToPlist(t), "utf-8");
+      this.loadPlist(plistPath);
+      if (onProgress) onProgress(i + 1, tasks.length, `Installed ${plistFilename}`);
+    }
+  }
+
+  async runNow(task: BackUpTask): Promise<{ stdout: string; stderr: string }> {
+    const label = `com.backup-task.${this.safeTaskName(task.description)}`;
+    execSync(`launchctl kickstart -k ${this.launchctlDomain}/${label}`);
+    return { stdout: "", stderr: "" };
   }
 
   async unschedule(task: BackUpTask): Promise<void> {
-    const plistFileName = `com.backup-task.${this.safeTaskName(task.description)}.plist`;
-    const plistFilePath = path.join(this.launchdDirectory, plistFileName);
+    const plistFilename = `com.backup-task.${this.safeTaskName(task.description)}.plist`;
+    const plistPath = path.join(this.launchdDirectory, plistFilename);
+    if (!fs.existsSync(plistPath)) return;
 
-    if (fs.existsSync(plistFilePath)) {
-      const command = [
-        `launchctl unload "${plistFilePath}"`,
-        `rm -f "${plistFilePath}"`
-      ].join(" && ");
-
-      this.runAsAdmin(command);
-    }
+    this.unloadPlist(plistPath);
+    fs.rmSync(plistPath);
   }
 
   async unscheduleSelectedTasks(tasks: BackUpTask[]): Promise<void> {
-    const unloadCommands: string[] = [];
-
-    for (const task of tasks) {
-      const plistFileName = `com.backup-task.${this.safeTaskName(task.description)}.plist`;
-      const plistFilePath = path.join(this.launchdDirectory, plistFileName);
-
-      if (fs.existsSync(plistFilePath)) {
-        unloadCommands.push(`launchctl unload "${plistFilePath}"`);
-        unloadCommands.push(`rm -f "${plistFilePath}"`);
-      } else {
-        console.warn(`⚠️ Task plist not found: ${plistFilePath}`);
-      }
+    for (const t of tasks) {
+      const plistFilename = `com.backup-task.${this.safeTaskName(t.description)}.plist`;
+      const plistPath = path.join(this.launchdDirectory, plistFilename);
+      if (!fs.existsSync(plistPath)) continue;
+      this.unloadPlist(plistPath);
+      fs.rmSync(plistPath);
     }
-
-    if (unloadCommands.length === 0) return;
-
-    const combinedCommand = unloadCommands.join(" && ");
-    this.runAsAdmin(combinedCommand, "Removing selected backup tasks...");
   }
-  
 
   async updateSchedule(task: BackUpTask): Promise<void> {
-    console.warn("🚧 updateSchedule is not yet implemented for macOS.");
-    throw new Error("Backup scheduling update is not supported on macOS yet.");
+    await this.unschedule(task);
+    await this.schedule(task);
   }
 
-  private runAsAdmin(command: string, message: string = "This 45Drives Setup Wizard requires administrator privileges."): void {
-    execSync(`osascript -e 'display dialog "${message.replace(/"/g, '\\"')}" with title "Backup Scheduler" buttons {"OK"} default button 1'`);
-    execSync(`osascript -e 'do shell script "${this.escapeForAppleScript(command)}" with administrator privileges'`);
+
+
+  /* ------------------------------------------------------------------ */
+  /*                  PRIVATE — launchctl helper wrappers                */
+  /* ------------------------------------------------------------------ */
+
+  private loadPlist(plistPath: string) {
+    execSync(`plutil -lint "${plistPath}"`); // syntax check
+    execSync(`launchctl bootstrap ${this.launchctlDomain} "${plistPath}"`);
   }
 
-  private escapeForAppleScript(cmd: string): string {
-    return cmd.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+  private unloadPlist(plistPath: string) {
+    try {
+      execSync(`launchctl bootout ${this.launchctlDomain} "${plistPath}"`);
+    } catch (_) {
+      /* ignore if not loaded */
+    }
+  }
+
+  /* ------------------------------------------------------------------ */
+  /*                             XML helpers                            */
+  /* ------------------------------------------------------------------ */
+
+  private escapeXml(str: string): string {
+    return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   }
 
   private safeTaskName(description: string): string {
@@ -151,109 +160,130 @@ export class BackUpManagerMac implements BackUpManager {
   }
 
   private backupTaskToPlist(task: BackUpTask): string {
-    const schedule = this.scheduleToLaunchd(task.schedule);
+    const scheduleXml = this.scheduleToLaunchd(task.schedule);
+    const label = this.escapeXml(`com.backup-task.${this.safeTaskName(task.description)}`);
+    const rsync = this.escapeXml(getRsync());
+    const flags = this.escapeXml(`--archive${task.mirror ? ' --delete' : ''}`);
+    const src = this.escapeXml(task.source);
+    const tgt = this.escapeXml(task.target);
+    const outLog = this.escapeXml(path.join(this.logDirectory, `${this.safeTaskName(task.description)}.log`));
+    const errLog = this.escapeXml(path.join(this.logDirectory, `${this.safeTaskName(task.description)}.err`));
+    const startIso = this.escapeXml(task.schedule.startDate.toISOString());
     return `<?xml version="1.0" encoding="UTF-8"?>
-    <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-    <plist version="1.0">
-      <dict>
-        <key>Label</key>
-        <string>com.backup-task.${this.safeTaskName(task.description)}</string>
-        <key>ProgramArguments</key>
-        <array>
-          <string>${getRsync()}</string>
-          <string>--archive${task.mirror ? " --delete" : ""}</string>
-          <string>${task.source}</string>
-          <string>${task.target}</string>
-        </array>
-        <key>StartCalendarInterval</key>
-        <dict>
-          <key>Minute</key>
-          <integer>${schedule.minute}</integer>
-          <key>Hour</key>
-          <integer>${schedule.hour}</integer>
-          <key>Day</key>
-          <integer>${schedule.day}</integer>
-        </dict>
-        <key>StandardOutPath</key>
-        <string>/var/log/${this.safeTaskName(task.description)}.log</string>
-        <key>StandardErrorPath</key>
-        <string>/var/log/${this.safeTaskName(task.description)}.err</string>
-        <key>RunAtLoad</key>
-        <true/>
-        <key>EnvironmentVariables</key>
-        <dict>
-          <key>START_DATE</key>
-          <string>${task.schedule.startDate.toISOString()}</string>
-        </dict>
-      </dict>
-    </plist>`;
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>${label}</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>${rsync}</string>
+    <string>${flags}</string>
+    <string>${src}</string>
+    <string>${tgt}</string>
+  </array>
+${scheduleXml}
+  <key>StandardOutPath</key>
+  <string>${outLog}</string>
+  <key>StandardErrorPath</key>
+  <string>${errLog}</string>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>START_DATE</key>
+    <string>${startIso}</string>
+  </dict>
+</dict>
+</plist>`;
   }
 
-  private scheduleToLaunchd(sched: TaskSchedule): { minute: string | number; hour: string | number; day: string | number } {
+  /** Turn a TaskSchedule → XML fragment accepted by launchd */
+  private scheduleToLaunchd(sched: TaskSchedule): string {
+    const m = sched.startDate.getMinutes();
+    const h = sched.startDate.getHours();
+    const d = sched.startDate.getDate();
+    const wd = sched.startDate.getDay();
+
     switch (sched.repeatFrequency) {
       case "hour":
-        return { minute: sched.startDate.getMinutes(), hour: "*", day: "*" };
+        return `  <key>StartInterval</key>\n  <integer>3600</integer>`;
       case "day":
-        return { minute: sched.startDate.getMinutes(), hour: sched.startDate.getHours(), day: "*" };
+        return `  <key>StartCalendarInterval</key>\n  <dict>\n    <key>Minute</key><integer>${m}</integer>\n    <key>Hour</key><integer>${h}</integer>\n  </dict>`;
       case "week":
-        return { minute: sched.startDate.getMinutes(), hour: sched.startDate.getHours(), day: sched.startDate.getDay() };
+        return `  <key>StartCalendarInterval</key>\n  <dict>\n    <key>Minute</key><integer>${m}</integer>\n    <key>Hour</key><integer>${h}</integer>\n    <key>Weekday</key><integer>${wd}</integer>\n  </dict>`;
       case "month":
-        return { minute: sched.startDate.getMinutes(), hour: sched.startDate.getHours(), day: sched.startDate.getDate() };
+        return `  <key>StartCalendarInterval</key>\n  <dict>\n    <key>Minute</key><integer>${m}</integer>\n    <key>Hour</key><integer>${h}</integer>\n    <key>Day</key><integer>${d}</integer>\n  </dict>`;
       default:
-        return { minute: 0, hour: 0, day: 1 };
+        return ``; // manual‑only
     }
   }
 
+  /** Parse a Houston LaunchAgent → BackUpTask (no status, host resolved later) */
   private launchdToBackupTask(fileName: string): BackUpTask | null {
-    const plistFilePath = path.join(this.launchdDirectory, fileName);
-    const plistContents = fs.readFileSync(plistFilePath, "utf-8");
-
-    let parsedPlist: any;
+    const plistPath = path.join(this.launchdDirectory, fileName);
+    let parsed: any;
     try {
-      parsedPlist = plist.parse(plistContents);
-    } catch (error) {
-      console.error(`Failed to parse plist: ${fileName}`, error);
+      parsed = plist.parse(fs.readFileSync(plistPath, "utf-8"));
+    } catch (err) {
+      console.error("Failed to parse plist", plistPath, err);
       return null;
     }
 
-    /* ---------- program arguments (rsync) ---------- */
-    const programArguments = parsedPlist.ProgramArguments;
-    if (!programArguments || programArguments.length < 4) {
-      console.error("ProgramArguments not found or malformed in plist");
-      return null;
+    const args = parsed.ProgramArguments as string[];
+    if (!args || args.length < 4) return null;
+
+    const source = args[2];
+    const target = args[3];
+    const mirror = args.includes("--delete");
+
+    /* host / share extraction mirrors Linux behaviour */
+    let host = "";
+    let share = "";
+    if (target.includes(":")) {
+      const [h, rest] = target.split(":");
+      host = h;
+      share = rest.split("/")[0] || "";
     }
-    const source = programArguments[2]; // third element
-    const target = programArguments[3]; // fourth element
 
-    /* ---------- schedule ---------- */
-    const sci = parsedPlist.StartCalendarInterval || {};
-    const minute = sci.Minute ?? 0;
-    const hour = sci.Hour ?? 0;
-    const day = sci.Day ?? 1;
-
-    /* Prefer the ISO timestamp we stored in EnvironmentVariables */
-    const startDateStr =
-      parsedPlist.EnvironmentVariables?.START_DATE as string | undefined;
-
-    const taskSchedule: TaskSchedule = {
-      repeatFrequency: "hour",           // refine later if you add week/month logic
-      startDate: startDateStr ? new Date(startDateStr) : new Date(),
+    // reconstruct schedule (best‑effort)
+    const schedule: TaskSchedule = {
+      repeatFrequency: "day",
+      startDate: new Date(),
     };
 
-    taskSchedule.startDate.setMinutes(minute);
-    taskSchedule.startDate.setHours(hour);
-    taskSchedule.startDate.setDate(day);
+    if (parsed.StartInterval) {
+      schedule.repeatFrequency = "hour";
+    } else if (parsed.StartCalendarInterval) {
+      const sci = parsed.StartCalendarInterval;
+      if (sci.Weekday !== undefined) schedule.repeatFrequency = "week";
+      else if (sci.Day !== undefined) schedule.repeatFrequency = "month";
+      else schedule.repeatFrequency = "day";
+
+      const minute = sci.Minute ?? 0;
+      const hour = sci.Hour ?? 0;
+      const day = sci.Day ?? 1;
+      const weekday = sci.Weekday ?? 0;
+
+      schedule.startDate = new Date();
+      schedule.startDate.setMinutes(minute);
+      schedule.startDate.setHours(hour);
+      if (sci.Day !== undefined) schedule.startDate.setDate(day);
+      if (sci.Weekday !== undefined) schedule.startDate.setDate(
+        schedule.startDate.getDate() + ((7 + weekday - schedule.startDate.getDay()) % 7)
+      );
+    }
 
     return {
       uuid: crypto.randomUUID(),
-      description: fileName
-        .replace("com.backup-task.", "")
-        .replace(".plist", ""),
-      schedule: taskSchedule,
+      description: fileName.replace("com.backup-task.", "").replace(".plist", ""),
+      schedule,
       source,
       target,
-      mirror: plistContents.includes("--delete"),
+      host,
+      share,
+      mirror,
+      status: "checking",
     };
   }
-  
 }
