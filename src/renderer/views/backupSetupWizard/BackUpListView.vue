@@ -203,7 +203,7 @@ async function editSchedule(selectedBackUp: BackUpTask) {
     selectedBackUp.schedule.startDate = selectedTaskSchedule.value.startDate;
     const isLinux = thisOs?.value === 'rocky' || thisOs?.value === 'debian';
 
-    // if (!isLinux) {
+    if (!isLinux) {
       const credentials = await credsModalRef.value?.open();
       if (!credentials) return;
 
@@ -213,14 +213,14 @@ async function editSchedule(selectedBackUp: BackUpTask) {
         username: credentials.username,
         password: credentials.password
       }));
-    // } else {
-    //   IPCRouter.getInstance().send("backend", "action", JSON.stringify({
-    //     type: "updateBackUpTask",
-    //     task: selectedBackUp, 
-    //     username: "",
-    //     password: ""
-    //   }));
-    // }
+    } else {
+      IPCRouter.getInstance().send("backend", "action", JSON.stringify({
+        type: "updateBackUpTask",
+        task: selectedBackUp, 
+        username: "",
+        password: ""
+      }));
+    }
   }
 }
 
