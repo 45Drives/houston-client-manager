@@ -58,10 +58,12 @@ fetch_zfs_repo_rpm() {
   local old="https://zfsonlinux.org/epel/zfs-release-$(rpm -E '%{rhel}').noarch.rpm"
   echo "[INFO] Fetching ZFS repo RPM…"
   if ! dnf install -y "$new" 2>&1 | tee /tmp/zfsrepo.log | grep -Eq '^Error.*404'; then
+    dnf clean all -y && dnf makecache -y
     return
   fi
   echo "[WARN] $new returned 404 – falling back to legacy URL"
   dnf install -y "$old"
+  dnf clean all -y && dnf makecache -y
 }
 
 preflight() {
@@ -149,6 +151,7 @@ install_nodejs18() {
   echo "[INFO] Installing Node.js $v…"
   if [[ $OS_FAMILY == rhel ]]; then
     curl -fsSL https://rpm.nodesource.com/setup_${v}.x | bash -
+    dnf clean all -y && dnf makecache -y
     dnf install -y nodejs
   else
     curl -fsSL https://deb.nodesource.com/setup_${v}.x | bash -
