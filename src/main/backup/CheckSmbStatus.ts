@@ -1,3 +1,19 @@
+import log from 'electron-log';
+log.transports.console.level = false;
+process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+console.log = (...args) => log.info(...args);
+console.error = (...args) => log.error(...args);
+console.warn = (...args) => log.warn(...args);
+console.debug = (...args) => log.debug(...args);
+
+process.on('uncaughtException', (error) => {
+  log.error('Uncaught Exception:', error);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  log.error('Unhandled Rejection at:', promise, 'reason:', reason);
+});
+
 import { exec, execSync } from 'child_process';
 import { getOS, getAsset, getAppPath } from '../utils';
 import * as fs from 'fs';

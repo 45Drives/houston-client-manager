@@ -1,3 +1,19 @@
+import log from 'electron-log';
+log.transports.console.level = false;
+process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+console.log = (...args) => log.info(...args);
+console.error = (...args) => log.error(...args);
+console.warn = (...args) => log.warn(...args);
+console.debug = (...args) => log.debug(...args);
+
+process.on('uncaughtException', (error) => {
+  log.error('Uncaught Exception:', error);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  log.error('Unhandled Rejection at:', promise, 'reason:', reason);
+});
+
 import { BackUpManager } from "./types";
 import { BackUpTask, backupTaskTag, TaskSchedule } from "@45drives/houston-common-lib";
 import * as fs from "fs";
@@ -131,10 +147,10 @@ export class BackUpManagerLin implements BackUpManager {
     const scriptDir = path.join(os.homedir(), ".local", "share", "houston-backups");
     if (!fs.existsSync(scriptDir)) fs.mkdirSync(scriptDir, { recursive: true });
 
-    let step = 0;
     const total = tasks.length;
 
-    for (const task of tasks) {
+    for (let i = 0; i < total; i++) {
+      const task = tasks[i];
       const scriptPath = path.join(scriptDir, `run_backup_task_${task.uuid}.sh`);
 
       const [smbHost, smbSharePart] = task.target.split(":");
@@ -144,7 +160,7 @@ export class BackUpManagerLin implements BackUpManager {
       this.generateBackupScript(task, username, password, scriptPath);
       const cronLine = `${this.scheduleToCron(task.schedule)} bash "${scriptPath}" # ${task.description}`;
       cronEntries.push(cronLine);
-      if (onProgress) onProgress(++step, total, `Created and scheduled ${task.description}`);
+      onProgress?.(i + 1, total, `Created and scheduled ${task.description}`);
     }
 
     const existing = execSync("crontab -l 2>/dev/null || true").toString().split("\n")
@@ -153,7 +169,7 @@ export class BackUpManagerLin implements BackUpManager {
     const finalCrontab = [...existing, ...cronEntries].join("\n") + "\n";
     execSync(`echo "${finalCrontab}" | crontab -`);
 
-    if (onProgress) onProgress(step, total, "All tasks scheduled successfully.");
+    onProgress?.(total, total, "All tasks scheduled successfully.");
   }
 
   applyCleanedCrontab(lines: string[]) {
@@ -358,7 +374,7 @@ trap cleanup EXIT
   fi
 
   echo "===== [$(date -Iseconds)] Backup task completed ====="
-} >> "$LOG_FILE" 2>&1 | tee /dev/fd/1
+} 2>&1 | tee -a "$LOG_FILE"
 `;
 
     fs.writeFileSync(scriptPath, scriptContent, { mode: 0o700 });
