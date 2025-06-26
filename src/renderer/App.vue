@@ -131,7 +131,8 @@ IPCRouter.getInstance().addEventListener("action", async (data) => {
         break;
         
       default:
-        console.warn("Other action type:", message.type);
+        // console.warn("Other action type:", message.type);
+        break;
     }
 
   } catch (error) {

@@ -21,90 +21,89 @@ import * as path from 'path';
 import * as nodeOs from 'os';
 import { BackUpTask } from '@45drives/houston-common-lib';
 
-export async function checkBackupTaskStatus(task: BackUpTask): Promise<'online' | 'offline_unreachable' | 'offline_invalid_credentials' | 'offline_connection_error' | 'missing_folder' | 'checking' | 'offline_insufficient_permissions'> {
+export async function checkBackupTaskStatus(task: BackUpTask): Promise<BackUpTask['status']> {
     const os = getOS();
-    // const [smbHost, smbSharePath] = task.target.split(":");
-    // const smbShare = smbSharePath.split("/")[0];
-    // const targetPath = smbSharePath.substring(smbShare.length + 1); // drop share part
     const smbHost = task.host!;
     const smbShare = task.share!;
     const targetPath = task.target;
 
-    // Extract credentials from generated script
-    // const scriptPath = path.join(getAppPath(), `run_backup_task_${task.uuid}.sh`);
     const scriptPath = path.join(
         nodeOs.homedir(),
         ".local",
         "share",
         "houston-backups",
         `run_backup_task_${task.uuid}.sh`
-      );
+    );
 
     if (!fs.existsSync(scriptPath)) {
-        console.warn(`Missing script: ${scriptPath}`);
+        console.warn(`[SMB Check] Missing backup script for ${task.uuid}: ${scriptPath}`);
         return 'offline_connection_error';
     }
 
     const credPath = `/etc/samba/houston-credentials/${smbShare}.cred`;
-
     if (!fs.existsSync(credPath)) {
-        console.warn(`Credential file missing: ${credPath}`);
+        console.warn(`[SMB Check] Missing credentials for ${task.uuid}: ${credPath}`);
         return 'offline_invalid_credentials';
     }
 
     const credContent = fs.readFileSync(credPath, 'utf-8');
-    const usernameMatch = credContent.match(/username=(.+)/);
-    const passwordMatch = credContent.match(/password=(.+)/);
-
-    const username = usernameMatch?.[1]?.trim();
-    const password = passwordMatch?.[1]?.trim();
+    const username = credContent.match(/username=(.+)/)?.[1]?.trim();
+    const password = credContent.match(/password=(.+)/)?.[1]?.trim();
 
     if (!username || !password) {
-        console.warn(`Credential file incomplete for ${task.uuid}`);
+        console.warn(`[SMB Check] Incomplete credentials for ${task.uuid}`);
         return 'offline_invalid_credentials';
     }
 
-    let scriptAsset;
+    let scriptAsset: string;
     if (os === 'win') {
         scriptAsset = await getAsset("static", "check_smb_task_status_win.bat");
     } else if (os === 'mac') {
-        const hasSMB = hasSmbClient();
-        if (hasSMB) {
-            scriptAsset = await getAsset("static", "check_smb_task_status.sh");
-        } else {
-            console.warn("smbclient is not installed. Please install it via Homebrew: brew install samba");
+        if (!hasSmbClient()) {
+            console.warn("smbclient not found on macOS. Recommend: brew install samba");
             return 'offline_connection_error';
         }
+        scriptAsset = await getAsset("static", "check_smb_task_status.sh");
     } else {
         scriptAsset = await getAsset("static", "check_smb_task_status.sh");
     }
 
-    // Prepare and run script
+    const cmd = `${os === 'win' ? '' : 'bash'} "${scriptAsset}" "${smbHost}" "${smbShare}" "${targetPath}" "${username}" "${password}"`;
+
     return new Promise((resolve) => {
-        const cmd = `${os === 'win' ? '' : 'bash'} "${scriptAsset}" "${smbHost}" "${smbShare}" "${targetPath}" "${username}" "${password}"`;
         exec(cmd, (error, stdout, stderr) => {
             console.log(`[SMB Check] stdout for ${task.uuid}:`, stdout);
-
-            if (stderr) {
-                console.warn(`[SMB Check] stderr for ${task.uuid}:`, stderr);
-            }
+            if (stderr) console.warn(`[SMB Check] stderr for ${task.uuid}:`, stderr);
 
             if (error) {
-                console.error(`[SMB Check] error for ${task.uuid}:`, error);
-                return resolve('offline_connection_error');
+                console.error(`[SMB Check] exec error for ${task.uuid}:`, error);
+                // Still parse stdout if it contains valid status
             }
 
             try {
                 const jsonLine = stdout.trim().split('\n').find(line => line.trim().startsWith('{'));
-                if (!jsonLine) throw new Error("Missing JSON output");
+                if (!jsonLine) throw new Error("Missing JSON output from script");
                 const json = JSON.parse(jsonLine);
-                return resolve(json.status || 'offline_connection_error');
+
+                const status = json.status || 'offline_connection_error';
+
+                // Optional: If it's a new task, and status is "missing_folder", soften it
+                if (status === 'missing_folder' && isScheduledButNotRunYet(task)) {
+                    return resolve('missing_folder');
+                }
+
+                return resolve(status);
             } catch (e) {
-                console.warn(`Non-JSON output from status check for ${task.uuid}:`, stdout);
+                console.warn(`[SMB Check] Failed to parse output for ${task.uuid}:`, stdout);
                 return resolve('offline_connection_error');
             }
         });
     });
+}
+
+function isScheduledButNotRunYet(task: BackUpTask): boolean {
+    const now = Date.now();
+    return new Date(task.schedule.startDate).getTime() > now;
 }
 
 function hasSmbClient(): boolean {

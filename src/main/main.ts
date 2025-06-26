@@ -436,7 +436,7 @@ function createWindow() {
               console.error(`Status check failed for task: ${task.description}`, err);
               task.status = 'offline_connection_error';
             }
-            updatedTasks.push(task); // ✅ This line was missing
+            updatedTasks.push(task); 
           }
 
           IPCRouter.getInstance().send('renderer', 'action', JSON.stringify({

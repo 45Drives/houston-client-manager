@@ -145,7 +145,7 @@ const getTaskStatusText = (task: BackUpTask): string => {
       if (isScheduledButNotRunYet(task)) {
         return "Scheduled But Hasn't Run Yet"
       } else {
-        return "Unavailable (Folder Missing)";
+        return "Unavailable (Folder Missing) — has backup run yet?";
       }
     case 'offline_unreachable':
       return "Unavailable (Host Unreachable)";
