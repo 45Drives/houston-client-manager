@@ -1,6 +1,7 @@
 import log from 'electron-log';
-log.transports.console.level = false;
+// log.transports.console.level = false;
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+// process.env.NODE_ENV = 'development';
 console.log = (...args) => log.info(...args);
 console.error = (...args) => log.error(...args);
 console.warn = (...args) => log.warn(...args);
@@ -26,6 +27,7 @@ import { IPCRouter } from '../../houston-common/houston-common-lib/lib/electronI
 import { getOS } from './utils';
 import { BackUpManager, BackUpManagerLin, BackUpManagerMac, BackUpManagerWin, BackUpSetupConfigurator } from './backup';
 import { BackUpSetupConfig, BackUpTask, server, unwrap } from '@45drives/houston-common-lib';
+
 import fetchBackups from './backup/FetchBackups';
 import fetchFilesInBackup from './backup/FetchFilesFromBackup';
 import restoreBackups from './backup/RestoreBackups';
@@ -284,7 +286,7 @@ function createWindow() {
 
       if (backUpManager) {
         const tasks = await backUpManager.queryTasks();
-
+        console.log('tasks found:', tasks);
         IPCRouter.getInstance().send('renderer', 'action', JSON.stringify({
           type: 'sendBackupTasks',
           tasks
@@ -340,7 +342,7 @@ function createWindow() {
           const backupManager = getBackUpManager();
 
           if (!backupManager) {
-            notify(`❌ No Backup Manager available.`);
+            notify(`Error: No Backup Manager available.`);
             return;
           }
 
@@ -356,7 +358,7 @@ function createWindow() {
               tasks
             }));
           } catch (err: any) {
-            notify(`❌ Error deleting task: ${err.message}`);
+            notify(`Error deleting task: ${err.message}`);
             console.error("removeBackUpTask failed:", err);
           }
         } else if (message.type === 'removeMultipleBackUpTasks') {
@@ -422,7 +424,7 @@ function createWindow() {
             }
             notify( `📂 Opened folder: ${folderPath}`);
           } catch (err) {
-            notify( `❌ Failed to open folder: ${folderPath}`);
+            notify(`Error: Failed to open folder: ${folderPath}`);
             console.error("Error opening folder:", folderPath, err);
           }
         } else if (message.type === 'checkBackUpStatuses') {
@@ -466,11 +468,11 @@ function createWindow() {
 
             const backupManager = getBackUpManager();
             if (!backupManager) {
-              reportError(`Error: No Backup Manager available.`);
+             notify(`Error: No Backup Manager available.`);
               return;
             }
           } catch (err: any) {
-            reportError(`Error: ${err.message}`);
+           notify(`Error: ${err.message}`);
             console.error("updateBackUpTask failed:", err);
           }
 
@@ -479,7 +481,7 @@ function createWindow() {
           const task: BackUpTask = message.task;
 
           if (!backupManager || typeof (backupManager as any).runNow !== 'function') {
-            reportError(`❌ Run Now not supported for this OS`);
+           notify(`Error: Run Now not supported for this OS`);
             return;
           }
 
@@ -491,13 +493,21 @@ function createWindow() {
             }
             console.log("✅ runNow completed:", result);
             notify(`✅ Backup task "${task.description}" started successfully.`);
+            setTimeout(async () => {
+              try {
+                task.status = await checkBackupTaskStatus(task);
+                IPCRouter.getInstance().send('renderer', 'action', JSON.stringify({
+                  type: 'backUpStatusesUpdated',
+                  tasks: [task]
+                }));
+              } catch (err) {
+                console.warn(`Post-runNow status update failed for ${task.description}`, err);
+              }
+            }, 5000);
           } catch (err: any) {
             console.error("❌ runNow failed:", err);
-            // console.log("Command stderr:", err.stderr);
-            // console.log("Command stdout:", err.stdout);
-            // Fallback for meaningful message
             const fallbackMsg = err?.stderr || err?.message || JSON.stringify(err);
-            reportError(`❌ Failed to start task: ${fallbackMsg}`);
+            notify(`Error: Failed to start task: ${fallbackMsg}`);
           }
         } else if (message.type === 'addManualIP') {
           const { ip, manuallyAdded } = message as { ip: string; manuallyAdded?: boolean };
