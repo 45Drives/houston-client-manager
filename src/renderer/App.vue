@@ -28,14 +28,14 @@
         webpreferences="javascript=yes,webSecurity=no,enable-cookies=true,nodeIntegration=false,contextIsolation=true"
         ref="webview" @did-finish-load="onWebViewLoaded" /> -->
 
-      <!-- <webview v-show="showWebView && !loadingWebview && !waitingForServerReboot" id="myWebview" :src="currentUrl"
+      <webview v-show="showWebView && !loadingWebview && !waitingForServerReboot" id="myWebview" :src="currentUrl"
         partition="persist:authSession"
         webpreferences="contextIsolation=true, nodeIntegration=false, enableRemoteModule=false" ref="webview"
-        @did-finish-load="onWebViewLoaded" /> -->
-      <webview :style="{ visibility: showWebView && !loadingWebview && !waitingForServerReboot ? 'visible' : 'hidden' }"
+        @did-finish-load="onWebViewLoaded" />
+      <!-- <webview :style="{ visibility: showWebView && !loadingWebview && !waitingForServerReboot ? 'visible' : 'hidden' }"
         class="absolute inset-0 w-full h-full" id="myWebview" :src="currentUrl" partition="persist:authSession"
         webpreferences="contextIsolation=true, nodeIntegration=false, enableRemoteModule=false" ref="webview"
-        @did-finish-load="onWebViewLoaded" />
+        @did-finish-load="onWebViewLoaded" /> -->
 
       <div v-if="loadingWebview" class="absolute inset-0 z-40 bg-default flex flex-col items-center justify-center">
         <p class="text-2xl text-center">

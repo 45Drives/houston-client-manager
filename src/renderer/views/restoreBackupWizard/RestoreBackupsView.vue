@@ -112,10 +112,10 @@
         <button @click="proceedToPreviousStep" class="btn btn-secondary h-20 w-40">
           Back
         </button>
-        <div v-if="selectedBackup" class="flex justify-center gap-4 mt-2">
-          <button class="btn btn-secondary px-4 py-2 rounded" @click="deselectAll">Deselect All</button>
-          <button class="btn btn-secondary px-4 py-2 rounded" @click="selectAll">Select All</button>
-          <button @click="restoreSelected" class="btn btn-primary px-4 py-2 rounded">Restore Selected
+        <div v-if="selectedBackup" class="button-group-row justify-center gap-4 mt-2">
+          <button class="btn btn-secondary px-4 py-2 " @click="deselectAll">Deselect All</button>
+          <button class="btn btn-secondary px-4 py-2 " @click="selectAll">Select All</button>
+          <button @click="restoreSelected" class="btn btn-primary px-4 py-2 ">Restore Selected
             Files</button>
         </div>
       </div>

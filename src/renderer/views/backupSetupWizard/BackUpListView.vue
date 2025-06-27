@@ -1,6 +1,6 @@
 <template>
   <div class="flex flex-col">
-    <div v-if="backUpTasks.length == 0" class="spinner"></div>
+
 
     <div class="">
       <div class="grid gap-2" :class="{
@@ -28,8 +28,7 @@
 
             <div>
               <div class="text-label" :title="task.target">Backup Location</div>
-              <div class="px-2 py-1 text-sm truncate"
-                :title="`${task.host}:${task.share}`">
+              <div class="px-2 py-1 text-sm truncate" :title="`${task.host}:${task.share}`">
                 {{ task.host}}:{{task.share }}
               </div>
               <div class="px-2 py-1 text-sm truncate" :title="task.target">
@@ -49,9 +48,10 @@
               Backup will happen
               {{ formatFrequency(task.schedule.repeatFrequency) }}
               at
-              {{ task.schedule.startDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }}
+              {{ task.schedule?.startDate ? task.schedule.startDate.toLocaleTimeString([], { hour: '2-digit', minute:
+              '2-digit' }) : 'Invalid Time' }}
               starting
-              {{ task.schedule.startDate.toDateString() }}
+              {{ task.schedule?.startDate ? task.schedule.startDate.toDateString() : "Invalid date" }}
             </div>
           </div>
           <div class="flex justify-between items-center pt-2">
@@ -68,7 +68,7 @@
             </button>
           </div>
         </div>
-
+        <!-- <div v-if="backUpTasks.length == 0" class="spinner"></div> -->
         <div v-if="backUpTasks.length < 1">
           No Tasks Found
         </div>
@@ -83,7 +83,7 @@
         class="border-2 border-default rounded-md w-full" />
     </div>
   </Modal>
-  <CredentialsModal ref="credsModalRef"/>
+  <CredentialsModal ref="credsModalRef" />
 </template>
 
 
@@ -96,7 +96,6 @@ import { formatFrequency } from "./utils";
 import { SimpleCalendar } from "../../components/calendar";
 import { PencilIcon, TrashIcon } from '@heroicons/vue/24/outline';
 import { thisOsInjectionKey } from '../../keys/injection-keys';
-import { user } from 'cockpit';
 const backUpTasks = ref<BackUpTask[]>([]);
 const selectedBackUps = ref<BackUpTask[]>([]);
 const thisOs = inject(thisOsInjectionKey);
@@ -201,26 +200,27 @@ async function editSchedule(selectedBackUp: BackUpTask) {
   if (scheduleConfirmed && selectedBackUp) {
     selectedBackUp.schedule.repeatFrequency = selectedTaskSchedule.value.repeatFrequency;
     selectedBackUp.schedule.startDate = selectedTaskSchedule.value.startDate;
-    const isLinux = thisOs?.value === 'rocky' || thisOs?.value === 'debian';
 
-    if (!isLinux) {
-      const credentials = await credsModalRef.value?.open();
-      if (!credentials) return;
+    // const isLinux = thisOs?.value === 'rocky' || thisOs?.value === 'debian';
 
-      IPCRouter.getInstance().send("backend", "action", JSON.stringify({
-        type: "updateBackUpTask",
-        task: selectedBackUp,
-        username: credentials.username,
-        password: credentials.password
-      }));
-    } else {
+    // if (!isLinux) {
+    //   const credentials = await credsModalRef.value?.open();
+    //   if (!credentials) return;
+
+    //   IPCRouter.getInstance().send("backend", "action", JSON.stringify({
+    //     type: "updateBackUpTask",
+    //     task: selectedBackUp,
+    //     username: credentials.username,
+    //     password: credentials.password
+    //   }));
+    // } else {
       IPCRouter.getInstance().send("backend", "action", JSON.stringify({
         type: "updateBackUpTask",
         task: selectedBackUp, 
         username: "",
         password: ""
       }));
-    }
+    // }
   }
 }
 
@@ -361,11 +361,12 @@ function backupNow(task: BackUpTask) {
     task
   }));
 
-  // Optional: Refresh task statuses shortly after run attempt
+  shortPollingUntil = Date.now() + 30000;
+
   setTimeout(() => {
-    pollStatuses();
     pollingSuspended = false;
-  }, 8000); // Delay to allow for execution + remount
+  }, 8000); // delay resuming status check
+
 }
 
 
@@ -422,10 +423,22 @@ onMounted(() => {
 
   // 🔄 Initial fetch
   fetchBackupTasks();
+  console.log("found backuptasks:", backUpTasks.value);
 
   // ⏲️ Start polling every 15 seconds
-  pollingInterval = setInterval(pollStatuses, 5000);
+  pollingInterval = setInterval(() => {
+    if (!pollingSuspended) {
+      pollStatuses();
+    }
+  }, getPollingInterval());
 });
+
+let shortPollingUntil = 0;
+
+function getPollingInterval(): number {
+  const now = Date.now();
+  return now < shortPollingUntil ? 5000 : 15000; // 5s when short-polling, else 15s
+}
 
 onUnmounted(() => {
   clearInterval(pollingInterval);

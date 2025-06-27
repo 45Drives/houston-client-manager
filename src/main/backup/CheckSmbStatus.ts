@@ -1,5 +1,5 @@
 import log from 'electron-log';
-log.transports.console.level = false;
+// log.transports.console.level = false;
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 console.log = (...args) => log.info(...args);
 console.error = (...args) => log.error(...args);
@@ -32,7 +32,7 @@ export async function checkBackupTaskStatus(task: BackUpTask): Promise<BackUpTas
         ".local",
         "share",
         "houston-backups",
-        `run_backup_task_${task.uuid}.sh`
+        `Houston_Backup_Task_${task.uuid}.sh`
     );
 
     if (!fs.existsSync(scriptPath)) {
@@ -58,43 +58,41 @@ export async function checkBackupTaskStatus(task: BackUpTask): Promise<BackUpTas
     let scriptAsset: string;
     if (os === 'win') {
         scriptAsset = await getAsset("static", "check_smb_task_status_win.bat");
-    } else if (os === 'mac') {
-        if (!hasSmbClient()) {
+    } else {
+        if (os === 'mac' && !hasSmbClient()) {
             console.warn("smbclient not found on macOS. Recommend: brew install samba");
             return 'offline_connection_error';
         }
         scriptAsset = await getAsset("static", "check_smb_task_status.sh");
-    } else {
-        scriptAsset = await getAsset("static", "check_smb_task_status.sh");
     }
 
-    const cmd = `${os === 'win' ? '' : 'bash'} "${scriptAsset}" "${smbHost}" "${smbShare}" "${targetPath}" "${username}" "${password}"`;
+    // const cmd = `${os === 'win' ? '' : 'bash'} "${scriptAsset}" "${smbHost}" "${smbShare}" "${targetPath}" "${username}" "${password}"`;
+    const escape = (arg: string) => `"${arg.replace(/(["\\$`])/g, '\\$1')}"`;
+    const cmd = `${os === 'win' ? '' : 'bash'} ${escape(scriptAsset)} ${escape(smbHost)} ${escape(smbShare)} ${escape(targetPath)} ${escape(username)} ${escape(password)}`;
 
     return new Promise((resolve) => {
         exec(cmd, (error, stdout, stderr) => {
             console.log(`[SMB Check] stdout for ${task.uuid}:`, stdout);
             if (stderr) console.warn(`[SMB Check] stderr for ${task.uuid}:`, stderr);
 
-            if (error) {
-                console.error(`[SMB Check] exec error for ${task.uuid}:`, error);
-                // Still parse stdout if it contains valid status
+            let jsonLine = stdout?.trim().split('\n').find(line => line.trim().startsWith('{'));
+            if (!jsonLine) {
+                console.warn(`[SMB Check] No JSON output for ${task.uuid}, falling back`);
+                if (error) console.error(`[SMB Check] exec error:`, error);
+                return resolve('offline_connection_error');
             }
 
             try {
-                const jsonLine = stdout.trim().split('\n').find(line => line.trim().startsWith('{'));
-                if (!jsonLine) throw new Error("Missing JSON output from script");
                 const json = JSON.parse(jsonLine);
-
                 const status = json.status || 'offline_connection_error';
 
-                // Optional: If it's a new task, and status is "missing_folder", soften it
                 if (status === 'missing_folder' && isScheduledButNotRunYet(task)) {
                     return resolve('missing_folder');
                 }
 
                 return resolve(status);
             } catch (e) {
-                console.warn(`[SMB Check] Failed to parse output for ${task.uuid}:`, stdout);
+                console.warn(`[SMB Check] Failed to parse JSON for ${task.uuid}:`, jsonLine);
                 return resolve('offline_connection_error');
             }
         });

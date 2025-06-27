@@ -31,58 +31,58 @@ export default async function fetchBackupsFromServer(data: any, mainWindow: Brow
       const backupDir = path.join(backupRoot, uuid);
       const entries = await walkDir(backupDir);
       entries.sort((a, b) => a.length - b.length);
-      let baseFolder = uuid;
-      let lastModified = 'Unknown';
-      let keepSearchForBaseFolder = true;
+
+      let baseFolder = "";
+      let lastModified = "Unknown";
 
       for (const entry of entries) {
         if (!await isDirectory(entry)) continue;
 
-        // console.log(entry);
-
-        // Recursively gather files to find last modified time
         const allFiles = await getAllFiles(entry);
         const fileCount = allFiles.filter(file => !file.isDirectory()).length;
-        // console.log("fileCount", fileCount)
-        if (allFiles.length) {
+
+        if (fileCount > 0) {
+          // Update last modified time
           const times = await Promise.all(allFiles.map(async file => {
             const stat = await fsAsync.stat(file.parentPath);
             return stat.mtime;
           }));
           const mostRecent = new Date(Math.max(...times.map(t => t.getTime())));
-          lastModified = mostRecent.toISOString().split('T')[0];
-        }
+          lastModified = mostRecent.toISOString().split("T")[0];
 
-        if (fileCount == 0 && keepSearchForBaseFolder) {
-          baseFolder = entry.replace(backupRoot, "").replace(slash + uuid + slash, "");
-        }
-        if (fileCount > 0 && keepSearchForBaseFolder) {
-          keepSearchForBaseFolder = false;
-          baseFolder = entry.replace(backupRoot, "").replace(slash + uuid + slash, "");
+          // Compute candidate base folder
+          const relPath = entry.replace(backupRoot, "").replace(slash + uuid + slash, "");
+
+          // First match or shorter than current
+          if (!baseFolder || relPath.length < baseFolder.length) {
+            baseFolder = relPath;
+          }
         }
       }
 
+      // Extract client name
       const folders = baseFolder.split(slash);
-      let client = ""
+      let client = "";
       if (folders.length > 0) {
-        baseFolder = baseFolder.replace(folders[0], "");
         client = folders[0];
+        baseFolder = baseFolder.replace(client, "").replace(/^\/+/, ""); // remove leading slash
       }
 
       results.push({
         uuid: uuid,
-        folder: baseFolder,
+        folder: `/${baseFolder}`,  // restore leading slash for UI clarity
         server: data.smb_host,
         client: client,
         lastBackup: lastModified,
         onSystem: true,
-        files: []
+        files: [],
       });
 
     } catch (err) {
-      console.error('Failed to list backups:', err);
+      console.error("Failed to list backups:", err);
     }
   }
+  
 
   return results;
 }
