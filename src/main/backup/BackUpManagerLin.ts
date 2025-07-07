@@ -349,59 +349,6 @@ echo "${fstabEntry}" >> /etc/fstab
     const mountDir = `/mnt/houston-mounts/${smbShare}`;
     const target = getSmbTargetFromSmbTarget(task.target);
 
-  //   const scriptContent = `#!/bin/bash
-  // SMB_HOST='${smbHost}'
-  // SMB_SHARE='${smbShare}'
-  // SOURCE='${task.source}/'
-  // TARGET='${target}'
-  // LOG_FILE='${logPath}'
-  // MOUNT_DIR='${mountDir}'
-  // START_DATE='${task.schedule.startDate}'
-  
-  // mkdir -p "$(dirname "$LOG_FILE")"
-  
-  // # Start logging early
-  // echo "===== [$(date -Iseconds)] Starting backup task: '${task.description}' =====" >> "$LOG_FILE"
-  // echo "[INFO] Source: $SOURCE" >> "$LOG_FILE"
-  // echo "[INFO] Target: $TARGET" >> "$LOG_FILE"
-  // echo "[INFO] Mount directory: $MOUNT_DIR" >> "$LOG_FILE"
-  
-  // # Mount if not already mounted
-  // if ! mountpoint -q "$MOUNT_DIR"; then
-  //   echo "[INFO] Attempting to mount $MOUNT_DIR" >> "$LOG_FILE"
-  //   mkdir -p "$MOUNT_DIR"
-  //   mount "$MOUNT_DIR" >> "$LOG_FILE" 2>&1
-  // fi
-  
-  // if ! mountpoint -q "$MOUNT_DIR"; then
-  //   echo "[ERROR] Failed to mount SMB share at $MOUNT_DIR" >> "$LOG_FILE"
-  //   exit 1
-  // fi
-  // echo "[SUCCESS] SMB share mounted at $MOUNT_DIR" >> "$LOG_FILE"
-  
-  // # Backup process
-  // {
-  //   mkdir -p "$MOUNT_DIR$TARGET"
-  //   echo "[INFO] Running rsync..." >> "$LOG_FILE"
-  //   rsync -a${task.mirror ? ' --delete' : ''} "$SOURCE" "$MOUNT_DIR$TARGET"
-  //   RSYNC_STATUS=$?
-  
-  //   if [ $RSYNC_STATUS -ne 0 ]; then
-  //     echo "[ERROR] rsync failed with exit code $RSYNC_STATUS"
-  //     exit $RSYNC_STATUS
-  //   else
-  //     echo "[SUCCESS] rsync completed successfully"
-  //   fi
-  
-  //   echo "===== [$(date -Iseconds)] Backup task completed ====="
-  // } 2>&1 | tee -a "$LOG_FILE"
-  
-  // # Only unmount if we mounted it
-  // if mountpoint -q "$MOUNT_DIR"; then
-  //   echo "[CLEANUP] Unmounting $MOUNT_DIR" >> "$LOG_FILE"
-  //   umount "$MOUNT_DIR" >> "$LOG_FILE" 2>&1
-  // fi
-  // `;
     const scriptContent = `#!/bin/bash
   SMB_HOST='${smbHost}'
   SMB_SHARE='${smbShare}'

@@ -26,7 +26,7 @@ export class BackUpSetupConfigurator {
       const backUpManager = this.getBackUpManager();
 
       // If scheduleAllTasks exists on the manager, always prefer it
-      if (typeof (backUpManager as any).scheduleAllTasks === "function") {
+      if (typeof (backUpManager as any).scheduleAllTasks === "function" && config.backUpTasks.length > 1) {
         await (backUpManager as any).scheduleAllTasks(
           config.backUpTasks,
           config.username,

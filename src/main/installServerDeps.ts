@@ -2,6 +2,7 @@ import path from "path";
 import { app } from "electron";
 import { NodeSSH } from "node-ssh";
 import { checkSSH, setupSshKey, runBootstrapScript } from "./setupSsh";
+import { getAgentSocket, getKeyDir, ensureKeyPair } from "./crossPlatformSsh";
 
 export async function installServerDepsRemotely({
     host,
@@ -18,13 +19,14 @@ export async function installServerDepsRemotely({
 
         // 2. If it is, try to auth with your existing agent/key
         let hasAuth = false;
-        if (reachable && process.env.SSH_AUTH_SOCK) {
+        const agentSock = getAgentSocket();
+        if (reachable && agentSock) {
             const trial = new NodeSSH();
             try {
                 await trial.connect({
                     host,
                     username,
-                    agent: process.env.SSH_AUTH_SOCK,
+                    agent: agentSock,
                     tryKeyboard: false,
                 });
                 hasAuth = true;
@@ -40,11 +42,16 @@ export async function installServerDepsRemotely({
         }
 
         // 4. Now run your bootstrap script with whichever key we have
-        const privateKeyPath = path.join(
-            app.getPath("userData"),
-            ".ssh",
-            "id_rsa"
-        );
+        // const privateKeyPath = path.join(
+        //     app.getPath("userData"),
+        //     ".ssh",
+        //     "id_rsa"
+        // );
+        const keyDir = getKeyDir();
+        const privateKeyPath = path.join(keyDir, "id_ed25519");
+        const publicKeyPath = `${privateKeyPath}.pub`;
+        await ensureKeyPair(privateKeyPath, publicKeyPath);
+        
         const rebootRequired = await runBootstrapScript(host, username, privateKeyPath);
 
         return { success: true, reboot: rebootRequired };

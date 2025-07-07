@@ -23,12 +23,14 @@ if [[ -f /etc/os-release ]]; then
     rocky|rhel|centos|almalinux|fedora)
       OS_FAMILY=rhel
       PKG_INSTALL="dnf install -y"
+      PKG_UPDATE="dnf -y update"
       PKG_QUERY="rpm -q"
       FIREWALL_CMD=firewall-cmd
       ;;
     debian|ubuntu)
       OS_FAMILY=debian
-      PKG_INSTALL="apt -y update && apt -y install"
+      PKG_INSTALL="apt -y install"
+      PKG_UPDATE="apt -y update"
       PKG_QUERY="dpkg -s"
       ;;
     *) echo "[ERROR] Unsupported OS $ID"; exit 1 ;;
@@ -39,7 +41,17 @@ fi
 echo "[INFO] Detected OS family: $OS_FAMILY"
 
 # ─────────────────── Helper: install only if missing ───────────────
-install_pkg() { $PKG_QUERY "$1" &>/dev/null && { echo "[INFO] $1 already present"; } || eval "$PKG_INSTALL $1"; }
+install_pkg() {
+  local pkg="$1"
+  if $PKG_QUERY "$pkg" &>/dev/null; then
+    echo "[INFO] $pkg already present"
+  else
+    echo "[INFO] $pkg not found, updating package list..."
+    eval "$PKG_UPDATE"
+    echo "[INFO] Installing $pkg..."
+    eval "$PKG_INSTALL $pkg"
+  fi
+}
 
 ensure_kernel_headers() {
   local running=$(uname -r)
@@ -170,7 +182,11 @@ install_cockpit() {
   fi
 }
 install_cockpit
-install_pkg cockpit-super-simple-setup
+
+echo "[INFO] Installing cockpit-super-simple-setup module…"
+$PKG_UPDATE
+eval "$PKG_INSTALL cockpit-super-simple-setup" || echo "[WARN] Failed to install cockpit-super-simple-setup"
+
 
 # ───────────────── 4) Samba ────────────────────────────────────────
 install_samba() {

@@ -29,9 +29,12 @@ export async function setupSshKey(host: string, username: string, password: stri
 
   if (!fs.existsSync(privateKeyPath)) {
     const sshKeygen = getOS() === 'win'
-      ? `"${path.join(getAppPath(), 'static', 'bin', 'ssh-keygen.exe')}"`
+      ? `${path.join(process.resourcesPath, "static", "bin", 'ssh-keygen.exe')}`
       : 'ssh-keygen';
-
+    if (!fs.existsSync(sshKeygen)) {
+      throw new Error(`ssh-keygen not found at ${sshKeygen}`);
+    }
+      
     await new Promise<void>((resolve, reject) => {
       exec(`${sshKeygen} -t rsa -b 4096 -f "${privateKeyPath}" -N ""`, (err) => {
         if (err) reject(err);
