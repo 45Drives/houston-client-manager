@@ -27,20 +27,48 @@ export async function checkBackupTaskStatus(task: BackUpTask): Promise<BackUpTas
     const smbShare = task.share!;
     const targetPath = task.target;
 
-    const scriptPath = path.join(
-        nodeOs.homedir(),
-        ".local",
-        "share",
-        "houston-backups",
-        `Houston_Backup_Task_${task.uuid}.sh`
-    );
+    // const scriptPath = path.join(
+    //     nodeOs.homedir(),
+    //     ".local",
+    //     "share",
+    //     "houston-backups",
+    //     `Houston_Backup_Task_${task.uuid}.sh`
+    // );
+    let scriptPath: string;
+
+    if (process.platform === 'win32') {
+        // matches the folder where schedule() now writes the BAT
+        scriptPath = path.join(
+            process.env.ProgramData ?? 'C:\\ProgramData',
+            'houston-backups',
+            'scripts',
+            `Houston_Backup_Task_${task.uuid}.bat`
+        );
+    } else {
+        // original POSIX location + .sh
+        scriptPath = path.join(
+            nodeOs.homedir(),
+            '.local', 'share', 'houston-backups',
+            `Houston_Backup_Task_${task.uuid}.sh`
+        );
+    }
 
     if (!fs.existsSync(scriptPath)) {
         console.warn(`[SMB Check] Missing backup script for ${task.uuid}: ${scriptPath}`);
         return 'offline_connection_error';
     }
 
-    const credPath = `/etc/samba/houston-credentials/${smbShare}.cred`;
+    let credPath: string;
+    if (process.platform === 'win32') {
+        credPath = path.join(
+            process.env.ProgramData ?? 'C:\\ProgramData',
+            'houston-backups', 'credentials',
+            `${smbShare}.cred`
+        );
+    } else {
+        credPath = `/etc/samba/houston-credentials/${smbShare}.cred`;
+    }
+    
     if (!fs.existsSync(credPath)) {
         console.warn(`[SMB Check] Missing credentials for ${task.uuid}: ${credPath}`);
         return 'offline_invalid_credentials';
@@ -57,7 +85,10 @@ export async function checkBackupTaskStatus(task: BackUpTask): Promise<BackUpTas
 
     let scriptAsset: string;
     if (os === 'win') {
-        scriptAsset = await getAsset("static", "check_smb_task_status_win.bat");
+        // scriptAsset = await getAsset("static", "check_smb_task_status_win.bat");
+
+        scriptAsset = await loadWinCheckScript();
+        console.log(`[SMB Check] using script at ${scriptAsset}`);
     } else {
         if (os === 'mac' && !hasSmbClient()) {
             console.warn("smbclient not found on macOS. Recommend: brew install samba");
@@ -111,4 +142,19 @@ function hasSmbClient(): boolean {
     } catch {
         return false;
     }
+}
+
+async function loadWinCheckScript(): Promise<string> {
+    // Ask getAsset for where *it* thinks the file is
+    let scriptAsset = await getAsset("static", "check_smb_task_status_win.bat");
+
+    // If it doesn’t actually exist there, rewrite the “app/static” bit → “static”
+    if (!fs.existsSync(scriptAsset)) {
+        scriptAsset = scriptAsset.replace(
+            path.join("resources", "app", "static"),
+            path.join("resources", "static")
+        );
+    }
+
+    return scriptAsset;
   }

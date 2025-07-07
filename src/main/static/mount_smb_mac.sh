@@ -1,68 +1,79 @@
 #!/bin/bash
 
-# Check if all arguments are provided
+# ----------- Argument validation -----------
+
 if [ -z "$1" ]; then
-    echo '{"error": "No network path provided"}'
+    echo '{"error": "No host provided"}'
     exit 1
 fi
 if [ -z "$2" ]; then
-    echo '{"error": "No username provided"}'
+    echo '{"error": "No share name provided"}'
     exit 1
 fi
 if [ -z "$3" ]; then
+    echo '{"error": "No username provided"}'
+    exit 1
+fi
+if [ -z "$4" ]; then
     echo '{"error": "No password provided"}'
     exit 1
 fi
 
-# Start JSON output
-JSON_OUTPUT="{"
+# ----------- Assign variables -----------
 
-# Assign parameters
-HOST="$1"      # Example: //192.168.209.228/share
-SHARE_NAME="$2"      
+HOST="$1"
+SHARE="$2"
 USERNAME="$3"
 PASSWORD="$4"
 
-SERVER="smb://$HOST/$SHARE_NAME"
+SERVER="smb://${HOST}/${SHARE}"
+MOUNT_POINT="/Volumes/${SHARE}"
+JSON_OUTPUT="{\"server\": \"${SERVER}\", \"share\": \"${SHARE}\", "
 
-# Extract the share name from the path
-SHARE_NAME=$(basename "$SERVER")
-MOUNTED_VOLUME="/Volumes/$SHARE_NAME"
+# ----------- Check if already mounted -----------
 
-JSON_OUTPUT+="\"server\": \"$SERVER\", \"share\": \"$SHARE_NAME\", "
-
-# Check if already mounted
-if mount | grep -q "$MOUNTED_VOLUME"; then
-    JSON_OUTPUT+="\"status\": \"already mounted\", \"mount_point\": \"$MOUNTED_VOLUME\""
-else
-
-    # Use AppleScript to mount the share
-    osascript <<EOF
-    try
-        set currentUser to do shell script "whoami"
-
-        mount volume "$SERVER" as user name "$USERNAME" with password "$PASSWORD"
-    on error errMsg
-        do shell script "echo 'Failed to mount SMB share: ' & errMsg >> $LOG_FILE"
-        return
-    end try
-EOF
-
-    # Wait a bit to allow the mount to complete
-    sleep 3
-
-    # Check if the share was mounted successfully
-    if mount | grep -q "$MOUNTED_VOLUME"; then
-        JSON_OUTPUT+="\"status\": \"mounted successfully\", \"mount_point\": \"$MOUNTED_VOLUME\""
-    else
-        JSON_OUTPUT+="\"error\": \"Failed to mount the SMB share\""
-        echo "$JSON_OUTPUT}"
-        exit 1
-    fi
+if mount | grep -q "/Volumes/${SHARE}"; then
+    JSON_OUTPUT+="\"status\": \"already mounted\", \"mount_point\": \"${MOUNT_POINT}\""
+    echo "${JSON_OUTPUT}}"
+    exit 0
 fi
 
-open $MOUNTED_VOLUME
+# ----------- Attempt to mount using AppleScript -----------
 
-# Close JSON output and print once
-JSON_OUTPUT+="}"
-echo "$JSON_OUTPUT"
+MOUNT_RESULT=$(osascript <<EOF
+try
+    mount volume "${SERVER}" as user name "${USERNAME}" with password "${PASSWORD}"
+    return "SUCCESS"
+on error errMsg
+    return "ERROR: " & errMsg
+end try
+EOF
+)
+
+# ----------- Evaluate result -----------
+
+if [[ "$MOUNT_RESULT" == ERROR:* ]]; then
+    ERROR_MSG=${MOUNT_RESULT#"ERROR: "}
+    JSON_OUTPUT+="\"error\": \"${ERROR_MSG//\"/\\\"}\""
+    echo "${JSON_OUTPUT}}"
+    exit 1
+fi
+
+# ----------- Wait a moment and re-check mount -----------
+
+sleep 2
+
+ACTUAL_MOUNT=$(mount | grep "$SERVER" | awk '{print $3}' | head -n 1)
+if [ -n "$ACTUAL_MOUNT" ]; then
+    open "$ACTUAL_MOUNT"
+    JSON_OUTPUT+="\"status\": \"mounted successfully\", \"mount_point\": \"${ACTUAL_MOUNT}\""
+else
+    JSON_OUTPUT+="\"error\": \"Mount command succeeded but share was not found in \`mount\` output\""
+    echo "${JSON_OUTPUT}}"
+    exit 1
+fi
+
+# ----------- Output JSON -----------
+
+echo "${JSON_OUTPUT}}"
+exit 0

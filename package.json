@@ -1,6 +1,6 @@
 {
   "name": "45drives-setup-wizard",
-  "version": "1.0.2",
+  "version": "1.0.2-debug",
   "description": "Create backups to any houston servers on your local network",
   "main": "main/src/main/main.js",
   "workspaces": [
