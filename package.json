@@ -8,12 +8,11 @@
   ],
   "scripts": {
     "dev": "yarn build:common && node scripts/dev-server.js",
-    "clean": "rm -rf dist",
-    "build": "yarn clean && yarn build:common && node scripts/build.js && electron-builder",
+    "build": "yarn build:common && node scripts/build.js && electron-builder",
     "build:common": "yarn build:lib && yarn build:ui",
-    "build:win": "yarn clean && yarn build:common && node scripts/build.js && electron-builder --win --config electron-builder.json",
-    "build:mac": "yarn clean && yarn build:common && node scripts/build.js && electron-builder --mac",
-    "build:linux": "yarn clean && yarn build:common && node scripts/build.js && electron-builder --linux",
+    "build:win": "yarn build:common && node scripts/build.js && electron-builder --win --config electron-builder.json",
+    "build:mac": "yarn build:common && node scripts/build.js && electron-builder --mac",
+    "build:linux": "yarn build:common && node scripts/build.js && electron-builder --linux",
     "test": "vitest run"
   },
   "repository": "https://github.com/45Drives/45drives-setup-wizard",
