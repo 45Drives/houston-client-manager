@@ -340,7 +340,7 @@ if (-not $hasBatchLogon -or -not $hasServiceLogon) {
   ): string {
     const mountBat = getMountSmbScript();
 
-    // remove any leading “\” so drive:\<path> is well-formed 
+    // remove any leading "\" so drive:\<path> is well-formed 
     const rawDst = getSmbTargetFromSmbTarget(task.target)
       .replace(/\//g, '\\')
       .replace(/^\\/, '');
@@ -353,7 +353,6 @@ if (-not $hasBatchLogon -or -not $hasServiceLogon) {
     return `
   @echo off
   setlocal DisableDelayedExpansion
-  
   :: --- Houston backup task metadata (for reference) ---
   :: uuid        = ${task.uuid}
   :: description = ${task.description}
@@ -385,69 +384,57 @@ if (-not $hasBatchLogon -or -not $hasServiceLogon) {
   )
   
   :: --- run everything inside a single redirect block ---
-  >> "!LOG!" 2>&1 (
-    echo ==========================================================
-    echo [!date! !time!]  START  ${task.uuid}
-    echo  Source      : !SOURCE!
-    echo  Target      : !DST_PATH!
-    echo  NetworkPath : !NETWORK_PATH!
-    echo ----------------------------------------------------------
-  
-    rem --- DEBUG: show exactly what we’re about to run ---
-    echo [DEBUG] mount command: call "${mountBat}" "!SMB_HOST!" "!SMB_SHARE!" "!USERNAME!" "!PASSWORD!"
-  
-    rem --- actually run it & capture JSON output ---
-    for /f "delims=" %%O in ('
-      call "${mountBat}" "!SMB_HOST!" "!SMB_SHARE!" "!USERNAME!" "!PASSWORD!" 2^>^&1
-    ') do (
-      echo [DEBUG] mount output: %%O
-      set "json=%%O"
-    )
-  
-    rem --- check its exit code ---
-    echo [DEBUG] mount errorlevel = !errorlevel!
-  
-    rem --- parse the DriveLetter field out of the JSON ---
-    for %%D in ("!json:","DriveLetter":"=!") do for %%E in (%%~D) do set "drive=%%~E"
-    if not defined drive (
-      echo {"error":"SMB mount failed — no drive letter returned"}
-      exit /b 2
-    )
-  
-    rem --- build full destination path ---
-    set "DEST=!drive!:\\!DST_PATH!"
-  
-    echo [DEBUG] raw JSON = !json!
-    echo [DEBUG] drive    = !drive!
-    echo [DEBUG] DEST     = !DEST!
-  
-    rem --- copy payload ---
-    mkdir "!DEST!" 2>nul
-    echo [INFO] Running xcopy …
-    xcopy "!SOURCE!" "!DEST!" /E /I /Y
-    set "RC=!errorlevel!"
-  
-    rem --- clean up the mapping ---
-    timeout /t 2 >nul
-    net use !drive!: /delete /y
-  
-    if not "!RC!"=="0" (
-      echo [ERROR] xcopy returned !RC!
-      exit /b !RC!
-    ) else (
-      echo [INFO] xcopy completed successfully
-    )
+  echo ==========================================================
+  echo [!date! !time!]  START  ${task.uuid}
+  echo  Source      : !SOURCE!
+  echo  Target      : !DST_PATH!
+  echo  NetworkPath : !NETWORK_PATH!
+  echo ----------------------------------------------------------
+
+  rem --- DEBUG: show exactly what we're about to run ---
+  echo [DEBUG] mount command: cmd /c ""${mountBat}" "!SMB_HOST!" "!SMB_SHARE!" "!USERNAME!" "!PASSWORD!"" >> "%LOG%" 2>&1
+
+  rem --- actually run it & capture JSON + stderr ---
+  for /f "delims=" %%O in ('cmd /c ""${mountBat}" "!SMB_HOST!" "!SMB_SHARE!" "!USERNAME!" "!PASSWORD!"" 2^>^&1') do (
+    set "json=%%O"
   )
-  
+
+  rem --- remove everything through the first  "DriveLetter":"  ---
+  set "drive=!json:*"DriveLetter":"=!"
+  rem --- keep only the very first character (the letter)  ---
+  set "drive=!drive:~0,1!"
+
+  if "!drive!"=="" (
+    echo {"error":"SMB mount failed - no drive letter returned"} >> "%LOG%"
+    exit /b 2
+  )
+
+  rem --- build full destination path ---
+  set "DEST=!drive!:\\!DST_PATH!" >> "%LOG%" 2>&1
+
+  rem --- copy payload ---
+  mkdir "!DEST!" 2>nul 
+  echo [INFO] Running xcopy ...
+  xcopy "!SOURCE!" "!DEST!" /E /I /Y >> "%LOG%" 2>&1
+  set "RC=!errorlevel!"
+
+  rem --- clean up the mapping ---
+  timeout /t 2 >nul
+  net use !drive!: /delete /y >> "%LOG%" 2>&1
+
+  if not "!RC!"=="0" (
+    echo [ERROR] xcopy returned !RC! >> "%LOG%" 2>&1
+    exit /b !RC!
+  ) else (
+    echo [INFO] xcopy completed successfully >> "%LOG%" 2>&1
+  )
+
   :: --- final exit ---
-  set "RC=%errorlevel%"
   echo [!date! !time!]  END    rc=!RC! >> "!LOG!" 2>&1
   exit /b !RC!
   `.trimStart();
   }
   
-  
-
 
   async unschedule(task: BackUpTask): Promise<void> {
     /* 1️⃣  unregister Scheduled-Task */
