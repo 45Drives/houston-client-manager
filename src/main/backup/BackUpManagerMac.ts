@@ -115,13 +115,13 @@ export class BackUpManagerMac implements BackUpManager {
     # 3 ─ write the task script
     cat <<'EOF_${uuid}' > "${scriptPath}"
     ${scriptPayload}
-    EOF_${uuid}
-    chmod 755 "${scriptPath}"
+EOF_${uuid}
+     chmod 755 "${scriptPath}"
 
     # 4 ─ let this user mount/umount the share without a password
     echo "${username} ALL=(root) NOPASSWD: /sbin/mount_smbfs, /sbin/umount" \
         > /private/etc/sudoers.d/houston-${username}
-    chmod 440 /private/etc/sudoers.d/houston-${username}
+     chmod 440 /private/etc/sudoers.d/houston-${username}
     `;
 
     fs.writeFileSync(installerPath, installer, { mode: 0o700 });
@@ -186,12 +186,12 @@ export class BackUpManagerMac implements BackUpManager {
         // heredoc must not contain an unescaped EOF on its own line
         .replace(/\\EOF/g, '\\\\EOF');
 
-      installerLines.push(
-        `cat <<'EOF' > "${scriptPath}"`,
-        scriptBody,
-        "EOF",
-        `chmod 1777 "${scriptPath}"`
-      );
+        installerLines.push(
+          `cat <<EOF_${uuid} > "${scriptPath}"`,
+          scriptBody,
+          "EOF_${uuid}",
+          `chmod 1777 "${scriptPath}"`
+        );
     }
 
     /* ------------------------------------------------------------------
@@ -411,13 +411,15 @@ export class BackUpManagerMac implements BackUpManager {
 
 
   private getShellScriptContent(task: BackUpTask, username: string): string {
-    const mountPoint = `${this.MOUNT_ROOT}/${task.share}`;   // where *we* expect the share
-    const volumesMount = `/Volumes/${task.share}`;             // where Finder mounts it
+    const mountRoot = this.MOUNT_ROOT;
+    const mountPoint = `${mountRoot}/${task.share}`;
+    const volumesMount = `/Volumes/${task.share}`;
     const rel = task.target!.split('/').slice(1).join('/');
     const dir = `${mountPoint}/${rel}`;
     const svc = `houston-smb-${task.share}`;
-    const rsyncCmd = `${getRsync()} -a${task.mirror ? ' --delete' : ''} "${task.source}/" "${dir}/"`;
     const target = getSmbTargetFromSmbTarget(task.target);
+    const rsyncCmd = `${getRsync()} -a${task.mirror ? ' --delete' : ''} "${task.source}/" "${dir}/"`;
+  
     return (`
   #!/bin/bash
   
@@ -441,54 +443,31 @@ export class BackUpManagerMac implements BackUpManager {
   echo "===== $(/bin/date -u '+%Y-%m-%dT%H:%M:%SZ') START ${task.uuid} ====="
   
   PASSWORD=$(security find-generic-password -s "${svc}" -a "${username}" -w) || {
-    echo "[ERROR] key-chain lookup failed"; exit 1; }
+    echo "[ERROR] key-chain lookup failed"
+    exit 1
+  }
   
   # ---------- (1) try Finder / user-level mount first ----------
   if ! /sbin/mount | /usr/bin/grep -qE "${mountPoint}|${volumesMount}"; then
-    /usr/bin/osascript -e 'try' \
-      -e   'mount volume "smb://'${username}':'$PASSWORD'@'${task.host}'/'${task.share}'"' \
-      -e 'end try' || true
+    /usr/bin/osascript <<EOT_APPLE
+      try
+        mount volume "smb://${username}:$PASSWORD@${task.host}/${task.share}"
+      end try
+EOT_APPLE
   
-    # capture Finder’s real mount point and link back to our expected path
-    real_mnt=$(mount | awk '$1 ~ /\\/\\/'"${username}"'@'"${task.host}"'\\/'"${task.share}"'/ {print $3; exit}')
+    real_mnt=$(/sbin/mount | awk '$1 ~ /\\\\${username}@${task.host}\\\\/${task.share}/ {print $3; exit}')
     if [ -n "$real_mnt" ] && [ "$real_mnt" != "${mountPoint}" ]; then
       [ -d "${mountPoint}" ] && rmdir "${mountPoint}" 2>/dev/null || true
       ln -snf "$real_mnt" "${mountPoint}"
     fi
   fi
-  
-  # ---------- (2) if still not mounted and we have root, fall back ----------
-  if ! /sbin/mount | /usr/bin/grep -qE "${mountPoint}|${volumesMount}"; then
-    /bin/mkdir -p "${mountPoint}"
-    sudo -n /sbin/mount_smbfs "//${username}:$PASSWORD@${task.host}/${task.share}" \
-          "${mountPoint}"
-  fi
-  
-  # ---------- final test ----------
-  if ! mount | grep -qE "${mountPoint}|${volumesMount}"; then
-    echo "[ERROR] could not mount //${task.host}/${task.share}"
-    exit 1
-  fi
-  
-  # ---------- add to Finder sidebar (only if Finder is running) ----------
-  osascript <<'EOF'
-  if application "Finder" is running then
-    try
-      tell application "Finder"
-        set mpURL to POSIX file "${mountPoint}" as text
-        if (URL of every sidebar item whose URL is (mpURL as string)) = {} then
-          make new sidebar item at end of sidebar list "Favorites" ¬
-            with properties {name:"${task.share}", URL:mpURL}
-        end if
-      end tell
-    end try
-  end if
-EOF
+
   
   mkdir -p "${dir}"
   echo "[INFO] rsync to ${dir}"
   ${rsyncCmd}
-  `).trimStart();
+    `).trimStart();
   }
+    
   
 }
