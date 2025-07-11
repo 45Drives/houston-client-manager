@@ -26,6 +26,7 @@ EXCLUDES=(
 # ========== Linux Build ==========
 build_linux() {
   echo "🐧 Starting Linux build…"
+  ssh $SSH_OPTS "$LINUX_HOST" "rm -rf $REMOTE_BUILD_DIR"
   rsync -avz --progress "${EXCLUDES[@]}" -e "ssh $SSH_OPTS" \
     "$LOCAL_APP_DIR/" "$LINUX_HOST:$REMOTE_BUILD_DIR/"
 
@@ -48,31 +49,31 @@ build_linux() {
 }
 
 # ========== macOS Build ==========
-build_mac() {
-  echo "🍏 Starting macOS build…"
-  rsync -avz --progress "${EXCLUDES[@]}" -e "ssh $SSH_OPTS" \
-    "$LOCAL_APP_DIR/" "$MAC_HOST:$REMOTE_BUILD_DIR/"
+# build_mac() {
+#   echo "🍏 Starting macOS build…"
+#   rsync -avz --progress "${EXCLUDES[@]}" -e "ssh $SSH_OPTS" \
+#     "$LOCAL_APP_DIR/" "$MAC_HOST:$REMOTE_BUILD_DIR/"
 
-  ssh $SSH_OPTS "$MAC_HOST" bash -c "'
-    set -e
-    export PATH=\"/opt/homebrew/bin:/usr/local/bin:\$PATH\"
-    brew install node || true
-    cd $REMOTE_BUILD_DIR
-    sudo rm -f /usr/local/bin/{yarn,yarnpkg,pnpm,pnpx,corepack} 2>/dev/null || true
-    brew unlink --force yarn 2>/dev/null || true
-    corepack enable
-    corepack prepare yarn@4.6.0 --activate
-    yarn install
-    yarn build:mac
-  '"
+#   ssh $SSH_OPTS "$MAC_HOST" bash -c "'
+#     set -e
+#     export PATH=\"/opt/homebrew/bin:/usr/local/bin:\$PATH\"
+#     brew install node || true
+#     cd $REMOTE_BUILD_DIR
+#     sudo rm -f /usr/local/bin/{yarn,yarnpkg,pnpm,pnpx,corepack} 2>/dev/null || true
+#     brew unlink --force yarn 2>/dev/null || true
+#     corepack enable
+#     corepack prepare yarn@4.6.0 --activate
+#     yarn install
+#     yarn build:mac
+#   '"
 
-  mkdir -p "$LOCAL_OUTPUT_DIR/mac"
-  rsync -avz --progress -e "ssh $SSH_OPTS" \
-    "$MAC_HOST:$REMOTE_BUILD_DIR/dist/45drives-setup-wizard*" \
-    "$LOCAL_OUTPUT_DIR/mac/"
+#   mkdir -p "$LOCAL_OUTPUT_DIR/mac"
+#   rsync -avz --progress -e "ssh $SSH_OPTS" \
+#     "$MAC_HOST:$REMOTE_BUILD_DIR/dist/45drives-setup-wizard*" \
+#     "$LOCAL_OUTPUT_DIR/mac/"
 
-  echo "✅ macOS build complete."
-}
+#   echo "✅ macOS build complete."
+# }
 
 # ========== Sequential Execution ==========
 echo "🔄 Running builds sequentially"
@@ -84,11 +85,11 @@ else
   exit 1
 fi
 
-if build_mac; then
-  echo "✓ macOS build succeeded"
-else
-  echo "❌ macOS build failed"
-  exit 1
-fi
+# if build_mac; then
+#   echo "✓ macOS build succeeded"
+# else
+#   echo "❌ macOS build failed"
+#   exit 1
+# fi
 
 echo "🎉 All builds succeeded! Output in: $LOCAL_OUTPUT_DIR"

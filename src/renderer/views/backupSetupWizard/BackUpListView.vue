@@ -1,16 +1,27 @@
 <template>
   <div class="flex flex-col">
-
-
     <div class="">
       <div class="grid gap-2" :class="{
         'grid-cols-1': backUpTasks.length <= 2,
         'md:grid-cols-2': backUpTasks.length >= 3,
         'lg:grid-cols-3': backUpTasks.length >= 5
       }">
-
+        <div v-if="isLoading" class="w-full h-[300px] flex justify-center items-center" :class="{
+          'col-span-1': backUpTasks.length <= 2,
+          'col-span-2': backUpTasks.length >= 3,
+          'col-span-3': backUpTasks.length >= 5
+        }">
+          <div class="spinner"></div>
+        </div>
+        <!-- <div v-if="isLoading"
+                class="flex justify-center items-center w-full col-span-1 md:col-span-2 lg:col-span-3 min-h-[200px]">
+              <div class="spinner"></div>
+            </div> -->
+        <div v-else-if="backUpTasks.length === 0" class="text-center py-8">
+          No Tasks Found
+        </div>
         <!-- Backup Card -->
-        <div v-for="task in backUpTasks" :key="task.uuid"
+        <div v-else v-for="task in backUpTasks" :key="task.uuid"
           class="relative border-4 rounded-lg shadow-sm p-2 space-y-2 cursor-pointer items-center bg-default"
           :class="[selectedBackUps.some(t => t.uuid === task.uuid) ? 'border-primary' : 'border-default']"
           @click="toggleSelection(task)">
@@ -68,10 +79,6 @@
             </button>
           </div>
         </div>
-        <!-- <div v-if="backUpTasks.length == 0" class="spinner"></div> -->
-        <div v-if="backUpTasks.length < 1">
-          No Tasks Found
-        </div>
       </div>
     </div>
   </div>
@@ -99,6 +106,7 @@ import { thisOsInjectionKey } from '../../keys/injection-keys';
 const backUpTasks = ref<BackUpTask[]>([]);
 const selectedBackUps = ref<BackUpTask[]>([]);
 const thisOs = inject(thisOsInjectionKey);
+const isLoading = ref(true);
 
 const credsModalRef = ref<InstanceType<typeof CredentialsModal> | null>(null);
 
@@ -200,27 +208,12 @@ async function editSchedule(selectedBackUp: BackUpTask) {
   if (scheduleConfirmed && selectedBackUp) {
     selectedBackUp.schedule.repeatFrequency = selectedTaskSchedule.value.repeatFrequency;
     selectedBackUp.schedule.startDate = selectedTaskSchedule.value.startDate;
-
-    // const isLinux = thisOs?.value === 'rocky' || thisOs?.value === 'debian';
-
-    // if (!isLinux) {
-    //   const credentials = await credsModalRef.value?.open();
-    //   if (!credentials) return;
-
-    //   IPCRouter.getInstance().send("backend", "action", JSON.stringify({
-    //     type: "updateBackUpTask",
-    //     task: selectedBackUp,
-    //     username: credentials.username,
-    //     password: credentials.password
-    //   }));
-    // } else {
-      IPCRouter.getInstance().send("backend", "action", JSON.stringify({
-        type: "updateBackUpTask",
-        task: selectedBackUp, 
-        username: "",
-        password: ""
-      }));
-    // }
+    IPCRouter.getInstance().send("backend", "action", JSON.stringify({
+      type: "updateBackUpTask",
+      task: selectedBackUp, 
+      username: "",
+      password: ""
+    }));
   }
 }
 
@@ -401,6 +394,7 @@ onMounted(() => {
             }
           });
           backUpTasks.value = msg.tasks;
+          isLoading.value = false;
           break;
 
         case 'backUpStatusesUpdated':
@@ -467,4 +461,21 @@ defineExpose({
 
 </script>
 
-<style scoped></style>
+<style scoped>
+/* Loading spinner */
+.spinner {
+  border: 4px solid rgba(0, 0, 0, 0.1);
+  border-left-color: #2c3e50;
+  border-radius: 50%;
+  width: 40px;
+  height: 40px;
+  animation: spin 1s linear infinite;
+  margin: 20px;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+</style>

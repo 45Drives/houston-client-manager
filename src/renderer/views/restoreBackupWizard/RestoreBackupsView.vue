@@ -172,8 +172,10 @@ onActivated(() => {
       if (response.type === "fetchFilesFromBackupResult" && selectedBackup.value) {
         const files = response.result.map((file: string) => ({ path: file.replace(selectedBackup.value!.client, ""), selected: false })) as FileEntry[]
         selectedBackup.value.files = files;
+        console.log('selectedBackupFiles:', selectedBackup.value.files);
       } else if (response.type === "fetchBackupsFromServerResult") {
         backups.value = response.result as BackupEntry[];
+        console.log('backupsFound:', backups.value);
       } else if (response.type === "restoreBackupsResult") {
         // console.log("restore happened")
         restoreProgress.value.current++;

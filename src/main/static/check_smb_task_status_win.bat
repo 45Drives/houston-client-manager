@@ -1,11 +1,18 @@
 @echo off
-setlocal enabledelayedexpansion
+setlocal
 
 set "SMB_HOST=%1"
 set "SMB_SHARE=%2"
 set "TARGET=%3"
-set "USERNAME=%4"
-set "PASSWORD=%5"
+set "CRED_FILE=%ProgramData%\houston-backups\credentials\%SMB_SHARE%.cred"
+
+:: echo "[DEBUG] Host=%SMB_HOST%, Share=%SMB_SHARE%, Target=%TARGET%, Credfile is at=%CRED_FILE%"
+
+:: Validate that the file exists
+if not exist "%CRED_FILE%" (
+  echo {"status": "offline_invalid_credentials"}
+  exit /b 0
+)
 
 :: Check if host is reachable
 ping -n 1 %SMB_HOST% >nul
@@ -14,27 +21,6 @@ if %ERRORLEVEL% NEQ 0 (
   exit /b 0
 )
 
-:: Use PowerShell to check folder via UNC path
-powershell -NoProfile -Command ^
-  "$username = '%USERNAME%'; $password = '%PASSWORD%';" ^
-  "$securePassword = ConvertTo-SecureString $password -AsPlainText -Force;" ^
-  "$cred = New-Object System.Management.Automation.PSCredential ($username, $securePassword);" ^
-  "try {" ^
-  "  New-PSDrive -Name TEMP -PSProvider FileSystem -Root '\\%SMB_HOST%\%SMB_SHARE%' -Credential $cred -ErrorAction Stop | Out-Null;" ^
-  "  $folderPath = 'TEMP:\%TARGET%';" ^
-  "  if (Test-Path $folderPath) {" ^
-  "    Write-Output '{\"status\": \"online\"}'" ^
-  "  } else {" ^
-  "    Write-Output '{\"status\": \"missing_folder\"}'" ^
-  "  }" ^
-  "  Remove-PSDrive TEMP -Force -ErrorAction SilentlyContinue;" ^
-  "} catch {" ^
-  "  $msg = $_.Exception.Message;" ^
-  "  if ($msg -match 'Logon failure' -or $msg -match 'Access is denied') {" ^
-  "    Write-Output '{\"status\": \"offline_invalid_credentials\"}'" ^
-  "  } elseif ($msg -match 'Access to the path is denied') {" ^
-  "    Write-Output '{\"status\": \"offline_insufficient_permissions\"}'" ^
-  "  } else {" ^
-  "    Write-Output '{\"status\": \"offline_connection_error\"}'" ^
-  "  }" ^
-  "}"
+:: Call external PowerShell script and let it read the credentials
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0check_smb_task_status.ps1" -SmbHost "%SMB_HOST%" -Share "%SMB_SHARE%" -Target "%TARGET%" -CredFile "%CRED_FILE%"
+
