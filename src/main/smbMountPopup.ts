@@ -4,16 +4,12 @@ import installDepPopup from './installDepsPopup';
 import { exec } from 'child_process';
 import { getAsset } from './utils';
 
-const options = {
-  name: '45Drives Setup Wizard',
-};
-
-async function mountSambaClient(smb_host: string, smb_share: string, smb_user: string, smb_pass: string, mainWindow: BrowserWindow): Promise<string> {
+async function mountSambaClient(smb_host: string, smb_share: string, smb_user: string, smb_pass: string, mainWindow: BrowserWindow, uiMode: "popup" | "silent" = "silent"): Promise<string> {
 
   const platform = os.platform();
-  console.log('platform:', platform);
+  // console.log('platform:', platform);
   if (platform === "win32") {
-    return mountSambaClientWin(smb_host, smb_share, smb_user, smb_pass, mainWindow);
+    return mountSambaClientWin(smb_host, smb_share, smb_user, smb_pass, mainWindow, uiMode);
   } else if (platform === "linux") {
     // console.log(`passing host:${smb_host}, share:${smb_share}, user:${smb_user}, pass:${smb_pass} to script`);
     return mountSambaClientScript(smb_host, smb_share, smb_user, smb_pass, await getAsset("static", "mount_smb_lin.sh"), mainWindow);
@@ -26,14 +22,40 @@ async function mountSambaClient(smb_host: string, smb_share: string, smb_user: s
 
 }
 
-async function mountSambaClientWin(smb_host: string, smb_share: string, smb_user: string, smb_pass: string, mainWindow: BrowserWindow): Promise<string> {
+async function mountSambaClientWin(smb_host: string, smb_share: string, smb_user: string, smb_pass: string, mainWindow: BrowserWindow, uiMode: "popup" | "silent" = "silent"): Promise<string> {
   return new Promise((resolve, reject) => {
-    getAsset("static", "mount_smb_popup.bat").then(batpath => {
-      exec(`cmd /C ""${batpath}" ${smb_host} ${smb_share} ${smb_user} "${smb_pass}""`, (error, stdout, stderr) => {
+    getAsset("static", "mount_smb.bat").then(batpath => {
+      // 1️⃣ Build + log the command
+      const args = [
+        smb_host,
+        smb_share,
+        smb_user,
+        smb_pass,             // wrap in quotes below
+      ];
+
+      // only push popup if we explicitly want it
+      if (uiMode === "popup") {
+        args.push("popup");
+      }
+
+      // CMD wants: cmd /C ""<batPath>" arg1 arg2 "arg with spaces" argN"
+      const cmd = `cmd /C ""${batpath}" ${args
+        .map((a, i) => i === 3 ? `"${a}"` : a)  // only the password (index 3) gets its own quotes
+        .join(" ")}"`;
+      
+      console.log("[DEBUG] mountSambaClientWin CMD:", cmd);
+
+      exec(cmd, (error, stdout, stderr) => {
+        // 2️⃣ Log raw outputs
+        console.log("[DEBUG] mount stdout:", stdout);
+        console.log("[DEBUG] mount stderr:", stderr);
+        console.log("[DEBUG] mount error:", error);
+
         handleExecOutput(error, stdout, stderr, smb_host, smb_share, mainWindow);
 
         if (error) {
-          reject(stderr || error.message);
+          // include stdout & stderr in the rejection so you can see them up in your logs
+          reject({ message: error.message, stdout, stderr });
         } else {
           resolve(stdout.trim());
         }
@@ -44,14 +66,6 @@ async function mountSambaClientWin(smb_host: string, smb_share: string, smb_user
 
 function mountSambaClientScript(smb_host: string, smb_share: string, smb_user: string, smb_pass: string, script: string, mainWindow: BrowserWindow): Promise<string> {
   return new Promise((resolve, reject) => {
-  //   console.log(`
-  //   Mounting Details:
-  //   SMB Host: ${smb_host}
-  //   SMB Share: ${smb_share}
-  //   SMB User: ${smb_user}
-  //   SMB Password: ${smb_pass}
-  // `);
-
     installDepPopup();
 
     exec(`bash "${script}" ${smb_host} ${smb_share} ${smb_user} ${smb_pass}`, (error, stdout, stderr) => {
@@ -127,6 +141,6 @@ function handleExecOutputWithOutPopup(
 }
 
 // Main Logic
-export default function mountSmbPopup(smb_host: string, smb_share: string, smb_user: string, smb_pass: string, mainWindow: BrowserWindow): Promise<string> {
-  return mountSambaClient(smb_host, smb_share, smb_user, smb_pass, mainWindow);
+export default function mountSmbPopup(smb_host: string, smb_share: string, smb_user: string, smb_pass: string, mainWindow: BrowserWindow, uiMode: "popup" | "silent" = "silent"): Promise<string> {
+  return mountSambaClient(smb_host, smb_share, smb_user, smb_pass, mainWindow, uiMode);
 }

@@ -412,21 +412,23 @@ if (-not $hasBatchLogon -or -not $hasServiceLogon) {
   rem --- build full destination path ---
   set "DEST=!drive!:\\!DST_PATH!" >> "%LOG%" 2>&1
 
-  rem --- copy payload ---
-  mkdir "!DEST!" 2>nul 
-  echo [INFO] Running xcopy ...
-  xcopy "!SOURCE!" "!DEST!" /E /I /Y >> "%LOG%" 2>&1
+  rem --- copy payload with robocopy ---
+  mkdir "!DEST!" 2>nul
+  echo [INFO] Running robocopy ...
+  robocopy "!SOURCE!" "!DEST!" /E /Z /FFT /R:2 /W:5 /V /NP /LOG+:"%LOG%"
   set "RC=!errorlevel!"
 
   rem --- clean up the mapping ---
   timeout /t 2 >nul
   net use !drive!: /delete /y >> "%LOG%" 2>&1
 
-  if not "!RC!"=="0" (
-    echo [ERROR] xcopy returned !RC! >> "%LOG%" 2>&1
+  rem --- interpret robocopy return codes ---
+  rem Exit codes: 0 = no copy needed, 1 = some files copied, 8+ = errors
+  if !RC! GEQ 8 (
+    echo [ERROR] robocopy returned !RC! >> "%LOG%" 2>&1
     exit /b !RC!
   ) else (
-    echo [INFO] xcopy completed successfully >> "%LOG%" 2>&1
+    echo [INFO] robocopy completed with code !RC! >> "%LOG%" 2>&1
   )
 
   :: --- final exit ---
@@ -437,26 +439,6 @@ if (-not $hasBatchLogon -or -not $hasServiceLogon) {
   
 
   async unschedule(task: BackUpTask): Promise<void> {
-    /* 1️⃣  unregister Scheduled-Task */
-    // await this.runScriptAdmin(
-    //   `Unregister-ScheduledTask -TaskName "${TASK_ID}_${task.uuid}" -Confirm:$false`,
-    //   "unschedule_task"
-    // );
-
-    // /* 2️⃣  delete on-disk artefacts */
-    // const { bat, log, cred, share } = this.getTaskPaths(task);
-    // [bat, log].forEach(f => {
-    //   try {
-    //     fs.unlinkSync(f);
-    //     console.log(`Deleted ${f}`);
-    //   } catch (err) {
-    //     console.error(`Failed to delete ${f}:`, err);
-    //   }
-    // });
-
-    // /* delete cred file only if no other task still needs it */
-    // const remaining = (await this.queryTasks()).some(t => t.share === share);
-    // if (!remaining) { try { fs.unlinkSync(cred); } catch { } }
     const { bat, log, cred } = this.getTaskPaths(task);
 
     // one PS script to both unregister and delete
@@ -496,36 +478,6 @@ $task | Set-ScheduledTask
       return ""
     }
   }
-
-  // async unscheduleSelectedTasks(tasks: BackUpTask[]): Promise<void> {
-  //   /* 1️⃣  build one PowerShell blob that unregisters all tasks at once */
-  //   const ps = tasks.map(t =>
-  //     `if (Get-ScheduledTask -TaskName "${TASK_ID}_${t.uuid}" -ErrorAction SilentlyContinue) {` +
-  //     `  Unregister-ScheduledTask -TaskName "${TASK_ID}_${t.uuid}" -Confirm:$false }`
-  //   ).join("\n");
-  //   await this.runScriptAdmin(ps, "bulk_unschedule");
-
-  //   /* 2️⃣  remove artefacts */
-  //   const touchedShares = new Set<string>();
-  //   for (const t of tasks) {
-  //     const { bat, log, cred, share } = this.getTaskPaths(t);
-  //     [bat, log].forEach(f => { try { fs.unlinkSync(f); } catch { } });
-  //     touchedShares.add(share);
-  //   }
-
-  //   /* 3️⃣  prune credentials that became orphaned */
-  //   const stillExisting = await this.queryTasks();   // after deletion
-  //   for (const share of touchedShares) {
-  //     const inUse = stillExisting.some(t => t.share === share);
-  //     if (!inUse) {
-  //       const credPath = path.join(
-  //         process.env.ProgramData ?? "C:\\ProgramData",
-  //         "houston-backups", "credentials", `${share}.cred`
-  //       );
-  //       try { fs.unlinkSync(credPath); } catch { }
-  //     }
-  //   }
-  // }
 
   /** Unschedule & clean up MANY tasks in one go */
   async unscheduleSelectedTasks(tasks: BackUpTask[]): Promise<void> {
@@ -744,7 +696,6 @@ if (Get-ScheduledTask -TaskName "${taskName}" -ErrorAction SilentlyContinue) {
         log.warn(`[parseBackupCommand] BAT not found → skip task: ${batFilePath}`);
         return null;
       }
-
       
       // Read the file
       const content = fs.readFileSync(batFilePath, 'utf8');
