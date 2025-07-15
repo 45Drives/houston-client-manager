@@ -403,6 +403,8 @@ onMounted(async () => {
     const osString = await window.electron.getOS();
     setOs(osString);
 
+    console.log("[DEBUG] OS:" + osString);
+    
     // IPCRouter.getInstance().send('backend', 'action', 'requestBackUpTasks');
     
   }
