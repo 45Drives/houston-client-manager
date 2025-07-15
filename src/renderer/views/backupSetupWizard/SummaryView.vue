@@ -23,7 +23,7 @@
       <p v-if="(thisOs === 'rocky' || thisOs === 'debian') && isFirstBackupRun" class="p-2 bg-red-500/50 font-bold rounded-md">
         Note: On Linux, if this is your first time creating a backup, you will be prompted to enter sudo/admin credentials.<br/> This is expected, and is only done on the first backup creation in order to configure the network share location.
       </p>
-      <p v-if="(thisOs === 'mac') && isFirstBackupRun" class="p-2 bg-red-500/50 font-bold rounded-md">
+      <p v-if="(thisOs === 'mac' || thisOs == 'darwin') && isFirstBackupRun" class="p-2 bg-red-500/50 font-bold rounded-md">
         <strong>Note:</strong> On macOS, if this is your first time creating a backup, you need to grant
         <code>cron</code> <em>Full Disk Access</em> so it can read files from all folders.
         <br/>
