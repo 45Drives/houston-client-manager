@@ -87,7 +87,7 @@ export class BackUpManagerWin implements BackUpManager {
   queryTasks(): Promise<BackUpTask[]> {
     const powerShellScript = `Get-ScheduledTask | Where-Object {$_.TaskName -like '*${TASK_ID}*'} | Select-Object TaskName, Triggers, Actions, State | ConvertTo-Json -depth 10`
 
-    return this.runScript(powerShellScript, "query_tasks")
+    return this.runScriptAdmin(powerShellScript, "query_tasks")
       .then(result => {
         if (!result.stdout || !result.stdout.trim()) {
           return [];                     // nothing to parse, no tasks
@@ -179,11 +179,11 @@ export class BackUpManagerWin implements BackUpManager {
 
     const credDir = path.join(process.env.ProgramData ?? 'C:\\ProgramData', 'houston-backups', 'credentials');
     fs.mkdirSync(credDir, { recursive: true });
-    const credPath = path.join(credDir, `${smbShare}.cred`);
-    fs.writeFileSync(credPath, `username=${username}\npassword=${password}\n`, 'utf-8');
+    const credFile = path.join(credDir, `${smbShare}.cred`);
+    fs.writeFileSync(credFile, `username=${username}\r\npassword=${password}\r\n`, 'utf-8');
 
     /* ----------  write BAT + Task  ---------- */
-    const actionBat = this.buildActionBat(task, username, password);
+    const actionBat = this.buildActionBat(task);
 
     const ps = `
     # 1) Backup-Operators membership & rights (one shot)
@@ -212,9 +212,25 @@ ${actionBat}
     const taskName = `${TASK_ID}_${task.uuid}`;
     const powerShellScript = `Start-ScheduledTask -TaskName "${taskName}"`;
 
-    return this.runScriptAdmin(powerShellScript, `run_task_${task.uuid}`);
+    return this.runScriptAdmin(powerShellScript, `run_task_${task.uuid}`)
+      .then((result) => {
+        if (result.stderr && result.stderr.trim() !== "") {
+          return Promise.reject({
+            message: `Scheduled task "${taskName}" may have failed to start.`,
+            ...result,
+          });
+        }
+        return result;
+      })
+      .catch((err: any) => {
+        return Promise.reject({
+          message: `Failed to start scheduled task "${taskName}"`,
+          stdout: err?.stdout ?? "",
+          stderr: err?.stderr ?? "",
+          code: err?.code ?? "unknown",
+        });
+      });
   }
-
 
   addUserToBackupOperatorsGroup() {
     return `
@@ -297,15 +313,15 @@ if (-not $hasBatchLogon -or -not $hasServiceLogon) {
     tasks.forEach((t, idx) => {
       const [host, sharePath] = t.target.split(':');
       const share = sharePath.split('/')[0];
-      const credPath = path.join(credDir, `${share}.cred`).replace(/\\/g, '\\\\');
+      const credFile = path.join(credDir, `${share}.cred`).replace(/\\/g, '\\\\');
       const batPathEsc = this.scriptPath(t.uuid).replace(/\\/g, '\\\\');
 
       /* 1️⃣  cred file (idempotent) */
-      psLines.push(`"username=${username}` + `" | Out-File -Encoding ascii -NoNewline -Force "${credPath}"`);
-      psLines.push(`"password=${password}` + `" | Out-File -Append  -Encoding ascii "${credPath}"`);
+      psLines.push(`"username=${username}\n` + `" | Out-File -Encoding ascii -NoNewline -Force "${credFile}"`);
+      psLines.push(`"password=${password}` + `" | Out-File -Append  -Encoding ascii "${credFile}"`);
 
       /* 2️⃣  BAT file */
-      const batTxt = this.buildActionBat(t, username, password);
+      const batTxt = this.buildActionBat(t);
       psLines.push(`[IO.File]::WriteAllText("${batPathEsc}", @'\n${batTxt}\n'@)`);
 
       /* 3️⃣  ScheduledTask */
@@ -334,11 +350,16 @@ if (-not $hasBatchLogon -or -not $hasServiceLogon) {
  * exact same payload.
  */
   private buildActionBat(
-    task: BackUpTask,
-    username: string,
-    password: string
+    task: BackUpTask
   ): string {
     const mountBat = getMountSmbScript();
+
+    const credFile = path.join(
+      process.env.ProgramData || 'C:\\ProgramData',
+      'houston-backups',
+      'credentials',
+      `${task.share}.cred`
+    );
 
     // remove any leading "\" so drive:\<path> is well-formed 
     const rawDst = getSmbTargetFromSmbTarget(task.target)
@@ -364,8 +385,7 @@ if (-not $hasBatchLogon -or -not $hasServiceLogon) {
   :: SMB_SHARE   = ${task.share}
   
   :: --- export all four params as env vars ---
-  set "PASSWORD=${password}"
-  set "USERNAME=${username}"
+  set "CRED_FILE=${credFile}"
   set "SMB_HOST=${task.host}"
   set "SMB_SHARE=${task.share}"
   
@@ -391,26 +411,46 @@ if (-not $hasBatchLogon -or -not $hasServiceLogon) {
   echo  NetworkPath : !NETWORK_PATH!
   echo ----------------------------------------------------------
 
-  rem --- DEBUG: show exactly what we're about to run ---
-  echo [DEBUG] mount command: cmd /c ""${mountBat}" "!SMB_HOST!" "!SMB_SHARE!" "!USERNAME!" "!PASSWORD!"" >> "%LOG%" 2>&1
+  :: --- DEBUG: show exactly what we're about to run ---
+  echo [DEBUG] mount command: cmd /c ""${mountBat}" "!SMB_HOST!" "!SMB_SHARE!" "!CRED_FILE!"" >> "%LOG%" 2>&1
 
-  rem --- actually run it & capture JSON + stderr ---
-  for /f "delims=" %%O in ('cmd /c ""${mountBat}" "!SMB_HOST!" "!SMB_SHARE!" "!USERNAME!" "!PASSWORD!"" 2^>^&1') do (
-    set "json=%%O"
+  :: --- actually run it & capture JSON + stderr ---
+  set "TEMP_JSON=%TEMP%\mount_result_%RANDOM%.txt"
+  cmd /c ""${mountBat}" "!SMB_HOST!" "!SMB_SHARE!" "!CRED_FILE!"" > "!TEMP_JSON!" 2>&1
+
+  :: Log entire output to debug
+  echo [DEBUG] mount output: >> "%LOG%"
+  type "!TEMP_JSON!" >> "%LOG%"
+
+  :: Grab the line containing "DriveLetter"
+  set "json="
+  for /f "delims=" %%L in ('findstr "DriveLetter" "!TEMP_JSON!"') do (
+      set "json=%%L"
   )
 
-  rem --- remove everything through the first  "DriveLetter":"  ---
-  set "drive=!json:*"DriveLetter":"=!"
-  rem --- keep only the very first character (the letter)  ---
-  set "drive=!drive:~0,1!"
+  :: Use delayed expansion safely
+  set "drive="
+  set "temp="
 
-  if "!drive!"=="" (
-    echo {"error":"SMB mount failed - no drive letter returned"} >> "%LOG%"
-    exit /b 2
+  :: Echo the JSON to a temp file and parse it line-by-line with delayed expansion
+  (
+      echo !json!
+  ) > "%TEMP%\__extract.json"
+
+  for /f "tokens=2 delims=:" %%a in ('type "%TEMP%\__extract.json" ^| findstr /i "DriveLetter"') do (
+      set "temp=%%a"
   )
 
-  rem --- build full destination path ---
-  set "DEST=!drive!:\\!DST_PATH!" >> "%LOG%" 2>&1
+  :: Remove quotes and whitespace
+  set "temp=!temp:"=!"
+  set "temp=!temp: =!"
+  set "drive=!temp:~0,1!"
+
+  :: Clean up temp file
+  del "%TEMP%\__extract.json" >nul 2>&1
+
+  :: Build DEST
+  set "DEST=!drive!:\!DST_PATH!"
 
   rem --- copy payload with robocopy ---
   mkdir "!DEST!" 2>nul

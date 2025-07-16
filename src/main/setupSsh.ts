@@ -36,7 +36,7 @@ export async function setupSshKey(host: string, username: string, password: stri
     }
       
     await new Promise<void>((resolve, reject) => {
-      exec(`${sshKeygen} -t rsa -b 4096 -f "${privateKeyPath}" -N ""`, (err) => {
+      exec(`"${sshKeygen}" -t rsa -b 4096 -f "${privateKeyPath}" -N ""`, (err) => {
         if (err) reject(err);
         else resolve();
       });
@@ -109,7 +109,7 @@ export async function runBootstrapScript(
 
   await ssh.exec(
     // run line-buffered
-    `stdbuf -oL -eL bash ${scriptRemotePath}`,
+    `stdbuf -oL -eL bash "${scriptRemotePath}"`,
     [],                               // no positional parameters
     {
       cwd: '/tmp',

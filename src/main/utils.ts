@@ -42,8 +42,20 @@ export async function getAsset(folder: string, fileName: string, isFolder: boole
     console.log("asset: ", filePath);
 
     return filePath;
+  }  
+}
+
+export function extractJsonFromOutput(output: string): any {
+  const lines = output.split(/\r?\n/);
+  for (const line of lines) {
+    try {
+      const obj = JSON.parse(line);
+      if (typeof obj === 'object') return obj;
+    } catch (e) {
+      // skip invalid lines
+    }
   }
-  
+  throw new Error("No valid JSON object found in output");
 }
 
 export function getAppPath() {

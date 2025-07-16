@@ -22,7 +22,7 @@
         </p>
         <ul class="mt-2 list-disc list-inside text-blue-600">
           <li v-for="task in backupTasks" :key="task.uuid">
-            {{ task.host }}:{{ task.share }}{{ task.target }}
+            {{ task.host }}:{{ task.share }}{{thisOs == 'win' ? '\\\\' : ''}} {{ task.target }}
           </li>
         </ul>
         <p class="text-lg mt-2">
@@ -105,56 +105,6 @@ const isButtonDisabled = computed(() => !username.value || !password.value || op
 // Method to handle the "Open" button action
 let smbMountListener: ((data: any) => void) | null = null;
 
-// const handleOpen = () => {
-//   if (!username.value || !password.value || backupTasks.value.length === 0) return;
-
-//   const host = backupTasks.value[0].host!;
-//   const share = backupTasks.value[0].share!;
-
-//   // Remove previous listener if exists
-//   if (smbMountListener) {
-//     IPCRouter.getInstance().removeEventListener("action", smbMountListener);
-//   }
-
-//   smbMountListener = (data) => {
-//     try {
-//       const response = JSON.parse(data);
-//       if (response.action === "mountSmbResult") {
-//         openingBackup.value = false;
-//         smbMountListener = null;
-
-//         const baseMountPath = `/mnt/houston-mounts/${share}`;
-//         for (const task of backupTasks.value) {
-//           const fullPath = `${baseMountPath}/${task.target}`;
-
-//           IPCRouter.getInstance().send("backend", "action", JSON.stringify({
-//             type: "openFolder",
-//             path: fullPath
-//           }));
-//         }
-//       }
-//     } catch (e) {
-//       console.error("Failed to parse SMB mount result:", e);
-//       openingBackup.value = false;
-//     }
-//   };
-
-//   IPCRouter.getInstance().addEventListener("action", smbMountListener);
-
-//   // Proceed with mount
-//   // const [host, fullPath] = backupTasks.value[0].target.split(":");
-//   // const share = fullPath.split("/")[0];
-
-//   IPCRouter.getInstance().send("backend", "mountSambaClient", {
-//     smb_host: host,
-//     smb_share: share,
-//     smb_user: username.value,
-//     smb_pass: password.value
-//   });
-
-//   openingBackup.value = true;
-// };
-
 const handleOpen = () => {
   if (!username.value || !password.value || backupTasks.value.length === 0) return;
 
@@ -170,41 +120,43 @@ const handleOpen = () => {
   // smbMountListener = (data) => {
   //   try {
   //     const response = JSON.parse(data);
-  //     // console.log('smbMountListener response:', response);
-  //     if (response.action === "mountSmbResult") {
-  //       let mountInfo: { MountPoint: string; smb_server: string };
+  //     if (response.action !== 'mountSmbResult') return;
 
-  //       if (typeof response.result === "string") {
-  //         mountInfo = JSON.parse(response.result);   // parse the inner JSON
-  //       } else {
-  //         mountInfo = response.result;
-  //       }
+  //     /* ----------  normalise payload  ---------- */
+  //     let info: any = typeof response.result === 'string'
+  //       ? JSON.parse(response.result)
+  //       : response.result;
 
-  //       const shareName = mountInfo.MountPoint.split("/").pop();
-  //       const mountedShare = `${mountInfo.smb_server}:${shareName}`;
+  //     // we only proceed when DriveLetter OR MountPoint exists
+  //     if (!info?.MountPoint && !info?.DriveLetter) return;
 
-  //       // console.log('mountedShare:', mountedShare);
+  //     const mountPoint = info.MountPoint ?? `${info.DriveLetter}:\\`;
+  //     const shareName =
+  //       mountPoint.split(/[\\/]/).filter(Boolean).pop()      // 'NAS' on *nix, 'Y:' on Win
+  //       ?? info.smb_share;                                    // fallback
 
-  //       sharesMounted.add(mountedShare);
-  //       remainingShares.delete(mountedShare);
+  //     const mountedShare = `${info.smb_server}:${shareName}`;
 
-  //       if (remainingShares.size === 0) {
-  //         openingBackup.value = false;
-  //         smbMountListener = null;
+  //     sharesMounted.add(mountedShare);
+  //     remainingShares.delete(mountedShare);
 
-  //         for (const task of backupTasks.value) {
-  //           const mountPath = `/mnt/houston-mounts/${task.share}`;
-  //           const fullPath = `${mountPath}/${task.target}`;
-  //           console.log('fullPath being sent to openFolder:', fullPath);
-  //           IPCRouter.getInstance().send("backend", "action", JSON.stringify({
-  //             type: "openFolder",
-  //             path: fullPath
-  //           }));
-  //         }
+  //     if (remainingShares.size === 0) {
+  //       openingBackup.value = false;
+  //       smbMountListener = null;
+
+  //       for (const task of backupTasks.value) {
+  //         const mountPath = thisOs?.value === 'win'
+  //           ? `${info.DriveLetter}:\\${task.target}`
+  //           : `/mnt/houston-mounts/${task.share}/${task.target}`;
+
+  //         IPCRouter.getInstance().send('backend', 'action', JSON.stringify({
+  //           type: 'openFolder',
+  //           path: mountPath
+  //         }));
   //       }
   //     }
   //   } catch (e) {
-  //     console.error("Failed to parse SMB mount result:", e);
+  //     console.error('Failed to parse SMB mount result:', e);
   //     openingBackup.value = false;
   //   }
   // };
@@ -213,19 +165,23 @@ const handleOpen = () => {
       const response = JSON.parse(data);
       if (response.action !== 'mountSmbResult') return;
 
-      /* ----------  normalise payload  ---------- */
       let info: any = typeof response.result === 'string'
         ? JSON.parse(response.result)
         : response.result;
 
-      // we only proceed when DriveLetter OR MountPoint exists
-      if (!info?.MountPoint && !info?.DriveLetter) return;
+      const mountPoint = info.MountPoint ?? (info.DriveLetter ? `${info.DriveLetter}:\\` : null);
+      if (!mountPoint) {
+        console.warn("No valid mount point found in result");
+        // Still mark this share as "processed" to prevent infinite wait
+        remainingShares.delete(`${info.smb_server}:${info.smb_share}`);
+        if (remainingShares.size === 0) {
+          openingBackup.value = false;
+          smbMountListener = null;
+        }
+        return;
+      }
 
-      const mountPoint = info.MountPoint ?? `${info.DriveLetter}:\\`;
-      const shareName =
-        mountPoint.split(/[\\/]/).filter(Boolean).pop()      // 'NAS' on *nix, 'Y:' on Win
-        ?? info.smb_share;                                    // fallback
-
+      const shareName = mountPoint.split(/[\\/]/).filter(Boolean).pop() ?? info.smb_share;
       const mountedShare = `${info.smb_server}:${shareName}`;
 
       sharesMounted.add(mountedShare);
@@ -251,7 +207,6 @@ const handleOpen = () => {
       openingBackup.value = false;
     }
   };
-
 
   IPCRouter.getInstance().addEventListener("action", smbMountListener);
 

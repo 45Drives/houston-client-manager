@@ -32,7 +32,7 @@
             <input v-model="search" type="text" placeholder="Type To Search For backup"
               class="w-full p-2 border rounded bg-white text-black" />
           </div>
-          <table class="max-h-96 overflow-y-auto w-full border text-left">
+          <table v-if="!loading" class="max-h-96 overflow-y-auto w-full border text-left">
             <thead>
               <tr class="bg-primary">
                 <th class="p-2">Folder</th>
@@ -53,6 +53,11 @@
               </tr>
             </tbody>
           </table>
+          <div v-else>
+            <div class="w-full h-[300px] flex justify-center items-center">
+              <div class="spinner"></div>
+            </div>
+          </div>
         </div>
 
         <div class="w-1/2 pl-2">
@@ -63,7 +68,7 @@
           </div>
           <div class="max-h-96 overflow-y-auto text-default" v-if="selectedBackup">
 
-            <table class="w-full border text-left">
+            <table v-if="!loading" class="w-full border text-left">
               <thead>
                 <tr class="bg-secondary">
                   <th class="p-2">File</th>
@@ -80,9 +85,13 @@
                     <input type="checkbox" v-model="file.selected" />
                   </td>
                 </tr>
-
               </tbody>
             </table>
+            <div v-else>
+              <div class="w-full h-[300px] flex justify-center items-center">
+                <div class="spinner"></div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -124,7 +133,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, inject, onActivated } from 'vue'
+import { ref, computed, inject, onActivated, onDeactivated } from 'vue'
 import { useWizardSteps, DynamicBrandingLogo, confirm, CardContainer, useEnterToAdvance } from '@45drives/houston-common-ui';
 import { divisionCodeInjectionKey, restoreBackUpSetupDataKey } from '../../keys/injection-keys';
 import { IPCRouter, type BackupEntry, type FileEntry } from '@45drives/houston-common-lib';
@@ -170,7 +179,11 @@ onActivated(() => {
     try {
       const response = JSON.parse(data);
       if (response.type === "fetchFilesFromBackupResult" && selectedBackup.value) {
-        const files = response.result.map((file: string) => ({ path: file.replace(selectedBackup.value!.client, ""), selected: false })) as FileEntry[]
+        // const files = response.result.map((file: string) => ({ path: file.replace(selectedBackup.value!.client, ""), selected: false })) as FileEntry[]
+        const files = response.result.map((file: string) => ({
+          path: file.replace(`${selectedBackup.value!.client}/`, "").replace(/^\/+/, ""), // ✅ Remove all leading slashes
+          selected: false
+        })) as FileEntry[];
         selectedBackup.value.files = files;
         console.log('selectedBackupFiles:', selectedBackup.value.files);
       } else if (response.type === "fetchBackupsFromServerResult") {
@@ -206,6 +219,19 @@ onActivated(() => {
       }
     }))
 
+});
+
+onDeactivated(() => {
+  // Reset all relevant state when leaving the page
+  backups.value = [];
+  selectedBackup.value = null;
+  restoreProgress.value = {
+    current: 0,
+    total: 0,
+    lastFile: ""
+  };
+  restoredFolders.value = [];
+  showOpenFolderPrompt.value = false;
 });
 
 async function selectBackup(backup: BackupEntry) {
@@ -261,6 +287,7 @@ const restoreSelected = async () => {
   if (!confirmed) return;
 
   const filesToRestore = selectedBackup.value.files.filter(file => file.selected)
+  console.log("[restoreBackups] Files to restore:", filesToRestore);
 
   restoreProgress.value = {
     current: 0,
@@ -286,13 +313,16 @@ const restoreSelected = async () => {
 
 const openRestoredFolders = () => {
   for (const folder of restoredFolders.value) {
+    const normalizedPath = folder.startsWith("/") ? folder : `/${folder}`;
+
     IPCRouter.getInstance().send("backend", "action", JSON.stringify({
       type: "openFolder",
-      path: folder
+      path: normalizedPath
     }));
   }
   showOpenFolderPrompt.value = false;
 }
+
 
 
 useEnterToAdvance(
@@ -324,5 +354,22 @@ table {
 th,
 td {
   border: 1px solid #ccc;
+}
+
+/* Loading spinner */
+.spinner {
+  border: 4px solid rgba(0, 0, 0, 0.1);
+  border-left-color: #2c3e50;
+  border-radius: 50%;
+  width: 40px;
+  height: 40px;
+  animation: spin 1s linear infinite;
+  margin: 20px;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 </style>

@@ -1,26 +1,39 @@
 @echo off
+setlocal DisableDelayedExpansion
 
-:: ── mount_smb.bat ──
-:: Usage: mount_smb.bat <host> <share> <username> <password> [popup]
-
-:: 0) Optional UI mode flag
-set "UI_MODE=%~5"
-
-:: 1) Validate arguments
-if "%~1"=="" (echo {"error":"No SMB host"}     & exit /b 1)
-if "%~2"=="" (echo {"error":"No SMB share"}    & exit /b 1)
-if "%~3"=="" (echo {"error":"No username"}     & exit /b 1)
-if "%~4"=="" (echo {"error":"No password"}     & exit /b 1)
-
-set "SMB_HOST=%~1"
-set "SMB_SHARE=%~2"
-set "USERNAME=%~3"
-set "PASSWORD=%~4"
-set "UNC_PATH=\\%SMB_HOST%\%SMB_SHARE%"
-set "TMP=%TEMP%\houston_mount_%RANDOM%.txt"
+:: Set log file
 set "LOG=%~dp0mount_debug.log"
+>>"%LOG%" echo.
+>>"%LOG%" echo ==== New mount attempt at %DATE% %TIME% ====
 
-:: 2) If UI_MODE is "popup", check if already mounted and open folder
+set "UI_MODE=%~4"
+
+:: Check if network path, username, and password are provided
+if "%1"=="" (
+    echo {"error": "No network path provided"}
+    >>"%LOG%" echo ERROR: No network path provided
+    exit /b
+)
+
+if "%2"=="" (
+    echo {"error": "No share provided"}
+    >>"%LOG%" echo ERROR: No share provided
+    exit /b
+)
+
+if "%3"=="" (
+    echo {"error": "No cred file provided"}
+    >>"%LOG%" echo ERROR: No cred file provided
+    exit /b
+)
+
+:: Assign parameters to variables
+set SMB_HOST=%~1
+set SMB_SHARE=%~2
+set CRED_FILE=%~3
+set NETWORK_PATH=\\%SMB_HOST%\%SMB_SHARE%
+
+:: If UI_MODE is "popup", check if already mounted and open folder
 if /i "%UI_MODE%"=="popup" (
   for /f "tokens=2" %%D in ('net use ^| findstr /i "\\\\%SMB_HOST%\\"') do (
     echo {"message":"SMB share already mounted on drive %%D"}
@@ -29,108 +42,83 @@ if /i "%UI_MODE%"=="popup" (
   )
 )
 
-:: 2.5) Retry loop: ensure hostname is resolvable before continuing
-setlocal enabledelayedexpansion
-set RETRIES=5
-:resolve_loop
-ping -n 1 -w 1000 %SMB_HOST% >nul 2>&1
-nbtstat -a %SMB_HOST% >nul 2>&1
-if %ERRORLEVEL% EQU 0 (
-  endlocal
-  goto continue_mount
-)
-set /a RETRIES-=1
-if !RETRIES! LEQ 0 (
-  >>"%LOG%" echo [RESOLVE FAIL] Hostname %SMB_HOST% not resolved after retries
-  echo {"error":"Unable to resolve SMB host %SMB_HOST%"} & exit /b 1
-)
-timeout /t 1 >nul
-goto resolve_loop
+:: Read username and password from .cred file
+set "USERNAME="
+set "PASSWORD="
 
-:continue_mount
-
-:: 3) Clean up only connections _to this share_ (and IPC$ on that host)
-for /f "skip=1 tokens=2" %%L in ('net use ^| findstr /I "\\\\%SMB_HOST%\\%SMB_SHARE%"') do (
-    >>"%LOG%" echo [PRE-CLEAN] Deleting mapping: %%L
-    net use %%L: /delete /y >nul 2>&1
+for /f "usebackq tokens=1,* delims==" %%A in ("%CRED_FILE%") do (
+    if /i "%%A"=="username" set "USERNAME=%%B"
+    if /i "%%A"=="password" set "PASSWORD=%%B"
 )
-:: Also clear any hidden IPC$ session to that host
-net use \\%SMB_HOST%\IPC$ /delete /y >nul 2>&1
 
-:: 4) Smart ping check with retry
-ping -n 1 -w 1000 %SMB_HOST% >nul 2>&1
-if errorlevel 1 (
-    >>"%LOG%" echo [PING] First attempt to reach %SMB_HOST% failed, retrying...
-    timeout /t 1 >nul
-    ping -n 1 -w 1000 %SMB_HOST% >nul 2>&1
+if not defined USERNAME (
+    echo {"error": "Missing username in cred file"}
+    >>"%LOG%" echo ERROR: Username not found in %CRED_FILE%
+    exit /b 1
+)
+
+if not defined PASSWORD (
+    echo {"error": "Missing password in cred file"}
+    >>"%LOG%" echo ERROR: Password not found in %CRED_FILE%
+    exit /b 1
+)
+
+>>"%LOG%" echo Input: Host=%SMB_HOST% Share=%SMB_SHARE% User=%USERNAME%
+
+:: Extract SMB Server from NETWORK_PATH (e.g., \\192.168.1.100\share -> 192.168.1.100)
+for /f "tokens=2 delims=\\" %%A in ("%NETWORK_PATH%") do set "SMB_SERVER=%%A"
+>>"%LOG%" echo Extracted SMB_SERVER: %SMB_SERVER%
+
+:: Check if the SMB server is already mounted
+for /f "tokens=2" %%D in ('net use ^| findstr /I "%SMB_SERVER%"') do (
+    >>"%LOG%" echo Found existing mount %%D, deleting...
+    net use %%D /delete /y >nul 2>&1
+)
+:: Find an available drive letter (Z: downward)
+set "DRIVE_LETTER="
+
+for %%L in (Z Y X W V U T S R Q P O N M L K J I H G F E D) do (
+    >> "%LOG%" echo Checking drive: %%L
+
+    rem Check if drive is used in net use output
+    net use | findstr /I /C:" %%L: " >nul
     if errorlevel 1 (
-        >>"%LOG%" echo [PING] Retry failed, host %SMB_HOST% unreachable
-        echo {"error":"Host %SMB_HOST% unreachable after retry"} & exit /b 1
+        rem Not in net use, check if it physically exists
+        if not exist %%L:\ (
+            set "DRIVE_LETTER=%%L"
+            >>"%LOG%" echo Selected drive letter: %%L
+            goto :MOUNT_SMB
+        )
     )
 )
 
-:: 5) Authenticate to share, with retry
-setlocal enabledelayedexpansion
-set AUTH_RETRIES=3
-:auth_loop
-  >>"%LOG%" echo [AUTH] Attempt !AUTH_RETRIES! for %UNC_PATH% with %USERNAME%
-  net use "%UNC_PATH%" /user:"%USERNAME%" "%PASSWORD%" /persistent:no > "%TMP%" 2>&1
-  if ERRORLEVEL 0 (
-    >>"%LOG%" echo [AUTH] Success on attempt !AUTH_RETRIES!
-    endlocal
-    goto after_auth
-  )
-  >>"%LOG%" type "%TMP%"
-  set /a AUTH_RETRIES-=1
-  if !AUTH_RETRIES! GTR 0 (
-    timeout /t 1 >nul
-    goto auth_loop
-  )
-  endlocal
-  for /f "delims=" %%L in ('type "%TMP%"') do >>"%LOG%" echo [SHARE AUTH ERROR] %%L
-  echo {"error":"Share authentication failed"} & exit /b 1
-
-:after_auth
+>>"%LOG%" echo No available drive letter found.
+goto :EOF
 
 
-:: 6) Use pushd to discover a free drive letter
-pushd "%UNC_PATH%" > "%TMP%" 2>&1
-if ERRORLEVEL 1 (
-    for /f "delims=" %%L in ('type "%TMP%"') do >>"%LOG%" echo [PUSHD ERROR] %%L
-    echo {"error":"SMB mount failed"} & exit /b 1
-)
-for %%D in ("%CD%") do set "DRIVE=%%~dD"
-set "LETTER=%DRIVE:~0,1%"
-popd
+echo {"error": "No available drive letters found"}
+>>"%LOG%" echo ERROR: No available drive letters
+exit /b 1
 
-:: 7) Clean up temp mount (UNC and drive letter)
-net use "%UNC_PATH%" /delete /y >nul 2>&1
-net use %LETTER%: /delete /y >nul 2>&1
+:MOUNT_SMB
+:: Map the network drive with credentials
+>>"%LOG%" echo Attempting to mount %NETWORK_PATH% to %DRIVE_LETTER%: using %USERNAME%
+net use %DRIVE_LETTER%: %NETWORK_PATH% /user:%USERNAME% "%PASSWORD%" /persistent:no
 
-:: 8) Final persistent mount to known letter
-net use %LETTER%: "%UNC_PATH%" /user:"%USERNAME%" "%PASSWORD%" /persistent:no > "%TMP%" 2>&1
-if ERRORLEVEL 1 (
-    for /f "delims=" %%L in ('type "%TMP%"') do >>"%LOG%" echo [PERSIST ERROR] %%L
-    echo {"error":"Failed to map %LETTER%: as %USERNAME%"} & exit /b 1
-)
-
-:: 9) Write test
-echo test > %LETTER%:\houston_test_write.txt 2>nul
-if not exist %LETTER%:\houston_test_write.txt (
-    >>"%LOG%" echo [WRITE TEST ERROR] Cannot write to %LETTER%:\ as %USERNAME%
-    net use %LETTER%: /delete /y >nul 2>&1
-    echo {"error":"Write permission denied on %LETTER%:\\"} & exit /b 1
-)
-del %LETTER%:\houston_test_write.txt >nul 2>&1
-
-:: 10) Success
->>"%LOG%" echo [SUCCESS] %LETTER%: mounted to %UNC_PATH% as %USERNAME%
-
-if /i "%UI_MODE%"=="popup" (
-    echo {"DriveLetter":"%LETTER%","MountPoint":"%LETTER%:\\","smb_share":"%SMB_SHARE%","message":"Mounted successfully"}
-    start explorer %LETTER%: >nul 2>&1
+:: Check if the mapping was successful
+if %ERRORLEVEL%==0 (
+    >> "%LOG%" echo UI MODE: %UI_MODE%
+    >>"%LOG%" echo SUCCESS: Drive %DRIVE_LETTER%: mapped to %NETWORK_PATH%
+    echo {"DriveLetter":"%DRIVE_LETTER%","MountPoint":"%DRIVE_LETTER%:\\","smb_share":"%SMB_SHARE%","message":"Mounted successfully"}
+    if /i "%UI_MODE%"=="popup" (
+        >> "%LOG%" echo open sesame
+        start "" explorer %DRIVE_LETTER%:\
+    ) else (
+        echo {"DriveLetter":"%DRIVE_LETTER%","MountPoint":"%DRIVE_LETTER%:\\","smb_share":"%SMB_SHARE%","message":"Mounted successfully"}
+    )
+    exit /b 0
 ) else (
-    echo {"DriveLetter":"%LETTER%","MountPoint":"%LETTER%:\\","smb_share":"%SMB_SHARE%"}
+    >>"%LOG%" echo ERROR: Failed to map %NETWORK_PATH% to %DRIVE_LETTER%: with user %USERNAME%
+    echo {"error": "Failed to map network drive", "drive": "%DRIVE_LETTER%", "smb_host": "%SMB_HOST%", "smb_share": "%SMB_SHARE%", "smb_user": "%USERNAME%"}
+    exit /b 1
 )
-
-exit /b 0
