@@ -50,7 +50,7 @@ async function mountSambaClientWin(
       }
 
       // 3️⃣ Full command
-      const cmd = `cmd /C ${quoteShellSafe(batpath)} ${args.join(" ")}`;
+      const cmd = `cmd /C "${quoteShellSafe(batpath)} ${args.join(" ")}"`;
       console.log("[DEBUG] mountSambaClientWin CMD:", cmd);
 
       exec(cmd, (error, stdout, stderr) => {
