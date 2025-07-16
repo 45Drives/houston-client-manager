@@ -267,17 +267,30 @@ export class BackUpManagerLin implements BackUpManager {
       });
 
       child.on('close', (code) => {
-        const nonFatalExitCodes = [0, 24, 32]; // Allow partial transfer / vanished file cases
+        const nonFatalExitCodes = [0, 24, 32];
 
         if (nonFatalExitCodes.includes(code ?? 1)) {
           resolve({ stdout, stderr });
         } else {
-          reject(new Error(`Error code ${code}`));
+          reject({
+            message: `Backup task exited with code ${code}`,
+            code,
+            stdout,
+            stderr,
+          });
         }
+      });
+
+      child.on('error', (err) => {
+        reject({
+          message: `Failed to spawn backup task process: ${err.message}`,
+          stdout,
+          stderr,
+        });
       });
     });
   }
-  
+
 
   protected scheduleToCron(sched: TaskSchedule): string {
     switch (sched.repeatFrequency) {

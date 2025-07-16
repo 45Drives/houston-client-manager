@@ -1,10 +1,10 @@
 @echo off
 setlocal
 
-set "SMB_HOST=%1"
-set "SMB_SHARE=%2"
-set "TARGET=%3"
-set "CRED_FILE=%ProgramData%\houston-backups\credentials\%SMB_SHARE%.cred"
+set "SMB_HOST=%~1"
+set "SMB_SHARE=%~2"
+set "TARGET=%~3"
+set "CRED_FILE=%~4"
 
 :: echo "[DEBUG] Host=%SMB_HOST%, Share=%SMB_SHARE%, Target=%TARGET%, Credfile is at=%CRED_FILE%"
 

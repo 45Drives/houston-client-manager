@@ -2,12 +2,11 @@ import { BrowserWindow, dialog } from 'electron';
 import os from 'os';
 import installDepPopup from './installDepsPopup';
 import { exec } from 'child_process';
-import { getAsset } from './utils';
+import { getAsset, extractJsonFromOutput } from './utils';
 
 async function mountSambaClient(smb_host: string, smb_share: string, smb_user: string, smb_pass: string, mainWindow: BrowserWindow, uiMode: "popup" | "silent" = "silent"): Promise<string> {
 
   const platform = os.platform();
-  // console.log('platform:', platform);
   if (platform === "win32") {
     return mountSambaClientWin(smb_host, smb_share, smb_user, smb_pass, mainWindow, uiMode);
   } else if (platform === "linux") {
@@ -22,31 +21,39 @@ async function mountSambaClient(smb_host: string, smb_share: string, smb_user: s
 
 }
 
-async function mountSambaClientWin(smb_host: string, smb_share: string, smb_user: string, smb_pass: string, mainWindow: BrowserWindow, uiMode: "popup" | "silent" = "silent"): Promise<string> {
+function quoteShellSafe(str: string): string {
+  return `"${str.replace(/(["^&|<>])/g, '^$1')}"`;
+}
+
+async function mountSambaClientWin(
+  smb_host: string,
+  smb_share: string,
+  smb_user: string, // Still passed, but not needed anymore
+  smb_pass: string, // Still passed, but not needed anymore
+  mainWindow: BrowserWindow,
+  uiMode: "popup" | "silent" = "silent"
+): Promise<string> {
   return new Promise((resolve, reject) => {
     getAsset("static", "mount_smb.bat").then(batpath => {
-      // 1️⃣ Build + log the command
+      // 1️⃣ Path to .cred file
+      const credFile = `C:\\ProgramData\\houston-backups\\credentials\\${smb_share}.cred`;
+
+      // 2️⃣ Construct argument list
       const args = [
-        smb_host,
-        smb_share,
-        smb_user,
-        smb_pass,             // wrap in quotes below
+        quoteShellSafe(smb_host),
+        quoteShellSafe(smb_share),
+        quoteShellSafe(credFile),
       ];
 
-      // only push popup if we explicitly want it
       if (uiMode === "popup") {
         args.push("popup");
       }
 
-      // CMD wants: cmd /C ""<batPath>" arg1 arg2 "arg with spaces" argN"
-      const cmd = `cmd /C ""${batpath}" ${args
-        .map((a, i) => i === 3 ? `"${a}"` : a)  // only the password (index 3) gets its own quotes
-        .join(" ")}"`;
-      
+      // 3️⃣ Full command
+      const cmd = `cmd /C ${quoteShellSafe(batpath)} ${args.join(" ")}`;
       console.log("[DEBUG] mountSambaClientWin CMD:", cmd);
 
       exec(cmd, (error, stdout, stderr) => {
-        // 2️⃣ Log raw outputs
         console.log("[DEBUG] mount stdout:", stdout);
         console.log("[DEBUG] mount stderr:", stderr);
         console.log("[DEBUG] mount error:", error);
@@ -54,7 +61,6 @@ async function mountSambaClientWin(smb_host: string, smb_share: string, smb_user
         handleExecOutput(error, stdout, stderr, smb_host, smb_share, mainWindow);
 
         if (error) {
-          // include stdout & stderr in the rejection so you can see them up in your logs
           reject({ message: error.message, stdout, stderr });
         } else {
           resolve(stdout.trim());
@@ -64,11 +70,12 @@ async function mountSambaClientWin(smb_host: string, smb_share: string, smb_user
   });
 }
 
+
 function mountSambaClientScript(smb_host: string, smb_share: string, smb_user: string, smb_pass: string, script: string, mainWindow: BrowserWindow): Promise<string> {
   return new Promise((resolve, reject) => {
     installDepPopup();
 
-    exec(`bash "${script}" ${smb_host} ${smb_share} ${smb_user} ${smb_pass}`, (error, stdout, stderr) => {
+    exec(`bash "${script}" "${smb_host}" "${smb_share}" "${smb_user}" "${smb_pass}"`, (error, stdout, stderr) => {
       handleExecOutput(error, stdout, stderr, smb_host, smb_share, mainWindow);
 
       if (error) {
@@ -79,6 +86,7 @@ function mountSambaClientScript(smb_host: string, smb_share: string, smb_user: s
     });
   });
 }
+
 
 function handleExecOutput(
   error: Error | undefined | null,
@@ -120,8 +128,8 @@ function handleExecOutputWithOutPopup(
   }
 
   if (stdout) {
+    const result = extractJsonFromOutput(stdout.toString());
 
-    const result = JSON.parse(stdout.toString());
     if (result.message) {
       mainWindow.webContents.send('notification', `S${result.message}.`);
       return false;

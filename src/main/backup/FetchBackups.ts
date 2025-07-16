@@ -1,5 +1,5 @@
 import { BrowserWindow } from "electron";
-import { getOS } from "../utils";
+import { getOS, extractJsonFromOutput } from "../utils";
 import { BackupEntry } from "@45drives/houston-common-lib";
 import mountSmbPopup from "../smbMountPopup";
 import path from 'path';
@@ -22,7 +22,7 @@ export default async function fetchBackupsFromServer(data: any, mainWindow: Brow
   
   let mountResult: { DriveLetter: string, MountPoint: string, smb_share: string };
   try {
-    mountResult = JSON.parse(raw);
+    mountResult = extractJsonFromOutput(raw);
   } catch (e) {
     console.error("[ERROR] Failed to JSON.parse mountSmbPopup output:", e, raw);
     throw e;

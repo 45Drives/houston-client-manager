@@ -10,10 +10,9 @@ const options = {
 const dependencies = {
   rocky: ['cifs-utils', 'samba', 'samba-client'],
   debian: ['cifs-utils', 'samba', 'smbclient'],
-  mac: [],
+  mac: ['samba'], // Homebrew installs smbclient and related tools
 };
 
-// Returns a Promise that resolves with the list of missing packages
 function checkMissingDependencies(osType: string): Promise<string[]> {
   const packages = dependencies[osType] || [];
 
@@ -25,13 +24,15 @@ function checkMissingDependencies(osType: string): Promise<string[]> {
         command = `dnf list installed ${pkg}`;
       } else if (osType === 'debian') {
         command = `dpkg -l | grep ${pkg}`;
+      } else if (osType === 'mac') {
+        command = `brew list --formula | grep -w ${pkg}`;
       } else {
         resolve(null);
         return;
       }
 
-      exec(command, (error, stdout, stderr) => {
-        if (error || !stdout!.includes(pkg)) {
+      exec(command, (error, stdout) => {
+        if (error || !stdout || !stdout.includes(pkg)) {
           resolve(pkg); // missing
         } else {
           resolve(null); // found
@@ -53,12 +54,10 @@ function installDependencies(osType: string, missingPackages: string[]) {
     command = `dnf install -y ${packageList}`;
   } else if (osType === 'debian') {
     command = `apt-get install -y ${packageList}`;
+  } else if (osType === 'mac') {
+    command = `brew install ${packageList}`;
   } else {
-    dialog.showMessageBox({
-      type: 'info',
-      title: 'Installation Not Required',
-      message: 'No dependencies need to be installed for macOS.',
-    });
+    dialog.showErrorBox('Unsupported OS', 'Dependency installation not supported on this OS.');
     return;
   }
 
@@ -73,19 +72,49 @@ function installDependencies(osType: string, missingPackages: string[]) {
     })
     .then((result) => {
       if (result.response === 0) {
-        sudo.exec(command, options, (error, stdout, stderr) => {
-          if (error) {
-            console.error('Installation Error:', error);
-            dialog.showErrorBox('Installation Failed', 'Could not install dependencies.');
-            return;
-          }
-          console.log('Installation Output:', stdout);
-          dialog.showMessageBox({
-            type: 'info',
-            title: 'Installation Complete',
-            message: 'All required dependencies have been installed successfully!',
+        if (osType === 'mac') {
+          // Ensure Homebrew is installed
+          exec('which brew', (brewErr, brewPath) => {
+            if (brewErr || !brewPath.trim()) {
+              dialog.showErrorBox(
+                'Missing Homebrew',
+                'Homebrew is required to install dependencies on macOS.\nPlease install it from https://brew.sh and try again.'
+              );
+              return;
+            }
+
+            sudo.exec(command, options, (error, stdout) => {
+              if (error) {
+                console.error('Installation Error:', error);
+                dialog.showErrorBox('Installation Failed', 'Could not install dependencies.');
+                return;
+              }
+
+              console.log('Installation Output:', stdout);
+              dialog.showMessageBox({
+                type: 'info',
+                title: 'Installation Complete',
+                message: 'All required dependencies have been installed successfully!',
+              });
+            });
           });
-        });
+        } else {
+          // Linux-based flow
+          sudo.exec(command, options, (error, stdout) => {
+            if (error) {
+              console.error('Installation Error:', error);
+              dialog.showErrorBox('Installation Failed', 'Could not install dependencies.');
+              return;
+            }
+
+            console.log('Installation Output:', stdout);
+            dialog.showMessageBox({
+              type: 'info',
+              title: 'Installation Complete',
+              message: 'All required dependencies have been installed successfully!',
+            });
+          });
+        }
       }
     });
 }

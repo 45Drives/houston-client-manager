@@ -17,6 +17,7 @@ process.on('unhandledRejection', (reason, promise) => {
 import { exec, execFile, execSync } from 'child_process';
 import { getOS, getAsset, getAppPath } from '../utils';
 import * as fs from 'fs';
+import * as osDir from 'os';
 import * as path from 'path';
 import { BackUpTask } from '@45drives/houston-common-lib';
 
@@ -24,46 +25,35 @@ export async function checkBackupTaskStatus(task: BackUpTask): Promise<BackUpTas
     const os = getOS();
     const smbHost = task.host!;
     const smbShare = task.share!;
-    const targetPath = task.target;
+    const targetPath = task.target!;
+    const homeDir = osDir.homedir();
 
-    const credPath = process.platform === 'win32'
-        ? path.join(process.env.ProgramData || 'C:\\ProgramData', 'houston-backups', 'credentials', `${task.share}.cred`)
-        : `/etc/samba/houston-credentials/${smbShare}.cred`;
-    
+    const credPath =
+        os === 'win'
+            ? path.join(process.env.ProgramData || 'C:\\ProgramData', 'houston-backups', 'credentials', `${smbShare}.cred`)
+            : os === 'mac'
+                ? `${homeDir}/houston-credentials/${smbShare}.cred`
+                : `/etc/samba/houston-credentials/${smbShare}.cred`;
+
     if (!fs.existsSync(credPath)) {
         console.warn(`[SMB Check] Missing credentials for ${task.uuid}: ${credPath}`);
         return 'offline_invalid_credentials';
     }
 
-    const credContent = fs.readFileSync(credPath, 'utf-8');
-    const username = credContent.match(/username=(.+)/)?.[1]?.trim();
-    const password = credContent.match(/password=(.+)/)?.[1]?.trim();
-
-    if (!username || !password) {
-        console.warn(`[SMB Check] Incomplete credentials for ${task.uuid}`);
-        return 'offline_invalid_credentials';
-    }
-
     if (os === 'win') {
         const scriptAsset = await getAsset('static', 'check_smb_task_status_win.bat');
-        console.log(`[SMB Check] execFile: ${scriptAsset} [${task.host}, ${task.share}, ${task.target}]`);
+        console.log(`[SMB Check] execFile: ${scriptAsset} [${task.host}, ${task.share}, ${task.target}, ${credPath}]`);
 
         return new Promise<BackUpTask['status']>(resolve => {
             execFile(
-                scriptAsset,
-                [task.host!, task.share!, task.target!],
+                `"${scriptAsset}"`,
+                [`"${task.host!}"`, `"${task.share!}"`, `"${task.target!}"`, `"${credPath}"`],
                 { windowsHide: true, shell: true },
-                // 'cmd.exe',
-                // ['/c', scriptAsset, task.host!, task.share!, task.target!],
-                // { windowsHide: true },
                 (error, stdout, stderr) => {
                     console.log(`[SMB Check] stdout for ${task.uuid}:`, stdout);
                     if (stderr) console.warn(`[SMB Check] stderr for ${task.uuid}:`, stderr);
 
-                    // Parse the first JSON line from stdout
-                    const jsonLine = stdout.trim()
-                        .split('\n')
-                        .find(line => line.trim().startsWith('{'));
+                    const jsonLine = stdout.trim().split('\n').find(line => line.trim().startsWith('{'));
                     if (!jsonLine) {
                         console.warn(`[SMB Check] No JSON output for ${task.uuid}`, error);
                         return resolve('offline_connection_error');
@@ -90,14 +80,14 @@ export async function checkBackupTaskStatus(task: BackUpTask): Promise<BackUpTas
 
         const scriptAsset = await getAsset("static", "check_smb_task_status.sh");
         const escape = (arg: string) => `"${arg.replace(/(["\\$`])/g, '\\$1')}"`;
-        const cmd = `bash ${escape(scriptAsset)} ${escape(smbHost)} ${escape(smbShare)} ${escape(targetPath)} ${escape(username)} ${escape(password)}`;
+        const cmd = `bash ${escape(scriptAsset)} ${escape(smbHost)} ${escape(smbShare)} ${escape(targetPath)} ${escape(credPath)}`;
 
         return new Promise((resolve) => {
             exec(cmd, (error, stdout, stderr) => {
                 console.log(`[SMB Check] stdout for ${task.uuid}:`, stdout);
                 if (stderr) console.warn(`[SMB Check] stderr for ${task.uuid}:`, stderr);
 
-                let jsonLine = stdout?.trim().split('\n').find(line => line.trim().startsWith('{'));
+                const jsonLine = stdout?.trim().split('\n').find(line => line.trim().startsWith('{'));
                 if (!jsonLine) {
                     console.warn(`[SMB Check] No JSON output for ${task.uuid}, falling back`);
                     if (error) console.error(`[SMB Check] exec error:`, error);
@@ -121,6 +111,7 @@ export async function checkBackupTaskStatus(task: BackUpTask): Promise<BackUpTas
         });
     }
 }
+
 
 function isScheduledButNotRunYet(task: BackUpTask): boolean {
     const now = Date.now();

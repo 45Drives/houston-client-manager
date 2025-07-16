@@ -15,7 +15,7 @@ process.on('unhandledRejection', (reason, promise) => {
   log.error('Unhandled Rejection at:', promise, 'reason:', reason);
 });
 
-import { app, BrowserWindow, ipcMain, dialog, powerSaveBlocker, webContents } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, powerSaveBlocker, webContents, shell } from 'electron';
 import path, { join } from 'path';
 import mdns from 'multicast-dns';
 import os from 'os';
@@ -31,7 +31,7 @@ import { BackUpSetupConfig, BackUpTask, server, unwrap } from '@45drives/houston
 import fetchBackups from './backup/FetchBackups';
 import fetchFilesInBackup from './backup/FetchFilesFromBackup';
 import restoreBackups from './backup/RestoreBackups';
-import { execSync } from 'child_process';
+import { spawnSync } from 'child_process';
 import { checkBackupTaskStatus } from './backup/CheckSmbStatus';
 import { installServerDepsRemotely } from './installServerDeps';
 import { checkSSH } from './setupSsh';
@@ -42,9 +42,9 @@ let discoveredServers: Server[] = [];
 
 app.commandLine.appendSwitch('ignore-certificate-errors', 'true');
 
+const platform = getOS();
 
 function checkLogDir(): string {
-  const platform = getOS();
   let logDir = '';
 
   const isRoot = process.getuid?.() === 0; // On Windows, this will be undefined
@@ -413,16 +413,16 @@ function createWindow() {
         } else if (message.type === 'openFolder') {
           // console.log('Attempting to open folder path:', message.path);
           const folderPath: string = message.path;
-          const platform = getOS();
           try {
-            if (platform === "win") {
-              execSync(`start "" "${folderPath}"`);
-            } else if (platform === "mac") {
-              execSync(`open "${folderPath}"`);
-            } else {
-              execSync(`xdg-open "${folderPath}"`);
-            }
-            notify( `📂 Opened folder: ${folderPath}`);
+            console.log('🧪 Trying to open folder:', folderPath);
+            console.log('✅ Exists:', fs.existsSync(folderPath));
+            shell.openPath(folderPath).then(result => {
+              if (result) {
+                notify(`❌ Error opening folder: ${result}`);
+              } else {
+                notify(`📂 Opened folder: ${folderPath}`);
+              }
+            });
           } catch (err) {
             notify(`Error: Failed to open folder: ${folderPath}`);
             console.error("Error opening folder:", folderPath, err);
@@ -488,11 +488,14 @@ function createWindow() {
           try {
             console.log("▶️ Attempting to run backup:", task.description);
             const result = await (backupManager as any).runNow(task);
+
             if (result.stderr && result.stderr.trim() !== "") {
-              throw new Error(result.stderr);
+              console.warn("⚠️ Backup completed with warnings/errors in stderr:", result.stderr);
             }
+
             console.log("✅ runNow completed:", result);
             notify(`✅ Backup task "${task.description}" started successfully.`);
+
             setTimeout(async () => {
               try {
                 task.status = await checkBackupTaskStatus(task);
@@ -506,9 +509,10 @@ function createWindow() {
             }, 5000);
           } catch (err: any) {
             console.error("❌ runNow failed:", err);
-            const fallbackMsg = err?.stderr || err?.message || JSON.stringify(err);
-            notify(`Error: Failed to start task: ${fallbackMsg}`);
+            const errorMsg = err?.stderr || err?.message || JSON.stringify(err);
+            notify(`❌ Backup task "${task.description}" failed to run: ${errorMsg}`);
           }
+
         } else if (message.type === 'addManualIP') {
           const { ip, manuallyAdded } = message as { ip: string; manuallyAdded?: boolean };
 
@@ -804,37 +808,13 @@ function createWindow() {
     }))
   });
 
-  // const pollActionInterval = setInterval(async () => {
-  //   for (let server of discoveredServers) {
-  //     // don’t poll actions on manual servers
-  //     if (!server.manuallyAdded && !server.fallbackAdded) continue
-  //     await pollActions(server)
-  //   }
-  // }, 5000)
   const pollActionInterval = setInterval(async () => {
     for (let server of discoveredServers) {
       if ((server as any).manuallyAdded || (server as any).fallbackAdded) continue
       await pollActions(server)
-      // const meta = server as any;
-
-      // // Skip manual or fallback entries entirely
-      // if (meta.manuallyAdded || meta.fallbackAdded) {
-      //   // console.log(`⏭  [pollInterval] skipping ${server.ip} (manuallyAdded=${!!meta.manuallyAdded}, fallbackAdded=${!!meta.fallbackAdded})`);
-      //   continue;
-      // }
-
-      // // Quick port‐open check before HTTP
-      // const portIsUp = await isPortOpen(server.ip, 9095, 1000);
-      // if (!portIsUp) {
-      //   // console.log(`🚪 [pollInterval] port 9095 closed on ${server.ip}, skipping HTTP probe`);
-      //   continue;
-      // }
-
-      // // All checks passed, do the action poll
-      // await pollActions(server);
     }
   }, 5000);
-  
+
 
   app.on('window-all-closed', function () {
     ipcMain.removeAllListeners('message')
@@ -864,6 +844,7 @@ app.whenReady().then(() => {
 
   ipcMain.handle("is-dev", async () => process.env.NODE_ENV === 'development');
 
+
   ipcMain.handle('dialog:openFolder', async () => {
     const result = await dialog.showOpenDialog({
       properties: ['openDirectory'], // Opens folder selection dialog
@@ -871,6 +852,7 @@ app.whenReady().then(() => {
 
     return result.canceled ? null : result.filePaths[0]; // Return full folder path
   });
+
   createWindow();
   app.on('activate', function () {
     // On macOS it's common to re-create a window in the app when the
@@ -880,6 +862,13 @@ app.whenReady().then(() => {
     }
   });
 
+});
+
+app.on('window-all-closed', () => {
+  // ✅ This ensures your app fully quits on Windows
+  if (process.platform !== 'darwin') {
+    app.quit();
+  }
 });
 
 function getBackUpManager() {

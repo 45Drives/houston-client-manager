@@ -11,6 +11,7 @@ process.on('unhandledRejection', (reason, promise) => log.error('Unhandled Rejec
 import { BackUpManager } from "./types";
 import { BackUpTask, TaskSchedule } from "@45drives/houston-common-lib";
 import * as fs from "fs";
+import * as os from "os";
 import { execSync } from "child_process";
 import * as path from "path";
 import { getRsync, getSmbTargetFromSmbTarget } from "../utils";
@@ -96,21 +97,36 @@ export class BackUpManagerMac implements BackUpManager {
     task.host = host;
     task.share = share;
 
-    const service = `houston-smb-${share}`;
     const installerPath = `/tmp/houston-installer-${uuid}.sh`;
     const scriptPayload = this.getShellScriptContent(task, username);   // big bash body
     const mntRoot = `${this.HOME}/houston-mounts`;
     const mntDir  = `${mntRoot}/${share}`;
-    
+    const homeDir = os.homedir();
+    const currentUser = os.userInfo().username;
+    const userGroup = require("child_process").execSync(`id -gn ${currentUser}`).toString().trim();
+
+    const credDir = `${homeDir}/houston-credentials`;
+    const credFile = path.join(credDir, `${share}.cred`);
+
+    const credFileSetup = `
+echo "Running as: $(whoami)"
+mkdir -p "${credDir}"
+chown "${currentUser}:${userGroup}" "${credDir}"
+chmod 700 "${credDir}"
+touch "${credFile}"
+chown "${currentUser}:${userGroup}" "${credFile}"
+chmod 600 "${credFile}"
+echo "username=${username}" > "${credFile}"
+echo "password=${password}" >> "${credFile}"
+`;
     const installer = `#!/bin/bash
     set -e
     
     # 1 ─ one-time directories (no special permissions needed later)
     mkdir -p "${this.scriptDir}" "${this.logDir}" "${mntRoot}" "${mntDir}"
     
-    # 2 ─ system key-chain secret
-    security delete-generic-password -s "${service}" -a "${username}" 2>/dev/null || true
-    security add-generic-password    -s "${service}" -a "${username}" -w "${password}" -U
+    # 2 ─ create cred file
+    ${credFileSetup}
     
     # 3 ─ write the task script
     cat <<'EOF_${uuid}' > "${scriptPath}"
@@ -151,14 +167,17 @@ EOF_${uuid}
     const total = tasks.length;
     const scriptDir = this.scriptDir;          // “/Library/Application Support/Houston/scripts”
     const logDir = this.logDir;             // “/Library/Logs/Houston”
-    const servicePrefix = "houston-smb-";
+    const homeDir = os.homedir();
+    const currentUser = os.userInfo().username;
+    const userGroup = require("child_process").execSync(`id -gn ${currentUser}`).toString().trim();
 
     /* ------------------------------------------------------------------
        1.  BUILD a root-only installer shell script as one big heredoc
     ------------------------------------------------------------------ */
     const installerLines: string[] = [
       "#!/bin/bash",
-      "set -e",                                        // stop on first error
+      "set -e",                                            // Stop on first error
+      `echo \"Running as: $(whoami)\"`,
       `mkdir -p "${scriptDir}" "${logDir}"`,
       `chmod 1777 "${logDir}"`
     ];
@@ -170,10 +189,17 @@ EOF_${uuid}
       uniqueShares.add(share);
     }
     for (const share of uniqueShares) {
-      const svc = servicePrefix + share;
+      const credDir = `${homeDir}/houston-credentials`;
+      const credFile = path.join(credDir, `${share}.cred`);
+
       installerLines.push(
-        `security delete-generic-password -s "${svc}" -a "${username}" 2>/dev/null || true`,
-        `security add-generic-password -s "${svc}" -a "${username}" -w "${password}" -U`,
+        `mkdir -p "${credDir}"`,
+        `chown "${currentUser}:${userGroup}" "${credDir}"`,
+        `chmod 700 "${credDir}"`,
+        `echo "username=${username}" > "${credFile}"`,
+        `echo "password=${password}" >> "${credFile}"`,
+        `chown "${currentUser}:${userGroup}" "${credFile}"`,
+        `chmod 600 "${credFile}"`,
         `mkdir -p "${this.HOME}/houston-mounts/${share}"`
       );
     }
@@ -238,10 +264,21 @@ EOF_${uuid}
       `houston-backup-task-${task.uuid}.sh`
     );
 
-    const stdout = execSync(`/bin/bash "${scriptPath}"`, { encoding: "utf8" });
-    return Promise.resolve({ stdout, stderr: "" });
+    try {
+      const stdout = execSync(`/bin/bash "${scriptPath}"`, {
+        encoding: "utf8",
+        stdio: ['ignore', 'pipe', 'pipe'], // Explicitly capture stdout and stderr
+      });
+      return Promise.resolve({ stdout, stderr: "" });
+    } catch (err: any) {
+      return Promise.reject({
+        message: `Backup task failed: ${err.message}`,
+        stdout: err.stdout?.toString?.() ?? "",
+        stderr: err.stderr?.toString?.() ?? "",
+        code: err.status ?? err.code ?? "unknown",
+      });
+    }
   }
-
 
   /** Remove one cron + script */
   async unschedule(task: BackUpTask): Promise<void> {
@@ -409,65 +446,78 @@ EOF_${uuid}
   }
 
 
-
   private getShellScriptContent(task: BackUpTask, username: string): string {
     const mountRoot = this.MOUNT_ROOT;
     const mountPoint = `${mountRoot}/${task.share}`;
     const volumesMount = `/Volumes/${task.share}`;
     const rel = task.target!.split('/').slice(1).join('/');
     const dir = `${mountPoint}/${rel}`;
-    const svc = `houston-smb-${task.share}`;
     const target = getSmbTargetFromSmbTarget(task.target);
     const rsyncCmd = `${getRsync()} -a${task.mirror ? ' --delete' : ''} "${task.source}/" "${dir}/"`;
-  
-    return (`
-  #!/bin/bash
-  
-  trap 'st=$?; echo "===== $(/bin/date -u "+%Y-%m-%dT%H:%M:%SZ") END $st ====="; exit $st' EXIT
-  
-  # Houston user-level backup script
-  # TASK_HOST="${task.host}"
-  # TASK_SHARE="${task.share}"
-  # TASK_SOURCE="${task.source}"
-  # TASK_TARGET="${target}"
-  # TASK_MIRROR="${task.mirror}"
-  # TASK_START="${task.schedule.startDate.toISOString()}"
-  
-  START_DATE='${task.schedule.startDate.toISOString()}'
-  LOG="${this.logDir}/Houston_Backup_Task_${task.uuid}.log"
-  mkdir -p "$(dirname "$LOG")"
-  
-  exec >>"$LOG" 2>&1
-  set -x
-  
-  echo "===== $(/bin/date -u '+%Y-%m-%dT%H:%M:%SZ') START ${task.uuid} ====="
-  
-  PASSWORD=$(security find-generic-password -s "${svc}" -a "${username}" -w) || {
-    echo "[ERROR] key-chain lookup failed"
-    exit 1
-  }
-  
-  # ---------- (1) try Finder / user-level mount first ----------
-  if ! /sbin/mount | /usr/bin/grep -qE "${mountPoint}|${volumesMount}"; then
-    /usr/bin/osascript <<EOT_APPLE
-      try
-        mount volume "smb://${username}:$PASSWORD@${task.host}/${task.share}"
-      end try
-EOT_APPLE
-  
-    real_mnt=$(/sbin/mount | awk '$1 ~ /\\\\${username}@${task.host}\\\\/${task.share}/ {print $3; exit}')
-    if [ -n "$real_mnt" ] && [ "$real_mnt" != "${mountPoint}" ]; then
-      [ -d "${mountPoint}" ] && rmdir "${mountPoint}" 2>/dev/null || true
-      ln -snf "$real_mnt" "${mountPoint}"
-    fi
-  fi
+    const homeDir = os.homedir();
+    return (`#!/bin/bash
+set -euo pipefail
+trap 'st=$?; echo "===== $(/bin/date -u "+%Y-%m-%dT%H:%M:%SZ") END $st ====="; exit $st' EXIT
 
-  
-  mkdir -p "${dir}"
-  echo "[INFO] rsync to ${dir}"
-  ${rsyncCmd}
+mountPoint="${mountPoint}"
+volumesMount="${volumesMount}"
+
+# Houston user-level backup script
+# TASK_HOST="${task.host}"
+# TASK_SHARE="${task.share}"
+# TASK_SOURCE="${task.source}"
+# TASK_TARGET="${target}"
+# TASK_MIRROR="${task.mirror}"
+# TASK_START="${task.schedule.startDate.toISOString()}"
+
+START_DATE='${task.schedule.startDate.toISOString()}'
+LOG="${this.logDir}/Houston_Backup_Task_${task.uuid}.log"
+mkdir -p "$(dirname "$LOG")"
+
+exec >>"$LOG" 2>&1
+set -x
+
+echo "===== $(/bin/date -u '+%Y-%m-%dT%H:%M:%SZ') START ${task.uuid} ====="
+
+credFile="${homeDir}/houston-credentials/${task.share}.cred"
+if [ ! -f "$credFile" ]; then
+  echo "[ERROR] Missing credentials file at $credFile"
+  exit 1
+fi
+
+USERNAME=$(grep username "$credFile" | cut -d'=' -f2 | tr -d '\r\n')
+PASSWORD=$(grep password "$credFile" | cut -d'=' -f2 | tr -d '\r\n')
+
+# --- Use common reusable mount script ---
+mountScript="/Applications/45drives-setup-wizard.app/Contents/Resources/static/mount_smb_mac.sh"
+if [ ! -x "\$mountScript" ]; then
+  echo "[ERROR] Mount script not found or not executable at \$mountScript"
+  exit 1
+fi
+
+"\$mountScript" "${task.host}" "${task.share}" "\$credFile"
+if [ $? -ne 0 ]; then
+  echo "[ERROR] Failed to mount SMB share"
+  exit 1
+fi
+
+# --- Resolve real mount path ---
+real_mnt="/Volumes/${task.share}"
+if [ ! -d "\$real_mnt" ]; then
+  echo "[ERROR] Expected mount path not found: \$real_mnt"
+  exit 1
+fi
+
+# --- Ensure symlink exists at known mountRoot ---
+mkdir -p "$(dirname "$mountPoint")"
+if [ "\$real_mnt" != "\$mountPoint" ]; then
+  rm -rf "\$mountPoint"
+  ln -snf "\$real_mnt" "\$mountPoint"
+fi
+
+mkdir -p "${dir}"
+echo "[INFO] rsync to ${dir}"
+${rsyncCmd}
     `).trimStart();
   }
-    
-  
 }
