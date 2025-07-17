@@ -46,17 +46,22 @@ export async function getAsset(folder: string, fileName: string, isFolder: boole
 }
 
 export function extractJsonFromOutput(output: string): any {
-  const lines = output.split(/\r?\n/);
-  for (const line of lines) {
-    try {
-      const obj = JSON.parse(line);
-      if (typeof obj === 'object') return obj;
-    } catch (e) {
-      // skip invalid lines
+  try {
+    // Try to find the first valid-looking JSON object in the string
+    const jsonMatch = output.match(/\{[\s\S]*?\}/);
+    if (!jsonMatch) {
+      // console.warn('[extractJsonFromOutput] No JSON object found in output:', output);
+      return { error: true, message: 'No JSON object found in output' };
     }
+
+    const jsonString = jsonMatch[0];
+    return JSON.parse(jsonString);
+  } catch (err) {
+    // console.error('[extractJsonFromOutput] Failed to parse JSON:', err);
+    return { error: true, message: 'Invalid JSON format in output' };
   }
-  throw new Error("No valid JSON object found in output");
 }
+
 
 export function getAppPath() {
   // Determine the base path
@@ -71,6 +76,9 @@ export function getAppPath() {
       basePath = __dirname + "/../../static/"
     }
   }
+
+  console.log("[getAppPath] resolved to:", basePath); // <--- ADD THIS
+
   return basePath;
 }
 
@@ -83,6 +91,24 @@ export function getMountSmbScript() {
     return path.join(getAppPath(), "mount_smb_lin.sh")
   }
 }
+/* export async function getMountSmbScript(): Promise<string> {
+  const os = getOS();
+  const basePath = getAppPath();
+
+  let scriptName = "";
+  if (os === "win") {
+    scriptName = "mount_smb.bat";
+  } else if (os === "mac") {
+    scriptName = "mount_smb_mac.sh";
+  } else {
+    scriptName = "mount_smb_lin.sh";
+  }
+
+  const resolvedPath = path.join(basePath, "static", scriptName);
+  console.log(`[getMountSmbScript] OS: ${os}, resolved path: ${resolvedPath}`);
+
+  return resolvedPath;
+} */
 
 export function getSmbTargetFromSmbTarget(target: string) {
   // console.log('[getSmbTargetFromSmbTarget] raw target:', target);

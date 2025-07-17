@@ -313,7 +313,11 @@ const restoreSelected = async () => {
 
 const openRestoredFolders = () => {
   for (const folder of restoredFolders.value) {
-    const normalizedPath = folder.startsWith("/") ? folder : `/${folder}`;
+    // const normalizedPath = folder.startsWith("/") || /^[A-Za-z]:/.test(folder)
+    //   ? folder
+    //   : `/${folder}`;
+    const fixedFolder = folder.replace(/\\/g, "/");
+    const normalizedPath = fixedFolder.match(/^([A-Za-z]:\/|\/)/) ? fixedFolder : `/${fixedFolder}`;
 
     IPCRouter.getInstance().send("backend", "action", JSON.stringify({
       type: "openFolder",
@@ -322,7 +326,6 @@ const openRestoredFolders = () => {
   }
   showOpenFolderPrompt.value = false;
 }
-
 
 
 useEnterToAdvance(
