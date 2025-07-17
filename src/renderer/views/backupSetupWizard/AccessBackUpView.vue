@@ -198,8 +198,8 @@ const handleOpen = () => {
             thisOs?.value === 'win'
               ? `${info.DriveLetter}:\\${task.target}`
               : thisOs?.value === 'mac'
-                ? `/Volumes/${task.share}`
-                : `/mnt/houston-mounts/${task.share}`;
+                ? `/Volumes/${task.share}${normalizedTarget}`
+                : `/mnt/houston-mounts/${task.share}${normalizedTarget}`;
 
           IPCRouter.getInstance().send('backend', 'action', JSON.stringify({
             type: 'openFolder',
