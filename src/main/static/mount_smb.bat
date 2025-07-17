@@ -103,13 +103,12 @@ exit /b 1
 :MOUNT_SMB
 :: Map the network drive with credentials
 >>"%LOG%" echo Attempting to mount %NETWORK_PATH% to %DRIVE_LETTER%: using %USERNAME%
-net use %DRIVE_LETTER%: %NETWORK_PATH% /user:%USERNAME% "%PASSWORD%" /persistent:no
+net use %DRIVE_LETTER%: %NETWORK_PATH% /user:%USERNAME% "%PASSWORD%" /persistent:no >nul 2>&1
 
 :: Check if the mapping was successful
 if %ERRORLEVEL%==0 (
     >> "%LOG%" echo UI MODE: %UI_MODE%
     >>"%LOG%" echo SUCCESS: Drive %DRIVE_LETTER%: mapped to %NETWORK_PATH%
-    echo {"DriveLetter":"%DRIVE_LETTER%","MountPoint":"%DRIVE_LETTER%:\\","smb_share":"%SMB_SHARE%","message":"Mounted successfully"}
     if /i "%UI_MODE%"=="popup" (
         >> "%LOG%" echo open sesame
         start "" explorer %DRIVE_LETTER%:\
