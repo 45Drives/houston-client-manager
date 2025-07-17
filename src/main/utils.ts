@@ -84,7 +84,7 @@ export function getAppPath() {
 
 export function getMountSmbScript() {
   if (getOS() === "win") {
-    return path.join(getAppPath(), "mount_smb.bat");
+    return path.join(getAppPath(), "static", "mount_smb.bat");
   } else if (getOS() === "mac") {
     return path.join(getAppPath(), "mount_smb_mac.sh");
   } else {
