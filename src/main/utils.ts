@@ -91,24 +91,7 @@ export function getMountSmbScript() {
     return path.join(getAppPath(), "mount_smb_lin.sh")
   }
 }
-/* export async function getMountSmbScript(): Promise<string> {
-  const os = getOS();
-  const basePath = getAppPath();
 
-  let scriptName = "";
-  if (os === "win") {
-    scriptName = "mount_smb.bat";
-  } else if (os === "mac") {
-    scriptName = "mount_smb_mac.sh";
-  } else {
-    scriptName = "mount_smb_lin.sh";
-  }
-
-  const resolvedPath = path.join(basePath, "static", scriptName);
-  console.log(`[getMountSmbScript] OS: ${os}, resolved path: ${resolvedPath}`);
-
-  return resolvedPath;
-} */
 
 export function getSmbTargetFromSmbTarget(target: string) {
   // console.log('[getSmbTargetFromSmbTarget] raw target:', target);
