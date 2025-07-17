@@ -46,6 +46,7 @@ export class BackUpManagerWin implements BackUpManager {
     // Save to file
     const tempDir = os.tmpdir();
     const scriptPath = path.join(tempDir, `${scriptName}.ps1`);
+    console.log("running: " + scriptPath);
     fs.writeFileSync(scriptPath, powershellScript);
 
     return new Promise((resolve, reject) => {
@@ -311,6 +312,8 @@ if (-not $hasBatchLogon -or -not $hasServiceLogon) {
     ];
 
     tasks.forEach((t, idx) => {
+      console.log(t)
+
       const [host, sharePath] = t.target.split(':');
       const share = sharePath.split('/')[0];
       const credFile = path.join(credDir, `${share}.cred`).replace(/\\/g, '\\\\');
@@ -373,7 +376,7 @@ if (-not $hasBatchLogon -or -not $hasServiceLogon) {
 
     return `
   @echo off
-  setlocal DisableDelayedExpansion
+  setlocal enabledelayedexpansion
   :: --- Houston backup task metadata (for reference) ---
   :: uuid        = ${task.uuid}
   :: description = ${task.description}
@@ -396,6 +399,7 @@ if (-not $hasBatchLogon -or -not $hasServiceLogon) {
   set "LOG=${logFile}"
   set "SOURCE=${task.source}"
   set "DST_PATH=${rawDst}"
+  set "mountBat=${mountBat}"
   set "NETWORK_PATH=\\\\!SMB_HOST!\\!SMB_SHARE!"
   
   :: --- ensure log directory ---
@@ -412,50 +416,50 @@ if (-not $hasBatchLogon -or -not $hasServiceLogon) {
   echo ----------------------------------------------------------
 
   :: --- DEBUG: show exactly what we're about to run ---
-  echo [DEBUG] mount command: cmd /c ""${mountBat}" "!SMB_HOST!" "!SMB_SHARE!" "!CRED_FILE!"" >> "%LOG%" 2>&1
+  echo [DEBUG] mount command: cmd /c ""!mountBat!" "!SMB_HOST!" "!SMB_SHARE!" "!CRED_FILE!"" >> "%LOG%" 2>&1
 
   :: --- actually run it & capture JSON + stderr ---
   set "TEMP_JSON=%TEMP%\mount_result_%RANDOM%.txt"
-  cmd /c ""${mountBat}" "!SMB_HOST!" "!SMB_SHARE!" "!CRED_FILE!"" > "!TEMP_JSON!" 2>&1
+  cmd /c ""!mountBat!" "!SMB_HOST!" "!SMB_SHARE!" "!CRED_FILE!"" > "!TEMP_JSON!" 2>&1
 
-  :: Log entire output to debug
+  :: Debug
   echo [DEBUG] mount output: >> "%LOG%"
   type "!TEMP_JSON!" >> "%LOG%"
+  echo !TEMP_JSON!
 
-  :: Grab the line containing "DriveLetter"
+  :: Extract line with DriveLetter
   set "json="
   for /f "delims=" %%L in ('findstr "DriveLetter" "!TEMP_JSON!"') do (
-      set "json=%%L"
+      call set "json=%%L"
   )
 
-  :: Use delayed expansion safely
-  set "drive="
-  set "temp="
+  echo !json!
 
-  :: Echo the JSON to a temp file and parse it line-by-line with delayed expansion
-  (
-      echo !json!
-  ) > "%TEMP%\__extract.json"
+  :: Write json to temp file
+  echo !json! > "%TEMP%\__extract.json"
 
-  for /f "tokens=2 delims=:" %%a in ('type "%TEMP%\__extract.json" ^| findstr /i "DriveLetter"') do (
+  :: Extract drive letter
+  for /f "tokens=2 delims=:" %%a in ('findstr /i "DriveLetter" "%TEMP%\__extract.json"') do (
       set "temp=%%a"
   )
 
-  :: Remove quotes and whitespace
   set "temp=!temp:"=!"
   set "temp=!temp: =!"
   set "drive=!temp:~0,1!"
 
+  echo !drive!
   :: Clean up temp file
   del "%TEMP%\__extract.json" >nul 2>&1
 
   :: Build DEST
   set "DEST=!drive!:\!DST_PATH!"
 
+  echo !DEST!
+
   rem --- copy payload with robocopy ---
   mkdir "!DEST!" 2>nul
   echo [INFO] Running robocopy ...
-  robocopy "!SOURCE!" "!DEST!" /E /Z /FFT /R:2 /W:5 /V /NP /LOG+:"%LOG%"
+  robocopy "!SOURCE!" "!DEST!" /E /Z /FFT /R:2 /W:5 /V /NP
   set "RC=!errorlevel!"
 
   rem --- clean up the mapping ---
