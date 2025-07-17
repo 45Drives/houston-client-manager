@@ -11,9 +11,9 @@ async function mountSambaClient(smb_host: string, smb_share: string, smb_user: s
     return mountSambaClientWin(smb_host, smb_share, smb_user, smb_pass, mainWindow, uiMode);
   } else if (platform === "linux") {
     // console.log(`passing host:${smb_host}, share:${smb_share}, user:${smb_user}, pass:${smb_pass} to script`);
-    return mountSambaClientScript(smb_host, smb_share, smb_user, smb_pass, await getAsset("static", "mount_smb_lin.sh"), mainWindow);
+    return mountSambaClientScriptLin(smb_host, smb_share, smb_user, smb_pass, await getAsset("static", "mount_smb_lin.sh"), mainWindow);
   } else if (platform === "darwin") {
-    return mountSambaClientScript(smb_host, smb_share, smb_user, smb_pass, await getAsset("static", "mount_smb_mac.sh"), mainWindow);
+    return mountSambaClientScriptMac(smb_host, smb_share, smb_user, await getAsset("static", "mount_smb_mac.sh"), mainWindow);
   } else {
     console.log("Unknown OS:", platform);
     return "Unknown OS: " + platform;
@@ -37,7 +37,7 @@ async function mountSambaClientWin(
     getAsset("static", "mount_smb.bat").then(batpath => {
       // 1️⃣ Path to .cred file
       const credFile = `C:\\ProgramData\\houston-backups\\credentials\\${smb_share}.cred`;
-
+      console.log("[DEBUG - mountSMBWin] script path being used:", batpath);
       // 2️⃣ Construct argument list
       const args = [
         quoteShellSafe(smb_host),
@@ -71,11 +71,27 @@ async function mountSambaClientWin(
 }
 
 
-function mountSambaClientScript(smb_host: string, smb_share: string, smb_user: string, smb_pass: string, script: string, mainWindow: BrowserWindow): Promise<string> {
+function mountSambaClientScriptLin(smb_host: string, smb_share: string, smb_user: string, smb_pass: string, script: string, mainWindow: BrowserWindow): Promise<string> {
   return new Promise((resolve, reject) => {
-    installDepPopup();
-
+    // installDepPopup();
+    console.log("[DEBUG - mountSMBLin] script path being used:", script);
     exec(`bash "${script}" "${smb_host}" "${smb_share}" "${smb_user}" "${smb_pass}"`, (error, stdout, stderr) => {
+      handleExecOutput(error, stdout, stderr, smb_host, smb_share, mainWindow);
+
+      if (error) {
+        reject(stderr || error.message);
+      } else {
+        resolve(stdout.trim());
+      }
+    });
+  });
+}
+
+function mountSambaClientScriptMac(smb_host: string, smb_share: string, smb_user: string, script: string, mainWindow: BrowserWindow): Promise<string> {
+  return new Promise((resolve, reject) => {
+    // installDepPopup();
+    console.log("[DEBUG - mountSMBMac] script path being used:", script);
+    exec(`bash "${script}" "${smb_host}" "${smb_share}" "${smb_user}"`, (error, stdout, stderr) => {
       handleExecOutput(error, stdout, stderr, smb_host, smb_share, mainWindow);
 
       if (error) {
