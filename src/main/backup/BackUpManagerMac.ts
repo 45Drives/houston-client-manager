@@ -109,8 +109,15 @@ export class BackUpManagerMac implements BackUpManager {
     set -e
     
     # 1 ─ one-time directories (no special permissions needed later)
-    mkdir -p "${this.scriptDir}" "${this.logDir}" "${mntRoot}" "${mntDir}"
     
+    mkdir -p "${this.scriptDir}" "${this.logDir}" "${mntRoot}"
+    # Check if the path exists (dir or symlink)
+    if [ ! -e "${mntDir}" ]; then
+        mkdir -p "${mntDir}"
+        ln -s "/Volumes/${task.share}" "${mntRoot}"
+    fi 
+ 
+
     # 2 ─ system key-chain secret
     security delete-generic-password -s "${service}" -a "${username}" 2>/dev/null || true
     security add-generic-password    -s "${service}" -a "${username}" -w "${password}" -U
@@ -181,6 +188,7 @@ EOF_${uuid}
       installerLines.push(
         `security delete-generic-password -s "${svc}" -a "${username}" 2>/dev/null || true`,
         `security add-generic-password -s "${svc}" -a "${username}" -w "${password}" -U`,
+        `rm -rf "${this.HOME}/houston-mounts/${share}"`,
         `mkdir -p "${this.HOME}/houston-mounts/${share}"`
       );
     }

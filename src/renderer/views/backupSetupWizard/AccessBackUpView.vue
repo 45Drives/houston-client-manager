@@ -118,6 +118,7 @@ const handleOpen = () => {
   let remainingShares = new Set(backupTasks.value.map(task => `${task.host}:${task.share}`));
 
   smbMountListener = (data) => {
+    openingBackup.value = false;
     try {
       const response = JSON.parse(data);
       if (response.action !== 'mountSmbResult') return;

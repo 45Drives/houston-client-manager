@@ -800,7 +800,13 @@ function createWindow() {
   }
 
   IPCRouter.getInstance().addEventListener('mountSambaClient', async (data) => {
-    const result = await mountSmbPopup(data.smb_host, data.smb_share, data.smb_user, data.smb_pass, mainWindow, "popup");
+    let result
+    try {
+     result = await mountSmbPopup(data.smb_host, data.smb_share, data.smb_user, data.smb_pass, mainWindow, "popup");
+
+    } catch (e: any) {
+      result = { error: e && e.message ? e.message : "Failed to mount" };
+    }
     // console.log('mountSambaClient result:', result);
     IPCRouter.getInstance().send("renderer", "action", JSON.stringify({
       action: "mountSmbResult",
