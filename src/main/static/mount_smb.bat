@@ -34,9 +34,6 @@ set CRED_FILE=%~3
 set NETWORK_PATH=\\%SMB_HOST%\%SMB_SHARE%
 
 
-:: Always emit JSON after successful mount
-echo {"DriveLetter":"%DRIVE_LETTER%","MountPoint":"%DRIVE_LETTER%:\\","smb_share":"%SMB_SHARE%","message":"Mounted successfully","smb_server":"%SMB_HOST%"}
-
 :: Read username and password from .cred file
 set "USERNAME="
 set "PASSWORD="
@@ -98,13 +95,18 @@ exit /b 1
 :MOUNT_SMB
 :: Map the network drive with credentials
 >>"%LOG%" echo Attempting to mount %NETWORK_PATH% to %DRIVE_LETTER%: using %USERNAME%
-net use %DRIVE_LETTER%: %NETWORK_PATH% /user:%USERNAME% "%PASSWORD%" /persistent:no
+net use %DRIVE_LETTER%: %NETWORK_PATH% /user:%USERNAME% "%PASSWORD%" /persistent:no >nul 2>&1
 >>"%LOG%" echo NET USE result: %ERRORLEVEL%
 
 :: Check if the mapping was successful
 if %ERRORLEVEL%==0 (
     >> "%LOG%" echo UI MODE: %UI_MODE%
     >>"%LOG%" echo SUCCESS: Drive %DRIVE_LETTER%: mapped to %NETWORK_PATH%
+
+    if /i "%UI_MODE%"=="popup" (
+            >> "%LOG%" echo open sesame
+        start "" explorer %DRIVE_LETTER%:\
+    )
 
     echo {"DriveLetter":"%DRIVE_LETTER%","MountPoint":"%DRIVE_LETTER%:\\","smb_share":"%SMB_SHARE%","message":"Mounted successfully"}
 
