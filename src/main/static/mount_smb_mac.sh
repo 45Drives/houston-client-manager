@@ -23,6 +23,7 @@ fi
 
 # ----------- Check if already mounted -----------
 if mount | grep -q "${MOUNT_POINT}"; then
+    open "${MOUNT_POINT}"
     echo "{\"smb_server\": \"${SERVER}\", \"share\": \"${SHARE}\", \"status\": \"already mounted\", \"MountPoint\": \"${MOUNT_POINT}\"}"
     exit 0
 fi
@@ -48,7 +49,7 @@ fi
 
 sleep 2
 
-if mount | grep -q "${HOST}/${SHARE}; then
+if mount | grep -q "${HOST}/${SHARE}"; then
     if [ -d "${MOUNT_POINT}" ]; then
         open "${MOUNT_POINT}"
         echo "{\"smb_server\": \"${SERVER}\", \"share\": \"${SHARE}\", \"status\": \"mounted successfully\", \"MountPoint\": \"${MOUNT_POINT}\"}"
