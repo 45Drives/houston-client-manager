@@ -88,11 +88,18 @@ function mountSambaClientScriptLin(smb_host: string, smb_share: string, smb_user
   });
 }
 
-function mountSambaClientScriptMac(smb_host: string, smb_share: string, smb_user: string, script: string, mainWindow: BrowserWindow): Promise<string> {
+function mountSambaClientScriptMac(
+  smb_host: string,
+  smb_share: string,
+  smb_user: string,
+  script: string,
+  mainWindow: BrowserWindow,
+  uiMode: "popup" | "silent" = "silent"): Promise<string> {
+
   return new Promise((resolve, reject) => {
     // installDepPopup();
     console.log("[DEBUG - mountSMBMac] script path being used:", script);
-    exec(`bash "${script}" "${smb_host}" "${smb_share}" "${smb_user}"`, (error, stdout, stderr) => {
+    exec(`bash "${script}" "${smb_host}" "${smb_share}" "${smb_user}" "${uiMode}"`, (error, stdout, stderr) => {
       handleExecOutput(error, stdout, stderr, smb_host, smb_share, mainWindow);
 
       if (error) {
