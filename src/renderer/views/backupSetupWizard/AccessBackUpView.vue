@@ -22,7 +22,7 @@
         </p>
         <ul class="mt-2 list-disc list-inside text-blue-600">
           <li v-for="task in backupTasks" :key="task.uuid">
-            {{ task.host }}:{{ task.share }}{{thisOs == 'win' ? '\\\\' : ''}} {{ task.target }}
+            {{ task.host }}:{{ task.share }}{{thisOs == 'win' ? '\\\\' : ''}}{{ task.target }}
           </li>
         </ul>
         <p class="text-lg mt-2">
@@ -149,9 +149,14 @@ const handleOpen = () => {
         smbMountListener = null;
 
         for (const task of backupTasks.value) {
-          const mountPath = thisOs?.value === 'win'
-            ? `${info.DriveLetter}:\\${task.target}`
-            : `/mnt/houston-mounts/${task.share}/${task.target}`;
+          const normalizedTarget = task.target.startsWith('/') ? task.target : `/${task.target}`;
+
+          const mountPath =
+            thisOs?.value === 'win'
+              ? `${info.DriveLetter}:\\${task.target}`
+              : thisOs?.value === 'mac'
+                ? `/Volumes/${task.share}${normalizedTarget}`
+                : `/mnt/houston-mounts/${task.share}${normalizedTarget}`;
 
           IPCRouter.getInstance().send('backend', 'action', JSON.stringify({
             type: 'openFolder',

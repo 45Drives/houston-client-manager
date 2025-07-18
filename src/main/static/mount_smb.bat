@@ -33,14 +33,9 @@ set SMB_SHARE=%~2
 set CRED_FILE=%~3
 set NETWORK_PATH=\\%SMB_HOST%\%SMB_SHARE%
 
-:: If UI_MODE is "popup", check if already mounted and open folder
-if /i "%UI_MODE%"=="popup" (
-  for /f "tokens=2" %%D in ('net use ^| findstr /i "\\\\%SMB_HOST%\\"') do (
-    echo {"message":"SMB share already mounted on drive %%D"}
-    start explorer %%D: >nul 2>&1
-    exit /b 0
-  )
-)
+
+:: Always emit JSON after successful mount
+echo {"DriveLetter":"%DRIVE_LETTER%","MountPoint":"%DRIVE_LETTER%:\\","smb_share":"%SMB_SHARE%","message":"Mounted successfully","smb_server":"%SMB_HOST%"}
 
 :: Read username and password from .cred file
 set "USERNAME="
@@ -103,18 +98,16 @@ exit /b 1
 :MOUNT_SMB
 :: Map the network drive with credentials
 >>"%LOG%" echo Attempting to mount %NETWORK_PATH% to %DRIVE_LETTER%: using %USERNAME%
-net use %DRIVE_LETTER%: %NETWORK_PATH% /user:%USERNAME% "%PASSWORD%" /persistent:no >nul 2>&1
+net use %DRIVE_LETTER%: %NETWORK_PATH% /user:%USERNAME% "%PASSWORD%" /persistent:no
+>>"%LOG%" echo NET USE result: %ERRORLEVEL%
 
 :: Check if the mapping was successful
 if %ERRORLEVEL%==0 (
     >> "%LOG%" echo UI MODE: %UI_MODE%
     >>"%LOG%" echo SUCCESS: Drive %DRIVE_LETTER%: mapped to %NETWORK_PATH%
-    if /i "%UI_MODE%"=="popup" (
-        >> "%LOG%" echo open sesame
-        start "" explorer %DRIVE_LETTER%:\
-    ) else (
-        echo {"DriveLetter":"%DRIVE_LETTER%","MountPoint":"%DRIVE_LETTER%:\\","smb_share":"%SMB_SHARE%","message":"Mounted successfully"}
-    )
+
+    echo {"DriveLetter":"%DRIVE_LETTER%","MountPoint":"%DRIVE_LETTER%:\\","smb_share":"%SMB_SHARE%","message":"Mounted successfully"}
+
     exit /b 0
 ) else (
     >>"%LOG%" echo ERROR: Failed to map %NETWORK_PATH% to %DRIVE_LETTER%: with user %USERNAME%

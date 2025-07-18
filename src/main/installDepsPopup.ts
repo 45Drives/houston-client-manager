@@ -7,7 +7,7 @@ const options = {
   name: '45Drives Setup Wizard',
 };
 
-const dependencies = {
+const dependencies: Record<string, string[]> = {
   rocky: ['cifs-utils', 'samba', 'samba-client'],
   debian: ['cifs-utils', 'samba', 'smbclient'],
   mac: ['samba'], // Homebrew installs smbclient and related tools
@@ -23,7 +23,7 @@ function checkMissingDependencies(osType: string): Promise<string[]> {
       if (osType === 'rocky') {
         command = `dnf list installed ${pkg}`;
       } else if (osType === 'debian') {
-        command = `dpkg -l | grep ${pkg}`;
+        command = `dpkg -l | grep -w ${pkg}`;
       } else if (osType === 'mac') {
         command = `brew list --formula | grep -w ${pkg}`;
       } else {
@@ -32,7 +32,7 @@ function checkMissingDependencies(osType: string): Promise<string[]> {
       }
 
       exec(command, (error, stdout) => {
-        if (error || !stdout || !stdout.includes(pkg)) {
+        if (error || !stdout.includes(pkg)) {
           resolve(pkg); // missing
         } else {
           resolve(null); // found
@@ -71,35 +71,18 @@ function installDependencies(osType: string, missingPackages: string[]) {
       buttons: ['OK', 'Cancel'],
     })
     .then((result) => {
-      if (result.response === 0) {
-        if (osType === 'mac') {
-          // Ensure Homebrew is installed
-          exec('which brew', (brewErr, brewPath) => {
-            if (brewErr || !brewPath.trim()) {
-              dialog.showErrorBox(
-                'Missing Homebrew',
-                'Homebrew is required to install dependencies on macOS.\nPlease install it from https://brew.sh and try again.'
-              );
-              return;
-            }
+      if (result.response !== 0) return;
 
-            sudo.exec(command, options, (error, stdout) => {
-              if (error) {
-                console.error('Installation Error:', error);
-                dialog.showErrorBox('Installation Failed', 'Could not install dependencies.');
-                return;
-              }
+      if (osType === 'mac') {
+        exec('which brew', (brewErr, brewPath) => {
+          if (brewErr || !brewPath.trim()) {
+            dialog.showErrorBox(
+              'Missing Homebrew',
+              'Homebrew is required to install dependencies on macOS.\nPlease install it from https://brew.sh and try again.'
+            );
+            return;
+          }
 
-              console.log('Installation Output:', stdout);
-              dialog.showMessageBox({
-                type: 'info',
-                title: 'Installation Complete',
-                message: 'All required dependencies have been installed successfully!',
-              });
-            });
-          });
-        } else {
-          // Linux-based flow
           sudo.exec(command, options, (error, stdout) => {
             if (error) {
               console.error('Installation Error:', error);
@@ -114,7 +97,23 @@ function installDependencies(osType: string, missingPackages: string[]) {
               message: 'All required dependencies have been installed successfully!',
             });
           });
-        }
+        });
+      } else {
+        // Linux-based flow
+        sudo.exec(command, options, (error, stdout) => {
+          if (error) {
+            console.error('Installation Error:', error);
+            dialog.showErrorBox('Installation Failed', 'Could not install dependencies.');
+            return;
+          }
+
+          console.log('Installation Output:', stdout);
+          dialog.showMessageBox({
+            type: 'info',
+            title: 'Installation Complete',
+            message: 'All required dependencies have been installed successfully!',
+          });
+        });
       }
     });
 }
@@ -122,6 +121,7 @@ function installDependencies(osType: string, missingPackages: string[]) {
 // Main Logic
 export default function installDepPopup() {
   const osType = getOS();
+
   if (!osType) {
     dialog.showErrorBox('Unsupported OS', 'Could not determine your OS type.');
     return;
@@ -129,6 +129,7 @@ export default function installDepPopup() {
 
   checkMissingDependencies(osType).then((missingPackages) => {
     if (missingPackages.length > 0) {
+      console.warn(`[Dependencies] Missing: ${missingPackages.join(', ')}`);
       installDependencies(osType, missingPackages);
     } else {
       console.log('All dependencies are already installed.');
