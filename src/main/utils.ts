@@ -30,11 +30,22 @@ export async function getAsset(folder: string, fileName: string, isFolder: boole
   const isDev = process.env.NODE_ENV === 'development';
 
   if (isDev) {
-    const filePath = path.join(__dirname, "..", "..", folder, fileName);
 
-    console.log("asset: ", filePath);
+    const os = getOS();
+    if (os === "mac") {
+      const filePath = path.join(__dirname, "..", "..", "..", "..", "src", "main", folder, fileName);
 
-    return filePath;
+      console.log("asset: ", filePath);
+
+      return filePath;
+    } else {
+      const filePath = path.join(__dirname, "..", "..", folder, fileName);
+
+      console.log("asset: ", filePath);
+
+      return filePath;
+    }
+    
   } else {
 
     const filePath = path.join(__dirname, "..", "..", "..", folder, fileName);

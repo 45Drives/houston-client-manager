@@ -46,7 +46,7 @@ fi
 
 sleep 2
 
-if mount | grep -q "${SERVER}"; then
+if mount | grep -q "${HOST}/${SHARE}; then
     if [ -d "${MOUNT_POINT}" ]; then
         open "${MOUNT_POINT}"
         echo "{\"smb_server\": \"${SERVER}\", \"share\": \"${SHARE}\", \"status\": \"mounted successfully\", \"MountPoint\": \"${MOUNT_POINT}\"}"
