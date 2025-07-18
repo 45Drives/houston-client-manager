@@ -14,7 +14,7 @@ async function mountSambaClient(smb_host: string, smb_share: string, smb_user: s
     return mountSambaClientScriptLin(smb_host, smb_share, smb_user, smb_pass, await getAsset("static", "mount_smb_lin.sh"), mainWindow);
   } else if (platform === "darwin") {
     console.log("mounting smb mac")
-    return mountSambaClientScriptMac(smb_host, smb_share, smb_user, await getAsset("static", "mount_smb_mac.sh"), mainWindow);
+    return mountSambaClientScriptMac(smb_host, smb_share, smb_user, await getAsset("static", "mount_smb_mac.sh"), mainWindow, uiMode);
   } else {
     console.log("Unknown OS:", platform);
     return "Unknown OS: " + platform;
