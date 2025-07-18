@@ -95,7 +95,7 @@ exit /b 1
 :MOUNT_SMB
 :: Map the network drive with credentials
 >>"%LOG%" echo Attempting to mount %NETWORK_PATH% to %DRIVE_LETTER%: using %USERNAME%
-net use %DRIVE_LETTER%: %NETWORK_PATH% /user:%USERNAME% "%PASSWORD%" /persistent:no
+net use %DRIVE_LETTER%: %NETWORK_PATH% /user:%USERNAME% "%PASSWORD%" /persistent:no >nul 2>&1
 >>"%LOG%" echo NET USE result: %ERRORLEVEL%
 
 :: Check if the mapping was successful

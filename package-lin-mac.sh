@@ -78,12 +78,12 @@ build_mac() {
 # ========== Sequential Execution ==========
 echo "🔄 Running builds sequentially"
 
-if build_linux; then
-  echo "✓ Linux build succeeded"
-else
-  echo "❌ Linux build failed"
-  exit 1
-fi
+# if build_linux; then
+#   echo "✓ Linux build succeeded"
+# else
+#   echo "❌ Linux build failed"
+#   exit 1
+# fi
 
 if build_mac; then
   echo "✓ macOS build succeeded"
