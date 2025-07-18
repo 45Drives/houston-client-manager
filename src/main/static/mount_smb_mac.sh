@@ -4,10 +4,12 @@
 if [ -z "$1" ]; then echo '{"error": "No host provided"}'; exit 1; fi
 if [ -z "$2" ]; then echo '{"error": "No share name provided"}'; exit 1; fi
 if [ -z "$3" ]; then echo '{"error": "No username provided"}'; exit 1; fi
+if [ -z "$4" ]; then echo '{"error": "Popup"}'; exit 1; fi
 
 HOST="$1"
 SHARE="$2"
 USERNAME="$3"
+popup="$4"
 SERVER="smb://${HOST}/${SHARE}"
 MOUNT_POINT="/Volumes/${SHARE}"
 KEYCHAIN_SERVICE="houston-smb-${SHARE}"
