@@ -31,7 +31,14 @@ case "$(source /etc/os-release; echo "$ID_LIKE")" in
     echo "[INFO] Opening ports for Cockpit (9090/TCP)..."
     firewall-cmd --quiet --permanent --add-service=cockpit && firewall-cmd --reload
   }
-  reload_repos() {
+  setup_45d_repo() {
+    if [[ -f "/etc/yum.repos.d/45drives.repo" ]]; then
+      echo "45Drives repo found. Archiving..."
+      mkdir -p /opt/45drives/archives/repos
+      mv /etc/yum.repos.d/45drives.repo "/opt/45drives/archives/repos/45drives-$(date +%Y-%m-%d).repo"
+      echo "The obsolete repos have been archived to '/opt/45drives/archives/repos'. Setting up the new repo..."
+    fi
+    curl -sSL https://repo.45drives.com/repofiles/rocky/45drives-enterprise.repo -o /etc/yum.repos.d/45drives-enterprise.repo
     dnf clean all
   }
   KERNEL_DEVEL_PKGS=(dkms kernel-devel kernel-headers kernel-devel-"$(uname -r)" kernel-headers-"$(uname -r)")
@@ -54,7 +61,11 @@ case "$(source /etc/os-release; echo "$ID_LIKE")" in
     echo "[INFO] Opening ports for Cockpit (9090/TCP)..."
     ufw allow 9090/tcp && ufw reload
   }
-  reload_repos() {
+  setup_45d_repo() {
+    apt update -y
+    apt install -y ca-certificates gnupg
+    wget -qO - https://repo.45drives.com/key/gpg.asc | gpg --pinentry-mode loopback --batch --yes --dearmor -o /usr/share/keyrings/45drives-archive-keyring.gpg
+    curl -sSL "https://repo.45drives.com/repofiles/$(source /etc/os-release; echo "$ID")/45drives-enterprise-$(source /etc/os-release; echo "$VERSION_CODENAME").list" -o "/etc/apt/sources.list.d/45drives-enterprise-$(source /etc/os-release; echo "$VERSION_CODENAME").list"
     apt update -y
   }
   KERNEL_DEVEL_PKGS=(dkms linux-headers linux-headers-"$(uname -r)")
@@ -70,8 +81,7 @@ install_pkg "${KERNEL_DEVEL_PKGS[@]}"
 install_pkg "${REQUIRED_PACKAGES[@]}"
 
 # set up 45Drives repo
-if curl -sSL https://repo.45drives.com/setup | bash; then
-  reload_repos
+if setup_45d_repo; then
   install_pkg "${OUR_REQUIRED_PACKAGES[@]}"
 else
   echo "Failed to set up 45Drives repo!" >&2
