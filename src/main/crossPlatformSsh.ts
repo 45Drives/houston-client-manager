@@ -4,7 +4,7 @@ import os from "os";
 import fs from "fs";
 import { execFile, spawnSync } from "child_process";
 import { promisify } from "util";
-import { getOS, getAppPath } from "./utils";
+import { getOS, getAppPath, getAsset } from "./utils";
 
 const execFileAsync = promisify(execFile);
 
@@ -27,11 +27,11 @@ export async function ensureKeyPair(pk: string, pub: string) {
         return;
     } catch { /* fall through to generate */ }
 
-    const sshKeygen = process.platform === 'win32'
-        ? path.join(process.resourcesPath, 'static/bin/ssh-keygen.exe')
+    const sshKeygen = getOS() === 'win'
+        ? await getAsset('static/bin', 'ssh-keygen.exe')
         : 'ssh-keygen';
 
-    if (process.platform !== 'win32') {
+    if (getOS() !== 'win') {
         const which = spawnSync('which', [sshKeygen]);
         if (which.status !== 0) {
             throw new Error(`ssh-keygen binary not found in $PATH`);
