@@ -1,5 +1,5 @@
 <template>
-  <CardContainer>
+  <CardContainer class="overflow-y-auto min-h-0">
     <!-- Header -->
     <template #header>
       <div class="relative flex items-center justify-center h-18  w-full">
