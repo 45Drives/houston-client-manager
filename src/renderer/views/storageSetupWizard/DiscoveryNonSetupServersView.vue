@@ -257,7 +257,7 @@ const installModule = async (
   password: string
 ): Promise<InstallResult> => {
   isInstalling.value = true;
-  statusMessage.value = "Connecting to server, uploading SSH key and installing packages…";
+  statusMessage.value = "Connecting to server, uploading SSH key and installing packages… This may take several minutes.";
 
   try {
     const result = await IPCRouter
