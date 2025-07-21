@@ -48,7 +48,7 @@ export async function installServerDepsRemotely({
         //     "id_rsa"
         // );
         const keyDir = getKeyDir();
-        const privateKeyPath = path.join(keyDir, "id_ed25519");
+        const privateKeyPath = path.join(keyDir, "id_rsa");
         const publicKeyPath = `${privateKeyPath}.pub`;
         await ensureKeyPair(privateKeyPath, publicKeyPath);
         
