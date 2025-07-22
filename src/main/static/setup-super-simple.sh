@@ -42,8 +42,8 @@ case "$(source /etc/os-release; echo "$ID_LIKE")" in
     dnf clean all
   }
   KERNEL_DEVEL_PKGS=(dkms kernel-devel kernel-headers kernel-devel-"$(uname -r)" kernel-headers-"$(uname -r)")
-  REQUIRED_PACKAGES=(cockpit samba)
-  OUR_REQUIRED_PACKAGES=(cockpit-super-simple-setup zfs)
+  REQUIRED_PACKAGES=(cockpit samba python3 python3-pip)
+  OUR_REQUIRED_PACKAGES=(cockpit-super-simple-setup zfs python3-pyudev)
   REQUIRED_SERVICES=(cockpit.socket smb nmb zfs-import-cache zfs-import-scan zfs-mount zfs-zed)
   ;;
 
@@ -69,8 +69,8 @@ case "$(source /etc/os-release; echo "$ID_LIKE")" in
     apt update -y
   }
   KERNEL_DEVEL_PKGS=(dkms linux-headers linux-headers-"$(uname -r)")
-  REQUIRED_PACKAGES=(cockpit samba)
-  OUR_REQUIRED_PACKAGES=(cockpit-super-simple-setup zfs-dkms zfsutils)
+  REQUIRED_PACKAGES=(cockpit samba python3 python3-pip)
+  OUR_REQUIRED_PACKAGES=(cockpit-super-simple-setup zfs-dkms zfsutils python3-pyudev)
   REQUIRED_SERVICES=(cockpit.socket smbd nmbd zfs-import-cache zfs-import-scan zfs-mount zfs-zed)
   ;;
 
@@ -83,6 +83,7 @@ install_pkg "${REQUIRED_PACKAGES[@]}"
 # set up 45Drives repo
 if setup_45d_repo; then
   install_pkg "${OUR_REQUIRED_PACKAGES[@]}"
+  install_pkg python3-pyudev || pip3 install pyudev
 else
   echo "Failed to set up 45Drives repo!" >&2
   # ... TODO: build zfs and install cockpit-super-simple-setup manually ?
