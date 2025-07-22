@@ -108,9 +108,6 @@ let smbMountListener: ((data: any) => void) | null = null;
 const handleOpen = () => {
   if (!username.value || !password.value || backupTasks.value.length === 0) return;
 
-  if (smbMountListener) {
-    IPCRouter.getInstance().removeEventListener("action", smbMountListener);
-  }
 
   openingBackup.value = true;
 
@@ -164,6 +161,9 @@ const handleOpen = () => {
             path: mountPath
           }));
         }
+      }
+      if (smbMountListener) {
+        IPCRouter.getInstance().removeEventListener("action", smbMountListener);
       }
     } catch (e) {
       console.error('Failed to parse SMB mount result:', e);

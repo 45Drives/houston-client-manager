@@ -16,7 +16,7 @@ MOUNT_POINT="/mnt/houston-mounts/$SMB_SHARE"
 CREDENTIALS_FILE="/etc/smbcredentials/$SMB_HOST.cred"
 
 # --- Debug Output (sanitized) ---
-echo "[INFO] Mounting $SMB_PATH to $MOUNT_POINT" >&2
+# echo "[INFO] Mounting $SMB_PATH to $MOUNT_POINT"
 
 # --- Ensure Mount Point Exists ---
 sudo mkdir -p "$MOUNT_POINT"
