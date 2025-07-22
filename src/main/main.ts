@@ -15,7 +15,7 @@ process.on('unhandledRejection', (reason, promise) => {
   log.error('Unhandled Rejection at:', promise, 'reason:', reason);
 });
 
-import { app, BrowserWindow, ipcMain, dialog, powerSaveBlocker, webContents, shell } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, shell } from 'electron';
 import path, { join } from 'path';
 import mdns from 'multicast-dns';
 import os from 'os';
@@ -27,11 +27,9 @@ import { IPCRouter } from '../../houston-common/houston-common-lib/lib/electronI
 import { getOS } from './utils';
 import { BackUpManager, BackUpManagerLin, BackUpManagerMac, BackUpManagerWin, BackUpSetupConfigurator } from './backup';
 import { BackUpSetupConfig, BackUpTask, server, unwrap } from '@45drives/houston-common-lib';
-
 import fetchBackups from './backup/FetchBackups';
 import fetchFilesInBackup from './backup/FetchFilesFromBackup';
 import restoreBackups from './backup/RestoreBackups';
-import { spawnSync } from 'child_process';
 import { checkBackupTaskStatus } from './backup/CheckSmbStatus';
 import { installServerDepsRemotely } from './installServerDeps';
 import { checkSSH } from './setupSsh';
