@@ -111,12 +111,9 @@ export class BackUpManagerMac implements BackUpManager {
     # 1 ─ one-time directories (no special permissions needed later)
     
     mkdir -p "${this.scriptDir}" "${this.logDir}" "${mntRoot}"
-    # Check if the path exists (dir or symlink)
-    if [ ! -e "${mntDir}" ]; then
-        mkdir -p "${mntDir}"
-        ln -s "/Volumes/${task.share}" "${mntRoot}"
-    fi 
- 
+    rm -rf "${mntDir}"
+    mkdir -p "${mntRoot}"
+    ln -s "/Volumes/${task.share}" "${mntRoot}"
 
     # 2 ─ system key-chain secret
     security delete-generic-password -s "${service}" -a "${username}" 2>/dev/null || true
