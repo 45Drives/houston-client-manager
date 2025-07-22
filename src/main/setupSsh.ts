@@ -75,7 +75,7 @@ async function connectWithPassword({
     username,
     password,                   // plain “password” auth
     tryKeyboard: true,          // allow keyboard-interactive fallback
-    debug: info => console.log('⎇ SSH DEBUG:', info),
+    // debug: info => console.log('⎇ SSH DEBUG:', info),
     onKeyboardInteractive(
       _name, _instr, _lang, prompts, finish,
     ) {
@@ -103,7 +103,7 @@ export async function runBootstrapScript(
     username,
     privateKey: fs.readFileSync(privateKeyPath, "utf8"),
     readyTimeout: 20_000,
-    debug: info => console.log('⎇ SSH DEBUG:', info),
+    // debug: info => console.log('⎇ SSH DEBUG:', info),
   });
   await ssh.putFile(scriptLocalPath, scriptRemotePath);
 
