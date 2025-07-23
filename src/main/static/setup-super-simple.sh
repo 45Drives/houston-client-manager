@@ -41,9 +41,12 @@ case "$(source /etc/os-release; echo "$ID_LIKE")" in
     curl -sSL https://repo.45drives.com/repofiles/rocky/45drives-enterprise.repo -o /etc/yum.repos.d/45drives-enterprise.repo
     dnf clean all
   }
+  # required for dkms builds, zfs:
   KERNEL_DEVEL_PKGS=(dkms kernel-devel kernel-headers kernel-devel-"$(uname -r)" kernel-headers-"$(uname -r)")
-  REQUIRED_PACKAGES=(cockpit samba python3 python3-pip)
-  OUR_REQUIRED_PACKAGES=(cockpit-super-simple-setup zfs python3-pyudev)
+  # required from system repos:
+  REQUIRED_PACKAGES=(cockpit samba python3 python3-pip python3-pyudev)
+  # required from our own repos:
+  OUR_REQUIRED_PACKAGES=(cockpit-super-simple-setup zfs)
   REQUIRED_SERVICES=(cockpit.socket smb nmb zfs-import-cache zfs-import-scan zfs-mount zfs-zed)
   ;;
 
@@ -68,9 +71,12 @@ case "$(source /etc/os-release; echo "$ID_LIKE")" in
     curl -sSL "https://repo.45drives.com/repofiles/$(source /etc/os-release; echo "$ID")/45drives-enterprise-$(source /etc/os-release; echo "$VERSION_CODENAME").list" -o "/etc/apt/sources.list.d/45drives-enterprise-$(source /etc/os-release; echo "$VERSION_CODENAME").list"
     apt update -y
   }
+  # required for dkms builds, zfs:
   KERNEL_DEVEL_PKGS=(dkms linux-headers linux-headers-"$(uname -r)")
-  REQUIRED_PACKAGES=(cockpit samba python3 python3-pip)
-  OUR_REQUIRED_PACKAGES=(cockpit-super-simple-setup zfs-dkms zfsutils python3-pyudev)
+  # required from system repos:
+  REQUIRED_PACKAGES=(cockpit samba python3 python3-pip python3-pyudev)
+  # required from our own repos:
+  OUR_REQUIRED_PACKAGES=(cockpit-super-simple-setup zfs-dkms zfsutils)
   REQUIRED_SERVICES=(cockpit.socket smbd nmbd zfs-import-cache zfs-import-scan zfs-mount zfs-zed)
   ;;
 
