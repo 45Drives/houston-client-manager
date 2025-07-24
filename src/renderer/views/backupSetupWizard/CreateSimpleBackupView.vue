@@ -315,12 +315,11 @@ function getNextScheduleDate(frequency: 'hour' | 'day' | 'week' | 'month'): Date
 			break;
 
 		case 'month':
-			nextDate.setHours(9, 0, 0, 0);
+			nextDate.setHours(0, 0, 0, 0);
 			const currentDay = now.getDate();
-			nextDate.setDate(currentDay);
 			nextDate.setMonth(now.getMonth() + 1);
 			if (nextDate.getDate() < currentDay) {
-				nextDate.setDate(0); // fallback to end of month
+				nextDate.setDate(1); // fallback to end of month
 			}
 			break;
 	}

@@ -1,5 +1,5 @@
 import log from 'electron-log';
-log.transports.console.level = false;
+// log.transports.console.level = false;
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 // process.env.NODE_ENV = 'development';
 console.log = (...args) => log.info(...args);
