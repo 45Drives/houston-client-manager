@@ -95,7 +95,13 @@ export function getAppPath() {
 
 export function getMountSmbScript() {
   if (getOS() === "win") {
-    return path.join(getAppPath(), "static", "mount_smb.bat");
+    if (isDev()) {
+
+      return path.join(getAppPath(), "mount_smb.bat");
+    } else {
+
+      return path.join(getAppPath(), "static", "mount_smb.bat");
+    }
   } else if (getOS() === "mac") {
     return path.join(getAppPath(), "mount_smb_mac.sh");
   } else {
@@ -103,6 +109,9 @@ export function getMountSmbScript() {
   }
 }
 
+export function isDev() {
+  return process.env.NODE_ENV === 'development';
+}
 
 export function getSmbTargetFromSmbTarget(target: string) {
   // console.log('[getSmbTargetFromSmbTarget] raw target:', target);
@@ -188,4 +197,17 @@ export function formatDateForTask(date) {
   const seconds = pad(date.getSeconds());
 
   return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+}
+export function formatDateForTask2(date) {
+  const pad = (n) => String(n).padStart(2, '0');
+
+  const year = date.getFullYear();
+  const month = pad(date.getMonth() + 1);
+  const day = pad(date.getDate());
+
+  const hours = pad(date.getHours());
+  const minutes = pad(date.getMinutes());
+  const seconds = pad(date.getSeconds());
+
+  return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}`;
 }

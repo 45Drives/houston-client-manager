@@ -16,7 +16,7 @@ process.on('unhandledRejection', (reason, promise) => {
 
 import { BackUpManager } from "./types";
 import { BackUpTask, TaskSchedule } from "@45drives/houston-common-lib";
-import { formatDateForTask, getAppPath, getMountSmbScript, getSmbTargetFromSmbTarget } from "../utils";
+import { formatDateForTask, formatDateForTask2, getAppPath, getMountSmbScript, getSmbTargetFromSmbTarget } from "../utils";
 import sudo from 'sudo-prompt';
 import path from "path";
 import fs from 'fs';
@@ -103,18 +103,23 @@ export class BackUpManagerWin implements BackUpManager {
             let command: string | null = null;
             for (let i = 0; i < actionProps.length; i++) {
               const prop = actionProps[i];
-              if (prop.Name === 'Arguments') {
+              if (prop.Name === 'Arguments' && prop.Value) {
+                command = prop.Value;
+                break;
+              } else if (prop.Name === 'Execute' && prop.Value) {
                 command = prop.Value;
                 break;
               }
             }
+
             if (!command) {
               console.log("No Command:", actionProps)
               return null;
             }
             const actionDetails = this.parseBackupCommand(command)
+            console.log(actionDetails)
             if (!actionDetails) {
-              // console.log("task.Actions:", command)
+              console.log("task.Actions:", command)
               return null;
             }
             const trigger = this.convertTriggersToTaskSchedule(task.Triggers);
@@ -166,47 +171,8 @@ export class BackUpManagerWin implements BackUpManager {
     username: string,
     password: string
   ): Promise<{ stdout: string; stderr: string }> {
-    const [smbHost, smbSharePath] = task.target.split(':');
-    const smbShare = smbSharePath.split('/')[0];
-    // const target = getSmbTargetFromSmbTarget(task.target);
-    task.host = smbHost;
-    task.share = smbShare;
-    // task.target = target;
-
-    /* ----------  paths on disk  ---------- */
-    const scriptsDir = path.join(process.env.ProgramData ?? 'C:\\ProgramData', 'houston-backups', 'scripts');
-    fs.mkdirSync(scriptsDir, { recursive: true });
-    const batPath = this.scriptPath(task.uuid).replace(/\\/g, '\\\\');
-
-    const credDir = path.join(process.env.ProgramData ?? 'C:\\ProgramData', 'houston-backups', 'credentials');
-    fs.mkdirSync(credDir, { recursive: true });
-    const credFile = path.join(credDir, `${smbShare}.cred`);
-    fs.writeFileSync(credFile, `username=${username}\r\npassword=${password}\r\n`, 'utf-8');
-
-    /* ----------  write BAT + Task  ---------- */
-    const actionBat = this.buildActionBat(task);
-
-    const ps = `
-    # 1) Backup-Operators membership & rights (one shot)
-    $user = "$env:USERNAME"
-    ${this.addUserToBackupOperatorsGroup()}
-    ${this.getAddBackupGroupsToLogOnBatchAndService()}
-
-     # 2) write .bat file to disk
-    [IO.File]::WriteAllText("${batPath}", @'
-${actionBat}
-'@)
-
-    ${this.scheduleToTaskTrigger(task.schedule)}
-    if (-not $taskTrigger) { throw "Bad trigger" }
-
-    $act  = New-ScheduledTaskAction -Execute 'cmd.exe' -Argument ('/C "{0}"' -f "${batPath}")
-    $prin = New-ScheduledTaskPrincipal -UserId "$env:USERNAME" -LogonType S4U -RunLevel Highest
-    Register-ScheduledTask -TaskName "${TASK_ID}_${task.uuid}" -Action $act -Trigger $taskTrigger -Principal $prin
-    ${this.dailyTaskTriggerUpdate(task.schedule)}
-  `;
-    
-    return this.runScriptAdmin(ps, `create_${task.uuid}`);
+    await this.scheduleAllTasks([task], username, password);
+    return Promise.resolve({stdout: "", stderr: ""})
   }
 
   runNow(task: BackUpTask): Promise<{ stdout: string; stderr: string }> {
@@ -314,9 +280,13 @@ if (-not $hasBatchLogon -or -not $hasServiceLogon) {
     tasks.forEach((t, idx) => {
       console.log(t)
 
-      const [host, sharePath] = t.target.split(':');
-      const share = sharePath.split('/')[0];
-      const credFile = path.join(credDir, `${share}.cred`).replace(/\\/g, '\\\\');
+      const [smbHost, smbSharePath] = t.target.split(':');
+      const smbShare = smbSharePath.split('/')[0];
+      // const target = getSmbTargetFromSmbTarget(task.target);
+      t.host = smbHost;
+      t.share = smbShare;
+
+      const credFile = path.join(credDir, `${smbShare}.cred`).replace(/\\/g, '\\\\');
       const batPathEsc = this.scriptPath(t.uuid).replace(/\\/g, '\\\\');
 
       /* 1️⃣  cred file (idempotent) */
@@ -328,14 +298,63 @@ if (-not $hasBatchLogon -or -not $hasServiceLogon) {
       psLines.push(`[IO.File]::WriteAllText("${batPathEsc}", @'\n${batTxt}\n'@)`);
 
       /* 3️⃣  ScheduledTask */
-      psLines.push(this.scheduleToTaskTrigger(t.schedule) ?? `throw "Bad trigger"`);
+      psLines.push(this.scheduleToTaskTrigger(t.schedule));
 
-      psLines.push(`
-        $act  = New-ScheduledTaskAction -Execute 'cmd.exe' -Argument ('/C "{0}"' -f "${batPathEsc}")
-        $prin = New-ScheduledTaskPrincipal -UserId "$env:USERNAME" -LogonType S4U -RunLevel Highest
-        Register-ScheduledTask -TaskName "${TASK_ID}_${t.uuid}" -Action $act -Trigger $taskTrigger -Principal $prin
-        ${this.dailyTaskTriggerUpdate(t.schedule)}
-      `);
+      if (t.schedule.repeatFrequency == 'month'){
+
+        psLines.push(`
+          $TASK_TRIGGER_MONTHLY = 4
+          $TASK_ACTION_EXEC = 0
+          $TASK_CREATE_OR_UPDATE = 6
+          $TASK_LOGON_S4U = 2
+          $TASK_RUNLEVEL_HIGHEST = 1
+
+          # 1.) Connect to the scheduler
+          $svc = New-Object -ComObject "Schedule.Service"
+          $svc.Connect()
+
+          # 2.) Grab the root task folder and create a new TaskDefinition
+          $root = $svc.GetFolder("\\")
+          $task = $svc.NewTask(0)
+
+          # 3.) Principal: use current user via S4U, with highest run level
+          $principal = $task.Principal
+          $principal.UserId = $env:USERNAME
+          $principal.LogonType = $TASK_LOGON_S4U
+          $principal.RunLevel = $TASK_RUNLEVEL_HIGHEST
+
+          # 4.) Task metadata
+          $task.RegistrationInfo.Description = "45 drives backup task"
+          $task.Settings.Enabled = $true
+
+          # 5.) Action execute .bat
+          $action = $task.Actions.Create(0)
+          $action.Path = "${batPathEsc}"
+
+          # 6.) Trigger: Monthly
+          $triggers = $task.Triggers
+          $trigger = $triggers.Create(4)
+          $trigger.StartBoundary = "${formatDateForTask2(t.schedule.startDate)}"
+          $trigger.DaysOfMonth = 1
+          $trigger.MonthsOfYear = 0x0FFF
+
+          # 7.) Register the task (no password needed for S4U)
+          $root.RegisterTaskDefinition(
+            "${TASK_ID}_${t.uuid}",
+            $task,
+            $TASK_CREATE_OR_UPDATE,
+            $env:USERNAME,
+            $null,
+            $TASK_LOGON_S4U
+          )
+          `)
+      } else {
+        psLines.push(`
+          $act  = New-ScheduledTaskAction -Execute 'cmd.exe' -Argument ('/C "{0}"' -f "${batPathEsc}")
+          $prin = New-ScheduledTaskPrincipal -UserId "$env:USERNAME" -LogonType S4U -RunLevel Highest
+          Register-ScheduledTask -TaskName "${TASK_ID}_${t.uuid}" -Action $act -Trigger $taskTrigger -Principal $prin
+        `);
+      }
 
       // progress ping (harmless in PS if nobody is listening)
       if (onProgress) psLines.push(`Write-Host "PROGRESS:${idx + 1}"`);
@@ -559,16 +578,15 @@ $task | Set-ScheduledTask
 
 
 
-  protected scheduleToTaskTrigger(sched: TaskSchedule): string | undefined {
-    // console.log(sched);
+  protected scheduleToTaskTrigger(sched: TaskSchedule): string {
     const startDate = formatDateForTask(sched.startDate); // e.g., "2025-02-25 10:00:00"
-    switch (sched.repeatFrequency.toLowerCase()) {
+    switch (sched.repeatFrequency) {
       case "hour":
         return `
 $startTime   = "${startDate}"
 $taskTrigger = New-ScheduledTaskTrigger -Once -At $startTime
 $taskTrigger.Repetition.Interval  = "PT1H"
-$taskTrigger.Repetition.Duration  = "P1D"
+$taskTrigger.Repetition.Duration  = "P100Y"
 `;
       case "day":
         return `
@@ -578,15 +596,10 @@ $taskTrigger = New-ScheduledTaskTrigger -At $startTime -Daily
       case "week":
         return `
 $startTime = "${startDate}"
-$taskTrigger = New-ScheduledTaskTrigger -At $startTime -Weekly
+$taskTrigger = New-ScheduledTaskTrigger -At $startTime -Daily -DaysInterval 7
 `;
       case "month":
-        return `
-$startTime = "${startDate}"
-$taskTrigger = New-ScheduledTaskTrigger -At $startTime -Monthly
-`;
-      default:
-        console.error("RepeatFrequency unknown", sched.repeatFrequency)
+        return ""
     }
   }
 
