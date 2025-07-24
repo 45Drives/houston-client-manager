@@ -27,7 +27,6 @@
         "target": "nsis",
         "compression": "maximum",
         "icon": "icon.ico",
-        "requestedExecutionLevel": "requireAdministrator",
         "sign": false
     },
     "linux": {
