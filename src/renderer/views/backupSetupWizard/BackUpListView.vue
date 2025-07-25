@@ -6,6 +6,15 @@
         'md:grid-cols-2': backUpTasks.length >= 3,
         'lg:grid-cols-3': backUpTasks.length >= 5
       }">
+
+        <div>
+          Refresh the list of tasks. You maybe be prompted for access.
+          <button class="btn btn-secondary text-sm relative" @click.stop="fetchBackupTasks()">
+            <!-- Edit Schedule -->
+            Refresh List
+          </button>
+        </div>
+
         <div v-if="isLoading" class="w-full h-[300px] flex justify-center items-center" :class="{
           'col-span-1': backUpTasks.length <= 2,
           'col-span-2': backUpTasks.length >= 3,
@@ -40,27 +49,29 @@
             <div>
               <div class="text-label" :title="task.target">Backup Location</div>
               <div class="px-2 py-1 text-sm truncate" :title="`${task.host}:${task.share}`">
-                {{ task.host}}:{{task.share }}
+                {{ task.host }}:{{ task.share }}
               </div>
               <div class="px-2 py-1 text-sm truncate" :title="task.target">
                 {{ task.target }}
               </div>
             </div>
 
-            <div class="text-xs font-medium" :class="{
+            <!-- <div class="text-xs font-medium" :class="{
               'text-success': task.status === 'online',
               'text-warning': task.status === 'missing_folder',
               'text-error': task.status && task.status !== 'online' && task.status !== 'missing_folder'
             }">
               Status: <span>{{ getTaskStatusText(task) }}</span>
-            </div>
+            </div> -->
 
             <div class="text-feedback font-semibold pt-2">
               Backup will happen
               {{ formatFrequency(task.schedule.repeatFrequency) }}
               at
-              {{ task.schedule?.startDate ? task.schedule.startDate.toLocaleTimeString([], { hour: '2-digit', minute:
-              '2-digit' }) : 'Invalid Time' }}
+              {{ task.schedule?.startDate ? task.schedule.startDate.toLocaleTimeString([], {
+                hour: '2-digit', minute:
+                  '2-digit'
+              }) : 'Invalid Time' }}
               starting
               {{ task.schedule?.startDate ? task.schedule.startDate.toDateString() : "Invalid date" }}
             </div>
@@ -141,7 +152,7 @@ watch(backUpTasks, () => {
 })
 
 function isScheduledButNotRunYet(task: BackUpTask): boolean {
-  return ( new Date(task.schedule.startDate).getTime() > Date.now() );
+  return (new Date(task.schedule.startDate).getTime() > Date.now());
 }
 
 const getTaskStatusText = (task: BackUpTask): string => {
@@ -189,8 +200,6 @@ const toggleSelection = (task: BackUpTask) => {
   emit('backUpTaskSelected', [...selectedBackUps.value]);
 };
 
-onActivated(fetchBackupTasks); // Runs when the component is displayed again
-
 async function editSchedule(selectedBackUp: BackUpTask) {
   // Set the selected schedule for editing
   selectedTaskSchedule.value = reactive({
@@ -210,14 +219,14 @@ async function editSchedule(selectedBackUp: BackUpTask) {
     selectedBackUp.schedule.startDate = selectedTaskSchedule.value.startDate;
     IPCRouter.getInstance().send("backend", "action", JSON.stringify({
       type: "updateBackUpTask",
-      task: selectedBackUp, 
+      task: selectedBackUp,
       username: "",
       password: ""
     }));
   }
 }
 
-function waitForNextMessage(type: string): Promise < any > {
+function waitForNextMessage(type: string): Promise<any> {
   return new Promise((resolve) => {
     const handler = (raw: string) => {
       try {
