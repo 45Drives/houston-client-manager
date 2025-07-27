@@ -110,41 +110,20 @@ function isPortOpen(ip: string, port: number, timeout = 2000): Promise<boolean> 
 const TIMEOUT_DURATION = 10000;
 const serviceType = '_houstonserver._tcp.local'; // Define the service you're looking for
 
-import { v4 as defaultGatewayV4 } from 'default-gateway';
-
-const getLocalIP = async (): Promise<string> => {
-  try {
-    const result = await defaultGatewayV4(); // gets the gateway and interface
-    const ifaceName = result.interface;
-
-    const nets = os.networkInterfaces();
-    const iface = nets[ifaceName];
-
-    if (iface) {
-      for (const net of iface) {
-        if (net.family === 'IPv4' && !net.internal) {
-          return net.address;
-        }
-      }
-    }
-  } catch (err) {
-    console.warn("Failed to get default gateway:", err);
-  }
-
-  // fallback: find any non-internal IPv4
+const getLocalIP = () => {
   const nets = os.networkInterfaces();
   for (const name of Object.keys(nets)) {
-    const iface = nets[name];
-    if (iface) {
-      for (const net of iface) {
-        if (net.family === 'IPv4' && !net.internal) {
+    const something = nets[name];
+    if (something) {
+      for (const net of something) {
+        // Only return the IPv4 address (ignoring internal/loopback addresses)
+        if (net.family === "IPv4" && !net.internal && net.address.startsWith("192")) {
           return net.address;
         }
       }
     }
   }
-
-  return '127.0.0.1'; // last resort
+  return "127.0.0.1"; // Fallback
 };
 
 
@@ -200,7 +179,7 @@ function createWindow() {
           if (!res.ok) return null;
 
           console.log("https at 9090 ", candidateIp);
-
+          
           return {
             ip: candidateIp,
             name: candidateIp,
