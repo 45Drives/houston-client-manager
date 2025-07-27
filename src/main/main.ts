@@ -156,23 +156,30 @@ function createWindow() {
     const ip = getLocalIP();
     const subnet = getSubnetBase(ip);
     const ips = Array
-      .from({ length: 254 }, (_, i) => `${subnet}.${i + 1}`)
+      .from({ length: 256 }, (_, i) => `${subnet}.${i}`)
       .filter(candidate => candidate !== ip);
 
     // exactly your old logic, with proper serverInfo defaults
     const scanned = await Promise.allSettled(
       ips.map(async candidateIp => {
+
+        console.log("checking for server at ", candidateIp);
+
         const portOpen = await isPortOpen(candidateIp, 9090);
         if (!portOpen) return null;
-
+        console.log("port open at 9090 ", candidateIp);
+        
         try {
           const res = await fetch(`https://${candidateIp}:9090/`, {
             method: 'GET',
             cache: 'no-store',
             signal: AbortSignal.timeout(3000),
+            
           });
           if (!res.ok) return null;
 
+          console.log("https at 9090 ", candidateIp);
+          
           return {
             ip: candidateIp,
             name: candidateIp,
