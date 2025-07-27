@@ -10,14 +10,6 @@
         "shortcutName": "45Drives Setup Wizard"
     },
     "mac": {
-        "category": "public.app-category.utilities",
-        "target": [
-            "dmg",
-            "zip"
-        ],
-        "entitlements": "entitlements.mac.plist",
-        "entitlementsInherit": "entitlements.mac.plist",
-        "icon": "icon.ico",
         "sign": false
     },
     "win": {
