@@ -110,7 +110,14 @@
         </div>
 
         <p v-if="statusMessage" class="text-lg text-center mt-2">
-          {{ statusMessage }}
+          {{ statusMessage }} 
+          <br />
+          Troubleshooting steps: <CommanderToolTip :width="1500" :message="`Troubleshoot Steps! \n 
+          1.) Plugin monitor and keyboard into your server. \n
+          2.) Login to the user you want to use. On fresh machines the user is root and password.\n
+          3.) If using root make sure root login over SSH is enabled. nano /etc/ssh/sshd_config and look for PermitRootLogin yes\n
+          4.) Check if the server has internet access. ping google.ca \n
+          `" />
         </p>
       </div>
 
@@ -157,6 +164,7 @@ import { computed, ref } from 'vue';
 import GlobalSetupWizardMenu from '../../components/GlobalSetupWizardMenu.vue';
 import { divisionCodeInjectionKey } from '../../keys/injection-keys';
 import { inject } from 'vue';
+import { CommanderToolTip } from '../../components/commander';
 
 const division = inject(divisionCodeInjectionKey);
 const showPassword = ref(false);
