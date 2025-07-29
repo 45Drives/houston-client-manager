@@ -112,11 +112,11 @@
         <p v-if="statusMessage" class="text-lg text-center mt-2">
           {{ statusMessage }} 
           <br />
-          Troubleshooting steps: <CommanderToolTip :width="1500" :message="`Troubleshoot Steps! \n 
-          1.) Plugin monitor and keyboard into your server. \n
-          2.) Login to the user you want to use. On fresh machines the user is root and password.\n
-          3.) If using root make sure root login over SSH is enabled. nano /etc/ssh/sshd_config and look for PermitRootLogin yes\n
-          4.) Check if the server has internet access. ping google.ca \n
+          Troubleshooting steps: <CommanderToolTip :width="1450" :message="`Troubleshoot Steps!
+          1.) Plugin monitor and keyboard into your server.
+          2.) Login to the user you want to use. On fresh machines the user is root and password is 45Dr!ves.
+          3.) If using root make sure root login over SSH is enabled. nano /etc/ssh/sshd_config and look for PermitRootLogin yes
+          4.) Check if the server has internet access. ping google.ca
           `" />
         </p>
       </div>
