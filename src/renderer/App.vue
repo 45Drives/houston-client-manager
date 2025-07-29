@@ -30,7 +30,7 @@
 
       <webview v-show="showWebView && !loadingWebview && !waitingForServerReboot" id="myWebview" :src="currentUrl"
         partition="persist:authSession"
-        webpreferences="contextIsolation=true, nodeIntegration=false, enableRemoteModule=false" ref="webview"
+        webpreferences="contextIsolation=true, nodeIntegration=false, enableRemoteModule=false" ref="webview" allowpopups
         @did-finish-load="onWebViewLoaded" />
       <!-- <webview :style="{ visibility: showWebView && !loadingWebview && !waitingForServerReboot ? 'visible' : 'hidden' }"
         class="absolute inset-0 w-full h-full" id="myWebview" :src="currentUrl" partition="persist:authSession"

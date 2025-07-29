@@ -17,7 +17,9 @@
     <div class="flex flex-col h-full justify-center items-center text-default">
       <!-- Header with instructions -->
       <div>
-
+        <p class="text-lg">
+          Please provide your username and password to access the backup folders on the server:
+        </p>
         <ul class="mt-2 list-disc list-inside text-blue-600">
           <li v-for="task in backupTasks" :key="task.uuid">
             {{ task.host }}:{{ task.share }}{{thisOs == 'win' ? '\\\\' : ''}}{{ task.target }}
@@ -28,6 +30,27 @@
         </p>
       </div>
 
+      <!-- Username and Password input fields -->
+      <form @submit.prevent="handleOpen" class="flex flex-col gap-4 mt-4 text-default">
+        <div class="grid relative grid-cols-[200px_1fr] items-center">
+          <label for="username" class="font-semibold ">Username:</label>
+          <input v-model="username" v-enter-next type="text" id="username"
+            class="p-2 input-textlike rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            placeholder="Enter your username" />
+        </div>
+        <div class="grid relative grid-cols-[200px_1fr] items-center">
+          <label for="password" class="font-semibold ">Password:</label>
+          <input v-model="password" v-enter-next :type="showPassword ? 'text' : 'password'" id="password"
+            class="bg-default p-2 input-textlike rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            placeholder="Enter your password" />
+          <button type="button" @click="togglePassword"
+            class="absolute right-3 top-1/2 transform -translate-y-1/2 text-muted">
+            <EyeIcon v-if="!showPassword" class="w-5 h-5" />
+            <EyeSlashIcon v-if="showPassword" class="w-5 h-5" />
+          </button>
+        </div>
+        <button type="submit" class="hidden">Submit</button>
+      </form>
 
       <!-- "Open" button -->
       <div class="mt-4 flex flex-row ">
@@ -77,13 +100,14 @@ const togglePassword = () => {
 };
 
 // Check if the "Open" button should be disabled
-const isButtonDisabled = computed(() => openingBackup.value);
+// const isButtonDisabled = computed(() => openingBackup.value);
+const isButtonDisabled = computed(() => !username.value || !password.value || openingBackup.value);
 
 // Method to handle the "Open" button action
 let smbMountListener: ((data: any) => void) | null = null;
 
 const handleOpen = () => {
-  if (backupTasks.value.length === 0) return;
+  if (!username.value || !password.value || backupTasks.value.length === 0) return;
 
   openingBackup.value = true;
 
