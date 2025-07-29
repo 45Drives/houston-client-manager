@@ -152,6 +152,14 @@ function createWindow() {
     }
   });
 
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    // Only allow URLs we trust (optional but recommended)
+    if (url.startsWith('http://') || url.startsWith('https://')) {
+      shell.openExternal(url); // Opens in the user's default browser
+    }
+
+    return { action: 'deny' }; // Prevent Electron from opening a new window
+  });
 
   async function doFallbackScan(): Promise<Server[]> {
     const ip = getLocalIP();
@@ -418,21 +426,53 @@ function createWindow() {
           }
         } else if (message.type === 'openFolder') {
           // console.log('Attempting to open folder path:', message.path);
+          // const folderPath: string = message.path;
+          // try {
+          //   console.log('🧪 Trying to open folder:', folderPath);
+          //   console.log('✅ Exists:', fs.existsSync(folderPath));
+          //   shell.openPath(folderPath).then(result => {
+          //     if (result) {
+          //       notify(`❌ Error opening folder: ${result}`);
+          //     } else {
+          //       notify(`📂 Opened folder: ${folderPath}`);
+          //     }
+          //   });
+          // } catch (err) {
+          //   notify(`Error: Failed to open folder: ${folderPath}`);
+          //   console.error("Error opening folder:", folderPath, err);
+          // }
+
           const folderPath: string = message.path;
           try {
             console.log('🧪 Trying to open folder:', folderPath);
-            console.log('✅ Exists:', fs.existsSync(folderPath));
+
+            const exists = fs.existsSync(folderPath);
+            console.log('✅ Exists:', exists);
+
+            if (!exists) {
+              notify(`❌ Folder does not exist: ${folderPath}`);
+              return;
+            }
+
+            const stats = fs.statSync(folderPath);
+            if (!stats.isDirectory()) {
+              notify(`❌ Not a directory: ${folderPath}`);
+              return;
+            }
+
             shell.openPath(folderPath).then(result => {
               if (result) {
+                console.error(`❌ shell.openPath failed:`, result);
                 notify(`❌ Error opening folder: ${result}`);
               } else {
                 notify(`📂 Opened folder: ${folderPath}`);
               }
             });
           } catch (err) {
-            notify(`Error: Failed to open folder: ${folderPath}`);
+            notify(`❌ Exception while opening folder: ${folderPath}`);
             console.error("Error opening folder:", folderPath, err);
           }
+
         } else if (message.type === 'checkBackUpStatuses') {
           // console.log("✅ Received checkBackUpStatuses")
           const tasks: BackUpTask[] = message.tasks;
@@ -760,34 +800,8 @@ function createWindow() {
   }, 5000)
   
 
-  // async function pollActions(server: Server) {
-  //   try {
-  //     const response = await fetch(`http://${server.ip}:9095/actions?client_ip=${getLocalIP()}`);
-  //     const data = await response.json();
-
-  //     if (data.action) {
-  //       // console.log("New action received:", server, data);
-
-  //       if (data.action === "mount_samba_client") {
-  //         mountSmbPopup(data.smb_host, data.smb_share, data.smb_user, data.smb_pass, mainWindow);
-  //       } else {
-  //         console.log("Unknown new actions.", server);
-  //       }
-  //     }
-  //   } catch (error) {
-  //     console.error("Error polling actions:", server, error);
-  //   }
-  // }
   async function pollActions(server: Server) {
-    // const url = `http://${server.ip}:9095/actions?client_ip=${getLocalIP()}`;
-    // console.log(`→ [pollActions] attempting fetch: ${url}`);
-
     try {
-      // const response = await fetch(url, { cache: 'no-store', signal: AbortSignal.timeout(3000) });
-      // if (!response.ok) {
-      //   // console.warn(`⚠️  [pollActions] non-OK status for ${server.ip}: ${response.status}`);
-      //   return;
-      // }
       const response = await fetch(`http://${server.ip}:9095/actions?client_ip=${getLocalIP()}`);
       const data = await response.json();
 
