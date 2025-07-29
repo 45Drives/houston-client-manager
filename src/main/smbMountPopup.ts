@@ -118,25 +118,6 @@ function handleExecOutput(
   stderr: string | any | undefined,
   smb_host: string,
   smb_share: string,
-  mainWindow: BrowserWindow) {
-
-  handleExecOutputWithOutPopup(error, stdout, stderr, smb_host, smb_share, mainWindow);
-
-  if (error) {
-    console.error(error);
-    dialog.showErrorBox(error.name, error.message);
-    return error;
-  }
-  console.log('Mount samba Output:', stdout);
-  return stdout;
-}
-
-function handleExecOutputWithOutPopup(
-  error: Error | undefined | null,
-  stdout: string | any | undefined,
-  stderr: string | any | undefined,
-  smb_host: string,
-  smb_share: string,
   mainWindow: BrowserWindow
 ) {
   console.log(`Stdout: ${stdout}`);

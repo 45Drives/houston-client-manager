@@ -15,9 +15,6 @@
     </template>
 
     <div class="flex flex-col h-full justify-center items-center text-default">
-      <!-- Header with instructions -->
-
-
       <!-- Username and Password input fields -->
       <form @submit.prevent="proceedToNextStep" class="flex flex-col gap-4 mt-4 text-default">
         <div class="grid relative grid-cols-[200px_1fr] items-center">
