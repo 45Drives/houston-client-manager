@@ -74,26 +74,22 @@
   background-color: var(--btn-primary-bg) !important;
   border-color: var(--btn-primary-border) !important;
   color: white !important;
-  z-index: 10;
 }
 
 .btn-primary:hover {
   background-color: var(--btn-primary-hover-bg) !important;
   border-color: var(--btn-primary-hover-border) !important;
-  z-index: 10;
 }
 
 .btn-secondary {
   background-color: var(--btn-secondary-bg) !important;
   border-color: var(--btn-secondary-border) !important;
   color: white !important;
-  z-index: 10;
 }
 
 .btn-secondary:hover {
   background-color: var(--btn-secondary-hover-bg) !important;
   border-color: var(--btn-secondary-hover-border) !important;
-  z-index: 10;
 }
 
 /* Disabled state */
@@ -106,7 +102,6 @@
   color: #6c757d !important;
   cursor: not-allowed;
   opacity: 0.65;
-  z-index: 10;
 }
 
 .bg-primary {
