@@ -74,13 +74,18 @@ import CardContainer from '../../components/CardContainer.vue';
 import { useWizardSteps, DynamicBrandingLogo, useEnterToAdvance } from '@45drives/houston-common-ui';
 import BackUpListView from './BackUpListView.vue';
 import GlobalSetupWizardMenu from '../../components/GlobalSetupWizardMenu.vue';
-import { inject, ref } from 'vue';
-import { divisionCodeInjectionKey } from '../../keys/injection-keys';
+import { inject, provide, reactive, ref } from 'vue';
+import { divisionCodeInjectionKey, reviewBackUpSetupKey } from '../../keys/injection-keys';
 const division = inject(divisionCodeInjectionKey);
+const reviewBackup = inject(reviewBackUpSetupKey);
 
 const selectedBackUpTasks = ref<BackUpTask[]>([]);
 const handleBackUpTaskSelected = (tasks: BackUpTask[]) => {
   selectedBackUpTasks.value = tasks;
+  if (reviewBackup) {
+
+    reviewBackup.tasks = tasks;
+  }
 };
 
 const backUpListRef = ref();
