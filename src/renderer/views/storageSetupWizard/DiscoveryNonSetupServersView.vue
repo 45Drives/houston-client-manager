@@ -114,7 +114,7 @@
           <br />
           Troubleshooting steps: <CommanderToolTip :width="1450" :message="`Troubleshoot Steps!
           1.) Plugin monitor and keyboard into your server.
-          2.) Login to the user you want to use. On fresh machines the user is root and password is 45Dr!ves.
+          2.) Login to the user you want to use. On fresh machines the user is <b>root</b> and password is <b>45Dr!ves</b>.
           3.) If using root make sure root login over SSH is enabled. nano /etc/ssh/sshd_config and look for PermitRootLogin yes
           4.) Check if the server has internet access. ping google.ca
           `" />
@@ -136,9 +136,6 @@
           Back
         </button>
 
-        <!-- <button :disabled="selectedServer === null" @click="proceedToNextStep" class="btn btn-primary w-40 h-20">
-          Next
-        </button> -->
         <button class="btn btn-primary w-40 h-20 flex items-center justify-center"
           :disabled="!selectedServer || isInstalling" @click="proceedToNextStep">
           <template v-if="isInstalling">
@@ -175,7 +172,6 @@ const statusMessage = ref('');
 const isInstalling = ref(false)
 
 const { completeCurrentStep, unCompleteCurrentStep, prevStep, reset } = useWizardSteps("setup");
-// const selectedServer = ref<Server | null>(null);
 
 const selectedServer = ref<(Server & {
   username?: string;
