@@ -45,8 +45,8 @@
       </div>
 
       <!-- Page curl corner effect -->
-      <div v-if="!showWebView && currentWizard !== 'restore-backup'" class="page-corner-effect pointer-events-none">
-      </div>
+      <!-- <div v-if="!showWebView && currentWizard !== 'restore-backup'" class="page-corner-effect pointer-events-none">
+      </div> -->
 
       <!-- Double arrows -->
       <div v-if="!showWebView && currentWizard !== 'restore-backup'"
@@ -63,7 +63,7 @@
 import { nextTick, onMounted, provide, reactive, ref, unref, watch } from 'vue';
 import { useAdvancedModeState } from './composables/useAdvancedState';
 import { Server, DivisionType, DiscoveryState } from './types';
-import { useWizardSteps, GlobalModalConfirm, Notification, reportError, reportSuccess, useDarkModeState, NotificationView, pushNotification } from '@45drives/houston-common-ui'
+import { GlobalModalConfirm, Notification, reportError, reportSuccess, useDarkModeState, NotificationView, pushNotification } from '@45drives/houston-common-ui'
 import StorageSetupWizard from './views/storageSetupWizard/Wizard.vue';
 import BackUpSetupWizard from './views/backupSetupWizard/Wizard.vue';
 import RestoreBackUpWizard from './views/restoreBackupWizard/Wizard.vue';
@@ -213,9 +213,6 @@ async function waitForServerRebootAndShowWizard() {
   if (serverUp) {
     waitingForServerReboot.value = false;
     currentWizard.value = 'backup';
-    // useWizardSteps("backup").reset();
-
-    // console.log("[Wizard] Server came back online. Triggering success notification.");
 
     await nextTick();
 
@@ -234,10 +231,8 @@ async function waitForServerRebootAndShowWizard() {
     waitingForServerReboot.value = false;
     reportError(new Error("Server did not come back online within timeout."));
     currentWizard.value = 'storage';
-    // useWizardSteps("setup").reset();
   }
 
-  // console.log("[Wizard] setting waitingForServerReboot = false");
 
   if (rebootNotification) {
     rebootNotification.remove();
@@ -253,7 +248,6 @@ async function waitForServerReboot() {
     return;
   }
 
-  // waitingForServerReboot.value = true;
 
   const pingUrl = `https://${serverIp}:9090/`;
   const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -283,12 +277,6 @@ async function waitForServerReboot() {
   }
 
   if (serverUp) {
-    // waitingForServerReboot.value = false;
-    // currentWizard.value = 'backup';
-    // useWizardSteps("backup").reset();
-
-    // console.log("[Wizard] Server came back online. Triggering success notification.");
-
     await nextTick();
 
     // ✅ Trigger the "Server Available" toast directly here
@@ -306,7 +294,6 @@ async function waitForServerReboot() {
     waitingForServerReboot.value = false;
     reportError(new Error("Server did not come back online within timeout."));
     currentWizard.value = 'storage';
-    // useWizardSteps("setup").reset();
   }
 
   // console.log("[Wizard] setting waitingForServerReboot = false");
