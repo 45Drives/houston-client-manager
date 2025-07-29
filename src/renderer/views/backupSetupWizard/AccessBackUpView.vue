@@ -84,12 +84,14 @@ import { ref, computed, inject, watch } from 'vue';
 import { EyeIcon, EyeSlashIcon } from "@heroicons/vue/20/solid";
 import { useWizardSteps, DynamicBrandingLogo, useEnterToAdvance, useAutoFocus } from '@45drives/houston-common-ui';
 import { BackUpTask, IPCRouter } from '@45drives/houston-common-lib';
-import { divisionCodeInjectionKey, thisOsInjectionKey } from '../../keys/injection-keys';
+import { divisionCodeInjectionKey, reviewBackUpSetupKey, thisOsInjectionKey } from '../../keys/injection-keys';
 useAutoFocus();
 const division = inject(divisionCodeInjectionKey);
 const { prevStep, wizardData } = useWizardSteps("backup");
 const thisOs = inject(thisOsInjectionKey);
-const backupTasks = computed(() => wizardData as BackUpTask[]);
+
+const reviewBackup = inject(reviewBackUpSetupKey);
+const backupTasks = computed(() => reviewBackup?.tasks as BackUpTask[]);
 
 const username = ref('');
 const password = ref('');
