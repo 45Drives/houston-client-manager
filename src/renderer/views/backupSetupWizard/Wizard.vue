@@ -33,7 +33,6 @@ provide(backUpSetupConfigKey, reactive({
 }))
 
 const steps: WizardStep[] = [
-  // { label: "Restore Backups", component: RestoreBackupsView }, //0
   { label: "Welcome", component: WelcomeView }, //0
   { label: "Manage Backups", component: ChooseManageView, nextStep: (data) => (data.choice === "createBackup" ? 2 : 3) }, //1
   { label: "Backup Setup Option", component: ChooseDifficultyView, nextStep: (data) => (data.choice === "simple" ? 5 : 6)},//2
