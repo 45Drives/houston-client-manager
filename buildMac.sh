@@ -42,7 +42,7 @@ echo '.....DONE.'
 
 echo '----- CODE SIGNING DMG -----'
 codesign --deep -dvv --force --timestamp --options=runtime --entitlements $entitlementsFile --sign "$developerIdApplicationString" $outputDir/$appName.dmg
-codesign --verify -dvv jdesigner-client/build/jpackage/output/$appName.dmg
+codesign --verify -dvv $outputDir/$appName.dmg
 echo '.....DONE.'
 
 echo '----- NOTARIZING APP -----'
