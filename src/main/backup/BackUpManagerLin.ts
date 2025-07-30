@@ -55,6 +55,10 @@ export class BackUpManagerLin implements BackUpManager {
 
         if (!uuidMatch || !sourceMatch || !targetMatch || !smbHostMatch || !smbShareMatch) continue;
 
+        const cronLines = execSync("crontab -l 2>/dev/null || true").toString().split("\n");
+        const matchingLine = cronLines.find(line => line.includes(uuidMatch[1]));
+        const parsedSchedule = matchingLine ? this.parseCronSchedule(matchingLine) : null;
+
         const task: BackUpTask = {
           uuid: uuidMatch[1],
           source: sourceMatch[1].replace(/\/+$/, ""),
@@ -63,7 +67,7 @@ export class BackUpManagerLin implements BackUpManager {
           share: smbShareMatch[1],
           mirror,
           description: descMatch ? descMatch[1] : "Unnamed",
-          schedule: { repeatFrequency: "day", startDate: startDate},
+          schedule: parsedSchedule ?? { repeatFrequency: "day", startDate },
           status: "checking"
         };
 
