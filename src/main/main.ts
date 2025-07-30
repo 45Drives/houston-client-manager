@@ -172,7 +172,7 @@ function createWindow() {
     const scanned = await Promise.allSettled(
       ips.map(async candidateIp => {
 
-        console.log("checking for server at ", candidateIp);
+        // console.log("checking for server at ", candidateIp);
 
         const portOpen = await isPortOpen(candidateIp, 9090);
         if (!portOpen) return null;

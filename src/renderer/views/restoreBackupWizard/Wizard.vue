@@ -6,9 +6,9 @@
   <!-- <div class="page-corner-effect pointer-events-none"></div> -->
 
   <!-- Double arrows -->
-  <div class="double-arrow absolute bottom-4 right-4 z-10 text-gray-400 text-xl animate-pulse pointer-events-none">
+  <!-- <div class="double-arrow absolute bottom-4 right-4 z-10 text-gray-400 text-xl animate-pulse pointer-events-none">
     &raquo;
-  </div>
+  </div> -->
 </template>
 
 <script setup lang="ts">

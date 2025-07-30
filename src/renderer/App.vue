@@ -49,10 +49,10 @@
       </div> -->
 
       <!-- Double arrows -->
-      <div v-if="!showWebView && currentWizard !== 'restore-backup'"
+      <!-- <div v-if="!showWebView && currentWizard !== 'restore-backup'"
         class="double-arrow absolute bottom-4 right-4 z-10 text-gray-400 text-xl animate-pulse pointer-events-none">
         &raquo;
-      </div>
+      </div> -->
     </div>
   </div>
   <GlobalModalConfirm />
@@ -527,7 +527,8 @@ const openStorageSetup = (server: Server | null) => {
     // const devURL = 'super-simple-setup-test';
     // newUrl = `https://${server.ip}:9090/${(isDev.value ? devURL : prodURL)}#dark=${darkModeState.value}&advanced=${advancedState.value}&client_ip=${clientip.value}&server_ip=${server.ip}`;
 
-    newUrl = `https://${server.ip}:9090/super-simple-setup#dark=${darkModeState.value}&advanced=${advancedState.value}&client_ip=${clientip.value}&server_ip=${server.ip}`;
+    // newUrl = `https://${server.ip}:9090/super-simple-setup#dark=${darkModeState.value}&advanced=${advancedState.value}&client_ip=${clientip.value}&server_ip=${server.ip}`;
+    newUrl = `https://${server.ip}:9090/super-simple-setup-test#dark=${darkModeState.value}&advanced=${advancedState.value}&client_ip=${clientip.value}&server_ip=${server.ip}`;
 
   } else {
     currentUrl.value = "";
