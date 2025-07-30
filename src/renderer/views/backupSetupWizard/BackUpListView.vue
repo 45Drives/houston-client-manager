@@ -65,16 +65,13 @@
             </div> -->
 
             <div class="text-feedback font-semibold pt-2">
-              Backup will happen
-              {{ formatFrequency(task.schedule.repeatFrequency) }}
-              at
-              {{ task.schedule?.startDate ? task.schedule.startDate.toLocaleTimeString([], {
-                hour: '2-digit', minute:
-                  '2-digit'
-              }) : 'Invalid Time' }}
-              starting
-              {{ task.schedule?.startDate ? task.schedule.startDate.toDateString() : "Invalid date" }}
+              Next backup will occur at
+              {{ getNextBackupDate(task.schedule.startDate, task.schedule.repeatFrequency).toLocaleString([], {
+                weekday: 'short', year: 'numeric', month: 'short', day: 'numeric',
+                hour: '2-digit', minute: '2-digit'
+              }) }} ({{ formatFrequency(task.schedule.repeatFrequency) }})
             </div>
+
           </div>
           <div class="flex justify-between items-center pt-2">
             <button class="btn btn-secondary text-sm relative" @click.stop="editSchedule(task)">
@@ -179,6 +176,31 @@ const getTaskStatusText = (task: BackUpTask): string => {
   }
 };
 
+function getNextBackupDate(startDate: Date, repeatFrequency: string): Date {
+  const now = new Date();
+  let nextDate = new Date(startDate);
+
+  while (nextDate <= now) {
+    switch (repeatFrequency) {
+      case 'hour':
+        nextDate.setHours(nextDate.getHours() + 1);
+        break;
+      case 'day':
+        nextDate.setDate(nextDate.getDate() + 1);
+        break;
+      case 'week':
+        nextDate.setDate(nextDate.getDate() + 7);
+        break;
+      case 'month':
+        nextDate.setMonth(nextDate.getMonth() + 1);
+        break;
+      default:
+        break;
+    }
+  }
+
+  return nextDate;
+}
 
 
 // Define event emitter
