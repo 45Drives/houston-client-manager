@@ -542,7 +542,7 @@ const openStorageSetup = (server: Server | null) => {
 };
 const onWebViewLoaded = async () => {
   const user = manualCreds.value?.username ?? "root";
-  const pass = manualCreds.value?.password ?? "password";
+  const pass = manualCreds.value?.password ?? "45Dr!ves";
 
   const routerRenderer = IPCRouter.getInstance() as IPCMessageRouterRenderer;
   routerRenderer.setCockpitWebView(webview.value);
