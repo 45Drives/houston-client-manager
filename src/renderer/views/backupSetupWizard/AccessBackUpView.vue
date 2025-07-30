@@ -109,87 +109,6 @@ const isButtonDisabled = computed(() => !username.value || !password.value || op
 let smbMountListener: ((data: any) => void) | null = null;
 
 
-// const handleOpen = () => {
-//   if (!username.value || !password.value || backupTasks.value.length === 0) return;
-
-//   openingBackup.value = true;
-
-//   const sharesMounted: Set<string> = new Set();
-//   let remainingShares = new Set(backupTasks.value.map(task => `${task.host}:${task.share}`));
-
-//   smbMountListener = (data) => {
-//     openingBackup.value = false;
-//     try {
-//       const response = JSON.parse(data);
-//       if (response.action !== 'mountSmbResult') return;
-
-//       let info: any = typeof response.result === 'string'
-//         ? JSON.parse(response.result)
-//         : response.result;
-
-//       const mountPoint = info.MountPoint ?? (info.DriveLetter ? `${info.DriveLetter}:\\` : null);
-//       if (!mountPoint) {
-//         console.warn("No valid mount point found in result");
-//         // Still mark this share as "processed" to prevent infinite wait
-//         remainingShares.delete(`${info.smb_server}:${info.smb_share}`);
-//         if (remainingShares.size === 0) {
-//           openingBackup.value = false;
-//           smbMountListener = null;
-//         }
-//         return;
-//       }
-
-//       const shareName = mountPoint.split(/[\\/]/).filter(Boolean).pop() ?? info.smb_share;
-//       const mountedShare = `${info.smb_server}:${shareName}`;
-
-//       sharesMounted.add(mountedShare);
-//       remainingShares.delete(mountedShare);
-
-//       if (remainingShares.size === 0) {
-//         openingBackup.value = false;
-//         smbMountListener = null;
-
-//         for (const task of backupTasks.value) {
-//           const normalizedTarget = task.target.startsWith('/') ? task.target : `/${task.target}`;
-
-//           const mountPath =
-//             thisOs?.value === 'win'
-//               ? `${info.DriveLetter}:\\${task.target}`
-//               : thisOs?.value === 'mac'
-//                 ? `/Volumes/${task.share}${normalizedTarget}`
-//                 : `/mnt/houston-mounts/${task.share}${normalizedTarget}`;
-
-//           IPCRouter.getInstance().send('backend', 'action', JSON.stringify({
-//             type: 'openFolder',
-//             path: mountPath
-//           }));
-//         }
-//       }
-//       if (smbMountListener) {
-//         IPCRouter.getInstance().removeEventListener("action", smbMountListener);
-//       }
-//     } catch (e) {
-//       console.error('Failed to parse SMB mount result:', e);
-//       openingBackup.value = false;
-//     }
-//   };
-
-//   IPCRouter.getInstance().addEventListener("action", smbMountListener);
-
-//   // Initiate mount requests for each unique share
-//   const uniqueShares = new Set(backupTasks.value.map(task => `${task.host}:${task.share}`));
-
-//   for (const entry of uniqueShares) {
-//     const [host, share] = entry.split(":");
-//     IPCRouter.getInstance().send("backend", "mountSambaClient", {
-//       smb_host: host,
-//       smb_share: share,
-//       smb_user: username.value,
-//       smb_pass: password.value
-//     });
-//   }
-// };
-
 const handleOpen = () => {
   if (!username.value || !password.value || backupTasks.value.length === 0) return;
 
@@ -265,13 +184,15 @@ const handleOpen = () => {
   IPCRouter.getInstance().addEventListener("action", smbMountListener);
 
   // 4) Fire off mount requests
-  for (const entry of new Set(backupTasks.value.map(t =>
-    thisOs!.value === 'win' ? t.share : `${t.host}:${t.share}`
-  ))) {
-    const [host, share] = entry!.includes(":") ? entry!.split(":") : [undefined, entry];
+  const seen = new Set<string>();
+  for (const task of backupTasks.value) {
+    const reqKey = `${task.host}:${task.share}`;
+    if (seen.has(reqKey)) continue;
+    seen.add(reqKey);
+
     IPCRouter.getInstance().send("backend", "mountSambaClient", {
-      smb_host: host!,
-      smb_share: share!,
+      smb_host: task.host!,
+      smb_share: task.share!,
       smb_user: username.value,
       smb_pass: password.value
     });
@@ -292,8 +213,17 @@ const handleOpen = () => {
 
       if (thisOs!.value === 'win') {
         // Windows: drive letter path + back‑slashes
-        const mp = mountResults.get(task.share!)!;
-        finalPath = `${mp}${normalized.replace(/\//g, "\\")}`;
+        // 1) Remove any leading "/" from the target
+        const winSubpath = task.target.replace(/^\/+/, "")
+          // 2) Replace all "/" → "\" in the remainder
+          .replace(/\//g, "\\");
+
+        // 3) Ensure mountPoint ends in exactly one backslash
+        let mp = mountResults.get(task.share!)!;        // e.g. "Y:\\"
+        mp = mp.replace(/[\\/]+$/, "\\");               // now "Y:\" exactly
+
+        // 4) Join them
+        finalPath = `${mp}${winSubpath}`;         // → "Y:\uuid…\Pictures
 
       } else if (thisOs!.value === 'mac') {
         // macOS: real /Volumes/<share> + the target
