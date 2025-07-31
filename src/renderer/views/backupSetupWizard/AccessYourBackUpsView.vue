@@ -51,9 +51,9 @@
             Back
           </button>
 
-          <button @click="deleteSelectedTasks" class="btn btn-danger w-40 h-20"
+          <button @click="deleteSelectedTasks" class="btn btn-danger w-40 h-20 flex items-center justify-center gap-2"
             :disabled="selectedBackUpTasks.length === 0">
-            Delete Selected
+            <span>Delete Selected</span>
             <TrashIcon class="w-6 h-6 text-white" />
           </button>
 
