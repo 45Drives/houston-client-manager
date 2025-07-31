@@ -1,5 +1,5 @@
 <template>
-	<CardContainer>
+	<CardContainer class="overflow-y-auto min-h-0">
 		<template #header class="!text-center">
 			<div class="relative flex items-center justify-center h-18  w-full">
 				<div class="absolute left-0 p-1 px-4 rounded-lg">
@@ -33,15 +33,19 @@
 								<CommanderToolTip
 									:message="`This is the designated backup storage location you set up earlier.`" />
 							</div>
-							<!-- <div class="shrink-0 flex flex-row items-center py-2">
-								<br />
-							</div> -->
-							<select v-model="selectedServer"
+							<!-- <select v-model="selectedServer"
 								class="bg-default h-[3rem] text-default rounded-lg px-4 flex-1 border border-default">
 								<option v-for="item in servers" :key="item.ip" :value="item">
 									{{ `\\\\${item.name}\\${item.shareName}` }}
 								</option>
+							</select> -->
+							<select v-model="selectedServerIp"
+								class="bg-default h-[3rem] text-default rounded-lg px-4 flex-1 border border-default">>
+								<option v-for="item in servers" :key="item.ip" :value="item.ip">
+									{{ `\\\\${item.name}\\${item.shareName}` }}
+								</option>
 							</select>
+
 						</div>
 
 						<!-- Folder Selection Button -->
@@ -118,15 +122,15 @@
 <script setup lang="ts">
 import { CardContainer, CommanderToolTip, Modal, useEnterToAdvance } from "@45drives/houston-common-ui";
 import { useWizardSteps, DynamicBrandingLogo } from '@45drives/houston-common-ui';
-import { inject, ref, reactive, watch, nextTick } from "vue";
+import { inject, ref, reactive, watch, nextTick, computed } from "vue";
 import { PlusIcon, MinusIcon } from "@heroicons/vue/20/solid";
 import { backUpSetupConfigKey } from "../../keys/injection-keys";
 import MessageDialog from '../../components/MessageDialog.vue';
 import { CalendarIcon } from "@heroicons/vue/24/outline";
 import { BackUpTask, IPCRouter, TaskSchedule } from "@45drives/houston-common-lib";
-import { Server } from '../../types'
+import { Server, DiscoveryState } from '../../types'
 import { SimpleCalendar } from "../../components/calendar";
-import { divisionCodeInjectionKey } from '../../keys/injection-keys';
+import { divisionCodeInjectionKey, discoveryStateInjectionKey } from '../../keys/injection-keys';
 import { sanitizeFilePath } from "./utils";
 import GlobalSetupWizardMenu from '../../components/GlobalSetupWizardMenu.vue';
 
@@ -142,8 +146,10 @@ const messageFolderAlreadyAdded = ref<InstanceType<typeof MessageDialog> | null>
 const messageSubFolderAlreadyAdded = ref<InstanceType<typeof MessageDialog> | null>(null);
 const messageParentFolderAlreadyAdded = ref<InstanceType<typeof MessageDialog> | null>(null);
 
-const servers = ref<Server[]>([]);
-const selectedServer = ref<Server | null>(null);
+// const servers = ref<Server[]>([]);
+const discoveryState = inject<DiscoveryState>(discoveryStateInjectionKey)!
+const servers = computed(() => discoveryState.servers)
+
 
 const selectedTaskSchedule = ref<any>();
 
@@ -168,52 +174,25 @@ function handleCalendarClose(saved: boolean) {
 	}
 }
 
-function areArraysEqual(arr1: Server[], arr2: Server[]): boolean {
-  if (arr1.length !== arr2.length) {
-    return false; // Arrays have different lengths
-  }
+const selectedServerIp = ref('');
 
-  return arr1.every((value, index) => {
-    const server1: Server = value;
-    const server2: Server = arr2[index];
+const selectedServer = computed(() =>
+	servers.value.find(srv => srv.ip === selectedServerIp.value) ?? null
+);
 
-    return server1.ip === server2.ip;
+watch(servers, (discoveredServers) => {
+	if (discoveredServers.length === 0) {
+		selectedServerIp.value = '';
+		return;
+	}
 
-  });
-}
-
-
-// Receive the discovered servers from the main process
-window.electron.ipcRenderer.on('discovered-servers', (_event, discoveredServers: Server[]) => {
-  if (!areArraysEqual(discoveredServers, servers.value)) {
-	console.log("Discovered servers:", discoveredServers)
-    servers.value = discoveredServers;
-	selectedServer.value = discoveredServers[0];
-	
-    if (discoveredServers.length > 0) {
-
-			const tasks = backUpSetupConfig?.backUpTasks;
-			if (tasks && tasks.length > 0) {
-
-				const task = tasks[0];
-				const target = task.target;
-
-				const potentialServer = discoveredServers.find(server => target.includes(server.ip));
-
-				if (potentialServer) {
-
-					selectedServer.value = potentialServer;
-				} else {
-					selectedServer.value = discoveredServers[0];
-				}
-
-			} else {
-
-				selectedServer.value = discoveredServers[0];
-			}
-
-    }
-  }
+	// Only set if nothing is selected
+	if (!selectedServerIp.value) {
+		const tasks = backUpSetupConfig?.backUpTasks;
+		const target = tasks?.[0]?.target;
+		const match = discoveredServers.find(srv => target?.includes(srv.ip));
+		selectedServerIp.value = match?.ip ?? discoveredServers[0].ip;
+	}
 });
 
 
@@ -298,7 +277,7 @@ const handleFolderSelect = async () => {
 
 			const scheduleConfirmed = await toggleCalendarComponent();
 			if (!scheduleConfirmed) {
-				console.log("User cancelled scheduling, not adding task.");
+				// console.log("User cancelled scheduling, not adding task.");
 				return;
 			}
 
@@ -307,12 +286,12 @@ const handleFolderSelect = async () => {
 				schedule: selectedTaskSchedule.value,
 				description: `Backup task for ${folderName}`,
 				source: folderPath,
-				target: `\\\\${selectedServer.value?.name}.local\\${selectedServer.value?.shareName}`,
+				target: `\\\\${selectedServer.value?.name}\\${selectedServer.value?.shareName}`,
 				mirror: false,
 				uuid: crypto.randomUUID(),
 			};
 
-			console.log('New backup task:', newTask);
+			// console.log('New backup task:', newTask);
 
 			backUpSetupConfig.backUpTasks.push(newTask);
 			selectedFolders.value.push({ name: folderName, path: folderPath });
@@ -379,8 +358,8 @@ const proceedToNextStep = () => {
 			const targetDirForSourcePart = sanitizeFilePath(task.source);
 			const slashOrNotSlash = targetDirForSourcePart.startsWith("/") ? "" : "/";
 
-			task.target = `${selectedServer.value!.name}.local:${selectedServer.value!.shareName!}/${task.uuid}/${hostname}${slashOrNotSlash}${targetDirForSourcePart}`;
-			console.log('target saved:', task.target);
+			task.target = `${selectedServer.value!.name}:${selectedServer.value!.shareName!}/${task.uuid}/${hostname}${slashOrNotSlash}${targetDirForSourcePart}`;
+			// console.log('target saved:', task.target);
 		});
 
 	completeCurrentStep();

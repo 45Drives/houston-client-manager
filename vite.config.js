@@ -1,3 +1,5 @@
+import { version } from './package.json';
+
 const Path = require('path');
 const vuePlugin = require('@vitejs/plugin-vue')
 const { fileURLToPath, URL } = require("node:url");
@@ -38,6 +40,9 @@ const config = defineConfig({
       "@45drives/houston-common-lib": fileURLToPath(new URL("./node_modules/@45drives/houston-common-lib/dist", import.meta.url)),
       "@45drives/houston-common-ui": fileURLToPath(new URL("./node_modules/@45drives/houston-common-ui/dist", import.meta.url)),
     },
+  },
+  define: {
+    __APP_VERSION__: JSON.stringify(version),
   },
 });
 

@@ -1,5 +1,5 @@
 <template>
-  <CardContainer>
+  <CardContainer class="overflow-y-auto min-h-0">
     <template #header>
       <div class="relative flex items-center justify-center h-24">
         <div class="absolute left-0  p-1 px-4 rounded-lg">
@@ -15,13 +15,6 @@
     </template>
 
     <div class="flex flex-col h-full justify-center items-center text-default">
-      <!-- Header with instructions -->
-      <div>
-        <p class=" text-lg">
-          Please provide your username and password to use for the backup
-        </p>
-      </div>
-
       <!-- Username and Password input fields -->
       <form @submit.prevent="proceedToNextStep" class="flex flex-col gap-4 mt-4 text-default">
         <div class="grid relative grid-cols-[200px_1fr] items-center">
@@ -94,19 +87,19 @@ const proceedToNextStep = () => {
     // Trigger your backend logic for opening the server (you will handle the action)
     // Pass username, password, and backupTask.target (URL) to your backend code
     // For example: openBackupServer(username.value, password.value, props.backupTask.target);
-    console.log('Attempting to open server with:', {
-      username: backUpSetupConfig.username,
-      password: backUpSetupConfig.password,
-      target: backUpSetupConfig.backUpTasks[0].target,
-    });
+    // console.log('Attempting to open server with:', {
+    //   username: backUpSetupConfig.username,
+    //   password: backUpSetupConfig.password,
+    //   target: backUpSetupConfig.backUpTasks[0].target,
+    // });
 
-    console.log("Target:", backUpSetupConfig.backUpTasks[0].target);
+    // console.log("Target:", backUpSetupConfig.backUpTasks[0].target);
 
     let [host, share] = backUpSetupConfig.backUpTasks[0].target.split(":");
     share = share.split("/")[0]
 
-    console.log("Host:", host);  // Output: "hl4-test.local"
-    console.log("Share:", share); // Output: "backups"
+    // console.log("Host:", host);  // Output: "hl4-test.local"
+    // console.log("Share:", share); // Output: "backups"
 
     nextStep();
   }
