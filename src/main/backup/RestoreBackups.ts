@@ -1,95 +1,175 @@
 import { getOS } from "../utils";
 import fsAsync from "fs/promises";
 import path from "path";
-import { IPCMessageRouter } from '../../..//houston-common/houston-common-lib/lib/electronIPC';
+import { IPCMessageRouter } from "@45drives/houston-common-lib/lib/electronIPC";
 import { execSync } from "child_process";
 
-export default async function restoreBackups(data: any, IPCRouter: IPCMessageRouter) {
-  
-  console.log("restore backups")
+export default async function restoreBackups(
+  data: any,
+  IPCRouter: IPCMessageRouter
+) {
+  const os = getOS();
 
-  const slash = getOS() === "win" ? "\\" : "/"
+  console.log("=== 🟡 restoreBackups triggered ===");
+  console.log("Incoming restore data:", JSON.stringify(data, null, 2));
 
-  console.log(data)
-  const basePath = getOS() === "win" ? `${slash}${slash}${data.smb_host}${slash}${data.smb_share}` : `/mnt/houston-mounts/${data.smb_share}`;
-  const uuid = data.uuid;
-  const client = data.client;
-  let files: string[] = data.files;
-
-  console.log("uuid", uuid)
-  console.log("basePath", basePath)
-  console.log("files", files)
-  console.log("client", client)
-
-  const folderPath = path.join(basePath, uuid, client);
-
-  for (const file of files) {
-
-    console.log("processing:", file)
-    let copyToFilePath = file;
-    if (getOS() === "win") {
-      copyToFilePath = fixWinPath(file);
-    }
-
-    const sourcePath = folderPath + file;
-
-    console.log("Copying " + sourcePath + " to " + copyToFilePath);
-
-
-    IPCRouter.send('renderer', 'action', JSON.stringify({
-      type: "restoreBackupsResult",
-      result: await copyFile(sourcePath, copyToFilePath, file)
-    }));
+  // 1) Determine the root of the share
+  let basePath: string;
+  if (os === "win") {
+    basePath = data.mountPoint ?? `\\\\${data.smb_host}\\${data.smb_share}`;
+  } else if (os === "mac") {
+    basePath = path.join("/Volumes", data.smb_share);
+  } else {
+    basePath = `/mnt/houston-mounts/${data.smb_share}`;
   }
 
-  // try {
-  //   const openPath = path.dirname(fixWinPath(data.files[0])); // Open first file's folder
-  //   openDirectory(openPath);
+  const { uuid, client } = data;
+  const files = data.files as string[];
 
-  //   IPCRouter.send("renderer", "action", JSON.stringify({
-  //     type: "restoreCompleted",
-  //     folder: openPath
-  //   }));
-    
-  // } catch (e) {
-  //   console.error("Failed to open folder after restore:", e);
-  // }
+  const folderPath = path.join(basePath, uuid, client !== uuid ? client : '');
+  console.log("📂 Source folderPath:", folderPath);
+  console.log("📁 Files to restore:", files);
+
+  // 2) Copy each file, reporting back via IPC
+  for (const relFile of files) {
+    const sourcePath = path.join(folderPath, relFile);
+    let destPath = relFile;
+    if (os === "win") {
+      destPath = fixWinPath(relFile);
+    }
+
+    console.log(`🔄 Preparing restore:`);
+    console.log(`  relFile:        ${relFile}`);
+    console.log(`  sourcePath:     ${sourcePath}`);
+    console.log(`  destPath (raw): ${destPath}`);
+
+    try {
+      await fsAsync.access(sourcePath);
+      console.log("  ✅ Source file exists");
+    } catch {
+      console.error(`  ❌ Source file NOT found: ${sourcePath}`);
+      IPCRouter.send("renderer", "action", JSON.stringify({
+        type: "restoreBackupsResult",
+        result: { file: relFile, error: `Source file not found: ${sourcePath}` },
+      }));
+      continue;
+    }
+
+    try {
+      const result = await copyFile(sourcePath, destPath, relFile);
+      IPCRouter.send("renderer", "action", JSON.stringify({
+        type: "restoreBackupsResult",
+        result,
+      }));
+    } catch (err) {
+      console.error(`  ❌ Copy failed:`, err);
+      IPCRouter.send("renderer", "action", JSON.stringify({
+        type: "restoreBackupsResult",
+        result: { file: relFile, error: (err as Error).message },
+      }));
+    }
+  }
+
+  // 3) Tell the UI which folders were restored
   try {
-    const firstFolder = path.dirname(fixWinPath(data.files[0]));
+    const restoredFolders = Array.from(
+      new Set(files.map((f: string) => path.dirname(f)))
+    ).map(f => (os === "win" ? fixWinPath(f) : f));
+
+    console.log("📬 Restored folders:", restoredFolders);
 
     IPCRouter.send("renderer", "action", JSON.stringify({
       type: "restoreCompleted",
-      folder: firstFolder,
-      allFolders: [...new Set(data.files.map(file => path.dirname(fixWinPath(file))))]  // unique folders
+      allFolders: restoredFolders,
     }));
   } catch (e) {
-    console.error("Failed to prepare post-restore data:", e);
+    console.error("❌ Failed to send restore completion:", e);
   }
 
+  console.log("=== ✅ restoreBackups finished ===");
 }
 
-async function copyFile(sourcePath: string, copyToFilePath: string, originalFilePath: string) {
+// async function copyFile(
+//   sourcePath: string,
+//   destRelPath: string,
+//   originalFilePath: string
+// ) {
+//   const destFullPath = normalizeRestorePath(destRelPath);
+//   console.log("Restoring", sourcePath, "→", destFullPath);
+
+//   const dir = path.dirname(destFullPath);
+
+//   try {
+//     // Check if directory exists and is writable
+//     await fsAsync.mkdir(dir, { recursive: true });
+//     await fsAsync.access(dir, fsAsync.constants.W_OK);
+//   } catch (e) {
+//     throw new Error(`Destination folder not writable: ${dir}`);
+//   }
+
+//   // Copy the file
+//   await fsAsync.copyFile(sourcePath, destFullPath);
+//   console.log(`✅ Copied ${sourcePath} → ${destFullPath}`);
+//   return { file: originalFilePath };
+// }
+
+async function copyFile(
+  sourcePath: string,
+  destRelPath: string,
+  originalFilePath: string
+) {
+  const destFullPath = normalizeRestorePath(destRelPath);
+  console.log(`📦 copyFile(): ${sourcePath} → ${destFullPath}`);
+
+  const dir = path.dirname(destFullPath);
+
   try {
-    fsAsync.mkdir(path.dirname(copyToFilePath), { recursive: true });
-    fsAsync.copyFile(sourcePath, copyToFilePath, 0);
-
-    return {
-      file: originalFilePath
-    }
+    await fsAsync.mkdir(dir, { recursive: true });
+    await fsAsync.access(dir, fsAsync.constants.W_OK);
+    console.log(`  ✅ Destination dir exists and is writable: ${dir}`);
   } catch (e) {
-
-    console.log(e);
-    return {
-      file: originalFilePath,
-      error: "Failed to copy file"
-    }
-
+    throw new Error(`Destination folder not writable: ${dir}`);
   }
+
+  await fsAsync.copyFile(sourcePath, destFullPath);
+  console.log(`  ✅ File copied successfully`);
+  require("child_process").execSync(`dir "${path.dirname(destFullPath)}"`);
+
+  return { file: originalFilePath };
 }
 
-function fixWinPath(str) {
-  return str.replace(/^\\([A-Za-z])\\/, '$1:\\');
+
+function normalizeRestorePath(relPath: string): string {
+  const platform = getOS();
+
+  if (platform === 'win') {
+    // Already fixed by fixWinPath
+    return relPath;
+  }
+
+  // macOS or Linux: ensure it's absolute
+  if (path.isAbsolute(relPath)) {
+    return relPath;
+  }
+
+  return path.resolve('/', relPath);
 }
+
+
+function fixWinPath(str: string): string {
+  // Handle UNC-style path like: DESKTOP-123\\C\\Users\\...
+  const match = str.match(/^[^\\]+\\([A-Za-z])\\(.*)/);
+  if (match) {
+    const drive = match[1];
+    const rest = match[2].replace(/\\/g, '\\');
+    return `${drive}:\\${rest}`;
+  }
+
+  // Normalize forward slashes and assume C:\ as fallback
+  return path.resolve('C:\\', str.replace(/\//g, '\\'));
+}
+
+
 
 function openDirectory(folderPath: string) {
   try {
@@ -101,7 +181,6 @@ function openDirectory(folderPath: string) {
     } else {
       execSync(`xdg-open "${folderPath}"`);
     }
-    console.log("Opened folder:", folderPath);
   } catch (err) {
     console.error("Failed to open folder:", err);
   }

@@ -1,13 +1,29 @@
+import log from 'electron-log';
+log.transports.console.level = false;
+process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+console.log = (...args) => log.info(...args);
+console.error = (...args) => log.error(...args);
+console.warn = (...args) => log.warn(...args);
+console.debug = (...args) => log.debug(...args);
+
+process.on('uncaughtException', (error) => {
+  log.error('Uncaught Exception:', error);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  log.error('Unhandled Rejection at:', promise, 'reason:', reason);
+});
+
 import { BackUpManager } from "./types";
 import { BackUpTask, TaskSchedule } from "@45drives/houston-common-lib";
-import { formatDateForTask, getAppPath, getMountSmbScript, getSmbTargetFromSmbTarget } from "../utils";
+import { formatDateForTask, formatDateForTask2, getAppPath, getMountSmbScript, getSmbTargetFromSmbTarget } from "../utils";
 import sudo from 'sudo-prompt';
 import path from "path";
 import fs from 'fs';
 import os from 'os';
 import { exec } from "child_process";
 
-const TASK_ID = "HoustonBackUp";
+const TASK_ID = "Houston_Backup_Task";
 
 interface TaskData {
   source?: string;
@@ -15,8 +31,10 @@ interface TaskData {
   description?: string;
   mirror?: boolean;
   schedule?: string;
+  uuid?: string;
+  SMB_HOST?: string;
+  SMB_SHARE?: string;
 }
-
 
 export class BackUpManagerWin implements BackUpManager {
 
@@ -28,6 +46,7 @@ export class BackUpManagerWin implements BackUpManager {
     // Save to file
     const tempDir = os.tmpdir();
     const scriptPath = path.join(tempDir, `${scriptName}.ps1`);
+    console.log("running: " + scriptPath);
     fs.writeFileSync(scriptPath, powershellScript);
 
     return new Promise((resolve, reject) => {
@@ -54,11 +73,27 @@ export class BackUpManagerWin implements BackUpManager {
 
   }
 
+
+  private getTaskPaths(task: BackUpTask) {
+    const pgm = process.env.ProgramData ?? "C:\\ProgramData";
+    const share = task.share || task.target.split(":")[1].split("/")[0];
+    return {
+      bat: path.join(pgm, "houston-backups", "scripts", `Houston_Backup_Task_${task.uuid}.bat`),
+      log: path.join(pgm, "houston-backups", "logs", `backup_task_${task.uuid}.log`),
+      cred: path.join(pgm, "houston-backups", "credentials", `${share}.cred`),
+      share
+    };
+  }
+  
   queryTasks(): Promise<BackUpTask[]> {
     const powerShellScript = `Get-ScheduledTask | Where-Object {$_.TaskName -like '*${TASK_ID}*'} | Select-Object TaskName, Triggers, Actions, State | ConvertTo-Json -depth 10`
 
     return this.runScriptAdmin(powerShellScript, "query_tasks")
       .then(result => {
+        if (!result.stdout || !result.stdout.trim()) {
+          return [];                     // nothing to parse, no tasks
+        }
+
         try {
           const tasks = JSON.parse(result.stdout.toString());
           const tasksAsArray = Array.isArray(tasks) ? tasks : [tasks];
@@ -68,16 +103,21 @@ export class BackUpManagerWin implements BackUpManager {
             let command: string | null = null;
             for (let i = 0; i < actionProps.length; i++) {
               const prop = actionProps[i];
-              if (prop.Name === 'Arguments') {
+              if (prop.Name === 'Arguments' && prop.Value) {
+                command = prop.Value;
+                break;
+              } else if (prop.Name === 'Execute' && prop.Value) {
                 command = prop.Value;
                 break;
               }
             }
+
             if (!command) {
               console.log("No Command:", actionProps)
               return null;
             }
             const actionDetails = this.parseBackupCommand(command)
+            console.log(actionDetails)
             if (!actionDetails) {
               console.log("task.Actions:", command)
               return null;
@@ -89,13 +129,23 @@ export class BackUpManagerWin implements BackUpManager {
               return null;
             }
 
-            return {
-              description: actionDetails.description,
-              schedule: trigger,
-              source: actionDetails.source,
-              target: actionDetails.target,
-              mirror: actionDetails.mirror
+            const backUpTask: BackUpTask = {
+              uuid: actionDetails.uuid!,
+              description: actionDetails.description!,
+              schedule: trigger!,
+              source: actionDetails.source!,
+              target: actionDetails.target!,
+              mirror: actionDetails.mirror === true,
+              host: actionDetails.SMB_HOST,
+              share: actionDetails.SMB_SHARE,
+              status: "checking"
             };
+
+            if ((actionDetails as any).START_DATE) {
+              backUpTask.schedule.startDate = new Date((actionDetails as any).START_DATE);
+            }
+
+            return backUpTask;
           }).filter(task => task !== null) as BackUpTask[];
 
         } catch (parseError) {
@@ -107,197 +157,47 @@ export class BackUpManagerWin implements BackUpManager {
 
   }
 
-//   async schedule(task: BackUpTask, username: string, password: string): Promise<{ stdout: string, stderr: string }> {
-//     console.log("task.target", task.target);
+  private scriptPath(uuid: string): string {
+    return path.join(
+      process.env.ProgramData ?? 'C:\\ProgramData',
+      'houston-backups',
+      'scripts',
+      `${TASK_ID}_${uuid}.bat`
+    );
+  }
 
-//     let targetPath = "/tank/" + task.target.split(":")[1];
-//     console.log("targetPath", targetPath)
-    
-//     let [smbHost, smbShare] = task.target.split(":");
-//     smbShare = smbShare.split("/")[0];
-
-//     // PowerShell script to create the task
-//     const powershellScript = `
-// $batFile  = "${getMountSmbScript()}"
-// $smbHost  = "${smbHost}"
-// $smbShare = "${smbShare}"
-// $username = "${username}"
-// $password = "${password}"
-
-// $user = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
-
-// ${this.addUserToBackupOperatorsGroup()}
-
-// ${this.getAddBackupGroupsToLogOnBatchAndService()}
-
-// Write-Host "user being used: $user"
-
-// $sourcePath = "${task.source}"
-// $destinationPath = "${getSmbTargetFromSmbTarget(task.target).replace(/\//g, "\\")}"
-// $mirror = ${task.mirror ? "$true" : "$false"}  # Set to $true if you want to mirror the directories
-
-// $actionScript = @"
-// @echo off
-// :: source = ${task.source}
-// :: target = ${task.target}
-// :: description = ${task.description}
-// :: mirror = ${task.mirror}
-// :: schedule = ${JSON.stringify(task.schedule)}
-// :: uuid = ${task.uuid}
-
-// :: Run your batch file and capture output
-// for /f "delims=" %%O in ('"$batFile" $smbHost $smbShare $username $password') do (
-//     set "json=%%O"
-// )
-
-// :: Save JSON to a temp file
-// set "tempfile=%TEMP%\\json.txt"
-// echo %json% > "%tempfile%"
-
-// :: Use PowerShell to read the file and parse JSON
-// for /f %%D in ('powershell -NoProfile -Command "Get-Content -Raw '%tempfile%' | ConvertFrom-Json | Select-Object -ExpandProperty DriveLetter"') do (
-//     set "drive=%%D"
-// )
-
-// :: Delete temp file
-// del "%tempfile%"
-
-// echo Drive letter is %drive%
-
-// if not defined drive (
-//     echo Failed to mount SMB share
-//     exit /b 1
-// )
-
-// mkdir "%drive%:$destinationPath"
-// xcopy "$sourcePath" "%drive%:$destinationPath" /E /I /Y
-// timeout /t 2 >nul
-// net use %drive%: /delete /y
-// "@
-
-// # Save script to a temp .bat file
-// $tempScriptPath = "${getAppPath()}\\run_backup_task_${task.uuid}.bat"
-// [System.IO.File]::WriteAllText($tempScriptPath, $actionScript)
-
-// ${this.scheduleToTaskTrigger(task.schedule)}
-
-// $action = New-ScheduledTaskAction -Execute "cmd.exe" -Argument "/C \`"$tempScriptPath\`""
-
-// $principal = New-ScheduledTaskPrincipal -UserId "$user" -LogonType S4U -RunLevel Highest
-
-// $task = Register-ScheduledTask -Action $action -Trigger $taskTrigger -Principal $principal -TaskName "${TASK_ID}_${task.uuid}"
-
-// ${this.dailyTaskTriggerUpdate(task.schedule)}
-
-// `;
-
-//     return this.runScriptAdmin(powershellScript, "create_task");
-//   }
-
-//new version with logging (need to test)
-  async schedule(task: BackUpTask, username: string, password: string): Promise<{ stdout: string, stderr: string }> {
-    console.log("task.target", task.target);
-
-    let targetPath = "/tank/" + task.target.split(":")[1];
-    console.log("targetPath", targetPath)
-
-    let [smbHost, smbShare] = task.target.split(":");
-    smbShare = smbShare.split("/")[0];
-
-    const logDir = path.join('C:\\ProgramData', 'houston-backups', 'logs');
-    const logPath = path.join(logDir, `backup_task_${task.uuid}.log`);
-    
-    // PowerShell script to create the task
-    const powershellScript = `
-$batFile  = "${getMountSmbScript()}"
-$smbHost  = "${smbHost}"
-$smbShare = "${smbShare}"
-$username = "${username}"
-$password = "${password}"
-
-$user = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
-
-${this.addUserToBackupOperatorsGroup()}
-
-${this.getAddBackupGroupsToLogOnBatchAndService()}
-
-Write-Host "user being used: $user"
-
-$sourcePath = "${task.source}"
-$destinationPath = "${getSmbTargetFromSmbTarget(task.target).replace(/\//g, "\\")}"
-$mirror = ${task.mirror ? "$true" : "$false"}  # Set to $true if you want to mirror the directories
-
-$logPath = "$env:ProgramData\\houston-backups\\logs"
-if (-not (Test-Path $logPath)) {
-  New-Item -ItemType Directory -Force -Path $logPath | Out-Null
-}
-$logFile = "$logPath\\backup_task_${task.uuid}.log"
-
-$actionScript = @"
-@echo off
-setlocal EnableDelayedExpansion
-set LOG_FILE=%LOG_FILE%
-
-echo ===== %DATE% %TIME% Starting backup task: ${task.description} ===== >> "%LOG_FILE%" 2>&1
-
-for /f "delims=" %%O in ('"$batFile" $smbHost $smbShare $username $password') do (
-    set "json=%%O"
-)
-
-set "tempfile=%TEMP%\\json.txt"
-echo %json% > "%tempfile%"
-
-for /f %%D in ('powershell -NoProfile -Command "Get-Content -Raw '%tempfile%' | ConvertFrom-Json | Select-Object -ExpandProperty DriveLetter"') do (
-    set "drive=%%D"
-)
-
-del "%tempfile%"
-
-if not defined drive (
-    echo ERROR: Failed to mount SMB share >> "%LOG_FILE%"
-    exit /b 1
-)
-
-set "DEST_PATH=%drive%:${getSmbTargetFromSmbTarget(task.target).replace(/\//g, "\\")}"
-mkdir "!DEST_PATH!" >> "%LOG_FILE%" 2>&1
-xcopy "${task.source}" "!DEST_PATH!" /E /I /Y >> "%LOG_FILE%" 2>&1
-
-if !ERRORLEVEL! NEQ 0 (
-  echo ERROR: xcopy failed with code !ERRORLEVEL! at %TIME% >> "%LOG_FILE%"
-) else (
-  echo SUCCESS: Backup completed at %TIME% >> "%LOG_FILE%"
-)
-
-net use !drive!: /delete /y >> "%LOG_FILE%" 2>&1
-endlocal
-"@
-
-# Save script to a temp .bat file
-$tempScriptPath = "${getAppPath()}\\run_backup_task_${task.uuid}.bat"
-[System.IO.File]::WriteAllText($tempScriptPath, $actionScript)
-
-${this.scheduleToTaskTrigger(task.schedule)}
-
-$action = New-ScheduledTaskAction -Execute "cmd.exe" -Argument "/C \`"$tempScriptPath\`""
-
-$principal = New-ScheduledTaskPrincipal -UserId "$user" -LogonType S4U -RunLevel Highest
-
-$task = Register-ScheduledTask -Action $action -Trigger $taskTrigger -Principal $principal -TaskName "${TASK_ID}_${task.uuid}"
-
-${this.dailyTaskTriggerUpdate(task.schedule)}
-
-`;
-
-    return this.runScriptAdmin(powershellScript, "create_task");
+  async schedule(
+    task: BackUpTask,
+    username: string,
+    password: string
+  ): Promise<{ stdout: string; stderr: string }> {
+    await this.scheduleAllTasks([task], username, password);
+    return Promise.resolve({stdout: "", stderr: ""})
   }
 
   runNow(task: BackUpTask): Promise<{ stdout: string; stderr: string }> {
     const taskName = `${TASK_ID}_${task.uuid}`;
     const powerShellScript = `Start-ScheduledTask -TaskName "${taskName}"`;
 
-    return this.runScriptAdmin(powerShellScript, `run_task_${task.uuid}`);
+    return this.runScriptAdmin(powerShellScript, `run_task_${task.uuid}`)
+      .then((result) => {
+        if (result.stderr && result.stderr.trim() !== "") {
+          return Promise.reject({
+            message: `Scheduled task "${taskName}" may have failed to start.`,
+            ...result,
+          });
+        }
+        return result;
+      })
+      .catch((err: any) => {
+        return Promise.reject({
+          message: `Failed to start scheduled task "${taskName}"`,
+          stdout: err?.stdout ?? "",
+          stderr: err?.stderr ?? "",
+          code: err?.code ?? "unknown",
+        });
+      });
   }
-  
 
   addUserToBackupOperatorsGroup() {
     return `
@@ -355,40 +255,277 @@ if (-not $hasBatchLogon -or -not $hasServiceLogon) {
 }
 `
   }
+
+
   async scheduleAllTasks(
     tasks: BackUpTask[],
     username: string,
     password: string,
-    onProgress?: (step: number, total: number, message: string) => void
+    onProgress?: (done: number, total: number, msg: string) => void
   ): Promise<void> {
-    for (let i = 0; i < tasks.length; i++) {
-      const task = tasks[i];
-      await this.schedule(task, username, password);
-      if (onProgress) {
-        onProgress(i + 1, tasks.length, `Scheduled task for ${task.description}`);
+
+    const scriptsDir = path.join(process.env.ProgramData ?? 'C:\\ProgramData', 'houston-backups', 'scripts');
+    const credDir = path.join(process.env.ProgramData ?? 'C:\\ProgramData', 'houston-backups', 'credentials');
+
+    const psLines: string[] = [
+      `# Backup-Operators membership & rights`,
+      `$user = "$env:USERNAME"`,
+      `${this.addUserToBackupOperatorsGroup()}`,
+      `${this.getAddBackupGroupsToLogOnBatchAndService()}`,
+
+      `New-Item -ItemType Directory -Force -Path "${scriptsDir}" | Out-Null`,
+      `New-Item -ItemType Directory -Force -Path "${credDir}"   | Out-Null`
+    ];
+
+    tasks.forEach((t, idx) => {
+      console.log(t)
+
+      const [smbHost, smbSharePath] = t.target.split(':');
+      const smbShare = smbSharePath.split('/')[0];
+      // const target = getSmbTargetFromSmbTarget(task.target);
+      t.host = smbHost;
+      t.share = smbShare;
+
+      const credFile = path.join(credDir, `${smbShare}.cred`).replace(/\\/g, '\\\\');
+      const batPathEsc = this.scriptPath(t.uuid).replace(/\\/g, '\\\\');
+
+      /* 1️⃣  cred file (idempotent) */
+      psLines.push(`"username=${username}\n` + `" | Out-File -Encoding ascii -NoNewline -Force "${credFile}"`);
+      psLines.push(`"password=${password}` + `" | Out-File -Append  -Encoding ascii "${credFile}"`);
+
+      /* 2️⃣  BAT file */
+      const batTxt = this.buildActionBat(t);
+      psLines.push(`[IO.File]::WriteAllText("${batPathEsc}", @'\n${batTxt}\n'@)`);
+
+      /* 3️⃣  ScheduledTask */
+      psLines.push(this.scheduleToTaskTrigger(t.schedule));
+
+      if (t.schedule.repeatFrequency == 'month'){
+
+        psLines.push(`
+          $TASK_TRIGGER_MONTHLY = 4
+          $TASK_ACTION_EXEC = 0
+          $TASK_CREATE_OR_UPDATE = 6
+          $TASK_LOGON_S4U = 2
+          $TASK_RUNLEVEL_HIGHEST = 1
+
+          # 1.) Connect to the scheduler
+          $svc = New-Object -ComObject "Schedule.Service"
+          $svc.Connect()
+
+          # 2.) Grab the root task folder and create a new TaskDefinition
+          $root = $svc.GetFolder("\\")
+          $task = $svc.NewTask(0)
+
+          # 3.) Principal: use current user via S4U, with highest run level
+          $principal = $task.Principal
+          $principal.UserId = $env:USERNAME
+          $principal.LogonType = $TASK_LOGON_S4U
+          $principal.RunLevel = $TASK_RUNLEVEL_HIGHEST
+
+          # 4.) Task metadata
+          $task.RegistrationInfo.Description = "45 drives backup task"
+          $task.Settings.Enabled = $true
+
+          # 5.) Action execute .bat
+          $action = $task.Actions.Create(0)
+          $action.Path = "${batPathEsc}"
+
+          # 6.) Trigger: Monthly
+          $triggers = $task.Triggers
+          $trigger = $triggers.Create(4)
+          $trigger.StartBoundary = "${formatDateForTask2(t.schedule.startDate)}"
+          $trigger.DaysOfMonth = 1
+          $trigger.MonthsOfYear = 0x0FFF
+
+          # 7.) Register the task (no password needed for S4U)
+          $root.RegisterTaskDefinition(
+            "${TASK_ID}_${t.uuid}",
+            $task,
+            $TASK_CREATE_OR_UPDATE,
+            $env:USERNAME,
+            $null,
+            $TASK_LOGON_S4U
+          )
+          `)
+      } else {
+        psLines.push(`
+          $act  = New-ScheduledTaskAction -Execute 'cmd.exe' -Argument ('/C "{0}"' -f "${batPathEsc}")
+          $prin = New-ScheduledTaskPrincipal -UserId "$env:USERNAME" -LogonType S4U -RunLevel Highest
+          Register-ScheduledTask -TaskName "${TASK_ID}_${t.uuid}" -Action $act -Trigger $taskTrigger -Principal $prin
+        `);
       }
-    }
+
+      // progress ping (harmless in PS if nobody is listening)
+      if (onProgress) psLines.push(`Write-Host "PROGRESS:${idx + 1}"`);
+    });
+
+    await this.runScriptAdmin(psLines.join('\n'), 'bulk_schedule');
+
+    if (onProgress) onProgress(tasks.length, tasks.length, 'All tasks scheduled');
+  }
+  
+
+  /**
+ * Creates the literal text of the .bat file that a Scheduled Task will run.
+ * We keep it in one place so both `schedule()` and `scheduleAllTasks()` use the
+ * exact same payload.
+ */
+  private buildActionBat(
+    task: BackUpTask
+  ): string {
+    const mountBat = getMountSmbScript();
+
+    const credFile = path.join(
+      process.env.ProgramData || 'C:\\ProgramData',
+      'houston-backups',
+      'credentials',
+      `${task.share}.cred`
+    );
+
+    // remove any leading "\" so drive:\<path> is well-formed 
+    const rawDst = getSmbTargetFromSmbTarget(task.target)
+      .replace(/\//g, '\\')
+      .replace(/^\\/, '');
+
+    const logFile =
+      '%ProgramData%\\houston-backups\\logs\\backup_task_' +
+      task.uuid +
+      '.log';
+
+    return `
+  @echo off
+  setlocal enabledelayedexpansion
+  :: --- Houston backup task metadata (for reference) ---
+  :: uuid        = ${task.uuid}
+  :: description = ${task.description}
+  :: source      = ${task.source}
+  :: target      = ${rawDst}
+  :: mirror      = ${task.mirror}
+  :: START_DATE  = ${task.schedule.startDate.toISOString()}
+  :: SMB_HOST    = ${task.host}
+  :: SMB_SHARE   = ${task.share}
+  
+  :: --- export all four params as env vars ---
+  set "CRED_FILE=${credFile}"
+  set "SMB_HOST=${task.host}"
+  set "SMB_SHARE=${task.share}"
+  
+  :: turn delayed expansion on so we can use !VAR!
+  setlocal EnableDelayedExpansion
+  
+  :: --- prepare paths ---
+  set "LOG=${logFile}"
+  set "SOURCE=${task.source}"
+  set "DST_PATH=${rawDst}"
+  set "mountBat=${mountBat}"
+  set "NETWORK_PATH=\\\\!SMB_HOST!\\!SMB_SHARE!"
+  
+  :: --- ensure log directory ---
+  if not exist "%ProgramData%\\houston-backups\\logs" (
+    mkdir "%ProgramData%\\houston-backups\\logs"
+  )
+  
+  :: --- run everything inside a single redirect block ---
+  echo ==========================================================
+  echo [!date! !time!]  START  ${task.uuid}
+  echo  Source      : !SOURCE!
+  echo  Target      : !DST_PATH!
+  echo  NetworkPath : !NETWORK_PATH!
+  echo ----------------------------------------------------------
+
+  :: --- DEBUG: show exactly what we're about to run ---
+  echo [DEBUG] mount command: cmd /c ""!mountBat!" "!SMB_HOST!" "!SMB_SHARE!" "!CRED_FILE!"" >> "%LOG%" 2>&1
+
+  :: --- actually run it & capture JSON + stderr ---
+  set "TEMP_JSON=%TEMP%\mount_result_%RANDOM%.txt"
+  cmd /c ""!mountBat!" "!SMB_HOST!" "!SMB_SHARE!" "!CRED_FILE!"" > "!TEMP_JSON!" 2>&1
+
+  :: Debug
+  echo [DEBUG] mount output: >> "%LOG%"
+  type "!TEMP_JSON!" >> "%LOG%"
+  echo !TEMP_JSON!
+
+  :: Extract line with DriveLetter
+  set "json="
+  for /f "delims=" %%L in ('findstr "DriveLetter" "!TEMP_JSON!"') do (
+      call set "json=%%L"
+  )
+
+  echo !json!
+
+  :: Write json to temp file
+  echo !json! > "%TEMP%\__extract.json"
+
+  :: Extract drive letter
+  for /f "tokens=2 delims=:" %%a in ('findstr /i "DriveLetter" "%TEMP%\__extract.json"') do (
+      set "temp=%%a"
+  )
+
+  set "temp=!temp:"=!"
+  set "temp=!temp: =!"
+  set "drive=!temp:~0,1!"
+
+  echo !drive!
+  :: Clean up temp file
+  del "%TEMP%\__extract.json" >nul 2>&1
+
+  :: Build DEST
+  set "DEST=!drive!:\!DST_PATH!"
+
+  echo !DEST!
+
+  rem --- copy payload with robocopy ---
+  mkdir "!DEST!" 2>nul
+  echo [INFO] Running robocopy ...
+  robocopy "!SOURCE!" "!DEST!" /E /Z /FFT /R:2 /W:5 /V /NP
+  set "RC=!errorlevel!"
+
+  rem --- clean up the mapping ---
+  timeout /t 2 >nul
+  net use !drive!: /delete /y >> "%LOG%" 2>&1
+
+  rem --- interpret robocopy return codes ---
+  rem Exit codes: 0 = no copy needed, 1 = some files copied, 8+ = errors
+  if !RC! GEQ 8 (
+    echo [ERROR] robocopy returned !RC! >> "%LOG%" 2>&1
+    exit /b !RC!
+  ) else (
+    echo [INFO] robocopy completed with code !RC! >> "%LOG%" 2>&1
+  )
+
+  :: --- final exit ---
+  echo [!date! !time!]  END    rc=!RC! >> "!LOG!" 2>&1
+  exit /b !RC!
+  `.trimStart();
   }
   
 
   async unschedule(task: BackUpTask): Promise<void> {
-    const taskName = `${TASK_ID}_${task.uuid}`;
-    const powershellScript = `Unregister-ScheduledTask -TaskName "${taskName}" -Confirm:$false`;
+    const { bat, log, cred } = this.getTaskPaths(task);
 
-    this.runScriptAdmin(powershellScript, "unschedule_task");
-
-    // Delete the log file after task removal
-    const logFile = path.join(process.env.ProgramData || "C:\\ProgramData", "houston-backups", "logs", `backup_task_${task.uuid}.log`);
-    if (fs.existsSync(logFile)) {
-      try {
-        fs.unlinkSync(logFile);
-        console.log(`🧹 Removed log file: ${logFile}`);
-      } catch (err: any) {
-        console.error(`❌ Failed to delete log file: ${logFile}`, err.message);
-      }
+    // one PS script to both unregister and delete
+    const ps = `
+    # unregister the scheduled task
+    if (Get-ScheduledTask -TaskName "${TASK_ID}_${task.uuid}" -ErrorAction SilentlyContinue) {
+      Unregister-ScheduledTask -TaskName "${TASK_ID}_${task.uuid}" -Confirm:$false
     }
-    
 
+    # delete the on-disk artifacts
+    Remove-Item -Path "${bat}"   -Force -ErrorAction SilentlyContinue
+    # Remove-Item -Path "${log}"   -Force -ErrorAction SilentlyContinue
+
+    # prune the credential file if no other task uses it
+    $share = "${task.share}"
+    $inUse = (Get-ScheduledTask | Where-Object TaskName -like "*${TASK_ID}_*" `
+      + `| ForEach-Object { $_.TaskName.Split('_')[-1] } `
+      + `| Where-Object { $_ -eq "${task.uuid}" }).Count -gt 0
+    if (-not $inUse) {
+      Remove-Item -Path "${cred}" -Force -ErrorAction SilentlyContinue
+    }
+  `;
+
+    await this.runScriptAdmin(ps, `unschedule_and_cleanup_${task.uuid}`);
   }
 
   protected dailyTaskTriggerUpdate(schedule: TaskSchedule) {
@@ -405,50 +542,51 @@ $task | Set-ScheduledTask
     }
   }
 
+  /** Unschedule & clean up MANY tasks in one go */
   async unscheduleSelectedTasks(tasks: BackUpTask[]): Promise<void> {
-    const deleteScripts = tasks.map(task => {
-      const taskName = `HoustonBackUp_${task.uuid}`;
-      return `
-  if (Get-ScheduledTask -TaskName "${taskName}" -ErrorAction SilentlyContinue) {
-    Unregister-ScheduledTask -TaskName "${taskName}" -Confirm:$false
-  } else {
-    Write-Host "⚠ Task '${taskName}' not found — skipping"
+    // build PS lines to unregister each task
+    const unregisterLines = tasks.map(t =>
+      `if (Get-ScheduledTask -TaskName "${TASK_ID}_${t.uuid}" -ErrorAction SilentlyContinue) { ` +
+      `Unregister-ScheduledTask -TaskName "${TASK_ID}_${t.uuid}" -Confirm:$false }`
+    );
+
+    // collect all file paths
+    const bats = tasks.map(t => `"${this.getTaskPaths(t).bat}"`);
+    const logs = tasks.map(t => `"${this.getTaskPaths(t).log}"`);
+    const creds = Array.from(
+      new Set(tasks.map(t => this.getTaskPaths(t).cred))
+    ).map(p => `"${p}"`);
+
+    // combine into one PS blob
+    const ps = [
+      '# — unregister all selected tasks',
+      ...unregisterLines,
+      '',
+      '# — delete .bat scripts',
+      `Remove-Item -Path ${bats.join(', ')} -Force -ErrorAction SilentlyContinue`,
+      '',
+      // '# — delete .log files',
+      // `Remove-Item -Path ${logs.join(', ')} -Force -ErrorAction SilentlyContinue`,
+      '',
+      '# — delete orphaned .cred files',
+      `Remove-Item -Path ${creds.join(', ')} -Force -ErrorAction SilentlyContinue`
+    ].join('\n');
+
+    // run it once as admin
+    await this.runScriptAdmin(ps, 'bulk_unschedule_and_cleanup');
   }
-  `;
-    }).join("\n");
 
-    try {
-      await this.runScriptAdmin(deleteScripts, "bulk_unschedule_tasks");
-    } catch (err) {
-      console.error("❌ Failed to unschedule selected tasks:", err);
-      throw err;
-    }
 
-    for (const task of tasks) {
-      const logFile = path.join(process.env.ProgramData || "C:\\ProgramData", "houston-backups", "logs", `backup_task_${task.uuid}.log`);
-      if (fs.existsSync(logFile)) {
-        try {
-          fs.unlinkSync(logFile);
-          console.log(`🧹 Removed log file: ${logFile}`);
-        } catch (err: any) {
-          console.error(`❌ Failed to delete log file: ${logFile}`, err.message);
-        }
-      }
-    }
-    
-  }
-  
 
-  protected scheduleToTaskTrigger(sched: TaskSchedule): string | undefined {
-
-    console.log(sched);
-
+  protected scheduleToTaskTrigger(sched: TaskSchedule): string {
     const startDate = formatDateForTask(sched.startDate); // e.g., "2025-02-25 10:00:00"
-    switch (sched.repeatFrequency.toLowerCase()) {
+    switch (sched.repeatFrequency) {
       case "hour":
         return `
-$startTime = "${startDate}"
-$taskTrigger = New-ScheduledTaskTrigger -Daily -At $startTime
+$startTime   = "${startDate}"
+$taskTrigger = New-ScheduledTaskTrigger -Once -At $startTime
+$taskTrigger.Repetition.Interval  = "PT1H"
+$taskTrigger.Repetition.Duration  = "P100Y"
 `;
       case "day":
         return `
@@ -458,19 +596,14 @@ $taskTrigger = New-ScheduledTaskTrigger -At $startTime -Daily
       case "week":
         return `
 $startTime = "${startDate}"
-$taskTrigger = New-ScheduledTaskTrigger -At $startTime -Weekly
+$taskTrigger = New-ScheduledTaskTrigger -At $startTime -Daily -DaysInterval 7
 `;
       case "month":
-        return `
-$startTime = "${startDate}"
-$taskTrigger = New-ScheduledTaskTrigger -At $startTime -Monthly
-`;
-      default:
-        console.error("RepeatFrequency unknown", sched.repeatFrequency)
+        return ""
     }
   }
 
-  async updateSchedule(task: BackUpTask): Promise<void> {
+  async updateSchedule(task: BackUpTask, username: string, password: string): Promise<void> {
     const taskName = `${TASK_ID}_${task.uuid}`;
 
     const deleteScript = `
@@ -486,7 +619,7 @@ if (Get-ScheduledTask -TaskName "${taskName}" -ErrorAction SilentlyContinue) {
       await this.runScriptAdmin(deleteScript, `delete_${task.uuid}`);
 
       // Step 2: Recreate with new schedule
-      await this.schedule(task, "", ""); // Provide actual username/password if required
+      await this.schedule(task, username, password); // Provide actual username/password if required
     } catch (err) {
       console.error(`❌ Failed to update schedule for ${taskName}:`, err);
       throw new Error(`Failed to update task: ${err instanceof Error ? err.message : String(err)}`);
@@ -612,11 +745,15 @@ if (Get-ScheduledTask -TaskName "${taskName}" -ErrorAction SilentlyContinue) {
 
       command = command.replace("/C ", '').replace("\"", "").replace("\"", "").trim();
 
-      console.log(command)
-
+      // console.log(command)
       // Path to your .bat file
       const batFilePath = command;
-
+      /* ----- bail out early if the target BAT is gone ----- */
+      if (!fs.existsSync(batFilePath)) {
+        log.warn(`[parseBackupCommand] BAT not found → skip task: ${batFilePath}`);
+        return null;
+      }
+      
       // Read the file
       const content = fs.readFileSync(batFilePath, 'utf8');
 
@@ -624,7 +761,7 @@ if (Get-ScheduledTask -TaskName "${taskName}" -ErrorAction SilentlyContinue) {
       const task: TaskData = {};
 
       // Regular expression to match the lines
-      const regex = /^::\s*(\w+)\s*=\s*(.*)$/gm;
+      const regex = /^\s*::\s*([A-Za-z0-9_]+)\s*=\s*(.*)$/gm;
 
       let match;
       while ((match = regex.exec(content)) !== null) {

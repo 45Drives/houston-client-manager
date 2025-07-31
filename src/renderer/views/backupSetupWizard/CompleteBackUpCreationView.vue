@@ -1,5 +1,5 @@
 <template>
-  <CardContainer>
+  <CardContainer class="overflow-y-auto min-h-0">
     <template #header class="!text-center">
       <div class="relative flex items-center justify-center h-18  w-full">
         <div class="absolute left-0 p-1 px-4 rounded-lg">
@@ -38,7 +38,7 @@
 
             <p class="mb-4 text-lg">NOTE: This computer and the server will have to turn on for backups to happen.</p>
 
-            <p class="mb-4 text-lg font-medium">Click "Finish" to complete the setup.</p>
+            <p class="mb-4 text-lg font-medium">Click "Go To Backup Manager" or "Setup More Storage Servers" to complete the setup.</p>
           </div>
         </div>
 
@@ -47,9 +47,15 @@
 
     <!-- Go to Home Button (visible once complete) -->
     <template #footer>
+
       <div class="button-group-row justify-end">
-        <button :disabled="setupComplete !== 'yes'" class="btn btn-primary w-40 h-20" @click="goHome">{{ "Finish!"
-          }}</button>
+
+        <button :disabled="setupComplete !== 'yes'" class="btn btn-primary w-40 h-20" @click="goToBackupWizard">{{
+          "Go To Backup Manager" }}</button>
+
+        <button :disabled="setupComplete !== 'yes'" class="btn btn-secondary w-40 h-20" @click="goToSetupWizard">{{
+          "Setup More Storage Servers" }}</button>
+
       </div>
     </template>
 
@@ -78,8 +84,8 @@ watch(setupComplete, (value) => {
   }
 });
 
-function goHome(): void {
-  console.log("before clearing: ", backUpSetupConfig)
+function goToBackupWizard(): void {
+  // console.log("before clearing: ", backUpSetupConfig)
 
   if (backUpSetupConfig) {
     for (const key in backUpSetupConfig) {
@@ -93,9 +99,18 @@ function goHome(): void {
     }
   }
 
-  console.log("after clearing: ", backUpSetupConfig);
+  // console.log("after clearing: ", backUpSetupConfig);
   reset();  // Assuming this is the wizard reset
 }
+
+
+function goToSetupWizard(): void {
+  IPCRouter.getInstance().send('renderer', 'action', JSON.stringify({
+    type: 'show_wizard',
+    wizard: 'storage'
+  }));
+}
+
 
 function handleActionEvent(data: string) {
   try {
@@ -148,13 +163,13 @@ onBeforeUnmount(() => {
 useEnterToAdvance(
   () => {
     if (setupComplete.value === "yes") {
-      goHome(); // Press Enter
+      goToBackupWizard(); // Press Enter
     }
   },
   300,
   () => {
     if (setupComplete.value === "yes") {
-      goHome(); // ArrowRight = Finish
+      goToBackupWizard(); // ArrowRight = Finish
     }
   },
   undefined // no need to handle ArrowLeft on this screen
