@@ -1,5 +1,5 @@
 <template>
-  <CardContainer>
+  <CardContainer class="overflow-y-auto min-h-0">
     <template #header>
       <div class="relative flex items-center justify-center h-18  w-full">
         <div class="absolute left-0 p-1 px-4 rounded-lg">
@@ -71,16 +71,21 @@
 <script setup lang="ts">
 import { BackUpTask } from '@45drives/houston-common-lib';
 import CardContainer from '../../components/CardContainer.vue';
-import { useWizardSteps, DynamicBrandingLogo, confirm, useEnterToAdvance } from '@45drives/houston-common-ui';
+import { useWizardSteps, DynamicBrandingLogo, useEnterToAdvance } from '@45drives/houston-common-ui';
 import BackUpListView from './BackUpListView.vue';
 import GlobalSetupWizardMenu from '../../components/GlobalSetupWizardMenu.vue';
-import { inject, ref } from 'vue';
-import { divisionCodeInjectionKey } from '../../keys/injection-keys';
+import { inject, provide, reactive, ref } from 'vue';
+import { divisionCodeInjectionKey, reviewBackUpSetupKey } from '../../keys/injection-keys';
 const division = inject(divisionCodeInjectionKey);
+const reviewBackup = inject(reviewBackUpSetupKey);
 
 const selectedBackUpTasks = ref<BackUpTask[]>([]);
 const handleBackUpTaskSelected = (tasks: BackUpTask[]) => {
   selectedBackUpTasks.value = tasks;
+  if (reviewBackup) {
+
+    reviewBackup.tasks = tasks;
+  }
 };
 
 const backUpListRef = ref();

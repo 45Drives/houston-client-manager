@@ -18,7 +18,7 @@ import SummaryView from './SummaryView.vue';
 import CustomizeBackupView from './CustomizeBackupView.vue';
 import CompleteBackUpCreationView from './CompleteBackUpCreationView.vue';
 import { provide, reactive } from 'vue';
-import { backUpSetupConfigKey } from '../../keys/injection-keys';
+import { backUpSetupConfigKey, reviewBackUpSetupKey } from '../../keys/injection-keys';
 import EnterSmbCredBackUpSetupView from './EnterSmbCredBackUpSetupView.vue';
 
 const props = defineProps<{
@@ -32,8 +32,10 @@ provide(backUpSetupConfigKey, reactive({
   password: "",
 }))
 
+provide(reviewBackUpSetupKey, reactive({ tasks: [] }))
+
+
 const steps: WizardStep[] = [
-  // { label: "Restore Backups", component: RestoreBackupsView }, //0
   { label: "Welcome", component: WelcomeView }, //0
   { label: "Manage Backups", component: ChooseManageView, nextStep: (data) => (data.choice === "createBackup" ? 2 : 3) }, //1
   { label: "Backup Setup Option", component: ChooseDifficultyView, nextStep: (data) => (data.choice === "simple" ? 5 : 6)},//2

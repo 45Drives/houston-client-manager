@@ -1,5 +1,5 @@
 <template>
-  <CardContainer>
+  <CardContainer class="overflow-y-auto min-h-0">
     <!-- Header -->
     <template #header>
       <div class="relative flex items-center justify-center h-18  w-full">
@@ -27,7 +27,7 @@
         <!-- Server Selection -->
         <div class="w-full lg:w-2/5">
           <HoustonServerListView class="w-full text-xl" :filterOutStorageSetupComplete="false"
-            @serverSelected="handleServerSelected" />
+            @serverSelected="handleServerSelected" :selectedServer="restoreBackUpData.server" />
         </div>
 
         <!-- Username & Password -->

@@ -1,7 +1,5 @@
 <template>
   <div class="flex flex-col">
-    <div v-if="backUpTasks.length == 0" class="spinner"></div>
-
     <div class="">
       <div class="grid gap-2" :class="{
         'grid-cols-1': backUpTasks.length <= 2,
@@ -9,8 +7,30 @@
         'lg:grid-cols-3': backUpTasks.length >= 5
       }">
 
+        <div>
+          Refresh the list of tasks. You maybe be prompted for access.
+          <button class="btn btn-secondary text-sm relative" @click.stop="fetchBackupTasks()">
+            <!-- Edit Schedule -->
+            Refresh List
+          </button>
+        </div>
+
+        <div v-if="isLoading" class="w-full h-[300px] flex justify-center items-center" :class="{
+          'col-span-1': backUpTasks.length <= 2,
+          'col-span-2': backUpTasks.length >= 3,
+          'col-span-3': backUpTasks.length >= 5
+        }">
+          <div class="spinner"></div>
+        </div>
+        <!-- <div v-if="isLoading"
+                class="flex justify-center items-center w-full col-span-1 md:col-span-2 lg:col-span-3 min-h-[200px]">
+              <div class="spinner"></div>
+            </div> -->
+        <div v-else-if="backUpTasks.length === 0" class="text-center py-8">
+          No Tasks Found
+        </div>
         <!-- Backup Card -->
-        <div v-for="task in backUpTasks" :key="task.uuid"
+        <div v-else v-for="task in backUpTasks" :key="task.uuid"
           class="relative border-4 rounded-lg shadow-sm p-2 space-y-2 cursor-pointer items-center bg-default"
           :class="[selectedBackUps.some(t => t.uuid === task.uuid) ? 'border-primary' : 'border-default']"
           @click="toggleSelection(task)">
@@ -28,31 +48,30 @@
 
             <div>
               <div class="text-label" :title="task.target">Backup Location</div>
-              <div class="px-2 py-1 text-sm truncate"
-                :title="`${task.host}:${task.share}`">
-                {{ task.host}}:{{task.share }}
+              <div class="px-2 py-1 text-sm truncate" :title="`${task.host}:${task.share}`">
+                {{ task.host }}:{{ task.share }}
               </div>
               <div class="px-2 py-1 text-sm truncate" :title="task.target">
                 {{ task.target }}
               </div>
             </div>
 
-            <div class="text-xs font-medium" :class="{
+            <!-- <div class="text-xs font-medium" :class="{
               'text-success': task.status === 'online',
               'text-warning': task.status === 'missing_folder',
               'text-error': task.status && task.status !== 'online' && task.status !== 'missing_folder'
             }">
               Status: <span>{{ getTaskStatusText(task) }}</span>
-            </div>
+            </div> -->
 
             <div class="text-feedback font-semibold pt-2">
-              Backup will happen
-              {{ formatFrequency(task.schedule.repeatFrequency) }}
-              at
-              {{ task.schedule.startDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }}
-              starting
-              {{ task.schedule.startDate.toDateString() }}
+              Next backup will occur at
+              {{ getNextBackupDate(task.schedule.startDate, task.schedule.repeatFrequency).toLocaleString([], {
+                weekday: 'short', year: 'numeric', month: 'short', day: 'numeric',
+                hour: '2-digit', minute: '2-digit'
+              }) }} ({{ formatFrequency(task.schedule.repeatFrequency) }})
             </div>
+
           </div>
           <div class="flex justify-between items-center pt-2">
             <button class="btn btn-secondary text-sm relative" @click.stop="editSchedule(task)">
@@ -68,10 +87,6 @@
             </button>
           </div>
         </div>
-
-        <div v-if="backUpTasks.length < 1">
-          No Tasks Found
-        </div>
       </div>
     </div>
   </div>
@@ -83,18 +98,25 @@
         class="border-2 border-default rounded-md w-full" />
     </div>
   </Modal>
+  <CredentialsModal ref="credsModalRef" />
 </template>
 
 
 <script setup lang="ts">
-import { nextTick, onActivated, onDeactivated, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
+import { inject, nextTick, onActivated, onDeactivated, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
 import { BackUpTask, IPCRouter, unwrap } from '@45drives/houston-common-lib';
 import { Modal, confirm } from '@45drives/houston-common-ui';
+import CredentialsModal from "../../components/CredentialsModal.vue";
 import { formatFrequency } from "./utils";
 import { SimpleCalendar } from "../../components/calendar";
 import { PencilIcon, TrashIcon } from '@heroicons/vue/24/outline';
+import { thisOsInjectionKey } from '../../keys/injection-keys';
 const backUpTasks = ref<BackUpTask[]>([]);
 const selectedBackUps = ref<BackUpTask[]>([]);
+const thisOs = inject(thisOsInjectionKey);
+const isLoading = ref(true);
+
+const credsModalRef = ref<InstanceType<typeof CredentialsModal> | null>(null);
 
 const selectedTaskSchedule = ref<any>();
 const showCalendar = ref(false);
@@ -127,7 +149,7 @@ watch(backUpTasks, () => {
 })
 
 function isScheduledButNotRunYet(task: BackUpTask): boolean {
-  return ( new Date(task.schedule.startDate).getTime() > Date.now() );
+  return (new Date(task.schedule.startDate).getTime() > Date.now());
 }
 
 const getTaskStatusText = (task: BackUpTask): string => {
@@ -138,7 +160,7 @@ const getTaskStatusText = (task: BackUpTask): string => {
       if (isScheduledButNotRunYet(task)) {
         return "Scheduled But Hasn't Run Yet"
       } else {
-        return "Unavailable (Folder Missing)";
+        return "Unavailable (Folder Missing) — has backup run yet?";
       }
     case 'offline_unreachable':
       return "Unavailable (Host Unreachable)";
@@ -154,6 +176,31 @@ const getTaskStatusText = (task: BackUpTask): string => {
   }
 };
 
+function getNextBackupDate(startDate: Date, repeatFrequency: string): Date {
+  const now = new Date();
+  let nextDate = new Date(startDate);
+
+  while (nextDate <= now) {
+    switch (repeatFrequency) {
+      case 'hour':
+        nextDate.setHours(nextDate.getHours() + 1);
+        break;
+      case 'day':
+        nextDate.setDate(nextDate.getDate() + 1);
+        break;
+      case 'week':
+        nextDate.setDate(nextDate.getDate() + 7);
+        break;
+      case 'month':
+        nextDate.setMonth(nextDate.getMonth() + 1);
+        break;
+      default:
+        break;
+    }
+  }
+
+  return nextDate;
+}
 
 
 // Define event emitter
@@ -168,13 +215,12 @@ const toggleSelection = (task: BackUpTask) => {
   if (index !== -1) {
     selectedBackUps.value.splice(index, 1);
   } else {
+    console.log('task selected:', task);
     selectedBackUps.value.push(task);
   }
 
   emit('backUpTaskSelected', [...selectedBackUps.value]);
 };
-
-onActivated(fetchBackupTasks); // Runs when the component is displayed again
 
 async function editSchedule(selectedBackUp: BackUpTask) {
   // Set the selected schedule for editing
@@ -193,15 +239,32 @@ async function editSchedule(selectedBackUp: BackUpTask) {
   if (scheduleConfirmed && selectedBackUp) {
     selectedBackUp.schedule.repeatFrequency = selectedTaskSchedule.value.repeatFrequency;
     selectedBackUp.schedule.startDate = selectedTaskSchedule.value.startDate;
-
-    console.log("Updating backup task with schedule:", selectedBackUp);
     IPCRouter.getInstance().send("backend", "action", JSON.stringify({
       type: "updateBackUpTask",
-      task: selectedBackUp
+      task: selectedBackUp,
+      username: "",
+      password: ""
     }));
   }
 }
 
+function waitForNextMessage(type: string): Promise<any> {
+  return new Promise((resolve) => {
+    const handler = (raw: string) => {
+      try {
+        const msg = JSON.parse(raw);
+        if (msg.type === type) {
+          IPCRouter.getInstance().removeEventListener('action', handler);
+          resolve(msg);
+        }
+      } catch (e) {
+        console.warn("Failed to parse IPC message in waitForNextMessage", raw);
+      }
+    };
+
+    IPCRouter.getInstance().addEventListener('action', handler);
+  });
+}
 
 let isHandlingNextClick = false;
 
@@ -230,19 +293,25 @@ const deleteThisTask = async (task: BackUpTask) => {
     emit('backUpTaskSelected', [...selectedBackUps.value]);
 
     pollingSuspended = true;
-    
-    // Send deletion to backend
+
+    // Send deletion
     IPCRouter.getInstance().send("backend", "action", JSON.stringify({
       type: "removeBackUpTask",
       task
     }));
-    // console.log("[Child] 🚀 Sent removeBackUpTask:", task);
 
-    // 🔄 Refresh tasks from backend (small delay gives backend time to complete)
-    setTimeout(() => {
-      fetchBackupTasks();
-      pollingSuspended = false;
-    }, 1500); // short delay to ensure backend cleanup is done
+    // ✅ Wait for updated tasks from backend
+    const result = await waitForNextMessage("sendBackupTasks");
+
+    result.tasks.forEach((task: BackUpTask) => {
+      if (task.schedule?.startDate) {
+        task.schedule.startDate = new Date(task.schedule.startDate);
+      }
+    });
+
+    backUpTasks.value = result.tasks;
+    pollingSuspended = false;
+
   } finally {
     // 🔓 Reallow clicks after dialog
     isHandlingNextClick = false;
@@ -276,7 +345,7 @@ const deleteSelectedTasks = async () => {
     selectedBackUps.value = [];
     emit('backUpTaskSelected', []);
 
-    // Send appropriate delete request
+    // Send deletion
     if (count === 1) {
       IPCRouter.getInstance().send("backend", "action", JSON.stringify({
         type: "removeBackUpTask",
@@ -289,11 +358,18 @@ const deleteSelectedTasks = async () => {
       }));
     }
 
-    // Wait a bit longer to ensure backend has time to remove the task(s)
-    setTimeout(() => {
-      fetchBackupTasks();
-      pollingSuspended = false;
-    }, 1500); // You can tweak this (1500–2000ms tends to be safe)
+    // ✅ Wait for updated tasks from backend
+    const result = await waitForNextMessage("sendBackupTasks");
+
+    result.tasks.forEach((task: BackUpTask) => {
+      if (task.schedule?.startDate) {
+        task.schedule.startDate = new Date(task.schedule.startDate);
+      }
+    });
+
+    backUpTasks.value = result.tasks;
+    pollingSuspended = false;
+
   } finally {
     // 🔓 Reallow clicks after dialog
     isHandlingNextClick = false;
@@ -309,11 +385,12 @@ function backupNow(task: BackUpTask) {
     task
   }));
 
-  // Optional: Refresh task statuses shortly after run attempt
+  shortPollingUntil = Date.now() + 30000;
+
   setTimeout(() => {
-    pollStatuses();
     pollingSuspended = false;
-  }, 8000); // Delay to allow for execution + remount
+  }, 8000); // delay resuming status check
+
 }
 
 
@@ -341,17 +418,18 @@ onMounted(() => {
 
       switch (msg.type) {
         case 'sendBackupTasks':
-          console.log("📥 Received backup tasks:", msg.tasks);
+          // console.log("📥 Received backup tasks:", msg.tasks);
           msg.tasks.forEach((task: BackUpTask) => {
             if (task.schedule?.startDate) {
               task.schedule.startDate = new Date(task.schedule.startDate);
             }
           });
           backUpTasks.value = msg.tasks;
+          isLoading.value = false;
           break;
 
         case 'backUpStatusesUpdated':
-          console.log("📦 Statuses updated:", msg.tasks);
+          // console.log("📦 Statuses updated:", msg.tasks);
           msg.tasks.forEach((updated: BackUpTask) => {
             const index = backUpTasks.value.findIndex(t => t.uuid === updated.uuid);
             if (index !== -1) {
@@ -370,10 +448,22 @@ onMounted(() => {
 
   // 🔄 Initial fetch
   fetchBackupTasks();
+  console.log("found backuptasks:", backUpTasks.value);
 
   // ⏲️ Start polling every 15 seconds
-  pollingInterval = setInterval(pollStatuses, 5000);
+  pollingInterval = setInterval(() => {
+    if (!pollingSuspended) {
+      pollStatuses();
+    }
+  }, getPollingInterval());
 });
+
+let shortPollingUntil = 0;
+
+function getPollingInterval(): number {
+  const now = Date.now();
+  return now < shortPollingUntil ? 5000 : 15000; // 5s when short-polling, else 15s
+}
 
 onUnmounted(() => {
   clearInterval(pollingInterval);
@@ -402,4 +492,21 @@ defineExpose({
 
 </script>
 
-<style scoped></style>
+<style scoped>
+/* Loading spinner */
+.spinner {
+  border: 4px solid rgba(0, 0, 0, 0.1);
+  border-left-color: #2c3e50;
+  border-radius: 50%;
+  width: 40px;
+  height: 40px;
+  animation: spin 1s linear infinite;
+  margin: 20px;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+</style>

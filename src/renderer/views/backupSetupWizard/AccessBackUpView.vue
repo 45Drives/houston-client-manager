@@ -1,5 +1,5 @@
 <template>
-  <CardContainer>
+  <CardContainer class="overflow-y-auto min-h-0">
     <template #header>
       <div class="relative flex items-center justify-center h-18  w-full">
         <div class="absolute left-0 p-1 px-4 rounded-lg">
@@ -22,7 +22,7 @@
         </p>
         <ul class="mt-2 list-disc list-inside text-blue-600">
           <li v-for="task in backupTasks" :key="task.uuid">
-            {{ task.host }}:{{ task.share }}{{ task.target }}
+            {{ task.host }}:{{ task.share }}{{thisOs == 'win' ? '\\\\' : ''}}{{ task.target }}
           </li>
         </ul>
         <p class="text-lg mt-2">
@@ -84,12 +84,14 @@ import { ref, computed, inject, watch } from 'vue';
 import { EyeIcon, EyeSlashIcon } from "@heroicons/vue/20/solid";
 import { useWizardSteps, DynamicBrandingLogo, useEnterToAdvance, useAutoFocus } from '@45drives/houston-common-ui';
 import { BackUpTask, IPCRouter } from '@45drives/houston-common-lib';
-import { divisionCodeInjectionKey } from '../../keys/injection-keys';
+import { divisionCodeInjectionKey, reviewBackUpSetupKey, thisOsInjectionKey } from '../../keys/injection-keys';
 useAutoFocus();
 const division = inject(divisionCodeInjectionKey);
 const { prevStep, wizardData } = useWizardSteps("backup");
+const thisOs = inject(thisOsInjectionKey);
 
-const backupTasks = computed(() => wizardData as BackUpTask[]);
+const reviewBackup = inject(reviewBackUpSetupKey);
+const backupTasks = computed(() => reviewBackup?.tasks as BackUpTask[]);
 
 const username = ref('');
 const password = ref('');
@@ -100,116 +102,145 @@ const togglePassword = () => {
 };
 
 // Check if the "Open" button should be disabled
+// const isButtonDisabled = computed(() => openingBackup.value);
 const isButtonDisabled = computed(() => !username.value || !password.value || openingBackup.value);
 
 // Method to handle the "Open" button action
 let smbMountListener: ((data: any) => void) | null = null;
 
-// const handleOpen = () => {
-//   if (!username.value || !password.value || backupTasks.value.length === 0) return;
-
-//   const host = backupTasks.value[0].host!;
-//   const share = backupTasks.value[0].share!;
-
-//   // Remove previous listener if exists
-//   if (smbMountListener) {
-//     IPCRouter.getInstance().removeEventListener("action", smbMountListener);
-//   }
-
-//   smbMountListener = (data) => {
-//     try {
-//       const response = JSON.parse(data);
-//       if (response.action === "mountSmbResult") {
-//         openingBackup.value = false;
-//         smbMountListener = null;
-
-//         const baseMountPath = `/mnt/houston-mounts/${share}`;
-//         for (const task of backupTasks.value) {
-//           const fullPath = `${baseMountPath}/${task.target}`;
-
-//           IPCRouter.getInstance().send("backend", "action", JSON.stringify({
-//             type: "openFolder",
-//             path: fullPath
-//           }));
-//         }
-//       }
-//     } catch (e) {
-//       console.error("Failed to parse SMB mount result:", e);
-//       openingBackup.value = false;
-//     }
-//   };
-
-//   IPCRouter.getInstance().addEventListener("action", smbMountListener);
-
-//   // Proceed with mount
-//   // const [host, fullPath] = backupTasks.value[0].target.split(":");
-//   // const share = fullPath.split("/")[0];
-
-//   IPCRouter.getInstance().send("backend", "mountSambaClient", {
-//     smb_host: host,
-//     smb_share: share,
-//     smb_user: username.value,
-//     smb_pass: password.value
-//   });
-
-//   openingBackup.value = true;
-// };
 
 const handleOpen = () => {
   if (!username.value || !password.value || backupTasks.value.length === 0) return;
 
-  if (smbMountListener) {
-    IPCRouter.getInstance().removeEventListener("action", smbMountListener);
-  }
-
   openingBackup.value = true;
 
-  const sharesMounted: Set<string> = new Set();
-  let remainingShares = new Set(backupTasks.value.map(task => `${task.host}:${task.share}`));
+  // 1) Track which share‑keys we’re still waiting on
+  //    Linux & macOS keys will be "host:share"
+  //    Windows keys will be just "share"
+  const remainingKeys = new Set<string>();
+  for (const t of backupTasks.value) {
+    if (thisOs!.value === 'win') {
+      remainingKeys.add(t.share!);
+    } else {
+      remainingKeys.add(`${t.host}:${t.share}`);
+    }
+  }
 
-  smbMountListener = (data) => {
+  // 2) Store real mount points here
+  const mountResults = new Map<string, string>();
+
+  // 3) Listen for your mount scripts’ JSON replies
+  smbMountListener = (raw) => {
     try {
-      const response = JSON.parse(data);
-      if (response.action === "mountSmbResult") {
-        const mountedShare = response.mountedShare; // pass this from backend
-        sharesMounted.add(mountedShare);
-        remainingShares.delete(mountedShare);
+      const msg = JSON.parse(raw);
+      if (msg.action !== 'mountSmbResult') return;
 
-        if (remainingShares.size === 0) {
-          openingBackup.value = false;
-          smbMountListener = null;
+      // Extract the JSON payload
+      const info = typeof msg.result === 'string'
+        ? JSON.parse(msg.result)
+        : msg.result;
 
-          for (const task of backupTasks.value) {
-            const subpath = task.target.split(":")[1].split("/").slice(1).join("/");
-            const mountPath = `/mnt/houston-mounts/${task.share}`;
-            const fullPath = `${mountPath}/${subpath}`;
+      // What the script actually returned as mount point:
+      const mountPoint = info.MountPoint
+        ?? (info.DriveLetter ? `${info.DriveLetter}:\\` : null);
 
-            IPCRouter.getInstance().send("backend", "action", JSON.stringify({
-              type: "openFolder",
-              path: fullPath
-            }));
-          }
-        }
+      // Figure out *which* key to assign this to…
+      let key: string | undefined;
+
+      if (thisOs!.value === 'win' && info.smb_share) {
+        // Windows .bat echoes {"DriveLetter":..., "smb_share": "..."}
+        key = info.smb_share;
+      }
+      else if (info.smb_server) {
+        // Linux & mac both echo smb_server + either "share" or "smb_share"
+        const serverHost = info.smb_server
+          .replace(/^smb:\/\//, '')
+          .split('/')[0];
+        const shareName = info.smb_share
+          ?? info.share
+          ?? mountPoint.split(/[\\/]/).filter(Boolean).pop();
+        key = `${serverHost}:${shareName}`;
+      }
+
+      if (key && mountPoint) {
+        mountResults.set(key, mountPoint);
+      } else {
+        console.warn("Could not derive key or mountPoint from:", info);
+      }
+
+      // Mark that key as done
+      if (key) remainingKeys.delete(key);
+
+      // Once they’re all mounted, open the folders
+      if (remainingKeys.size === 0) {
+        finishOpening();
       }
     } catch (e) {
-      console.error("Failed to parse SMB mount result:", e);
+      console.error("Failed to parse mountSmbResult:", e);
       openingBackup.value = false;
     }
   };
 
   IPCRouter.getInstance().addEventListener("action", smbMountListener);
 
-  // Initiate mount requests for each unique share
-  const uniqueShares = new Set(backupTasks.value.map(task => `${task.host}:${task.share}`));
+  // 4) Fire off mount requests
+  const seen = new Set<string>();
+  for (const task of backupTasks.value) {
+    const reqKey = `${task.host}:${task.share}`;
+    if (seen.has(reqKey)) continue;
+    seen.add(reqKey);
 
-  for (const entry of uniqueShares) {
-    const [host, share] = entry.split(":");
     IPCRouter.getInstance().send("backend", "mountSambaClient", {
-      smb_host: host,
-      smb_share: share,
+      smb_host: task.host!,
+      smb_share: task.share!,
       smb_user: username.value,
       smb_pass: password.value
     });
+  }
+
+  // 5) Only called once all mounts are done
+  function finishOpening() {
+    openingBackup.value = false;
+    IPCRouter.getInstance().removeEventListener("action", smbMountListener!);
+    smbMountListener = null;
+
+    for (const task of backupTasks.value) {
+      const normalized = task.target.startsWith('/')
+        ? task.target
+        : `/${task.target}`;
+
+      let finalPath: string;
+
+      if (thisOs!.value === 'win') {
+        // Windows: drive letter path + back‑slashes
+        // 1) Remove any leading "/" from the target
+        const winSubpath = task.target.replace(/^\/+/, "")
+          // 2) Replace all "/" → "\" in the remainder
+          .replace(/\//g, "\\");
+
+        // 3) Ensure mountPoint ends in exactly one backslash
+        let mp = mountResults.get(task.share!)!;        // e.g. "Y:\\"
+        mp = mp.replace(/[\\/]+$/, "\\");               // now "Y:\" exactly
+
+        // 4) Join them
+        finalPath = `${mp}${winSubpath}`;         // → "Y:\uuid…\Pictures
+
+      } else if (thisOs!.value === 'mac') {
+        // macOS: real /Volumes/<share> + the target
+        const mp = mountResults.get(`${task.host}:${task.share}`)!;
+        finalPath = `${mp}${normalized}`;
+
+      } else {
+        // Linux: keep your working code intact
+        finalPath = `/mnt/houston-mounts/${task.share}${normalized}`;
+      }
+
+      console.log("📂 Opening folder:", finalPath);
+      IPCRouter.getInstance().send("backend", "action", JSON.stringify({
+        type: "openFolder",
+        path: finalPath
+      }));
+    }
   }
 };
 

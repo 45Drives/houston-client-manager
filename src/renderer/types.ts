@@ -14,6 +14,13 @@ export interface Server {
     aliasStyle: string;
     chassisSize: string;
   };
+  manuallyAdded?: boolean;
+  fallbackAdded?: boolean;
 }
 
 export type DivisionType = 'default' | 'enterprise' | 'homelab' | 'professional';
+
+export interface DiscoveryState {
+  servers: Server[]
+  fallbackTriggered: boolean
+}

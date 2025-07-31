@@ -27,13 +27,17 @@
         allowpopups nodeintegration allow-same-origin allow-scripts partition="persist:authSession"
         webpreferences="javascript=yes,webSecurity=no,enable-cookies=true,nodeIntegration=false,contextIsolation=true"
         ref="webview" @did-finish-load="onWebViewLoaded" /> -->
+
       <webview v-show="showWebView && !loadingWebview && !waitingForServerReboot" id="myWebview" :src="currentUrl"
         partition="persist:authSession"
-        webpreferences="contextIsolation=true, nodeIntegration=false, enableRemoteModule=false" ref="webview"
+        webpreferences="contextIsolation=true, nodeIntegration=false, enableRemoteModule=false" ref="webview" allowpopups
         @did-finish-load="onWebViewLoaded" />
+      <!-- <webview :style="{ visibility: showWebView && !loadingWebview && !waitingForServerReboot ? 'visible' : 'hidden' }"
+        class="absolute inset-0 w-full h-full" id="myWebview" :src="currentUrl" partition="persist:authSession"
+        webpreferences="contextIsolation=true, nodeIntegration=false, enableRemoteModule=false" ref="webview"
+        @did-finish-load="onWebViewLoaded" /> -->
 
-      <div v-if="loadingWebview"
-        class="absolute inset-0 z-40 bg-default flex flex-col items-center justify-center">
+      <div v-if="loadingWebview" class="absolute inset-0 z-40 bg-default flex flex-col items-center justify-center">
         <p class="text-2xl text-center">
           <template v-if="loadingWebview">Give us a few while we login...</template>
         </p>
@@ -41,14 +45,14 @@
       </div>
 
       <!-- Page curl corner effect -->
-      <div v-if="!showWebView && currentWizard !== 'restore-backup'" class="page-corner-effect pointer-events-none">
-      </div>
+      <!-- <div v-if="!showWebView && currentWizard !== 'restore-backup'" class="page-corner-effect pointer-events-none">
+      </div> -->
 
       <!-- Double arrows -->
-      <div v-if="!showWebView && currentWizard !== 'restore-backup'"
+      <!-- <div v-if="!showWebView && currentWizard !== 'restore-backup'"
         class="double-arrow absolute bottom-4 right-4 z-10 text-gray-400 text-xl animate-pulse pointer-events-none">
         &raquo;
-      </div>
+      </div> -->
     </div>
   </div>
   <GlobalModalConfirm />
@@ -56,69 +60,97 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, provide, ref, unref, watch } from 'vue';
+import { nextTick, onMounted, provide, reactive, ref, unref, watch } from 'vue';
 import { useAdvancedModeState } from './composables/useAdvancedState';
-import { Server, DivisionType } from './types';
-import { useWizardSteps, GlobalModalConfirm, Notification, reportError, reportSuccess, useDarkModeState, NotificationView, pushNotification } from '@45drives/houston-common-ui'
+import { Server, DivisionType, DiscoveryState } from './types';
+import { GlobalModalConfirm, Notification, reportError, reportSuccess, useDarkModeState, NotificationView, pushNotification } from '@45drives/houston-common-ui'
 import StorageSetupWizard from './views/storageSetupWizard/Wizard.vue';
 import BackUpSetupWizard from './views/backupSetupWizard/Wizard.vue';
 import RestoreBackUpWizard from './views/restoreBackupWizard/Wizard.vue';
-import { divisionCodeInjectionKey, currentServerInjectionKey, currentWizardInjectionKey } from './keys/injection-keys';
-import { IPCMessageRouterRenderer, IPCRouter, server } from '@45drives/houston-common-lib';
+import { divisionCodeInjectionKey, currentServerInjectionKey, currentWizardInjectionKey, thisOsInjectionKey, discoveryStateInjectionKey } from './keys/injection-keys';
+import { IPCMessageRouterRenderer, IPCRouter } from '@45drives/houston-common-lib';
+
+const thisOS = ref<string>('');
+const setOs = (value: string) => {
+  thisOS.value = value;
+};
+
+const discoveryState = reactive<DiscoveryState>({
+  servers: [],
+  fallbackTriggered: false,
+})
+provide(discoveryStateInjectionKey, discoveryState)
+
+provide(thisOsInjectionKey, thisOS);
 
 IPCRouter.initRenderer();
 IPCRouter.getInstance().addEventListener("action", async (data) => {
-  console.log("action in renderer: ", data);
   try {
-    if (
-      data === "setup_wizard_go_back" ||
-      data === "show_storage_setup_wizard"
-    ) {
-      currentWizard.value = "storage";
-      showWebView.value = false;
-      openStorageSetup(null);
-    } else if (data === "show_backup_setup_wizard") {
-      currentWizard.value = "backup";
-      showWebView.value = false;
-      openStorageSetup(null);
-    } else if (data === "show_restore-backup_setup_wizard") {
-      currentWizard.value = "restore-backup";
-      showWebView.value = false;
-      openStorageSetup(null);
-    } else if (data === "show_houston") {
-      currentWizard.value = null;
-      showWebView.value = true;
+    const message = typeof data === 'string' ? JSON.parse(data) : data;
+    // console.log("📨 action in renderer:", message);
 
-      const serverIp = currentServer.value?.ip;
-      loadingWebview.value = true;
-      currentUrl.value = `https://${serverIp}:9090`;
-    }
+    switch (message.type) {
+      case 'show_wizard':
+      case 'wizard_go_back':
+        if (['storage', 'backup', 'restore-backup'].includes(message.wizard)) {
+          currentWizard.value = message.wizard;
+          showWebView.value = false;
+          openStorageSetup(null);
+        }
+        break;
 
-    if (data.endsWith("_reboot")) {
-      waitingForServerReboot.value = true;
-      currentWizard.value = "backup";
-      showWebView.value = false;
-      await waitForServerRebootAndShowWizard();
+      case 'reboot_and_show_wizard':
+        if (isRebootWatcherRunning.value) {
+          console.warn("Reboot watcher already running. Ignoring duplicate.");
+          return;
+        }
+        isRebootWatcherRunning.value = true;
+        currentWizard.value = message.wizard;
+        showWebView.value = false;
+        await waitForServerRebootAndShowWizard();
+        isRebootWatcherRunning.value = false;
+        break;
+
+      case 'show_webview':
+        currentWizard.value = null;
+        showWebView.value = true;
+        loadingWebview.value = true;
+        currentUrl.value = `https://${currentServer.value?.ip}:9090`;
+        break;
+
+      case 'reboot_and_show_webview':
+        if (isRebootWatcherRunning.value) {
+          console.warn("Reboot watcher already running. Ignoring duplicate.");
+          return;
+        }
+        isRebootWatcherRunning.value = true;
+        currentWizard.value = null;
+        showWebView.value = true;
+        await waitForServerRebootAndShowWizard();
+        isRebootWatcherRunning.value = false;
+        break;
+        
+      default:
+        // console.warn("Other action type:", message.type);
+        break;
     }
 
   } catch (error) {
-    console.log(error)
+    console.error("❌ IPC message parse or handling error:", data, error);
   }
 });
 
 
-const currentWizard = ref<'storage' | 'backup' | 'restore-backup' | null>('backup');
-provide(currentWizardInjectionKey, currentWizard);
+const isRebootWatcherRunning = ref(false);
 
-const showWizard = (type: 'storage' | 'backup' | 'restore-backup') => {
-  currentWizard.value = type;
-  showWebView.value = false;
-};
+const currentWizard = ref<'storage' | 'backup' | 'restore-backup' | null>('storage');
+provide(currentWizardInjectionKey, currentWizard);
 
 const waitingForServerReboot = ref(false);
 let rebootNotification: Notification | null = null;
 
 watch(waitingForServerReboot, () => {
+  
   if (waitingForServerReboot.value) {
     if (!rebootNotification) {
       rebootNotification = new Notification(
@@ -133,20 +165,23 @@ watch(waitingForServerReboot, () => {
     if (rebootNotification) {
       rebootNotification.remove();
       rebootNotification = null;
+      // pushNotification(new Notification('Server Available', `${currentServer.value?.ip} is now accessible!`, 'success', 8000));
     }
-    pushNotification(new Notification('Server Available', `${currentServer.value?.ip} is now accessible!`, 'success', 8000));
   }
-}, {});
+}, { immediate: true });
 
 
+let lastToastShownIp: string | null = null;
 
 async function waitForServerRebootAndShowWizard() {
-  const serverIp = currentServer.value?.ip;
+  const server = currentServer.value;
+  const serverIp = server?.ip;
   if (!serverIp) {
     console.error("No current server IP found!");
-    waitingForServerReboot.value = false;
     return;
   }
+
+  waitingForServerReboot.value = true;
 
   const pingUrl = `https://${serverIp}:9090/`;
   const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -155,36 +190,121 @@ async function waitForServerRebootAndShowWizard() {
 
   let serverUp = false;
   const startTime = Date.now();
-  const timeout = 5 * 60 * 1000; // 5 minutes max wait
+  const timeout = 5 * 60 * 1000;
 
   while (!serverUp && (Date.now() - startTime) < timeout) {
     try {
-      const res = await fetch(pingUrl, { method: 'GET' });
+      const res = await fetch(pingUrl, { method: 'GET', cache: 'no-store' });
       if (res.ok) {
-        serverUp = true;
-        console.log("✅ Server is back online!");
-      } else {
-        console.log("Server not ready yet. Retrying...");
+        await sleep(5000);
+        const confirmRes = await fetch(pingUrl, { method: 'GET', cache: 'no-store' });
+        if (confirmRes.ok) {
+          serverUp = true;
+          break;
+        }
       }
     } catch {
-      console.log("Server still down, retrying...");
+      // ignored
     }
-    if (!serverUp) await sleep(5000);
+
+    await sleep(5000);
   }
 
   if (serverUp) {
     waitingForServerReboot.value = false;
     currentWizard.value = 'backup';
-    useWizardSteps("backup").reset()
-    // currentWizard.value = 'storage';
-    // useWizardSteps("setup").reset();
+
+    await nextTick();
+
+    // ✅ Trigger the "Server Available" toast directly here
+    if (serverIp !== lastToastShownIp) {
+      pushNotification(new Notification(
+        'Server Available',
+        `${serverIp} is now accessible!`,
+        'success',
+        8000
+      ));
+      lastToastShownIp = serverIp;
+    }
+
   } else {
     waitingForServerReboot.value = false;
     reportError(new Error("Server did not come back online within timeout."));
     currentWizard.value = 'storage';
-    useWizardSteps("setup").reset();
+  }
+
+
+  if (rebootNotification) {
+    rebootNotification.remove();
+    rebootNotification = null;
   }
 }
+
+async function waitForServerReboot() {
+  const server = currentServer.value;
+  const serverIp = server?.ip;
+  if (!serverIp) {
+    console.error("No current server IP found!");
+    return;
+  }
+
+
+  const pingUrl = `https://${serverIp}:9090/`;
+  const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+  console.log(`Waiting for server at ${pingUrl} to reboot...`);
+
+  let serverUp = false;
+  const startTime = Date.now();
+  const timeout = 5 * 60 * 1000;
+
+  while (!serverUp && (Date.now() - startTime) < timeout) {
+    try {
+      const res = await fetch(pingUrl, { method: 'GET', cache: 'no-store' });
+      if (res.ok) {
+        await sleep(5000);
+        const confirmRes = await fetch(pingUrl, { method: 'GET', cache: 'no-store' });
+        if (confirmRes.ok) {
+          serverUp = true;
+          break;
+        }
+      }
+    } catch {
+      // ignored
+    }
+
+    await sleep(5000);
+  }
+
+  if (serverUp) {
+    await nextTick();
+
+    // ✅ Trigger the "Server Available" toast directly here
+    if (serverIp !== lastToastShownIp) {
+      pushNotification(new Notification(
+        'Server Available',
+        `${serverIp} is now accessible!`,
+        'success',
+        8000
+      ));
+      lastToastShownIp = serverIp;
+    }
+
+  } else {
+    waitingForServerReboot.value = false;
+    reportError(new Error("Server did not come back online within timeout."));
+    currentWizard.value = 'storage';
+  }
+
+  // console.log("[Wizard] setting waitingForServerReboot = false");
+
+  if (rebootNotification) {
+    rebootNotification.remove();
+    rebootNotification = null;
+  }
+}
+
+provide('reboot-function', waitForServerReboot);
 
 const currentTheme = ref("theme-default");
 
@@ -194,7 +314,7 @@ const aliasStyleToTheme: Record<string, string> = {
 };
 
 function applyThemeFromAliasStyle(aliasStyle?: string) {
-  console.log('detected alias style:', aliasStyle);
+  // console.log('detected alias style:', aliasStyle);
   const normalized = aliasStyle?.toLowerCase() || '';
   const themeClass = aliasStyleToTheme[normalized] || 'theme-default';
 
@@ -208,10 +328,10 @@ function applyThemeFromAliasStyle(aliasStyle?: string) {
   currentTheme.value = themeClass;
 }
 
-const isDev = ref(true);
+const isDev = ref(false);
 
-window.electron.ipcRenderer.invoke('is-dev').then(value => isDev.value = value);
-console.log(window.electron.ipcRenderer);
+// window.electron.ipcRenderer.invoke('is-dev').then(value => isDev.value = value);
+// console.log(window.electron.ipcRenderer);
 
 const darkModeState = useDarkModeState();
 
@@ -244,7 +364,7 @@ function isJsonString(str: string) {
 }
 
 window.electron.ipcRenderer.on('notification', (_event, message: string) => {
-  console.log("[Renderer] 🔔 Received notification:", message);
+  // console.log("[Renderer] 🔔 Received notification:", message);
 
   if (message.startsWith("Error")) {
     reportError(new Error(message));
@@ -265,16 +385,80 @@ window.electron.ipcRenderer.on('notification', (_event, message: string) => {
 });
 
 
-onMounted(() => {
+onMounted(async () => {
+  if (window.electron) {
+    const osString = await window.electron.getOS();
+    setOs(osString);
+
+    console.log("[DEBUG] OS:" + osString);
+    
+    // IPCRouter.getInstance().send('backend', 'action', 'requestBackUpTasks');
+    
+  }
+  
   setTimeout(() => {
     scanningNetworkForServers.value = false;
   }, 7000);
+
+  window.electron.ipcRenderer.on(
+    'discovered-servers',
+    (_evt, mdnsList: Server[]) => {
+      mdnsList.forEach(m => {
+        const idx = discoveryState.servers.findIndex(s => s.ip === m.ip)
+
+        if (idx > -1) {
+          const current = discoveryState.servers[idx];
+          const hasRealHostname = m.name && m.name !== m.ip;
+
+          // merge logic: only replace if the new one has better info
+          const updated = {
+            ...current,
+            ...m,
+            name: hasRealHostname ? m.name : current.name,
+            fallbackAdded: m.fallbackAdded ?? (hasRealHostname ? false : current.fallbackAdded),
+          };
+
+          discoveryState.servers.splice(idx, 1, updated);
+        } else {
+          discoveryState.servers.push(m);
+        }
+      });
+      discoveryState.servers.sort((a, b) => {
+        if (a.name === a.ip && b.name !== b.ip) return 1;
+        if (a.name !== a.ip && b.name === b.ip) return -1;
+        return 0;
+      });
+    }
+  )
+
+  setTimeout(async () => {
+    if (discoveryState.fallbackTriggered) return
+    discoveryState.fallbackTriggered = true
+    try {
+      const fallback: Server[] = await window.electron.ipcRenderer.invoke('scan-network-fallback')
+      const toAdd = fallback.filter(fb =>
+        !discoveryState.servers.some(existing => existing.ip === fb.ip)
+      )
+      if (toAdd.length) {
+        discoveryState.servers.push(...toAdd)
+        pushNotification(new Notification(
+          'Fallback Discovery',
+          `Found ${toAdd.length} additional server(s) via IP scan.`,
+          'success',
+          6000
+        ))
+      }
+    } catch (err) {
+      console.error('Fallback scan failed:', err)
+      reportError(new Error('Fallback scan failed.'))
+    }
+  }, 1200)
 
   const updateTheme = () => {
     const found = Array.from(document.documentElement.classList).find(cls =>
       cls.startsWith("theme-")
     );
-    console.log('found:', found);
+    // console.log('found:', found);
     currentTheme.value = found || "theme-default";
     switch (currentTheme.value) {
       case 'theme-homelab':
@@ -321,9 +505,16 @@ window.electron.ipcRenderer.on('discovered-servers', (_event, discoveredServers:
     discoveredServersChecked = true;
     const anyServersNotSetup = discoveredServers.some((server) => server.status !== "complete");
     currentWizard.value = anyServersNotSetup ? 'storage' : 'backup';
+    // currentWizard.value = 'storage';
     showWebView.value = false;
   }
 
+});
+
+const manualCreds = ref<{ ip: string; username: string; password: string } | null>(null);
+
+window.electron.ipcRenderer.on('store-manual-creds', (_event, data) => {
+  manualCreds.value = data;
 });
 
 // Handle server click to open the website
@@ -332,9 +523,12 @@ const openStorageSetup = (server: Server | null) => {
   currentServer.value = server;
   let newUrl = "";
   if (server) {
-    const prodURL = 'super-simple-setup';
-    const devURL = 'super-simple-setup-test';
-    newUrl = `https://${server.ip}:9090/${(isDev.value ? devURL : prodURL)}#dark=${darkModeState.value}&advanced=${advancedState.value}&client_ip=${clientip.value}&server_ip=${server.ip}`;
+    // const prodURL = 'super-simple-setup';
+    // const devURL = 'super-simple-setup-test';
+    // newUrl = `https://${server.ip}:9090/${(isDev.value ? devURL : prodURL)}#dark=${darkModeState.value}&advanced=${advancedState.value}&client_ip=${clientip.value}&server_ip=${server.ip}`;
+
+    newUrl = `https://${server.ip}:9090/super-simple-setup#dark=${darkModeState.value}&advanced=${advancedState.value}&client_ip=${clientip.value}&server_ip=${server.ip}`;
+    // newUrl = `https://${server.ip}:9090/super-simple-setup-test#dark=${darkModeState.value}&advanced=${advancedState.value}&client_ip=${clientip.value}&server_ip=${server.ip}`;
 
   } else {
     currentUrl.value = "";
@@ -346,93 +540,94 @@ const openStorageSetup = (server: Server | null) => {
   }
 
 };
-
 const onWebViewLoaded = async () => {
+  const user = manualCreds.value?.username ?? "root";
+  const pass = manualCreds.value?.password ?? "45Dr!ves";
 
   const routerRenderer = IPCRouter.getInstance() as IPCMessageRouterRenderer;
-
   routerRenderer.setCockpitWebView(webview.value);
 
   if (currentUrl.value.endsWith(":9090")) {
     loadingWebview.value = false;
     webview.value.className = "h-[100vh] w-full";
+    webview.value.style.visibility = "visible";
     return;
   }
-  webview.value.executeJavaScript(`
-        new Promise((resolve, reject) => {
-    if (!document.querySelector("#login")) {
-      setTimeout(() => {
-        [...document.querySelectorAll('#main > div')].forEach((e) => {
-          if (e.id !== 'content') e.style.display = 'none';
-        });
 
-        [...document.querySelectorAll('#main > nav')].forEach((e) => {
-          if (e.id !== 'content') e.style.display = 'none';              });
+  const loginScript = `
+    new Promise((resolve, reject) => {
+      if (!document.querySelector("#login")) {
+        setTimeout(() => {
+          [...document.querySelectorAll('#main > div')].forEach((e) => {
+            if (e.id !== 'content') e.style.display = 'none';
+          });
 
-              document.querySelector('#main').style.gridTemplateAreas = '"header" "main"';
-              document.querySelector('#main').style.gridTemplateColumns = '1fr';
+          [...document.querySelectorAll('#main > nav')].forEach((e) => {
+            if (e.id !== 'content') e.style.display = 'none';
+          });
 
-              resolve("View modified and visible.");
-            }, 500);
-          
-          } else {
+          document.querySelector('#main').style.gridTemplateAreas = '"header" "main"';
+          document.querySelector('#main').style.gridTemplateColumns = '1fr';
 
-            console.log("Login UI showing")
-            const usernameField = document.querySelector("#login-user-input");
-            const passwordField = document.querySelector("#login-password-input");
-            const loginButton = document.querySelector("#login-button");
-            const loginForm  = document.querySelector("form");
+          resolve("View modified and visible.");
+        }, 500);
+      } else {
+        console.log("Login UI showing");
+        const usernameField = document.querySelector("#login-user-input");
+        const passwordField = document.querySelector("#login-password-input");
+        const loginButton = document.querySelector("#login-button");
+        const loginForm  = document.querySelector("form");
 
-            if (usernameField && passwordField && loginButton) {
-              usernameField.value = "root";  // Insert your username
-              passwordField.value = "password";  // Insert your password
+        if (usernameField && passwordField && loginButton) {
+          usernameField.value = "${user}";
+          passwordField.value = "${pass}";
 
-              // Dispatch input events to ensure the values are recognized
-              usernameField.dispatchEvent(new Event("input", { bubbles: true }));
-              passwordField.dispatchEvent(new Event("input", { bubbles: true }));
-              
-              // Watch for login result
-              const observer = new MutationObserver(() => {
-                const loginError = document.querySelector("#login-error-message");
-                if (loginError && loginError.textContent.includes("Wrong user name")) {
-                  observer.disconnect();
-                  [...document.querySelectorAll('#main > div')].forEach((e) => {
-                    if (e.id !== 'content') e.style.display = 'block';
-                  });
-                  reject("Login failed: Wrong user name or password.");
-                } else if (!document.querySelector("#login")) {
-                  observer.disconnect();
-                  resolve("Login successful: login form disappeared.");
-                }
+          usernameField.dispatchEvent(new Event("input", { bubbles: true }));
+          passwordField.dispatchEvent(new Event("input", { bubbles: true }));
+
+          const observer = new MutationObserver(() => {
+            const loginError = document.querySelector("#login-error-message");
+            if (loginError && loginError.textContent.includes("Wrong user name")) {
+              observer.disconnect();
+              [...document.querySelectorAll('#main > div')].forEach((e) => {
+                if (e.id !== 'content') e.style.display = 'block';
               });
-
-              observer.observe(document.body, { childList: true, subtree: true });
-              setTimeout(() => {
-                loginButton.click();
-                loginForm.submit(); // Submit the form programmatically
-              }, 500); // Small delay to ensure input is registered
-            } else {
-              console.error("Login fields or button not found.");
+              reject("Login failed: Wrong user name or password.");
+            } else if (!document.querySelector("#login")) {
+              observer.disconnect();
+              resolve("Login successful: login form disappeared.");
             }
-          }
-        });
-        `)
+          });
+
+          observer.observe(document.body, { childList: true, subtree: true });
+          setTimeout(() => {
+            loginButton.click();
+            loginForm.submit();
+          }, 500);
+        } else {
+          console.error("Login fields or button not found.");
+        }
+      }
+    });
+  `;
+
+  await webview.value.executeJavaScript(loginScript)
     .then((result: any) => {
-      console.log("result", result);
       loadingWebview.value = false;
       webview.value.className = "h-[100vh] w-full";
+      webview.value.style.visibility = "visible";
     })
     .catch((error: any) => {
-      console.error("Error:", error);
+      console.error("Webview login error:", error);
       loadingWebview.value = false;
       webview.value.className = "h-[100vh] w-full";
+      webview.value.style.visibility = "visible";
     });
 
-    if (isDev.value) {
-
-      webview.value.openDevTools();
-    }
-}
+  if (isDev.value) {
+    webview.value.openDevTools();
+  }
+};
 
 const onWizardComplete = (server: Server) => {
   const realServer = unref(server);
