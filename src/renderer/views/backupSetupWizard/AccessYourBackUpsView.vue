@@ -53,7 +53,8 @@
 
           <button @click="deleteSelectedTasks" class="btn btn-danger w-40 h-20"
             :disabled="selectedBackUpTasks.length === 0">
-            Cancel Selected Tasks
+            Delete Selected
+            <TrashIcon class="w-6 h-6 text-white" />
           </button>
 
           <button @click="proceedToNextStep" class="btn btn-primary w-40 h-20"
@@ -74,6 +75,7 @@ import CardContainer from '../../components/CardContainer.vue';
 import { useWizardSteps, DynamicBrandingLogo, useEnterToAdvance } from '@45drives/houston-common-ui';
 import BackUpListView from './BackUpListView.vue';
 import GlobalSetupWizardMenu from '../../components/GlobalSetupWizardMenu.vue';
+import { TrashIcon } from '@heroicons/vue/24/outline';
 import { inject, provide, reactive, ref } from 'vue';
 import { divisionCodeInjectionKey, reviewBackUpSetupKey } from '../../keys/injection-keys';
 const division = inject(divisionCodeInjectionKey);
