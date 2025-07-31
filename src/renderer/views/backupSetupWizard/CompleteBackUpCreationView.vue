@@ -26,20 +26,26 @@
           🔴 {{ error }}
         </div>
 
-        <div v-if="setupComplete === 'yes' && !error" class="flex justify-center">
-          <div class="text-left max-w-3xl">
-            <div class="checkmark text-center">✔ - DONE!</div>
-            <h2 class="text-2xl font-semibold mb-4">Backup Plan Configured</h2>
-            <p class="mb-4 text-lg">Your backup plan has been successfully set up and is now protecting your data
-              automatically.</p>
-            <p class="mb-4 text-lg">There’s nothing more to worry about—your files are safe and secure. Sit back, relax,
-              and let the scheduled backups do the work.</p>
-            <p class="mb-4 text-lg">Backups will continue to run as scheduled to ensure your data stays protected.</p>
-
-            <p class="mb-4 text-lg">NOTE: This computer and the server will have to turn on for backups to happen.</p>
-
-            <p class="mb-4 text-lg font-medium">Click "Go To Backup Manager" or "Setup More Storage Servers" to complete the setup.</p>
-          </div>
+        <div v-if="setupComplete === 'yes' && !error"
+          class="flex flex-col items-center text-left mt-4 px-4 py-6 max-w-3xl">
+          <div class="checkmark text-4xl mb-4">✔ - DONE!</div>
+          <p class="text-2xl mb-6 text-center">
+            Your Backup Plan is Now Active.
+          </p>
+          <p class="text-lg mb-4 text-center leading-relaxed">
+            All backup tasks have been successfully configured. Your data will now be protected automatically through
+            scheduled backups.
+          </p>
+          <p class="text-lg mb-4 text-center leading-relaxed">
+            You can now monitor and manage your backups through the <strong>Backup Manager</strong>, or configure
+            additional storage servers as needed.
+          </p>
+          <p class="text-lg mb-4 text-center leading-relaxed">
+            Backups require this computer and the backup server to be powered on at scheduled times.
+          </p>
+          <p class="text-lg text-center text-yellow-400" v-if="hostnameChanged">
+            Your server will reboot now to finalize the name change.
+          </p>
         </div>
 
       </div>

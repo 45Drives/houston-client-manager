@@ -7,10 +7,13 @@
         'lg:grid-cols-3': backUpTasks.length >= 5
       }">
 
-        <div>
+        <div :class="{
+          'col-span-1': backUpTasks.length <= 2,
+          'col-span-2': backUpTasks.length >= 3,
+          'col-span-3': backUpTasks.length >= 5
+        }">
           Refresh the list of tasks. You maybe be prompted for access.
           <button class="btn btn-secondary text-sm relative" @click.stop="fetchBackupTasks()">
-            <!-- Edit Schedule -->
             Refresh List
           </button>
         </div>
@@ -22,13 +25,11 @@
         }">
           <div class="spinner"></div>
         </div>
-        <!-- <div v-if="isLoading"
-                class="flex justify-center items-center w-full col-span-1 md:col-span-2 lg:col-span-3 min-h-[200px]">
-              <div class="spinner"></div>
-            </div> -->
+
         <div v-else-if="backUpTasks.length === 0" class="text-center py-8">
           No Tasks Found
         </div>
+        
         <!-- Backup Card -->
         <div v-else v-for="task in backUpTasks" :key="task.uuid"
           class="relative border-4 rounded-lg shadow-sm p-2 space-y-2 cursor-pointer items-center bg-default"
@@ -67,8 +68,8 @@
             <div class="text-feedback font-semibold pt-2">
               Next backup will occur at
               {{ getNextBackupDate(task.schedule.startDate, task.schedule.repeatFrequency).toLocaleString([], {
-                weekday: 'short', year: 'numeric', month: 'short', day: 'numeric',
-                hour: '2-digit', minute: '2-digit'
+              weekday: 'short', year: 'numeric', month: 'short', day: 'numeric',
+              hour: '2-digit', minute: '2-digit'
               }) }} ({{ formatFrequency(task.schedule.repeatFrequency) }})
             </div>
 

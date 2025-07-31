@@ -173,7 +173,7 @@ export class BackUpManagerLin implements BackUpManager {
     const finalCrontab = [...existing, ...cronEntries].join("\n") + "\n";
     execSync(`echo "${finalCrontab}" | crontab -`);
 
-    onProgress?.(total, total, "All tasks scheduled successfully.");
+    // onProgress?.(total, total, "All backup tasks scheduled successfully.");
   }
 
   applyCleanedCrontab(lines: string[]) {
