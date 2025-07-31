@@ -1,5 +1,5 @@
 <template>
-  <CardContainer class="overflow-y-auto min-h-0">
+  <CardContainer class="flex flex-col flex-grow h-full overflow-y-auto">
     <template #header>
       <div class="relative flex items-center justify-center h-18  w-full">
         <div class="absolute left-0 p-1 px-4 rounded-lg">
@@ -14,7 +14,7 @@
       </div>
     </template>
 
-    <div class="flex flex-col h-fit justify-center items-center text-left">
+    <div class="flex-1 flex flex-col h-fit w-full justify-center items-center text-center py-6">
       <p class="w-9/12 text-xl">
         You may have multiple 45Drives servers on your network that require setup.
       </p>
@@ -29,104 +29,98 @@
 
       <div class="overflow-hidden w-full -mt-2">
         <div class="max-h-[50vh] overflow-y-auto">
-          <!-- <HoustonServerListView class="w-1/3 px-5 justify-center text-xl" :filterOutStorageSetupComplete="true"
-            @serverSelected="handleServerSelected" /> -->
           <HoustonServerListView class="w-1/3 px-5 justify-center text-xl" :filterOutStorageSetupComplete="false"
             :key="serverListKey" :selectedServer="selectedServer" @serverSelected="handleServerSelected" />
         </div>
       </div>
-
-
       <br />
-
-      <!-- <p class="w-9/12 text-xl">
-        If your storage server is not appearing in the list above, please return to the Hardware Setup and ensure
-        all
-        steps were completed correctly.
-        <a href="#" @click.prevent="onRestartSetup" class="text-blue-600 hover:underline">Start Over</a>
-        Or, if you know the IP of an existing server you wish to manually add and re-initialize, enter it here: (and the
-        login credentials to connect, if so)
-      </p> -->
       <p class="w-9/12 text-xl text-center">
         If your storage server is not appearing in the list above, please return to the Hardware Setup and ensure
         all steps were completed correctly.
         <br />
         <a href="#" @click.prevent="onRestartSetup" class="text-blue-600 hover:underline">Start Over</a>
         <br>
-        <b>Otherwise you can manually add a server with the below steps.</b>
+        <b>Otherwise you can manually add a server by clicking below.</b>
+      </p>
+      <p class="text-center text-xl mt-1">
+        Once you have one of the boxes checked, click <b>NEXT</b>.
       </p>
 
-      <div class="bg-well p-2 rounded-md mt-2">
-        <p class="w-full text-xl">
-          If you have an existing server you wish to connect to and re-initialize, enter it here along
-          with root/admin login credentials.
-        </p>
-        <p class="w-full text-md mt-2 italic text-center">
-          Your credentials will only be used once to copy a secure SSH key and install required tools on the server if
-          needed. This make take a few minutes if nothing is installed yet.
-          <br />
-          This will setup <b>ZFS</b>, <b>Samba</b>, <b>Cockpit</b>, and the <b>45Drives Setup Module</b>.
-        </p>
+      <details class="w-9/12 mt-4 bg-well rounded-md p-2 shadow-sm group" v-bind:open="false">
+        <summary
+          class="text-xl text-left bg-default rounded-md p-1 font-semibold cursor-pointer outline-none focus:ring-2 focus:ring-yellow-500">
+          Add a Server Manually
+        </summary>
 
-        <div class="w-full flex flex-row items-center justify-center gap-6 mt-1">
-          <div class="w-64">
-            <input v-model="manualIp" type="text" placeholder="192.168.1.123" tabindex="1"
-              class="input-textlike border px-4 py-1 rounded text-xl w-full" />
-          </div>
+        <div class="mt-4">
+          <p class="w-full text-xl mb-1">
+            If you have an existing server you wish to connect to and re-initialize, enter it here along
+            with root/admin login credentials.
+          </p>
+          <p class="w-full text-md italic text-center">
+            Your credentials will only be used once to copy a secure SSH key and install required tools on the server if
+            needed. This may take a few minutes if nothing is installed yet.
+            <br />
+            This will setup <b>ZFS</b>, <b>Samba</b>, <b>Cockpit</b>, and the <b>45Drives Setup Module</b>.
+          </p>
 
-          <div class="w-64">
-            <input v-model="manualUsername" type="text" placeholder="root" tabindex="2" :class="[
-              'input-textlike px-4 py-1 rounded text-xl w-full border',
-              credsRequired && 'focus:ring-2 focus:ring-yellow-400 outline outline-2 outline-yellow-400'
-            ]" />
-          </div>
+          <div class="w-full flex flex-row items-center justify-center gap-6 mt-4">
+            <div class="w-64">
+              <input v-model="manualIp" type="text" placeholder="192.168.1.123" tabindex="1"
+                class="input-textlike border px-4 py-1 rounded text-xl w-full" />
+            </div>
 
-          <div class="w-64 relative">
-            <input v-model="manualPassword" v-enter-next :type="showPassword ? 'text' : 'password'" id="password"
-              tabindex="3" :class="[
+            <div class="w-64">
+              <input v-model="manualUsername" type="text" placeholder="root" tabindex="2" :class="[
                 'input-textlike px-4 py-1 rounded text-xl w-full border',
-              credsRequired && 'focus:ring-2 focus:ring-yellow-400 outline outline-2 outline-yellow-400'
-              ]" placeholder="••••••••" />
-            <button type="button" @click="togglePassword"
-              class="absolute right-3 top-1/2 transform -translate-y-1/2 text-muted">
-              <EyeIcon v-if="!showPassword" class="w-5 h-5" />
-              <EyeSlashIcon v-if="showPassword" class="w-5 h-5" />
-            </button>
-          </div>
+                credsRequired && 'focus:ring-2 focus:ring-yellow-400 outline outline-2 outline-yellow-400'
+              ]" />
+            </div>
 
-          <div class="button-group-row">
-            <button v-if="!selectedServer?.fallbackAdded" @click="addManualIp" :disabled="!canAddServer"
-              class="btn btn-primary px-6 py-1 text-xl whitespace-nowrap">
-              Add Server
-            </button>
-            <button v-else @click="saveServerCredentials(manualIp, manualUsername, manualPassword)" :disabled="!canUseCredentials"
-              class="btn btn-primary px-2 py-1 text-xl whitespace-nowrap">
-              Use Credentials
-            </button>
-            <button @click="onRescanServers" class="btn btn-secondary px-6 py-1 text-xl whitespace-nowrap">
-              Rescan Servers
-            </button>
+            <div class="w-64 relative">
+              <input v-model="manualPassword" v-enter-next :type="showPassword ? 'text' : 'password'" id="password"
+                tabindex="3" :class="[
+                  'input-textlike px-4 py-1 rounded text-xl w-full border',
+                  credsRequired && 'focus:ring-2 focus:ring-yellow-400 outline outline-2 outline-yellow-400'
+                ]" placeholder="••••••••" />
+              <button type="button" @click="togglePassword"
+                class="absolute right-3 top-1/2 transform -translate-y-1/2 text-muted">
+                <EyeIcon v-if="!showPassword" class="w-5 h-5" />
+                <EyeSlashIcon v-if="showPassword" class="w-5 h-5" />
+              </button>
+            </div>
+
+            <div class="button-group-row">
+              <button v-if="!selectedServer?.fallbackAdded" @click="addManualIp" :disabled="!canAddServer"
+                class="btn btn-primary px-6 py-1 text-xl whitespace-nowrap">
+                Add Server
+              </button>
+              <button v-else @click="saveServerCredentials(manualIp, manualUsername, manualPassword)"
+                :disabled="!canUseCredentials" class="btn btn-primary px-2 py-1 text-xl whitespace-nowrap">
+                Use Credentials
+              </button>
+              <button @click="onRescanServers" class="btn btn-secondary px-6 py-1 text-xl whitespace-nowrap">
+                Rescan Servers
+              </button>
+            </div>
           </div>
         </div>
 
         <p v-if="statusMessage" class="text-lg text-center mt-2">
-          {{ statusMessage }} 
+          {{ statusMessage }}
           <br />
-          Troubleshooting steps: <CommanderToolTip :width="1450" :message="`Troubleshoot Steps!
-          1.) Plugin monitor and keyboard into your server.
-          2.) Login to the user you want to use. On fresh machines the user is <b>root</b> and password is <b>45Dr!ves</b>.
-          3.) If using root make sure root login over SSH is enabled. nano /etc/ssh/sshd_config and look for PermitRootLogin yes
-          4.) Check if the server has internet access. ping google.ca
-          `" />
+          Troubleshooting steps:
+          <CommanderToolTip :width="1450" :message="`Troubleshoot Steps!
+        1.) Plugin monitor and keyboard into your server.
+        2.) Login to the user you want to use. On fresh machines the user is <b>root</b> and password is <b>45Dr!ves</b>.
+        3.) If using root make sure root login over SSH is enabled. nano /etc/ssh/sshd_config and look for PermitRootLogin yes
+        4.) Check if the server has internet access. ping google.ca
+        `" />
         </p>
-      </div>
+        <div v-if="isInstalling" class="justify-self-center spinner"></div>
+      </details>
 
-      <div v-if="isInstalling" class="justify-self-center spinner"></div>
-      <div v-else>
-        <p class="text-center text-xl mt-1">
-          Once you have one of the boxes checked, click <b>NEXT</b>.
-        </p>
-      </div>
+
     </div>
 
     <!-- Buttons -->

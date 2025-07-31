@@ -23,19 +23,10 @@
         <RestoreBackUpWizard id="restore-backup" :onComplete="onWizardComplete" />
       </div>
 
-      <!-- <webview v-show="showWebView && !loadingWebview && !waitingForServerReboot" id="myWebview" :src="currentUrl"
-        allowpopups nodeintegration allow-same-origin allow-scripts partition="persist:authSession"
-        webpreferences="javascript=yes,webSecurity=no,enable-cookies=true,nodeIntegration=false,contextIsolation=true"
-        ref="webview" @did-finish-load="onWebViewLoaded" /> -->
-
       <webview v-show="showWebView && !loadingWebview && !waitingForServerReboot" id="myWebview" :src="currentUrl"
         partition="persist:authSession"
         webpreferences="contextIsolation=true, nodeIntegration=false, enableRemoteModule=false" ref="webview" allowpopups
         @did-finish-load="onWebViewLoaded" />
-      <!-- <webview :style="{ visibility: showWebView && !loadingWebview && !waitingForServerReboot ? 'visible' : 'hidden' }"
-        class="absolute inset-0 w-full h-full" id="myWebview" :src="currentUrl" partition="persist:authSession"
-        webpreferences="contextIsolation=true, nodeIntegration=false, enableRemoteModule=false" ref="webview"
-        @did-finish-load="onWebViewLoaded" /> -->
 
       <div v-if="loadingWebview" class="absolute inset-0 z-40 bg-default flex flex-col items-center justify-center">
         <p class="text-2xl text-center">
@@ -44,15 +35,6 @@
         <div id="spinner" class="spinner"></div>
       </div>
 
-      <!-- Page curl corner effect -->
-      <!-- <div v-if="!showWebView && currentWizard !== 'restore-backup'" class="page-corner-effect pointer-events-none">
-      </div> -->
-
-      <!-- Double arrows -->
-      <!-- <div v-if="!showWebView && currentWizard !== 'restore-backup'"
-        class="double-arrow absolute bottom-4 right-4 z-10 text-gray-400 text-xl animate-pulse pointer-events-none">
-        &raquo;
-      </div> -->
     </div>
   </div>
   <GlobalModalConfirm />
@@ -110,23 +92,21 @@ IPCRouter.getInstance().addEventListener("action", async (data) => {
         await waitForServerRebootAndShowWizard();
         isRebootWatcherRunning.value = false;
         break;
-
       case 'show_webview':
         currentWizard.value = null;
-        showWebView.value = true;
-        loadingWebview.value = true;
-        currentUrl.value = `https://${currentServer.value?.ip}:9090`;
+        //   showWebView.value = true;
+        //   loadingWebview.value = true;
+        //   currentUrl.value = `https://${currentServer.value?.ip}:9090`;
+        const houstonUrl = `https://${currentServer.value?.ip}:9090`;
+        window.open(houstonUrl, '_blank', 'width=1200,height=800,noopener,noreferrer');
         break;
-
       case 'reboot_and_show_webview':
         if (isRebootWatcherRunning.value) {
           console.warn("Reboot watcher already running. Ignoring duplicate.");
           return;
         }
         isRebootWatcherRunning.value = true;
-        currentWizard.value = null;
-        showWebView.value = true;
-        await waitForServerRebootAndShowWizard();
+        await waitForServerRebootAndOpenHouston();
         isRebootWatcherRunning.value = false;
         break;
         
@@ -165,13 +145,79 @@ watch(waitingForServerReboot, () => {
     if (rebootNotification) {
       rebootNotification.remove();
       rebootNotification = null;
-      // pushNotification(new Notification('Server Available', `${currentServer.value?.ip} is now accessible!`, 'success', 8000));
     }
   }
 }, { immediate: true });
 
 
 let lastToastShownIp: string | null = null;
+
+async function waitForServerRebootAndOpenHouston() {
+  const server = currentServer.value;
+  const serverIp = server?.ip;
+  if (!serverIp) {
+    console.error("No current server IP found!");
+    return;
+  }
+
+  waitingForServerReboot.value = true;
+
+  const pingUrl = `https://${serverIp}:9090/`;
+  const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+  console.log(`Waiting for server at ${pingUrl} to reboot...`);
+
+  let serverUp = false;
+  const startTime = Date.now();
+  const timeout = 5 * 60 * 1000;
+
+  while (!serverUp && (Date.now() - startTime) < timeout) {
+    try {
+      const res = await fetch(pingUrl, { method: 'GET', cache: 'no-store' });
+      if (res.ok) {
+        await sleep(5000);
+        const confirmRes = await fetch(pingUrl, { method: 'GET', cache: 'no-store' });
+        if (confirmRes.ok) {
+          serverUp = true;
+          break;
+        }
+      }
+    } catch {
+      // ignored
+    }
+
+    await sleep(5000);
+  }
+
+  waitingForServerReboot.value = false;
+
+  if (serverUp) {
+    await nextTick();
+
+    const houstonUrl = `https://${serverIp}:9090`;
+    window.open(houstonUrl, '_blank', 'width=1200,height=800,noopener,noreferrer');
+
+    // ✅ Toast success once
+    if (serverIp !== lastToastShownIp) {
+      pushNotification(new Notification(
+        'Server Available',
+        `${serverIp} is now accessible!`,
+        'success',
+        8000
+      ));
+      lastToastShownIp = serverIp;
+    }
+
+  } else {
+    reportError(new Error("Server did not come back online within timeout."));
+    currentWizard.value = 'storage';
+  }
+
+  if (rebootNotification) {
+    rebootNotification.remove();
+    rebootNotification = null;
+  }
+}
 
 async function waitForServerRebootAndShowWizard() {
   const server = currentServer.value;
@@ -296,7 +342,6 @@ async function waitForServerReboot() {
     currentWizard.value = 'storage';
   }
 
-  // console.log("[Wizard] setting waitingForServerReboot = false");
 
   if (rebootNotification) {
     rebootNotification.remove();
@@ -672,40 +717,6 @@ const loginRequest = async (server: Server) => {
 
   100% {
     transform: rotate(360deg);
-  }
-}
-
-.page-corner-effect {
-  position: fixed;
-  bottom: 0;
-  right: 0;
-  width: 10%;
-  height: 40%;
-  background: linear-gradient(135deg, rgba(0, 0, 0, 0.4) 0%, rgba(0, 0, 0, 0.1) 100%);
-  clip-path: polygon(100% 100%, 0% 100%, 100% 0%);
-  z-index: 1;
-  transform: rotate(0deg);
-  opacity: 0.8;
-  pointer-events: none;
-}
-
-.double-arrow {
-  bottom: 10%;
-  font-size: 5rem;
-  animation: doubleArrowPulse 1.6s infinite ease-in-out;
-}
-
-@keyframes doubleArrowPulse {
-
-  0%,
-  100% {
-    transform: translateY(0);
-    opacity: 0.5;
-  }
-
-  50% {
-    transform: translateY(-6px);
-    opacity: 1;
   }
 }
 </style>
