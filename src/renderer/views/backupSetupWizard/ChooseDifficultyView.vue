@@ -6,8 +6,7 @@
           <DynamicBrandingLogo :division="division" />
         </div>
         <p class="text-3xl font-semibold text-center">
-          Choose Your Setup Option &nbsp;
-          <CommanderToolTip :message="`Choose how your storage server will be setup and configured.`" :width="600" />
+          Choose Your Backup Type
         </p>
         <div class="absolute right-0 top-1/2 -translate-y-1/2">
           <GlobalSetupWizardMenu />
