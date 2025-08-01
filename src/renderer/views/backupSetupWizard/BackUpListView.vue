@@ -412,46 +412,41 @@ IPCRouter.getInstance().addEventListener('action', (raw: string) => {
 
 let pollingInterval: ReturnType<typeof setInterval>;
 
+
+let ipcActionHandler: ((raw: string) => void) | null = null;
+
 onMounted(() => {
-  IPCRouter.getInstance().addEventListener('action', (raw: string) => {
+  // Set up event handler
+  ipcActionHandler = (raw: string) => {
     try {
       const msg = JSON.parse(raw);
-
-      switch (msg.type) {
-        case 'sendBackupTasks':
-          // console.log("📥 Received backup tasks:", msg.tasks);
-          msg.tasks.forEach((task: BackUpTask) => {
-            if (task.schedule?.startDate) {
-              task.schedule.startDate = new Date(task.schedule.startDate);
-            }
-          });
-          backUpTasks.value = msg.tasks;
-          isLoading.value = false;
-          break;
-
-        case 'backUpStatusesUpdated':
-          // console.log("📦 Statuses updated:", msg.tasks);
-          msg.tasks.forEach((updated: BackUpTask) => {
-            const index = backUpTasks.value.findIndex(t => t.uuid === updated.uuid);
-            if (index !== -1) {
-              backUpTasks.value[index].status = updated.status;
-            }
-          });
-          break;
-
-        default:
-          break;
+      if (msg.type === 'sendBackupTasks') {
+        msg.tasks.forEach((task: BackUpTask) => {
+          if (task.schedule?.startDate) {
+            task.schedule.startDate = new Date(task.schedule.startDate);
+          }
+        });
+        backUpTasks.value = msg.tasks;
+        isLoading.value = false;
+      } else if (msg.type === 'backUpStatusesUpdated') {
+        msg.tasks.forEach((updated: BackUpTask) => {
+          const index = backUpTasks.value.findIndex(t => t.uuid === updated.uuid);
+          if (index !== -1) {
+            backUpTasks.value[index].status = updated.status;
+          }
+        });
       }
     } catch (e) {
       console.warn("❌ Failed to parse IPC action message:", raw);
     }
-  });
+  };
 
-  // 🔄 Initial fetch
+  IPCRouter.getInstance().addEventListener('action', ipcActionHandler);
+
+  // Initial fetch
   fetchBackupTasks();
-  console.log("found backuptasks:", backUpTasks.value);
 
-  // ⏲️ Start polling every 15 seconds
+  // Polling
   pollingInterval = setInterval(() => {
     if (!pollingSuspended) {
       pollStatuses();
@@ -459,16 +454,24 @@ onMounted(() => {
   }, getPollingInterval());
 });
 
+onActivated(() => {
+  fetchBackupTasks(); // Just re-fetch when reactivated
+});
+
+onUnmounted(() => {
+  if (ipcActionHandler) {
+    IPCRouter.getInstance().removeEventListener('action', ipcActionHandler);
+  }
+  clearInterval(pollingInterval);
+});
+
+
 let shortPollingUntil = 0;
 
 function getPollingInterval(): number {
   const now = Date.now();
   return now < shortPollingUntil ? 5000 : 15000; // 5s when short-polling, else 15s
 }
-
-onUnmounted(() => {
-  clearInterval(pollingInterval);
-});
 
 onDeactivated(() => {
   clearInterval(pollingInterval);
