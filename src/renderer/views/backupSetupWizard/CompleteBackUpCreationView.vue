@@ -18,33 +18,34 @@
       <!-- Complete Section -->
       <div class="complete-section flex flex-col items-center justify-center text-center">
 
-        <div v-for="completedStep in completedSteps" class="w-full max-w-xl text-left">
-          <div class="smallcheckmark ">✔ - {{ completedStep.message }}</div>
+        <div class="flex flex-col space-y-4 mt-[2rem]">
+          <div class="overflow-y-auto max-h-[40vh] p-2 space-y-4">
+            <div v-for="completedStep in completedSteps" class="w-full max-w-xl text-left">
+              <div class="smallcheckmark ">✔ - {{ completedStep.message }}</div>
+            </div>
+          </div>
         </div>
-
+        
         <div v-if="error" class="text-red-500">
           🔴 {{ error }}
         </div>
 
         <div v-if="setupComplete === 'yes' && !error"
-          class="flex flex-col items-center text-left mt-4 px-4 py-6 max-w-3xl">
-          <div class="checkmark text-4xl mb-4">✔ - DONE!</div>
-          <p class="text-2xl mb-6 text-center">
+          class="flex flex-col items-center mt-1 px-4 py-4 max-w-6xl">
+          <div class="checkmark text-3xl mb-3">✔ - DONE!</div>
+          <p class="text-2xl mb-2 text-center">
             Your Backup Plan is Now Active.
           </p>
-          <p class="text-lg mb-4 text-center leading-relaxed">
+          <p class="text-lg mb-2 text-center leading-relaxed">
             All backup tasks have been successfully configured. Your data will now be protected automatically through
             scheduled backups.
           </p>
-          <p class="text-lg mb-4 text-center leading-relaxed">
+          <p class="text-lg mb-2 text-center leading-relaxed">
             You can now monitor and manage your backups through the <strong>Backup Manager</strong>, or configure
             additional storage servers as needed.
           </p>
-          <p class="text-lg mb-4 text-center leading-relaxed">
+          <p class="text-lg mb-2 text-center leading-relaxed">
             Backups require this computer and the backup server to be powered on at scheduled times.
-          </p>
-          <p class="text-lg text-center text-yellow-400" v-if="hostnameChanged">
-            Your server will reboot now to finalize the name change.
           </p>
         </div>
 
@@ -77,7 +78,7 @@ import { EasySetupProgress, IPCRouter } from "@45drives/houston-common-lib";
 import { backUpSetupConfigKey, divisionCodeInjectionKey } from "../../keys/injection-keys";
 import GlobalSetupWizardMenu from '../../components/GlobalSetupWizardMenu.vue';
 const division = inject(divisionCodeInjectionKey);
-const { reset } = useWizardSteps('backup');
+const { setStep } = useWizardSteps('backup');
 
 const setupComplete = ref<string>("no");
 const error = ref<string>();
@@ -106,7 +107,7 @@ function goToBackupWizard(): void {
   }
 
   // console.log("after clearing: ", backUpSetupConfig);
-  reset();  // Assuming this is the wizard reset
+  setStep(1);
 }
 
 
