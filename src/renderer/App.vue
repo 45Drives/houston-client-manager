@@ -42,7 +42,7 @@
 </template>
 
 <script setup lang="ts">
-import { nextTick, onMounted, provide, reactive, ref, unref, watch } from 'vue';
+import { nextTick, onMounted, onBeforeUnmount, provide, reactive, ref, unref, watch } from 'vue';
 import { useAdvancedModeState } from './composables/useAdvancedState';
 import { Server, DivisionType, DiscoveryState } from './types';
 import { GlobalModalConfirm, Notification, reportError, reportSuccess, useDarkModeState, NotificationView, pushNotification } from '@45drives/houston-common-ui'
@@ -66,60 +66,6 @@ provide(discoveryStateInjectionKey, discoveryState)
 provide(thisOsInjectionKey, thisOS);
 
 IPCRouter.initRenderer();
-IPCRouter.getInstance().addEventListener("action", async (data) => {
-  try {
-    const message = typeof data === 'string' ? JSON.parse(data) : data;
-    // console.log("📨 action in renderer:", message);
-
-    switch (message.type) {
-      case 'show_wizard':
-      case 'wizard_go_back':
-        if (['storage', 'backup', 'restore-backup'].includes(message.wizard)) {
-          currentWizard.value = message.wizard;
-          showWebView.value = false;
-          openStorageSetup(null);
-        }
-        break;
-
-      case 'reboot_and_show_wizard':
-        if (isRebootWatcherRunning.value) {
-          console.warn("Reboot watcher already running. Ignoring duplicate.");
-          return;
-        }
-        isRebootWatcherRunning.value = true;
-        currentWizard.value = message.wizard;
-        showWebView.value = false;
-        await waitForServerRebootAndShowWizard();
-        isRebootWatcherRunning.value = false;
-        break;
-      case 'show_webview':
-        currentWizard.value = null;
-        //   showWebView.value = true;
-        //   loadingWebview.value = true;
-        //   currentUrl.value = `https://${currentServer.value?.ip}:9090`;
-        const houstonUrl = `https://${currentServer.value?.ip}:9090`;
-        window.open(houstonUrl, '_blank', 'width=1200,height=800,noopener,noreferrer');
-        break;
-      case 'reboot_and_show_webview':
-        if (isRebootWatcherRunning.value) {
-          console.warn("Reboot watcher already running. Ignoring duplicate.");
-          return;
-        }
-        isRebootWatcherRunning.value = true;
-        await waitForServerRebootAndOpenHouston();
-        isRebootWatcherRunning.value = false;
-        break;
-        
-      default:
-        // console.warn("Other action type:", message.type);
-        break;
-    }
-
-  } catch (error) {
-    console.error("❌ IPC message parse or handling error:", data, error);
-  }
-});
-
 
 const isRebootWatcherRunning = ref(false);
 
@@ -149,6 +95,19 @@ watch(waitingForServerReboot, () => {
   }
 }, { immediate: true });
 
+let hasOpenedHouston = false;
+
+function openHoustonWindow() {
+  if (hasOpenedHouston) return;
+  hasOpenedHouston = true;
+
+  const url = `https://${currentServer.value?.ip}:9090`;
+  window.open(url, '_blank', 'width=1200,height=800,noopener,noreferrer');
+
+  setTimeout(() => {
+    hasOpenedHouston = false;
+  }, 5000);
+}
 
 let lastToastShownIp: string | null = null;
 
@@ -429,6 +388,7 @@ window.electron.ipcRenderer.on('notification', (_event, message: string) => {
   }
 });
 
+let actionListener: ((data: any) => void) | null = null;
 
 onMounted(async () => {
   if (window.electron) {
@@ -527,7 +487,64 @@ onMounted(async () => {
   });
 
   window.electron.ipcRenderer.send("renderer-ready", {});
+
+  const router = IPCRouter.getInstance();
+
+  if (!actionListener) {
+    actionListener = async (data: any) => {
+      try {
+        const message = typeof data === 'string' ? JSON.parse(data) : data;
+
+        switch (message.type) {
+          case 'show_wizard':
+          case 'wizard_go_back':
+            if (['storage', 'backup', 'restore-backup'].includes(message.wizard)) {
+              currentWizard.value = message.wizard;
+              showWebView.value = false;
+              openStorageSetup(null);
+            }
+            break;
+
+          case 'reboot_and_show_wizard':
+            if (isRebootWatcherRunning.value) return;
+            isRebootWatcherRunning.value = true;
+            currentWizard.value = message.wizard;
+            showWebView.value = false;
+            await waitForServerRebootAndShowWizard();
+            isRebootWatcherRunning.value = false;
+            break;
+
+          case 'show_webview':
+            currentWizard.value = null;
+            openHoustonWindow();
+            break;
+
+          case 'reboot_and_show_webview':
+            if (isRebootWatcherRunning.value) return;
+            isRebootWatcherRunning.value = true;
+            await waitForServerRebootAndOpenHouston();
+            isRebootWatcherRunning.value = false;
+            break;
+          default:
+            break;
+        }
+      } catch (err) {
+        console.error("❌ IPC action handler error:", err);
+      }
+    };
+
+    router.addEventListener("action", actionListener);
+  }
 });
+
+onBeforeUnmount(() => {
+  const router = IPCRouter.getInstance();
+  if (actionListener) {
+    router.removeEventListener("action", actionListener);
+    actionListener = null;
+  }
+});
+
 
 watch(currentTheme, (theme) => {
   switch (theme) {
