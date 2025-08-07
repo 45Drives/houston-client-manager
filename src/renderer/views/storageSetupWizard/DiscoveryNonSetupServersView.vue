@@ -55,11 +55,11 @@
         <div class="mt-4">
           <p class="w-full text-xl mb-1">
             If you have an existing server you wish to connect to and re-initialize, enter it here along
-            with root/admin login credentials.
+            with <b>root</b> login password.
           </p>
           <p class="w-full text-md italic text-center">
             Your credentials will only be used once to copy a secure SSH key and install required tools on the server if
-            needed. This may take a few minutes if nothing is installed yet.
+            needed. This may take a few minutes or several (depending on what is already installed).
             <br />
             This will setup <b>ZFS</b>, <b>Samba</b>, <b>Cockpit</b>, and the <b>45Drives Setup Module</b>.
           </p>
@@ -176,7 +176,7 @@ const selectedServer = ref<(Server & {
 
 const manualIp = ref('');
 const manuallyAddedIp = ref('');
-const manualUsername = ref('');
+const manualUsername = ref('root');
 const manualPassword = ref('');
 const manualCredentials = ref<Record<string, { username: string; password: string }>>({});
 
