@@ -148,8 +148,14 @@ const messageParentFolderAlreadyAdded = ref<InstanceType<typeof MessageDialog> |
 
 // const servers = ref<Server[]>([]);
 const discoveryState = inject<DiscoveryState>(discoveryStateInjectionKey)!
-const servers = computed(() => discoveryState.servers)
+// const servers = computed(() => discoveryState.servers)
 
+const servers = computed(() =>
+	discoveryState.servers.filter(server =>
+		server.setupComplete === true &&
+		server.status === 'complete'
+	)
+)
 
 const selectedTaskSchedule = ref<any>();
 

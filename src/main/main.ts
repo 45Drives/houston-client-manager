@@ -16,6 +16,7 @@ process.on('unhandledRejection', (reason, promise) => {
 });
 
 import { app, BrowserWindow, ipcMain, dialog, shell } from 'electron';
+import { autoUpdater } from 'electron-updater';
 import path, { join } from 'path';
 import mdns from 'multicast-dns';
 import os from 'os';
@@ -237,6 +238,10 @@ function createWindow() {
       event.sender.send("notification", msg);
     });
     bufferedNotifications = [];
+  });
+
+  ipcMain.on('check-for-updates', () => {
+    autoUpdater.checkForUpdatesAndNotify();
   });
 
   ipcMain.handle('install-cockpit-module', async (_event, { host, username, password }) => {
@@ -867,8 +872,54 @@ app.whenReady().then(() => {
   log.info("🟢 Logging initialized.");
   log.info("Log file path:", log.transports.file.getFile().path);
 
-  ipcMain.handle("is-dev", async () => process.env.NODE_ENV === 'development');
+  autoUpdater.logger = log;
+  (autoUpdater.logger as typeof log).transports.file.level = 'info';
 
+  autoUpdater.on('checking-for-update', () => {
+    log.info('🔄 Checking for update...');
+  });
+
+  autoUpdater.on('update-available', (info) => {
+    log.info('⬇️ Update available:', info);
+
+    if (process.platform === 'linux') {
+      // Notify renderer that a manual download is needed
+      const url = 'https://github.com/45Drives/houston-client-manager/releases/latest';
+      const win = BrowserWindow.getAllWindows()[0];
+      win?.webContents.send('update-available-linux', url);
+    }
+  });
+
+  autoUpdater.on('update-not-available', (info) => {
+    log.info('✅ No update available:', info);
+  });
+
+  autoUpdater.on('error', (err) => {
+    log.error('❌ Update error:', err);
+  });
+
+  autoUpdater.on('download-progress', (progressObj) => {
+    const logMsg = `📦 Download speed: ${progressObj.bytesPerSecond} - Downloaded ${progressObj.percent.toFixed(
+      1
+    )}% (${progressObj.transferred}/${progressObj.total})`;
+    log.info(logMsg);
+  });
+
+  if (process.platform !== 'linux') {
+    autoUpdater.on('update-downloaded', (info) => {
+      log.info('✅ Update downloaded. Will install on quit:', info);
+      // autoUpdater.quitAndInstall(); // Optional
+    });
+
+    autoUpdater.checkForUpdatesAndNotify();
+  } else {
+    autoUpdater.checkForUpdates(); // Only checks, doesn't download
+  }
+
+  // Automatically check for updates and notify user if one is downloaded
+  autoUpdater.checkForUpdatesAndNotify();
+
+  ipcMain.handle("is-dev", async () => process.env.NODE_ENV === 'development');
 
   ipcMain.handle('dialog:openFolder', async () => {
     const result = await dialog.showOpenDialog({
@@ -887,6 +938,9 @@ app.whenReady().then(() => {
     }
   });
 
+});
+ipcMain.on('check-for-updates', () => {
+  autoUpdater.checkForUpdatesAndNotify();
 });
 
 app.on('window-all-closed', () => {

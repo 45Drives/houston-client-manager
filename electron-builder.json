@@ -3,6 +3,11 @@
     "directories": {
         "output": "dist"
     },
+    "publish": {
+        "provider": "github",
+        "owner": "45Drives",
+        "repo": "houston-client-manager"
+    },
     "nsis": {
         "oneClick": false,
         "perMachine": false,

@@ -8,3 +8,4 @@ yarn.lock
 .vscode
 .idea
 package-lin-mac-sshpass.sh
+factory-reset-server.sh
