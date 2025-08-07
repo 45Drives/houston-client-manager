@@ -22,7 +22,7 @@
             <td class="border border-default p-2 text-center">{{ srv.name }}</td>
             <td class="border border-default p-2 text-center">{{ srv.ip }}</td>
           </tr>
-          <tr v-if="servers.length === 0">
+          <tr v-if="servers.length === 0" class="flex flex-row items-center text-center">
             <!-- show spinner while loading -->
             <div v-if="!showNoServers" class="spinner my-4"></div>
 
@@ -46,8 +46,9 @@ import { discoveryStateInjectionKey } from '../keys/injection-keys';
 // 1) defineProps + withDefaults to make `selectedServer` optional (defaults to null)
 const props = withDefaults(
   defineProps<{
-    filterOutStorageSetupComplete: boolean
-    selectedServer?: Server | null
+    filterOutStorageSetupComplete: boolean;
+    filterOutNonSetupServers: boolean;
+    selectedServer?: Server | null;
   }>(),
   { selectedServer: null }
 )
@@ -59,7 +60,24 @@ const emit = defineEmits<{
 
 // 3) manage your discovered servers
 const discoveryState = inject<DiscoveryState>(discoveryStateInjectionKey)!
-const servers = computed(() => discoveryState.servers)
+// const servers = computed(() => discoveryState.servers)
+
+
+const servers = computed(() => {
+  if (props.filterOutNonSetupServers) {
+    return discoveryState.servers.filter(server => 
+      server.setupComplete === true &&
+      server.status === 'complete'
+    )
+  } else if (props.filterOutStorageSetupComplete) {
+    return discoveryState.servers.filter(server =>
+      server.setupComplete === false &&
+      server.status === 'not complete'
+    )
+  } else {
+    return discoveryState.servers;
+  }
+})
 
 // state to track whether to show "no servers detected"
 const showNoServers = ref(false)

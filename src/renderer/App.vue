@@ -310,7 +310,7 @@ async function waitForServerReboot() {
 
 provide('reboot-function', waitForServerReboot);
 
-const currentTheme = ref("theme-default");
+const currentTheme = ref("theme-homelab");
 
 const aliasStyleToTheme: Record<string, string> = {
   homelab: 'theme-homelab',
@@ -320,7 +320,7 @@ const aliasStyleToTheme: Record<string, string> = {
 function applyThemeFromAliasStyle(aliasStyle?: string) {
   // console.log('detected alias style:', aliasStyle);
   const normalized = aliasStyle?.toLowerCase() || '';
-  const themeClass = aliasStyleToTheme[normalized] || 'theme-default';
+  const themeClass = aliasStyleToTheme[normalized] || 'theme-homelab';
 
   document.documentElement.classList.remove(
     'theme-default',

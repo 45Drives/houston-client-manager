@@ -140,7 +140,22 @@ const scheduleFrequency = ref<"hour" | "day" | "week" | "month">("hour");
 
 // const servers = ref<Server[]>([]);
 const discoveryState = inject<DiscoveryState>(discoveryStateInjectionKey)!
-const servers = computed(() => discoveryState.servers)
+// const servers = computed(() => discoveryState.servers)
+
+const servers = computed(() =>
+	discoveryState.servers.filter(server =>
+		server.setupComplete === true &&
+		server.status === 'complete'
+	)
+)
+
+// const servers = computed(() =>
+// 	discoveryState.servers.filter(server =>
+// 		// remove if setupComplete is false OR status is 'not complete'
+// 		server.setupComplete !== false &&
+// 		server.status !== 'not complete'
+// 	)
+// )
 
 const isSelectingFolder = ref(false);
 const messageFolderAlreadyAdded = ref<InstanceType<typeof MessageDialog> | null>(null);
