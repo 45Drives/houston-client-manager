@@ -144,7 +144,7 @@ function handleExecOutput(
     if (result.error) {
       mainWindow.webContents.send('notification', `Error: failed to connect to host=${smb_host}, share=${smb_share}.`)
     } else {
-      mainWindow.webContents.send('notification', `Successfull connected to host=${smb_host}, share=${smb_share}.`);
+      mainWindow.webContents.send('notification', `Successfully connected to host=${smb_host}, share=${smb_share}.`);
     }
   } else {
 

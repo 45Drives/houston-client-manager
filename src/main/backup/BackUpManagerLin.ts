@@ -377,14 +377,16 @@ echo "${fstabEntry}" >> /etc/fstab
   LOG_FILE='${logPath}'
   MOUNT_DIR='${mountDir}'
   START_DATE='${task.schedule.startDate}'
-  
+
   echo '{"event":"backup_start",
-       "timestamp":"'$(date -Iseconds)'",
-       "uuid":"'"${task.uuid}"'",
-       "source":"'"${task.source}"'",
-       "target":"'"${target}"'"}' >> "$EVENT_LOG"
+        "timestamp":"'$(date -Iseconds)'",
+        "uuid":"'"${task.uuid}"'",
+        "host":"'"${smbHost}"'",
+        "share":"'"${smbShare}"'",
+        "source":"'"${task.source}"'",
+        "target":"'"${target}"'"}' >> "$EVENT_LOG"
   mkdir -p "$(dirname "$LOG_FILE")"
-  
+
   cleanup() {
     if [ -d "$MOUNT_DIR" ]; then
       echo "[CLEANUP] Unmounting $MOUNT_DIR" >> "$LOG_FILE"
@@ -392,27 +394,27 @@ echo "${fstabEntry}" >> /etc/fstab
     fi
   }
   trap cleanup EXIT
-  
+
   {
     echo "===== [$(date -Iseconds)] Starting backup task: '${task.description}' ====="
     echo "[INFO] Source: $SOURCE"
     echo "[INFO] Target: $TARGET"
     echo "[INFO] Mount directory: $MOUNT_DIR"
-  
+
     mkdir -p "$MOUNT_DIR"
-  
+
     mount "$MOUNT_DIR" >> "$LOG_FILE" 2>&1
     if ! mountpoint -q "$MOUNT_DIR"; then
       echo "[ERROR] Failed to mount $MOUNT_DIR" >> "$LOG_FILE"
       exit 1
     fi
     echo "[SUCCESS] SMB share mounted at $MOUNT_DIR"
-  
+
     mkdir -p "$MOUNT_DIR/$TARGET"
     echo "[INFO] Running rsync..."
     rsync -a${task.mirror ? ' --delete' : ''} "$SOURCE" "$MOUNT_DIR/$TARGET" >> "$LOG_FILE" 2>&1
     RSYNC_STATUS=$?
-  
+
     if [ $RSYNC_STATUS -ne 0 ]; then
       echo "[ERROR] rsync failed with exit code $RSYNC_STATUS" >> "$LOG_FILE"
       exit $RSYNC_STATUS
@@ -421,13 +423,17 @@ echo "${fstabEntry}" >> /etc/fstab
     fi
 
     STATUS=$([ $RSYNC_STATUS -eq 0 ] && echo "success" || echo "failure")
+
     echo '{"event":"backup_end",
-       "timestamp":"'$(date -Iseconds)'",
-       "uuid":"'"${task.uuid}"'",
-       "source":"'"${task.source}"'",
-       "target":"'"${target}"'"}',
-       "status":"'"$STATUS"'", 
-       "mirror":'"${task.mirror}"' }' >> "$EVENT_LOG"
+          "timestamp":"'"$(date -Iseconds)"'",
+          "uuid":"'"${task.uuid}"'",
+          "host":"'"${smbHost}"'",
+          "share":"'"${smbShare}"'",
+          "source":"'"${task.source}"'",
+          "target":"'"${target}"'",
+          "status":"'"$STATUS"'",
+          "mirror":'"${task.mirror}"'}' >> "$EVENT_LOG"
+
     echo "===== [$(date -Iseconds)] Backup task completed ====="
   } 2>&1 | tee -a "$LOG_FILE"
   `;

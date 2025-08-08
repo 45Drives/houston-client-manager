@@ -1,26 +1,29 @@
+// 1) capture originals
+const _origWarn = console.warn.bind(console)
+const _origError = console.error.bind(console)
+
+// 2) override warn & error
+console.warn = (...args: any[]) => {
+    const msg = args.map(String).join(' ')
+    if (
+        msg.includes('APPIMAGE env is not defined') ||
+        msg.includes('NODE_TLS_REJECT_UNAUTHORIZED')
+    ) return
+    _origWarn(...args)
+}
+
+console.error = (...args: any[]) => {
+    const msg = args.map(String).join(' ')
+    if (msg.includes('NODE_TLS_REJECT_UNAUTHORIZED')) return
+    _origError(...args)
+}
+
 // import log from 'electron-log';
 // log.transports.console.level = false;
 // console.log = (...args) => log.info(...args);
 // console.error = (...args) => log.error(...args);
 // console.warn = (...args) => log.warn(...args);
 // console.debug = (...args) => log.debug(...args);
-
-// 1) keep a reference to the real console.error
-const _origError = console.error.bind(console)
-
-// 2) override console.error to filter out just that one warning…
-console.error = (...args: any[]) => {
-    // look for the TLS-warning substring and swallow it
-    if (
-        args.length > 0 &&
-        typeof args[0] === 'string' &&
-        args[0].includes('SETTING THE NODE_TLS_REJECT_UNAUTHORIZED')
-    ) {
-        return
-    }
-    // otherwise pass it through
-    _origError(...args)
-}
 
 import { createApp } from 'vue';
 import "@45drives/houston-common-css/src/index.css"; 

@@ -1,3 +1,23 @@
+// 1) capture originals
+const _origWarn = console.warn.bind(console)
+const _origError = console.error.bind(console)
+
+// 2) override warn & error
+console.warn = (...args: any[]) => {
+  const msg = args.map(String).join(' ')
+  if (
+    msg.includes('APPIMAGE env is not defined') ||
+    msg.includes('NODE_TLS_REJECT_UNAUTHORIZED')
+  ) return
+  _origWarn(...args)
+}
+
+console.error = (...args: any[]) => {
+  const msg = args.map(String).join(' ')
+  if (msg.includes('NODE_TLS_REJECT_UNAUTHORIZED')) return
+  _origError(...args)
+}
+
 import log from 'electron-log';
 log.transports.console.level = false;
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
@@ -279,12 +299,7 @@ function createWindow() {
     // console.debug('action data:', data);
     if (data === "requestBackUpTasks") {
       let backUpManager: BackUpManager | null = getBackUpManager();
-      jsonLogger.info({
-        event: 'ipc_action_received',
-        action: 'requestBackUpTasks',
-        timestamp: new Date().toISOString(),
-      });
-      
+ 
       if (backUpManager) {
         const tasks = await backUpManager.queryTasks();
         console.debug('tasks found:', tasks);
@@ -640,6 +655,35 @@ function createWindow() {
               }
             }
           }, TIMEOUT_DURATION);
+        } else if (message.type === 'fetchBackupEvents') {
+          // locate the JSON‐lines events log
+          const logPath = path.join(app.getPath('userData'), 'logs', '45drives_backup_events.json');
+          let events: Array<{ uuid: string; host: string; share: string; source: string; timestamp: string, status: string }> = [];
+
+          if (fs.existsSync(logPath)) {
+            const lines = fs.readFileSync(logPath, 'utf8')
+              .split(/\r?\n/)
+              .filter(line => line.trim());
+            for (const line of lines) {
+              try {
+                const ev = JSON.parse(line);
+                if (ev.event === 'backup_end') {
+                  events.push({
+                    uuid: ev.uuid,
+                    host: ev.host,
+                    share: ev.share,
+                    source: ev.source,
+                    timestamp: ev.timestamp,
+                    status: ev.status
+                  });
+                }
+              } catch { /* skip invalid JSON */ }
+            }
+          }
+          IPCRouter.getInstance().send(
+            'renderer', 'action',
+            JSON.stringify({ type: 'sendBackupEvents', events })
+          );
         }
       
       } catch (error) {

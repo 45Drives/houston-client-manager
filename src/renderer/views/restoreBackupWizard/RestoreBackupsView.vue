@@ -157,14 +157,29 @@ const proceedToPreviousStep = () => {
 const search = ref('')
 
 const backups = ref<BackupEntry[]>([])
+const backupEvents = ref<Array<{ uuid: string; host: string; share: string; source: string; timestamp: string; status: string; }>>([])
 
 const selectedBackup = ref<BackupEntry | null>(null)
 
+const enrichedBackups = computed(() => {
+  return backups.value.map(b => {
+    const ev = backupEvents.value.find(e => e.uuid === b.uuid)
+    return {
+      ...b,
+      lastBackup: ev
+        ? new Date(ev.timestamp).toLocaleString()
+        : b.lastBackup,
+      folder: ev ? ev.source : b.folder
+    }
+  })
+})
+
 const filteredBackups = computed(() => {
-  return backups.value.filter(backup =>
-    backup.folder.toLowerCase().includes(search.value.toLowerCase())
+  return enrichedBackups.value.filter(b =>
+    b.folder.toLowerCase().includes(search.value.toLowerCase())
   )
 })
+
 
 function toggleFileSelection(file: FileEntry) {
   file.selected = !file.selected;
@@ -200,10 +215,13 @@ onActivated(() => {
       } else if (response.type === "restoreCompleted") {
         restoredFolders.value = response.allFolders ?? [response.folder];
         showOpenFolderPrompt.value = true;
+      } else if (response.type === "sendBackupEvents") {
+        backupEvents.value = response.events
       }
 
     } catch (e) { }
 
+  
     loading.value = false;
   });
 
@@ -218,7 +236,9 @@ onActivated(() => {
         smb_pass: restoreBackupsData.password,
       }
     }))
-
+  IPCRouter.getInstance().send("backend", "action",
+    JSON.stringify({ type: "fetchBackupEvents" })
+  )
 });
 
 onDeactivated(() => {
