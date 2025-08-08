@@ -448,8 +448,7 @@ EOF_${uuid}
   # path to the shared JSON events log
   EVENT_LOG="${this.logDir}/45drives_backup_events.json"
   # --- emit backup_start event ---
-  echo '{"event":"backup_start","timestamp":"'"$(date -u +%Y-%m-%dT%H:%M:%SZ)"'","uuid":"'"${task.uuid}"'","source":"'"${task.source}"'","target":"'"${target}"'"}' \
-    >> "$EVENT_LOG"
+  echo '{"event":"backup_start","timestamp":"'"$(date -u +%Y-%m-%dT%H:%M:%SZ)"'","uuid":"'"${task.uuid}"'","host":"'"${task.host}"'","share":"'"${task.share}"'","source":"'"${task.source}"'","target":"'"${target}"'"}' >> "$EVENT_LOG"
   trap 'st=$?; echo "===== $(/bin/date -u "+%Y-%m-%dT%H:%M:%SZ") END $st ====="; exit $st' EXIT
   # Houston user-level backup script
   # TASK_HOST="${task.host}"
@@ -501,8 +500,7 @@ EOT
   # --- emit backup_end event ---
   ST=$?
   STATUS=$([ $ST -eq 0 ] && echo success || echo failure)
-  echo '{"event":"backup_end","timestamp":"'"$(date -u +%Y-%m-%dT%H:%M:%SZ)"'","uuid":"'"${task.uuid}"'","source":"'"${task.source}"'","target":"'"${target}"'","status":"'"$STATUS"'"}' \
-    >> "$EVENT_LOG"
+  echo '{"event":"backup_end","timestamp":"'"$(date -u +%Y-%m-%dT%H:%M:%SZ)"'","uuid":"'"${task.uuid}"'","host":"'"${task.host}"'","share":"'"${task.share}"'","source":"'"${task.source}"'","target":"'"${target}"'","status":"'"$STATUS"'"}' >> "$EVENT_LOG"
     `).trimStart();
   }
 }

@@ -405,8 +405,8 @@ if (-not $hasBatchLogon -or -not $hasServiceLogon) {
   for /f "delims=" %%I in ('powershell -NoProfile -Command "Get-Date -Format o"') do set "TS=%%I"
 
   :: --- backup_start event ---
-  echo {^"event^":^"backup_start^",^"timestamp^":^"!TS!^",^"uuid^":^"${task.uuid}"^, \
-         ^"source^":^"${task.source}"^,^"target^":^"${rawDst}"^} >> "%eventLog%"
+  echo {^"event^":^"backup_start^",^"timestamp^":^"!TS!^",^"uuid^":^"${task.uuid}"^,^"host^":^"${task.host}"^,^"share^":^"${task.share}"^, \
+         ^"source^":^"${task.source}"^,^"target^":^"${rawDst}"^} >> "${eventLog}"
 
   :: --- Houston backup task metadata (for reference) ---
   :: uuid        = ${task.uuid}
@@ -497,10 +497,8 @@ if (-not $hasBatchLogon -or -not $hasServiceLogon) {
   for /f "delims=" %%I in ('powershell -NoProfile -Command "Get-Date -Format o"') do set "TS2=%%I"
   set "STATUS="
   if !RC! EQU 0 (set STATUS=success) else (set STATUS=failure)
-  echo {^"event^":^"backup_end^",^"timestamp^":^"!TS2!^",^"uuid^":^"${task.uuid}"^, \
-         ^"source^":^"${task.source}"^,^"target^":^"${rawDst}"^, \
-         ^"status^":^"!STATUS!"^} >> "%eventLog%"
-         
+  echo {^"event^":^"backup_end^",^"timestamp^":^"!TS2!^",^"uuid^":^"${task.uuid}"^,^"host^":^"${task.host}"^,^"share^":^"${task.share}"^,^"source^":^"${task.source}"^,^"target^":^"${rawDst}"^,^"status^":^"!STATUS!"^} >> "${eventLog}"
+
   rem --- clean up the mapping ---
   timeout /t 2 >nul
   net use !drive!: /delete /y >> "%LOG%" 2>&1
