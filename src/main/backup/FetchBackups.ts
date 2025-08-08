@@ -1,4 +1,4 @@
-import { BrowserWindow } from "electron";
+import { app, BrowserWindow } from "electron";
 import { getOS, extractJsonFromOutput } from "../utils";
 import { BackupEntry } from "@45drives/houston-common-lib";
 import mountSmbPopup from "../smbMountPopup";
@@ -7,6 +7,28 @@ import fsAsync from 'fs/promises';
 
 export default async function fetchBackupsFromServer(data: any, mainWindow: BrowserWindow): Promise<BackupEntry[]> {
   console.debug("[DEBUG] ▶️ fetchBackupsFromServer called with:", data);
+
+  const baseLogDir = path.join(app.getPath('userData'), 'logs');
+  const backupEventsPath = path.join(baseLogDir, '45drives_backup_events.json');
+
+  let backupEvents: Array<{
+    uuid: string;
+    source: string;
+    target: string;
+    timestamp: string;
+    status: string;
+  }> = [];
+  
+  try {
+    const raw = await fsAsync.readFile(backupEventsPath, 'utf-8');
+    backupEvents = raw
+      .split('\n')
+      .map(line => line.trim())
+      .filter(Boolean)
+      .map(line => JSON.parse(line));
+  } catch (e) {
+    console.warn("Failed to read or parse 45drives_backup_events.json (NDJSON):", e);
+  }
 
   // 1) mountSmbPopup returns JSON string → parse it
   const raw = await mountSmbPopup(
@@ -63,52 +85,58 @@ export default async function fetchBackupsFromServer(data: any, mainWindow: Brow
       const entries = await walkDir(backupDir);
       entries.sort((a, b) => a.length - b.length);
 
-      let baseFolder = "";
-      let lastModified = "Unknown";
+      // Find the most recent backup_end event for this uuid
+      const event = backupEvents
+        .filter(ev => ev.uuid === uuid && ev.status === "backup_end")
+        .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())[0];
 
-      for (const entry of entries) {
-        if (!await isDirectory(entry)) continue;
+      let client = "";
 
-        // 4) getAllFiles now returns full paths
-        const allFiles = await getAllFiles(entry);
-        const fileCount = allFiles.length;
-        if (fileCount === 0) continue;
-
-        // 5) compute last-modified correctly
-        const times = await Promise.all(
-          allFiles.map(fp => fsAsync.stat(fp).then(st => st.mtime))
-        );
-        const mostRecent = new Date(Math.max(...times.map(t => t.getTime())));
-        lastModified = mostRecent.toISOString().slice(0, 10);
+      if (event?.source) {
+        const normalized = (event.source || event.target || "").replace(/\\/g, '/');
         
-        // 6) compute relative path under the share
-        // let rel = entry
-        //   .replace(backupRoot, "")
-        //   // cut out leading slash + uuid + slash
-        //   .replace(new RegExp(`^${sep}${uuid}${sep}`), "");
-        const escapedSep = sep.replace(/\\/g, "\\\\");
-        const uuidSepRe = new RegExp(`^${escapedSep}${uuid}${escapedSep}`);
+        const os = getOS();
 
-        let rel = entry
-          .replace(backupRoot, "")
-          .replace(uuidSepRe, "");
+        if (os === "mac") {
+          const match = normalized.match(/^\/Users\/([^/]+)/);
+          if (match) client = match[1];
+        } else if (os === "rocky" || os === "debian") {
+          const match = normalized.match(/^\/home\/([^/]+)/);
+          if (match) client = match[1];
+        } else if (os === "win") {
+          const match =
+            normalized.match(/^C:\/Users\/([^/]+)/i) ||           // Native Windows
+            normalized.match(/^\/mnt\/c\/Users\/([^/]+)/i);       // WSL-style
+          if (match) client = match[1];
+        }
 
-        if (!baseFolder || rel.length < baseFolder.length) {
-          baseFolder = rel;
+        // Fallback if no OS-specific match worked
+        if (!client) {
+          const parts = normalized.split('/').filter(Boolean);
+          client = parts.length > 0 ? parts[0] : "";
         }
       }
 
-      // 7) pull client off the front of baseFolder
-      const parts = baseFolder.split(sep).filter(Boolean);
-      const client = parts[0] || "";
-      const rest = parts.slice(1).join(sep);
+      let folder = "/";
+      if (event?.source) {
+        folder = event.source;
+      } else if (event?.target) {
+        // Remove /uuid/clientname prefix from target path
+        const uuidPrefix = `/${uuid}/`;
+        const normalizedTarget = event.target.replace(/\\/g, '/');
+        if (normalizedTarget.includes(uuidPrefix)) {
+          folder = "/" + normalizedTarget.split(uuidPrefix)[1]?.split('/').slice(1).join('/');
+        }
+      }
 
       results.push({
         uuid,
-        folder: `/${rest}`,      // leading slash for UI
+        folder: folder,
         server: data.smb_host,
         client,
-        lastBackup: lastModified,
+        lastBackup: event?.timestamp
+          ? new Date(event.timestamp).toLocaleString()
+          : "Unknown",
         onSystem: true,
         files: [],
         mountPoint: mountResult.MountPoint

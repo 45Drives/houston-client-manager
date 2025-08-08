@@ -405,8 +405,7 @@ if (-not $hasBatchLogon -or -not $hasServiceLogon) {
   for /f "delims=" %%I in ('powershell -NoProfile -Command "Get-Date -Format o"') do set "TS=%%I"
 
   :: --- backup_start event ---
-  echo {^"event^":^"backup_start^",^"timestamp^":^"!TS!^",^"uuid^":^"${task.uuid}"^,^"host^":^"${task.host}"^,^"share^":^"${task.share}"^, \
-         ^"source^":^"${task.source}"^,^"target^":^"${rawDst}"^} >> "${eventLog}"
+  echo {^"event^":^"backup_start^",^"timestamp^":^"!TS!^",^"uuid^":^"${task.uuid}"^,^"host^":^"${task.host}"^,^"share^":^"${task.share}"^,^"source^":^"${task.source}"^,^"target^":^"${rawDst}"^} >> "${eventLog}"
 
   :: --- Houston backup task metadata (for reference) ---
   :: uuid        = ${task.uuid}
