@@ -10,8 +10,8 @@ export default async function restoreBackups(
 ) {
   const os = getOS();
 
-  console.log("=== 🟡 restoreBackups triggered ===");
-  console.log("Incoming restore data:", JSON.stringify(data, null, 2));
+  console.debug("=== 🟡 restoreBackups triggered ===");
+  console.debug("Incoming restore data:", JSON.stringify(data, null, 2));
 
   // 1) Determine the root of the share
   let basePath: string;
@@ -27,8 +27,8 @@ export default async function restoreBackups(
   const files = data.files as string[];
 
   const folderPath = path.join(basePath, uuid, client !== uuid ? client : '');
-  console.log("📂 Source folderPath:", folderPath);
-  console.log("📁 Files to restore:", files);
+  console.debug("📂 Source folderPath:", folderPath);
+  console.debug("📁 Files to restore:", files);
 
   // 2) Copy each file, reporting back via IPC
   for (const relFile of files) {
@@ -38,14 +38,14 @@ export default async function restoreBackups(
       destPath = fixWinPath(relFile);
     }
 
-    console.log(`🔄 Preparing restore:`);
-    console.log(`  relFile:        ${relFile}`);
-    console.log(`  sourcePath:     ${sourcePath}`);
-    console.log(`  destPath (raw): ${destPath}`);
+    console.debug(`🔄 Preparing restore:`);
+    console.debug(`  relFile:        ${relFile}`);
+    console.debug(`  sourcePath:     ${sourcePath}`);
+    console.debug(`  destPath (raw): ${destPath}`);
 
     try {
       await fsAsync.access(sourcePath);
-      console.log("  ✅ Source file exists");
+      console.debug("  ✅ Source file exists");
     } catch {
       console.error(`  ❌ Source file NOT found: ${sourcePath}`);
       IPCRouter.send("renderer", "action", JSON.stringify({
@@ -76,7 +76,7 @@ export default async function restoreBackups(
       new Set(files.map((f: string) => path.dirname(f)))
     ).map(f => (os === "win" ? fixWinPath(f) : f));
 
-    console.log("📬 Restored folders:", restoredFolders);
+    console.debug("📬 Restored folders:", restoredFolders);
 
     IPCRouter.send("renderer", "action", JSON.stringify({
       type: "restoreCompleted",
@@ -86,7 +86,7 @@ export default async function restoreBackups(
     console.error("❌ Failed to send restore completion:", e);
   }
 
-  console.log("=== ✅ restoreBackups finished ===");
+  console.debug("=== ✅ restoreBackups finished ===");
 }
 
 // async function copyFile(
@@ -95,7 +95,7 @@ export default async function restoreBackups(
 //   originalFilePath: string
 // ) {
 //   const destFullPath = normalizeRestorePath(destRelPath);
-//   console.log("Restoring", sourcePath, "→", destFullPath);
+//   console.debug("Restoring", sourcePath, "→", destFullPath);
 
 //   const dir = path.dirname(destFullPath);
 
@@ -109,7 +109,7 @@ export default async function restoreBackups(
 
 //   // Copy the file
 //   await fsAsync.copyFile(sourcePath, destFullPath);
-//   console.log(`✅ Copied ${sourcePath} → ${destFullPath}`);
+//   console.debug(`✅ Copied ${sourcePath} → ${destFullPath}`);
 //   return { file: originalFilePath };
 // }
 
@@ -119,20 +119,20 @@ async function copyFile(
   originalFilePath: string
 ) {
   const destFullPath = normalizeRestorePath(destRelPath);
-  console.log(`📦 copyFile(): ${sourcePath} → ${destFullPath}`);
+  console.debug(`📦 copyFile(): ${sourcePath} → ${destFullPath}`);
 
   const dir = path.dirname(destFullPath);
 
   try {
     await fsAsync.mkdir(dir, { recursive: true });
     await fsAsync.access(dir, fsAsync.constants.W_OK);
-    console.log(`  ✅ Destination dir exists and is writable: ${dir}`);
+    console.debug(`  ✅ Destination dir exists and is writable: ${dir}`);
   } catch (e) {
     throw new Error(`Destination folder not writable: ${dir}`);
   }
 
   await fsAsync.copyFile(sourcePath, destFullPath);
-  console.log(`  ✅ File copied successfully`);
+  console.debug(`  ✅ File copied successfully`);
   require("child_process").execSync(`dir "${path.dirname(destFullPath)}"`);
 
   return { file: originalFilePath };

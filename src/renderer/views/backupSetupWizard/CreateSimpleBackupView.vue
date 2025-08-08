@@ -192,7 +192,7 @@ watch(scheduleFrequency, (newSchedule) => {
 		backUpSetupConfig.backUpTasks = backUpSetupConfig.backUpTasks.map((task) => {
 			task.schedule.repeatFrequency = newSchedule;
 			task.schedule.startDate = getNextScheduleDate(newSchedule)
-			// console.log("some update task.startDate:", task.schedule.startDate);
+			// console.debug("some update task.startDate:", task.schedule.startDate);
 			return task;
 		});
 	}
@@ -283,7 +283,7 @@ const handleFolderSelect = async () => {
 				uuid: crypto.randomUUID(),
 			};
 
-			// console.log("NewTask.Startdate:", newTask.schedule.startDate);
+			// console.debug("NewTask.Startdate:", newTask.schedule.startDate);
 
 			backUpSetupConfig.backUpTasks.push(newTask);
 			selectedFolders.value.push({ name: folderName, path: folderPath });
@@ -338,7 +338,7 @@ function getNextScheduleDate(frequency: 'hour' | 'day' | 'week' | 'month'): Date
 			}
 			break;
 	}
-	// console.log("nextDate ", nextDate)
+	// console.debug("nextDate ", nextDate)
 
 	return nextDate;
 }
@@ -366,7 +366,7 @@ const proceedToNextStep = () => {
 			const slashOrNotSlash = targetDirForSourcePart.startsWith("/") ? "" : "/";
 
 			task.target = `${selectedServer.value!.name}:${selectedServer.value!.shareName!}/${task.uuid}/${hostname}${slashOrNotSlash}${targetDirForSourcePart}`;
-			console.log('task saved:', task);
+			console.debug('task saved:', task);
 		});
 
 	completeCurrentStep();

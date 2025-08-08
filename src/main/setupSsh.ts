@@ -75,7 +75,7 @@ async function connectWithPassword({
     username,
     password,                   // plain “password” auth
     tryKeyboard: true,          // allow keyboard-interactive fallback
-    // debug: info => console.log('⎇ SSH DEBUG:', info),
+    // debug: info => console.debug('⎇ SSH DEBUG:', info),
     onKeyboardInteractive(
       _name, _instr, _lang, prompts, finish,
     ) {
@@ -103,7 +103,7 @@ export async function runBootstrapScript(
     username,
     privateKey: fs.readFileSync(privateKeyPath, "utf8"),
     readyTimeout: 20_000,
-    // debug: info => console.log('⎇ SSH DEBUG:', info),
+    // debug: info => console.debug('⎇ SSH DEBUG:', info),
   });
   await ssh.putFile(scriptLocalPath, scriptRemotePath);
 
@@ -119,7 +119,7 @@ export async function runBootstrapScript(
       execOptions: { pty: true },     // ← THIS is the only change
       onStdout(chunk) {
         const line = chunk.toString().trim();
-        console.log(`[${host}] ${line}`);
+        console.debug(`[${host}] ${line}`);
         if (line.includes('[REBOOT_NEEDED]')) rebootRequired = true;
       },
       onStderr(chunk) {

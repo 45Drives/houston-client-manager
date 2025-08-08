@@ -17,6 +17,8 @@ process.on('unhandledRejection', (reason, promise) => {
 
 import { app, BrowserWindow, ipcMain, dialog, shell } from 'electron';
 import { autoUpdater } from 'electron-updater';
+import { createLogger, format } from 'winston';
+import DailyRotateFile from 'winston-daily-rotate-file';
 import path, { join } from 'path';
 import mdns from 'multicast-dns';
 import os from 'os';
@@ -36,51 +38,26 @@ import { installServerDepsRemotely } from './installServerDeps';
 import { checkSSH } from './setupSsh';
 
 let discoveredServers: Server[] = [];
+export let jsonLogger: ReturnType<typeof createLogger>;
 
 // const blockerId = powerSaveBlocker.start("prevent-app-suspension");
 
 app.commandLine.appendSwitch('ignore-certificate-errors', 'true');
 
-const platform = getOS();
-
 function checkLogDir(): string {
-  let logDir = '';
-
-  const isRoot = process.getuid?.() === 0; // On Windows, this will be undefined
-
+  // LINUX: /home/<username>/.config/45drives-setup-wizard/logs       (IN DEV MODE: /home/<username>/config/Electron/logs/)
+  // MAC:   /Users/<username>/Library/Application Support/45drives-setup-wizard/logs
+  // WIN:   C:\Users\<username>\AppData\Roaming\45drives-setup-wizard\logs
+  const baseLogDir = path.join(app.getPath('userData'), 'logs');
   try {
-    switch (platform) {
-      case 'win':   // e.g. C:\ProgramData\houston-backups\logs
-        logDir = path.join(
-          process.env.ProgramData || 'C:\\ProgramData',
-          'houston-backups',
-          'logs'
-        );
-        break;
-
-      case 'mac':   // follow macOS conventions
-        logDir = isRoot
-          ? '/Library/Logs/houston'                           // system-wide
-          : path.join(app.getPath('home'), 'Library/Logs', 'houston'); // per-user
-        break;
-
-      default:      // Linux / BSD
-        logDir = isRoot
-          ? '/var/log/houston'
-          : path.join(app.getPath('userData'), 'logs');
-        break;
-    }  
-
-    if (!fs.existsSync(logDir)) {
-      fs.mkdirSync(logDir, { recursive: true });
+    if (!fs.existsSync(baseLogDir)) {
+      fs.mkdirSync(baseLogDir, { recursive: true });
     }
-
-    console.log(`✅ Log directory ensured: ${logDir}`);
-  } catch (error: any) {
-    console.error(`❌ Failed to create log directory (${logDir}):`, error.message);
+    console.debug(`✅ Log directory ensured: ${baseLogDir}`);
+  } catch (e: any) {
+    console.error(`❌ Failed to create log directory (${baseLogDir}):`, e.message);
   }
-
-  return logDir;
+  return baseLogDir;
 }
 
 function isPortOpen(ip: string, port: number, timeout = 2000): Promise<boolean> {
@@ -173,11 +150,11 @@ function createWindow() {
     const scanned = await Promise.allSettled(
       ips.map(async candidateIp => {
 
-        // console.log("checking for server at ", candidateIp);
+        // console.debug("checking for server at ", candidateIp);
 
         const portOpen = await isPortOpen(candidateIp, 9090);
         if (!portOpen) return null;
-        console.log("port open at 9090 ", candidateIp);
+        console.debug("port open at 9090 ", candidateIp);
         
         try {
           const res = await fetch(`https://${candidateIp}:9090/`, {
@@ -188,7 +165,7 @@ function createWindow() {
           });
           if (!res.ok) return null;
 
-          console.log("https at 9090 ", candidateIp);
+          console.debug("https at 9090 ", candidateIp);
           
           return {
             ip: candidateIp,
@@ -254,7 +231,7 @@ function createWindow() {
 
     try {
       const res = await installServerDepsRemotely({ host, username, password });
-      console.log("✅ install-cockpit-module →", res);
+      console.debug("✅ install-cockpit-module →", res);
       return res;
     } catch (err) {
       console.error("❌ install-cockpit-module error:", err);
@@ -283,7 +260,7 @@ function createWindow() {
   });
 
   function notify(message: string) {
-    // console.log("[Main] 🔔 notify() called with:", message);
+    // console.debug("[Main] 🔔 notify() called with:", message);
 
     if (!mainWindow || !mainWindow.webContents || mainWindow.webContents.isDestroyed()) {
       console.warn("[Main] ❌ mainWindow/webContents not ready");
@@ -299,18 +276,25 @@ function createWindow() {
   
 
   IPCRouter.getInstance().addEventListener('action', async (data) => {
-    // console.log('action data:', data);
+    // console.debug('action data:', data);
     if (data === "requestBackUpTasks") {
       let backUpManager: BackUpManager | null = getBackUpManager();
-
+      jsonLogger.info({
+        event: 'ipc_action_received',
+        action: 'requestBackUpTasks',
+        timestamp: new Date().toISOString(),
+      });
+      
       if (backUpManager) {
         const tasks = await backUpManager.queryTasks();
-        console.log('tasks found:', tasks);
+        console.debug('tasks found:', tasks);
         IPCRouter.getInstance().send('renderer', 'action', JSON.stringify({
           type: 'sendBackupTasks',
           tasks
         }));
+        jsonLogger.info({ event: 'requestBackUpTasks', tasks: tasks });
       }
+
     } else if (data === "requestHostname") {
       IPCRouter.getInstance().send('renderer', 'action', JSON.stringify({
         type: "sendHostname",
@@ -319,10 +303,10 @@ function createWindow() {
     } 
     else {
       try {
-        // console.log("[Main] 📩 Raw message received:", data);
+        // console.debug("[Main] 📩 Raw message received:", data);
 
         const message = JSON.parse(data);
-        // console.log("[Main] 📩 Parsed message:", message);
+        // console.debug("[Main] 📩 Parsed message:", message);
         if (message.type === 'configureBackUp') {
 
           message.config.backUpTasks.forEach(backUpTask => {
@@ -421,38 +405,30 @@ function createWindow() {
 
           try {
             await backupManager.updateSchedule(task, username, password);
+            jsonLogger.info({
+              event: 'updateBackUpTask_success',
+              taskUuid: task.uuid,
+            });
             const date = new Date(task.schedule.startDate);
             const minute = date.getMinutes().toString().padStart(2, '0');
             const hour = date.getHours();
-            notify(`Updated cron schedule for ${task.description} to ${hour}:${minute}`);
+            notify(`Updated task schedule for ${task.description} to ${hour}:${minute}`);
           } catch (err: any) {
             notify(`Error: ${err.message}`);
+            jsonLogger.error({
+              event: 'updateBackUpTask_error',
+              taskUuid: task.uuid,
+              error: err.message,
+            });
             console.error("updateBackUpTask failed:", err);
           }
         } else if (message.type === 'openFolder') {
-          // console.log('Attempting to open folder path:', message.path);
-          // const folderPath: string = message.path;
-          // try {
-          //   console.log('🧪 Trying to open folder:', folderPath);
-          //   console.log('✅ Exists:', fs.existsSync(folderPath));
-          //   shell.openPath(folderPath).then(result => {
-          //     if (result) {
-          //       notify(`❌ Error opening folder: ${result}`);
-          //     } else {
-          //       notify(`📂 Opened folder: ${folderPath}`);
-          //     }
-          //   });
-          // } catch (err) {
-          //   notify(`Error: Failed to open folder: ${folderPath}`);
-          //   console.error("Error opening folder:", folderPath, err);
-          // }
-
           const folderPath: string = message.path;
           try {
-            console.log('🧪 Trying to open folder:', folderPath);
+            console.debug('🧪 Trying to open folder:', folderPath);
 
             const exists = fs.existsSync(folderPath);
-            console.log('✅ Exists:', exists);
+            console.debug('✅ Exists:', exists);
 
             if (!exists) {
               notify(`❌ Folder does not exist: ${folderPath}`);
@@ -479,7 +455,7 @@ function createWindow() {
           }
 
         } else if (message.type === 'checkBackUpStatuses') {
-          // console.log("✅ Received checkBackUpStatuses")
+          // console.debug("✅ Received checkBackUpStatuses")
           const tasks: BackUpTask[] = message.tasks;
           const updatedTasks: BackUpTask[] = [];
           for (const task of tasks) {
@@ -537,14 +513,19 @@ function createWindow() {
           }
 
           try {
-            console.log("▶️ Attempting to run backup:", task.description);
+            console.debug("▶️ Attempting to run backup:", task.description);
             const result = await (backupManager as any).runNow(task);
 
             if (result.stderr && result.stderr.trim() !== "") {
               console.warn("⚠️ Backup completed with warnings/errors in stderr:", result.stderr);
             }
 
-            console.log("✅ runNow completed:", result);
+            console.debug("✅ runNow completed:", result);
+            jsonLogger.info({
+              event: 'runBackUpTaskNow_success',
+              taskUuid: task.uuid,
+              stderr: result.stderr || null,
+            });
             notify(`✅ Backup task "${task.description}" started successfully.`);
 
             setTimeout(async () => {
@@ -560,6 +541,11 @@ function createWindow() {
             }, 5000);
           } catch (err: any) {
             console.error("❌ runNow failed:", err);
+            jsonLogger.error({
+              event: 'runBackUpTaskNow_error',
+              taskUuid: task.uuid,
+              error: err.stderr?.trim() || err.message,
+            });
             const errorMsg = err?.stderr || err?.message || JSON.stringify(err);
             notify(`❌ Backup task "${task.description}" failed to run: ${errorMsg}`);
           }
@@ -576,7 +562,7 @@ function createWindow() {
               signal: AbortSignal.timeout(3000),
             });
             httpsReachable = res.ok;
-            // console.log('HTTPS check:', res.ok ? 'OK' : `status ${res.status}`);
+            // console.debug('HTTPS check:', res.ok ? 'OK' : `status ${res.status}`);
           } catch (err) {
             console.warn('HTTPS check failed:', err);
           }
@@ -584,9 +570,9 @@ function createWindow() {
           // 2) If no HTTPS, fall back to SSH
           let reachable = httpsReachable;
           if (!reachable) {
-            // console.log('Falling back to SSH probe on port 22…');
+            // console.debug('Falling back to SSH probe on port 22…');
             reachable = await checkSSH(ip, 3000);
-            // console.log(`SSH probe ${reachable ? 'succeeded' : 'failed'}`);
+            // console.debug(`SSH probe ${reachable ? 'succeeded' : 'failed'}`);
           }
 
           // 3) If _still_ unreachable, bail
@@ -811,12 +797,12 @@ function createWindow() {
       const data = await response.json();
 
       if (data.action) {
-        // console.log("New action received:", server, data);
+        // console.debug("New action received:", server, data);
 
         if (data.action === "mount_samba_client") {
           mountSmbPopup(data.smb_host, data.smb_share, data.smb_user, data.smb_pass, mainWindow);
         } else {
-          console.log("Unknown new actions.", server);
+          console.debug("Unknown new actions.", server);
         }
       }
     } catch (error) {
@@ -867,10 +853,106 @@ app.on('web-contents-created', (_event, contents) => {
 
 app.whenReady().then(() => {
   const resolvedLogDir = checkLogDir();
-
-  log.transports.file.resolvePathFn = () => path.join(resolvedLogDir, 'main.log');
+  console.debug('userData is here:', app.getPath('userData'))
+  console.debug('log dir:', resolvedLogDir);
+  log.transports.file.resolvePathFn = () =>
+    path.join(resolvedLogDir, 'main.log');
   log.info("🟢 Logging initialized.");
   log.info("Log file path:", log.transports.file.getFile().path);
+
+
+  const { combine, timestamp, json } = format;
+  // structured JSON logger used alongside electron-log
+  // jsonLogger = createLogger({
+  //   level: 'info',
+  //   format: format.combine(
+  //     format.timestamp(),
+  //     format.json()
+  //   ),
+  //   transports: [
+  //     new DailyRotateFile({
+  //       dirname: resolvedLogDir,
+  //       filename: '45drives-setup-wizard-%DATE%.json',
+  //       datePattern: 'YYYY-MM-DD',
+  //       maxFiles: '14d',
+  //       zippedArchive: true,
+  //     })
+  //   ]
+  // });
+
+  // only let through events (which all have an "event" field)
+  const preserveEventsOrErrors = format((info) => {
+    // keep if it's an error or warning,
+    // or if we've attached an "event" property
+    if (['error', 'warn'].includes(info.level) || info.event) {
+      return info;
+    }
+    return false;
+  });
+
+  jsonLogger = createLogger({
+    level: 'info',
+    format: format.combine(
+      format.timestamp(),
+      // <-- this filter will DROP any record whose message includes your TLS warning
+      format((info) => {
+        if (
+          typeof info.message === 'string' &&
+          info.message.includes(
+            'Warning: Setting the NODE_TLS_REJECT_UNAUTHORIZED'
+          )
+        ) {
+          return false;
+        }
+        return info;
+      })(),
+      format.json()
+    ),
+    transports: [
+      new DailyRotateFile({
+        dirname: resolvedLogDir,
+        filename: '45drives-setup-wizard-%DATE%.json',
+        datePattern: 'YYYY-MM-DD',
+        maxFiles: '14d',
+        zippedArchive: true,
+      })
+    ]
+  });
+  
+  // const origConsole = {
+  //   log: console.debug,
+  //   warn: console.warn,
+  //   error: console.error,
+  //   debug: console.debug,
+  // };
+
+  // Monkey‐patch so calls go to both electron-log + jsonLogger
+  console.debug = (...args: any[]) => {
+    log.info(...args);
+    jsonLogger.info({ message: args.map(String).join(' ') });
+  };
+  console.warn = (...args: any[]) => {
+    log.warn(...args);
+    jsonLogger.warn({ message: args.map(String).join(' ') });
+  };
+  console.error = (...args: any[]) => {
+    log.error(...args);
+    jsonLogger.error({ message: args.map(String).join(' ') });
+  };
+  console.debug = (...args: any[]) => {
+    log.debug(...args);
+    jsonLogger.debug({ message: args.map(String).join(' ') });
+  };
+
+  process.on('uncaughtException', (err) => {
+    log.error('Uncaught Exception:', err);
+    jsonLogger.error({ event: 'uncaughtException', error: err.stack || err.message });
+  });
+
+  process.on('unhandledRejection', (reason, promise) => {
+    log.error('Unhandled Rejection at:', promise, 'reason:', reason);
+    jsonLogger.error({ event: 'unhandledRejection', reason, promise: String(promise) });
+  });
 
   autoUpdater.logger = log;
   (autoUpdater.logger as typeof log).transports.file.level = 'info';

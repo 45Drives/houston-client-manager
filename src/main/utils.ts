@@ -35,13 +35,13 @@ export async function getAsset(folder: string, fileName: string, isFolder: boole
     if (os === "mac") {
       const filePath = path.join(__dirname, "..", "..", "..", "..", "src", "main", folder, fileName);
 
-      console.log("asset: ", filePath);
+      console.debug("asset: ", filePath);
 
       return filePath;
     } else {
       const filePath = path.join(__dirname, "..", "..", folder, fileName);
 
-      console.log("asset: ", filePath);
+      console.debug("asset: ", filePath);
 
       return filePath;
     }
@@ -50,7 +50,7 @@ export async function getAsset(folder: string, fileName: string, isFolder: boole
 
     const filePath = path.join(__dirname, "..", "..", "..", folder, fileName);
 
-    console.log("asset: ", filePath);
+    console.debug("asset: ", filePath);
 
     return filePath;
   }  
@@ -88,7 +88,7 @@ export function getAppPath() {
     }
   }
 
-  console.log("[getAppPath] resolved to:", basePath); // <--- ADD THIS
+  console.debug("[getAppPath] resolved to:", basePath); // <--- ADD THIS
 
   return basePath;
 }
@@ -114,16 +114,16 @@ export function isDev() {
 }
 
 export function getSmbTargetFromSmbTarget(target: string) {
-  // console.log('[getSmbTargetFromSmbTarget] raw target:', target);
+  // console.debug('[getSmbTargetFromSmbTarget] raw target:', target);
   // let targetPath = "/tank/" + target.split(":")[1];
-  // console.log("[getSmbTargetFromSmbTarget] targetPath", targetPath)
+  // console.debug("[getSmbTargetFromSmbTarget] targetPath", targetPath)
   let [smbHost, smbShare] = target.split(":");
-  // console.log("[getSmbTargetFromSmbTarget] smbHost", smbHost)
-  // console.log("[getSmbTargetFromSmbTarget] smbShare before", smbShare)
+  // console.debug("[getSmbTargetFromSmbTarget] smbHost", smbHost)
+  // console.debug("[getSmbTargetFromSmbTarget] smbShare before", smbShare)
   smbShare = smbShare.split("/")[0]; 
-  // console.log("[getSmbTargetFromSmbTarget] smbShare after", smbShare)
+  // console.debug("[getSmbTargetFromSmbTarget] smbShare after", smbShare)
   const result = target.replace(smbHost + ":" + smbShare, "");
-  // console.log("[getSmbTargetFromSmbTarget] result", result)
+  // console.debug("[getSmbTargetFromSmbTarget] result", result)
   return result;
 }
 

@@ -92,7 +92,7 @@ watch(setupComplete, (value) => {
 });
 
 function goToBackupWizard(): void {
-  // console.log("before clearing: ", backUpSetupConfig)
+  // console.debug("before clearing: ", backUpSetupConfig)
 
   if (backUpSetupConfig) {
     for (const key in backUpSetupConfig) {
@@ -106,7 +106,7 @@ function goToBackupWizard(): void {
     }
   }
 
-  // console.log("after clearing: ", backUpSetupConfig);
+  // console.debug("after clearing: ", backUpSetupConfig);
   setStep(1);
 }
 
