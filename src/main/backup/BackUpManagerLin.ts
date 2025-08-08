@@ -74,12 +74,12 @@ export class BackUpManagerLin implements BackUpManager {
         };
 
         // 🔍 Perform status check
-        try {
-          task.status = await checkBackupTaskStatus(task);
-        } catch (err) {
-          console.warn(`Failed to check status for task ${task.uuid}:`, err);
-          task.status = "offline_connection_error";
-        }
+        // try {
+        //   task.status = await checkBackupTaskStatus(task);
+        // } catch (err) {
+        //   console.warn(`Failed to check status for task ${task.uuid}:`, err);
+        //   task.status = "offline_connection_error";
+        // }
 
         tasks.push(task);
       } catch (err) {
@@ -378,13 +378,7 @@ echo "${fstabEntry}" >> /etc/fstab
   MOUNT_DIR='${mountDir}'
   START_DATE='${task.schedule.startDate}'
 
-  echo '{"event":"backup_start",
-        "timestamp":"'$(date -Iseconds)'",
-        "uuid":"'"${task.uuid}"'",
-        "host":"'"${smbHost}"'",
-        "share":"'"${smbShare}"'",
-        "source":"'"${task.source}"'",
-        "target":"'"${target}"'"}' >> "$EVENT_LOG"
+  echo '{"event":"backup_start","timestamp":"'$(date -Iseconds)'","uuid":"'"${task.uuid}"'","host":"'"${smbHost}"'","share":"'"${smbShare}"'","source":"'"${task.source}"'","target":"'"${target}"'"}' >> "$EVENT_LOG"
   mkdir -p "$(dirname "$LOG_FILE")"
 
   cleanup() {
@@ -423,16 +417,7 @@ echo "${fstabEntry}" >> /etc/fstab
     fi
 
     STATUS=$([ $RSYNC_STATUS -eq 0 ] && echo "success" || echo "failure")
-
-    echo '{"event":"backup_end",
-          "timestamp":"'"$(date -Iseconds)"'",
-          "uuid":"'"${task.uuid}"'",
-          "host":"'"${smbHost}"'",
-          "share":"'"${smbShare}"'",
-          "source":"'"${task.source}"'",
-          "target":"'"${target}"'",
-          "status":"'"$STATUS"'",
-          "mirror":'"${task.mirror}"'}' >> "$EVENT_LOG"
+    echo '{"event":"backup_end","timestamp":"'"$(date -Iseconds)"'","uuid":"'"${task.uuid}"'","host":"'"${smbHost}"'","share":"'"${smbShare}"'","source":"'"${task.source}"'","target":"'"${target}"'","status":"'"$STATUS"'"}' >> "$EVENT_LOG"
 
     echo "===== [$(date -Iseconds)] Backup task completed ====="
   } 2>&1 | tee -a "$LOG_FILE"

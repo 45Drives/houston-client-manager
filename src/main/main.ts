@@ -493,14 +493,14 @@ function createWindow() {
             if (backUpManager !== null) {
               const tasks = await backUpManager.queryTasks();
 
-              for (const task of tasks) {
-                try {
-                  task.status = await checkBackupTaskStatus(task);
-                } catch (err) {
-                  console.error(`Failed to check status for ${task.description}:`, err);
-                  task.status = 'offline_connection_error';
-                }
-              }
+              // for (const task of tasks) {
+              //   try {
+              //     task.status = await checkBackupTaskStatus(task);
+              //   } catch (err) {
+              //     console.error(`Failed to check status for ${task.description}:`, err);
+              //     task.status = 'offline_connection_error';
+              //   }
+              // }
 
               IPCRouter.getInstance().send('renderer', 'action', JSON.stringify({
                 type: 'sendBackupTasks',
