@@ -1,24 +1,27 @@
-import log from 'electron-log';
-process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
-console.log = (...args) => log.info(...args);
-console.error = (...args) => log.error(...args);
-console.warn = (...args) => log.warn(...args);
-console.debug = (...args) => log.debug(...args);
+// import log from 'electron-log';
+// process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+// console.log = (...args) => log.info(...args);
+// console.error = (...args) => log.error(...args);
+// console.warn = (...args) => log.warn(...args);
+// console.debug = (...args) => log.debug(...args);
 
-process.on('uncaughtException', (error) => log.error('Uncaught Exception:', error));
-process.on('unhandledRejection', (reason, promise) => log.error('Unhandled Rejection at:', promise, 'reason:', reason));
+// process.on('uncaughtException', (error) => log.error('Uncaught Exception:', error));
+// process.on('unhandledRejection', (reason, promise) => log.error('Unhandled Rejection at:', promise, 'reason:', reason));
 
+import { jsonLogger } from '../main';
 import { BackUpManager } from "./types";
 import { BackUpTask, TaskSchedule } from "@45drives/houston-common-lib";
 import * as fs from "fs";
 import * as os from "os";
 import { execSync } from "child_process";
 import * as path from "path";
+import { app } from 'electron';
 import { getRsync, getSmbTargetFromSmbTarget } from "../utils";
 
 export class BackUpManagerMac implements BackUpManager {
   protected scriptDir = "/Library/Application Support/Houston/scripts";
-  protected logDir = "/Library/Logs/Houston";
+  // protected logDir = "/Library/Logs/Houston";
+  protected logDir = path.join(app.getPath('userData'), 'logs');
   protected HOME = process.env.HOME || `/Users/${process.env.USER}`;
   protected MOUNT_ROOT = `${this.HOME}/houston-mounts`; 
   
@@ -442,6 +445,11 @@ EOF_${uuid}
     const rsyncCmd = `${getRsync()} -a${task.mirror ? ' --delete' : ''} "${task.source}/" "${dir}/"`;
     return (`
   #!/bin/bash
+  # path to the shared JSON events log
+  EVENT_LOG="${this.logDir}/45drives_backup_events.json"
+  # --- emit backup_start event ---
+  echo '{"event":"backup_start","timestamp":"'"$(date -u +%Y-%m-%dT%H:%M:%SZ)"'","uuid":"'"${task.uuid}"'","source":"'"${task.source}"'","target":"'"${target}"'"}' \
+    >> "$EVENT_LOG"
   trap 'st=$?; echo "===== $(/bin/date -u "+%Y-%m-%dT%H:%M:%SZ") END $st ====="; exit $st' EXIT
   # Houston user-level backup script
   # TASK_HOST="${task.host}"
@@ -489,6 +497,12 @@ EOT
   mkdir -p "${dir}"
   echo "[INFO] rsync to ${dir}"
   ${rsyncCmd}
+
+  # --- emit backup_end event ---
+  ST=$?
+  STATUS=$([ $ST -eq 0 ] && echo success || echo failure)
+  echo '{"event":"backup_end","timestamp":"'"$(date -u +%Y-%m-%dT%H:%M:%SZ)"'","uuid":"'"${task.uuid}"'","source":"'"${task.source}"'","target":"'"${target}"'","status":"'"$STATUS"'"}' \
+    >> "$EVENT_LOG"
     `).trimStart();
   }
 }

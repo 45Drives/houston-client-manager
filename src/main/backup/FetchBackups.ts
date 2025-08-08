@@ -6,7 +6,7 @@ import path from 'path';
 import fsAsync from 'fs/promises';
 
 export default async function fetchBackupsFromServer(data: any, mainWindow: BrowserWindow): Promise<BackupEntry[]> {
-  console.log("[DEBUG] ▶️ fetchBackupsFromServer called with:", data);
+  console.debug("[DEBUG] ▶️ fetchBackupsFromServer called with:", data);
 
   // 1) mountSmbPopup returns JSON string → parse it
   const raw = await mountSmbPopup(
@@ -18,7 +18,7 @@ export default async function fetchBackupsFromServer(data: any, mainWindow: Brow
     "silent"
   );
 
-  console.log("[DEBUG] raw mountSmbPopup output:", raw);
+  console.debug("[DEBUG] raw mountSmbPopup output:", raw);
   
   let mountResult: { DriveLetter: string, MountPoint: string, smb_share: string };
   try {
@@ -27,7 +27,7 @@ export default async function fetchBackupsFromServer(data: any, mainWindow: Brow
     console.error("[ERROR] Failed to JSON.parse mountSmbPopup output:", e, raw);
     throw e;
   }
-  console.log("[DEBUG] parsed mountResult:", mountResult);
+  console.debug("[DEBUG] parsed mountResult:", mountResult);
 
   // 2) pick the correct root based on OS
   let backupRoot: string;
@@ -39,16 +39,16 @@ export default async function fetchBackupsFromServer(data: any, mainWindow: Brow
   } else {
     backupRoot = `/mnt/houston-mounts/${data.smb_share}`;
   }
-  console.log("[DEBUG] using backupRoot:", backupRoot);
+  console.debug("[DEBUG] using backupRoot:", backupRoot);
 
   // 3) defensively list top-level dirs
   let uuidDirs: string[];
   try {
     uuidDirs = await fsAsync.readdir(backupRoot);
-    console.log(`[DEBUG] found ${uuidDirs.length} UUID dirs:`, uuidDirs);
+    console.debug(`[DEBUG] found ${uuidDirs.length} UUID dirs:`, uuidDirs);
     uuidDirs = uuidDirs
       .filter(name => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(name));
-    console.log(`[DEBUG] filtered UUID dirs:`, uuidDirs);
+    console.debug(`[DEBUG] filtered UUID dirs:`, uuidDirs);
   } catch (err) {
     console.error(`Could not read backup root ${backupRoot}:`, err);
     return [];

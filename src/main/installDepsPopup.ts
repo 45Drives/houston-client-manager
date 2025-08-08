@@ -90,7 +90,7 @@ function installDependencies(osType: string, missingPackages: string[]) {
               return;
             }
 
-            console.log('Installation Output:', stdout);
+            console.debug('Installation Output:', stdout);
             dialog.showMessageBox({
               type: 'info',
               title: 'Installation Complete',
@@ -107,7 +107,7 @@ function installDependencies(osType: string, missingPackages: string[]) {
             return;
           }
 
-          console.log('Installation Output:', stdout);
+          console.debug('Installation Output:', stdout);
           dialog.showMessageBox({
             type: 'info',
             title: 'Installation Complete',
@@ -132,7 +132,7 @@ export default function installDepPopup() {
       console.warn(`[Dependencies] Missing: ${missingPackages.join(', ')}`);
       installDependencies(osType, missingPackages);
     } else {
-      console.log('All dependencies are already installed.');
+      console.debug('All dependencies are already installed.');
     }
   });
 }

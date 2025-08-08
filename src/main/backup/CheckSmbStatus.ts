@@ -1,18 +1,18 @@
-import log from 'electron-log';
-log.transports.console.level = false;
-process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
-console.log = (...args) => log.info(...args);
-console.error = (...args) => log.error(...args);
-console.warn = (...args) => log.warn(...args);
-console.debug = (...args) => log.debug(...args);
+// import log from 'electron-log';
+// log.transports.console.level = false;
+// process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+// console.log = (...args) => log.info(...args);
+// console.error = (...args) => log.error(...args);
+// console.warn = (...args) => log.warn(...args);
+// console.debug = (...args) => log.debug(...args);
 
-process.on('uncaughtException', (error) => {
-  log.error('Uncaught Exception:', error);
-});
+// process.on('uncaughtException', (error) => {
+//   log.error('Uncaught Exception:', error);
+// });
 
-process.on('unhandledRejection', (reason, promise) => {
-  log.error('Unhandled Rejection at:', promise, 'reason:', reason);
-});
+// process.on('unhandledRejection', (reason, promise) => {
+//   log.error('Unhandled Rejection at:', promise, 'reason:', reason);
+// });
 
 import { exec, execFile, execSync } from 'child_process';
 import { getOS, getAsset, getAppPath } from '../utils';
@@ -42,7 +42,7 @@ export async function checkBackupTaskStatus(task: BackUpTask): Promise<BackUpTas
 
     if (os === 'win') {
         const scriptAsset = await getAsset('static', 'check_smb_task_status_win.bat');
-        console.log(`[SMB Check] execFile: ${scriptAsset} [${task.host}, ${task.share}, ${task.target}, ${credPath}]`);
+        console.debug(`[SMB Check] execFile: ${scriptAsset} [${task.host}, ${task.share}, ${task.target}, ${credPath}]`);
 
         return new Promise<BackUpTask['status']>(resolve => {
             execFile(
@@ -50,7 +50,7 @@ export async function checkBackupTaskStatus(task: BackUpTask): Promise<BackUpTas
                 [`"${task.host!}"`, `"${task.share!}"`, `"${task.target!}"`, `"${credPath}"`],
                 { windowsHide: true, shell: true },
                 (error, stdout, stderr) => {
-                    console.log(`[SMB Check] stdout for ${task.uuid}:`, stdout);
+                    console.debug(`[SMB Check] stdout for ${task.uuid}:`, stdout);
                     if (stderr) console.warn(`[SMB Check] stderr for ${task.uuid}:`, stderr);
 
                     const jsonLine = stdout.trim().split('\n').find(line => line.trim().startsWith('{'));
@@ -84,7 +84,7 @@ export async function checkBackupTaskStatus(task: BackUpTask): Promise<BackUpTas
 
         return new Promise((resolve) => {
             exec(cmd, (error, stdout, stderr) => {
-                console.log(`[SMB Check] stdout for ${task.uuid}:`, stdout);
+                console.debug(`[SMB Check] stdout for ${task.uuid}:`, stdout);
                 if (stderr) console.warn(`[SMB Check] stderr for ${task.uuid}:`, stderr);
 
                 const jsonLine = stdout?.trim().split('\n').find(line => line.trim().startsWith('{'));
