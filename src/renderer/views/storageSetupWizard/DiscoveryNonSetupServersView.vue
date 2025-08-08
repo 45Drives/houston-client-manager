@@ -29,7 +29,7 @@
 
       <div class="overflow-hidden w-full -mt-2">
         <div class="max-h-[50vh] overflow-y-auto">
-          <HoustonServerListView class="w-1/3 px-5 justify-center text-xl" :filterOutStorageSetupComplete="false"
+          <HoustonServerListView class="w-1/3 px-5 justify-center text-xl" :filterOutStorageSetupComplete="false" :filterOutNonSetupServers="false"
             :key="serverListKey" :selectedServer="selectedServer" @serverSelected="handleServerSelected" />
         </div>
       </div>
@@ -46,7 +46,7 @@
         Once you have one of the boxes checked, click <b>NEXT</b>.
       </p>
 
-      <details class="w-9/12 mt-4 bg-well rounded-md p-2 shadow-sm group" v-bind:open="false">
+      <details class="w-9/12 mt-4 bg-well rounded-md p-2 shadow-sm group" v-bind:open="isManualOpen">
         <summary
           class="text-xl text-left bg-default rounded-md p-1 font-semibold cursor-pointer outline-none focus:ring-2 focus:ring-yellow-500">
           Add a Server Manually
@@ -151,7 +151,7 @@ import { IPCRouter } from '@45drives/houston-common-lib';
 import HoustonServerListView from '../../components/HoustonServerListView.vue'
 import { EyeIcon, EyeSlashIcon } from "@heroicons/vue/20/solid";
 import { Server } from '../../types';
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import GlobalSetupWizardMenu from '../../components/GlobalSetupWizardMenu.vue';
 import { divisionCodeInjectionKey } from '../../keys/injection-keys';
 import { inject } from 'vue';
@@ -163,7 +163,8 @@ const togglePassword = () => {
   showPassword.value = !showPassword.value;
 };
 const statusMessage = ref('');
-const isInstalling = ref(false)
+const isInstalling = ref(false);
+const isManualOpen = ref(false);
 
 const { completeCurrentStep, unCompleteCurrentStep, prevStep, reset } = useWizardSteps("setup");
 
@@ -210,6 +211,11 @@ const credsRequired = computed(() => {
   return needsCreds && !hasCachedCreds;
 });
 
+watch(selectedServer, (newVal) => {
+  if (newVal?.fallbackAdded) {
+    isManualOpen.value = true;
+  }
+});
 
 function saveServerCredentials(ip: string, username: string, password: string) {
   manualCredentials.value[ip] = { username, password };
