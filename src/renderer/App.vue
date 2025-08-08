@@ -22,6 +22,9 @@
       <div class="w-full h-full flex items-center justify-center" v-else-if="currentWizard === 'restore-backup'">
         <RestoreBackUpWizard id="restore-backup" :onComplete="onWizardComplete" />
       </div>
+      <!-- <div class="w-full h-full flex items-center justify-center">
+        <DashboardView/>
+      </div> -->
 
       <webview v-show="showWebView && !loadingWebview && !waitingForServerReboot" id="myWebview" :src="currentUrl"
         partition="persist:authSession"
@@ -51,6 +54,7 @@ import BackUpSetupWizard from './views/backupSetupWizard/Wizard.vue';
 import RestoreBackUpWizard from './views/restoreBackupWizard/Wizard.vue';
 import { divisionCodeInjectionKey, currentServerInjectionKey, currentWizardInjectionKey, thisOsInjectionKey, discoveryStateInjectionKey } from './keys/injection-keys';
 import { IPCMessageRouterRenderer, IPCRouter } from '@45drives/houston-common-lib';
+import DashboardView from './views/DashboardView.vue';
 
 const thisOS = ref<string>('');
 const setOs = (value: string) => {
@@ -124,7 +128,7 @@ async function waitForServerRebootAndOpenHouston() {
   const pingUrl = `https://${serverIp}:9090/`;
   const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-  console.log(`Waiting for server at ${pingUrl} to reboot...`);
+  console.debug(`Waiting for server at ${pingUrl} to reboot...`);
 
   let serverUp = false;
   const startTime = Date.now();
@@ -191,7 +195,7 @@ async function waitForServerRebootAndShowWizard() {
   const pingUrl = `https://${serverIp}:9090/`;
   const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-  console.log(`Waiting for server at ${pingUrl} to reboot...`);
+  console.debug(`Waiting for server at ${pingUrl} to reboot...`);
 
   let serverUp = false;
   const startTime = Date.now();
@@ -257,7 +261,7 @@ async function waitForServerReboot() {
   const pingUrl = `https://${serverIp}:9090/`;
   const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-  console.log(`Waiting for server at ${pingUrl} to reboot...`);
+  console.debug(`Waiting for server at ${pingUrl} to reboot...`);
 
   let serverUp = false;
   const startTime = Date.now();
@@ -318,7 +322,7 @@ const aliasStyleToTheme: Record<string, string> = {
 };
 
 function applyThemeFromAliasStyle(aliasStyle?: string) {
-  // console.log('detected alias style:', aliasStyle);
+  // console.debug('detected alias style:', aliasStyle);
   const normalized = aliasStyle?.toLowerCase() || '';
   const themeClass = aliasStyleToTheme[normalized] || 'theme-homelab';
 
@@ -335,7 +339,7 @@ function applyThemeFromAliasStyle(aliasStyle?: string) {
 const isDev = ref(false);
 
 // window.electron.ipcRenderer.invoke('is-dev').then(value => isDev.value = value);
-// console.log(window.electron.ipcRenderer);
+// console.debug(window.electron.ipcRenderer);
 
 const darkModeState = useDarkModeState();
 
@@ -368,7 +372,7 @@ function isJsonString(str: string) {
 }
 
 window.electron.ipcRenderer.on('notification', (_event, message: string) => {
-  // console.log("[Renderer] 🔔 Received notification:", message);
+  // console.debug("[Renderer] 🔔 Received notification:", message);
 
   if (message.startsWith("Error")) {
     reportError(new Error(message));
@@ -395,7 +399,7 @@ onMounted(async () => {
     const osString = await window.electron.getOS();
     setOs(osString);
 
-    console.log("[DEBUG] OS:" + osString);
+    console.debug("[DEBUG] OS:" + osString);
     
     // IPCRouter.getInstance().send('backend', 'action', 'requestBackUpTasks');
     
@@ -463,7 +467,7 @@ onMounted(async () => {
     const found = Array.from(document.documentElement.classList).find(cls =>
       cls.startsWith("theme-")
     );
-    // console.log('found:', found);
+    // console.debug('found:', found);
     currentTheme.value = found || "theme-default";
     switch (currentTheme.value) {
       case 'theme-homelab':
@@ -634,7 +638,7 @@ const onWebViewLoaded = async () => {
           resolve("View modified and visible.");
         }, 500);
       } else {
-        console.log("Login UI showing");
+        console.debug("Login UI showing");
         const usernameField = document.querySelector("#login-user-input");
         const passwordField = document.querySelector("#login-password-input");
         const loginButton = document.querySelector("#login-button");

@@ -1,19 +1,19 @@
-import log from 'electron-log';
-log.transports.console.level = false;
-process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
-console.log = (...args) => log.info(...args);
-console.error = (...args) => log.error(...args);
-console.warn = (...args) => log.warn(...args);
-console.debug = (...args) => log.debug(...args);
+// import log from 'electron-log';
+// log.transports.console.level = false;
+// process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+// console.debug = (...args) => log.info(...args);
+// console.error = (...args) => log.error(...args);
+// console.warn = (...args) => log.warn(...args);
+// console.debug = (...args) => log.debug(...args);
 
-process.on('uncaughtException', (error) => {
-  log.error('Uncaught Exception:', error);
-});
+// process.on('uncaughtException', (error) => {
+//   log.error('Uncaught Exception:', error);
+// });
 
-process.on('unhandledRejection', (reason, promise) => {
-  log.error('Unhandled Rejection at:', promise, 'reason:', reason);
-});
-
+// process.on('unhandledRejection', (reason, promise) => {
+//   log.error('Unhandled Rejection at:', promise, 'reason:', reason);
+// });
+import { jsonLogger } from '../main'; 
 import { BackUpManager } from "./types";
 import { BackUpTask, backupTaskTag, TaskSchedule } from "@45drives/houston-common-lib";
 import * as fs from "fs";
@@ -22,9 +22,11 @@ import { exec, execSync, spawn } from "child_process";
 import { getOS, getAppPath, getSmbTargetFromSmbTarget, reconstructFullTarget } from "../utils";
 import { checkBackupTaskStatus } from './CheckSmbStatus';
 import path, { join } from "path";
+import { app } from 'electron';
 
 const SCRIPT_DIR = path.join(os.homedir(), ".local", "share", "houston-backups");
-const LOG_DIR = path.join(os.homedir(), ".local", "share", "houston-logs");
+// const LOG_DIR = path.join(os.homedir(), ".local", "share", "houston-logs");
+const LOG_DIR = path.join(app.getPath('userData'), 'logs');
 
 export class BackUpManagerLin implements BackUpManager {
   protected pkexec: string = "pkexec";
@@ -367,6 +369,7 @@ echo "${fstabEntry}" >> /etc/fstab
     const target = getSmbTargetFromSmbTarget(task.target);
 
     const scriptContent = `#!/bin/bash
+  EVENT_LOG='${LOG_DIR}/45drives_backup_events.json'
   SMB_HOST='${smbHost}'
   SMB_SHARE='${smbShare}'
   SOURCE='${task.source}/'
@@ -375,6 +378,11 @@ echo "${fstabEntry}" >> /etc/fstab
   MOUNT_DIR='${mountDir}'
   START_DATE='${task.schedule.startDate}'
   
+  echo '{"event":"backup_start",
+       "timestamp":"'$(date -Iseconds)'",
+       "uuid":"'"${task.uuid}"'",
+       "source":"'"${task.source}"'",
+       "target":"'"${target}"'"}' >> "$EVENT_LOG"
   mkdir -p "$(dirname "$LOG_FILE")"
   
   cleanup() {
@@ -411,7 +419,15 @@ echo "${fstabEntry}" >> /etc/fstab
     else
       echo "[SUCCESS] rsync completed successfully" >> "$LOG_FILE"
     fi
-  
+
+    STATUS=$([ $RSYNC_STATUS -eq 0 ] && echo "success" || echo "failure")
+    echo '{"event":"backup_end",
+       "timestamp":"'$(date -Iseconds)'",
+       "uuid":"'"${task.uuid}"'",
+       "source":"'"${task.source}"'",
+       "target":"'"${target}"'"}',
+       "status":"'"$STATUS"'", 
+       "mirror":'"${task.mirror}"' }' >> "$EVENT_LOG"
     echo "===== [$(date -Iseconds)] Backup task completed ====="
   } 2>&1 | tee -a "$LOG_FILE"
   `;

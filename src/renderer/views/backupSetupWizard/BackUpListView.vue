@@ -216,7 +216,7 @@ const toggleSelection = (task: BackUpTask) => {
   if (index !== -1) {
     selectedBackUps.value.splice(index, 1);
   } else {
-    console.log('task selected:', task);
+    console.debug('task selected:', task);
     selectedBackUps.value.push(task);
   }
 
@@ -270,9 +270,9 @@ function waitForNextMessage(type: string): Promise<any> {
 let isHandlingNextClick = false;
 
 const deleteThisTask = async (task: BackUpTask) => {
-  // console.log("[Child] 🔥 deleteThisTask executing");
+  // console.debug("[Child] 🔥 deleteThisTask executing");
 
-  // console.log("[Child] Selected for deletion:", task);
+  // console.debug("[Child] Selected for deletion:", task);
   if (isHandlingNextClick) return; // ⛔ prevent reentry
   isHandlingNextClick = true;
 
@@ -399,16 +399,16 @@ function fetchBackupTasks() {
   IPCRouter.getInstance().send('backend', 'action', 'requestBackUpTasks');
 }
 
-IPCRouter.getInstance().addEventListener('action', (raw: string) => {
-  const message = JSON.parse(raw);
-  if (message.type === 'backUpStatusesUpdated') {
-    const updated = message.tasks as BackUpTask[];
-    backUpTasks.value = updated.map(task => ({
-      ...task,
-      schedule: { ...task.schedule, startDate: new Date(task.schedule.startDate) }
-    }));
-  }
-});
+// IPCRouter.getInstance().addEventListener('action', (raw: string) => {
+//   const message = JSON.parse(raw);
+//   if (message.type === 'backUpStatusesUpdated') {
+//     const updated = message.tasks as BackUpTask[];
+//     backUpTasks.value = updated.map(task => ({
+//       ...task,
+//       schedule: { ...task.schedule, startDate: new Date(task.schedule.startDate) }
+//     }));
+//   }
+// });
 
 let pollingInterval: ReturnType<typeof setInterval>;
 

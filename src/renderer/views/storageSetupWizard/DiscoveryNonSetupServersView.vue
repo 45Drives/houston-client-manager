@@ -266,7 +266,7 @@ const installModule = async (
         password,
       });
 
-    console.log("🚀 installModule result:", result);
+    console.debug("🚀 installModule result:", result);
     if (!result.success) {
       statusMessage.value = result.error || "Installation failed.";
     } else if (result.reboot) {

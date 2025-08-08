@@ -10,13 +10,13 @@ async function mountSambaClient(smb_host: string, smb_share: string, smb_user: s
   if (platform === "win32") {
     return mountSambaClientWin(smb_host, smb_share, smb_user, smb_pass, mainWindow, uiMode);
   } else if (platform === "linux") {
-    // console.log(`passing host:${smb_host}, share:${smb_share}, user:${smb_user}, pass:${smb_pass} to script`);
+    // console.debug(`passing host:${smb_host}, share:${smb_share}, user:${smb_user}, pass:${smb_pass} to script`);
     return mountSambaClientScriptLin(smb_host, smb_share, smb_user, smb_pass, await getAsset("static", "mount_smb_lin.sh"), mainWindow);
   } else if (platform === "darwin") {
-    console.log("mounting smb mac")
+    console.debug("mounting smb mac")
     return mountSambaClientScriptMac(smb_host, smb_share, smb_user, await getAsset("static", "mount_smb_mac.sh"), mainWindow, uiMode);
   } else {
-    console.log("Unknown OS:", platform);
+    console.debug("Unknown OS:", platform);
     return "Unknown OS: " + platform;
   }
 
@@ -38,7 +38,7 @@ async function mountSambaClientWin(
     getAsset("static", "mount_smb.bat").then(batpath => {
       // 1️⃣ Path to .cred file
       const credFile = `C:\\ProgramData\\houston-backups\\credentials\\${smb_share}.cred`;
-      console.log("[DEBUG - mountSMBWin] script path being used:", batpath);
+      console.debug("[DEBUG - mountSMBWin] script path being used:", batpath);
       // 2️⃣ Construct argument list
       const args = [
         quoteShellSafe(smb_host),
@@ -52,12 +52,12 @@ async function mountSambaClientWin(
 
       // 3️⃣ Full command
       const cmd = `cmd /C "${quoteShellSafe(batpath)} ${args.join(" ")}"`;
-      console.log("[DEBUG] mountSambaClientWin CMD:", cmd);
+      console.debug("[DEBUG] mountSambaClientWin CMD:", cmd);
 
       exec(cmd, (error, stdout, stderr) => {
-        console.log("[DEBUG] mount stdout:", stdout);
-        console.log("[DEBUG] mount stderr:", stderr);
-        console.log("[DEBUG] mount error:", error);
+        console.debug("[DEBUG] mount stdout:", stdout);
+        console.debug("[DEBUG] mount stderr:", stderr);
+        console.debug("[DEBUG] mount error:", error);
 
         handleExecOutput(error, stdout, stderr, smb_host, smb_share, mainWindow);
 
@@ -75,7 +75,7 @@ async function mountSambaClientWin(
 function mountSambaClientScriptLin(smb_host: string, smb_share: string, smb_user: string, smb_pass: string, script: string, mainWindow: BrowserWindow): Promise<string> {
   return new Promise((resolve, reject) => {
     // installDepPopup();
-    console.log("[DEBUG - mountSMBLin] script path being used:", script);
+    console.debug("[DEBUG - mountSMBLin] script path being used:", script);
     exec(`bash "${script}" "${smb_host}" "${smb_share}" "${smb_user}" "${smb_pass}"`, (error, stdout, stderr) => {
       handleExecOutput(error, stdout, stderr, smb_host, smb_share, mainWindow);
 
@@ -98,7 +98,7 @@ function mountSambaClientScriptMac(
 
   return new Promise((resolve, reject) => {
     // installDepPopup();
-    console.log("[DEBUG - mountSMBMac] script path being used:", script);
+    console.debug("[DEBUG - mountSMBMac] script path being used:", script);
     exec(`bash "${script}" "${smb_host}" "${smb_share}" "${smb_user}" "${uiMode}"`, (error, stdout, stderr) => {
       handleExecOutput(error, stdout, stderr, smb_host, smb_share, mainWindow);
 
@@ -120,7 +120,7 @@ function handleExecOutput(
   smb_share: string,
   mainWindow: BrowserWindow
 ) {
-  console.log(`Stdout: ${stdout}`);
+  console.debug(`Stdout: ${stdout}`);
   if (error) {
     console.error(`Error: ${error.message}`);
     mainWindow.webContents.send('notification', `Error: failed to connect to host=${smb_host}, share=${smb_share}.`);
@@ -140,7 +140,7 @@ function handleExecOutput(
       return false;
     }
 
-    console.log('result:', result);
+    console.debug('result:', result);
     if (result.error) {
       mainWindow.webContents.send('notification', `Error: failed to connect to host=${smb_host}, share=${smb_share}.`)
     } else {

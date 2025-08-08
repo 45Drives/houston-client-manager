@@ -1,29 +1,32 @@
-import log from 'electron-log';
-log.transports.console.level = false;
-process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
-console.log = (...args) => log.info(...args);
-console.error = (...args) => log.error(...args);
-console.warn = (...args) => log.warn(...args);
-console.debug = (...args) => log.debug(...args);
+// import log from 'electron-log';
+// log.transports.console.level = false;
+// process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+// console.log = (...args) => log.info(...args);
+// console.error = (...args) => log.error(...args);
+// console.warn = (...args) => log.warn(...args);
+// console.debug = (...args) => log.debug(...args);
 
-process.on('uncaughtException', (error) => {
-  log.error('Uncaught Exception:', error);
-});
+// process.on('uncaughtException', (error) => {
+//   log.error('Uncaught Exception:', error);
+// });
 
-process.on('unhandledRejection', (reason, promise) => {
-  log.error('Unhandled Rejection at:', promise, 'reason:', reason);
-});
+// process.on('unhandledRejection', (reason, promise) => {
+//   log.error('Unhandled Rejection at:', promise, 'reason:', reason);
+// });
 
+import { jsonLogger } from '../main';
 import { BackUpManager } from "./types";
 import { BackUpTask, TaskSchedule } from "@45drives/houston-common-lib";
 import { formatDateForTask, formatDateForTask2, getAppPath, getMountSmbScript, getSmbTargetFromSmbTarget } from "../utils";
 import sudo from 'sudo-prompt';
 import path from "path";
+import { app } from 'electron';
 import fs from 'fs';
 import os from 'os';
 import { exec } from "child_process";
 
 const TASK_ID = "Houston_Backup_Task";
+const logPath = path.join(app.getPath('userData'), 'logs');
 
 interface TaskData {
   source?: string;
@@ -46,7 +49,7 @@ export class BackUpManagerWin implements BackUpManager {
     // Save to file
     const tempDir = os.tmpdir();
     const scriptPath = path.join(tempDir, `${scriptName}.ps1`);
-    console.log("running: " + scriptPath);
+    console.debug("running: " + scriptPath);
     fs.writeFileSync(scriptPath, powershellScript);
 
     return new Promise((resolve, reject) => {
@@ -113,19 +116,19 @@ export class BackUpManagerWin implements BackUpManager {
             }
 
             if (!command) {
-              console.log("No Command:", actionProps)
+              console.debug("No Command:", actionProps)
               return null;
             }
             const actionDetails = this.parseBackupCommand(command)
-            console.log(actionDetails)
+            console.debug(actionDetails)
             if (!actionDetails) {
-              console.log("task.Actions:", command)
+              console.debug("task.Actions:", command)
               return null;
             }
             const trigger = this.convertTriggersToTaskSchedule(task.Triggers);
 
             if (!trigger) {
-              console.log("Failed to parse Trigger:", task.Triggers);
+              console.debug("Failed to parse Trigger:", task.Triggers);
               return null;
             }
 
@@ -278,7 +281,7 @@ if (-not $hasBatchLogon -or -not $hasServiceLogon) {
     ];
 
     tasks.forEach((t, idx) => {
-      console.log(t)
+      console.debug(t)
 
       const [smbHost, smbSharePath] = t.target.split(':');
       const smbShare = smbSharePath.split('/')[0];
@@ -388,14 +391,23 @@ if (-not $hasBatchLogon -or -not $hasServiceLogon) {
       .replace(/\//g, '\\')
       .replace(/^\\/, '');
 
-    const logFile =
-      '%ProgramData%\\houston-backups\\logs\\backup_task_' +
-      task.uuid +
-      '.log';
+    const logFile = path.join(
+      logPath,
+      `Houston_Backup_Task_${task.uuid}.log`
+    );
+    const eventLog = path.join(logPath, `45drives_backup_events.json`);
 
     return `
   @echo off
   setlocal enabledelayedexpansion
+
+  :: get ISO timestamp via PowerShell
+  for /f "delims=" %%I in ('powershell -NoProfile -Command "Get-Date -Format o"') do set "TS=%%I"
+
+  :: --- backup_start event ---
+  echo {^"event^":^"backup_start^",^"timestamp^":^"!TS!^",^"uuid^":^"${task.uuid}"^, \
+         ^"source^":^"${task.source}"^,^"target^":^"${rawDst}"^} >> "%eventLog%"
+
   :: --- Houston backup task metadata (for reference) ---
   :: uuid        = ${task.uuid}
   :: description = ${task.description}
@@ -481,6 +493,14 @@ if (-not $hasBatchLogon -or -not $hasServiceLogon) {
   robocopy "!SOURCE!" "!DEST!" /E /Z /FFT /R:2 /W:5 /V /NP
   set "RC=!errorlevel!"
 
+  :: --- backup_end event ---
+  for /f "delims=" %%I in ('powershell -NoProfile -Command "Get-Date -Format o"') do set "TS2=%%I"
+  set "STATUS="
+  if !RC! EQU 0 (set STATUS=success) else (set STATUS=failure)
+  echo {^"event^":^"backup_end^",^"timestamp^":^"!TS2!^",^"uuid^":^"${task.uuid}"^, \
+         ^"source^":^"${task.source}"^,^"target^":^"${rawDst}"^, \
+         ^"status^":^"!STATUS!"^} >> "%eventLog%"
+         
   rem --- clean up the mapping ---
   timeout /t 2 >nul
   net use !drive!: /delete /y >> "%LOG%" 2>&1
@@ -745,12 +765,12 @@ if (Get-ScheduledTask -TaskName "${taskName}" -ErrorAction SilentlyContinue) {
 
       command = command.replace("/C ", '').replace("\"", "").replace("\"", "").trim();
 
-      // console.log(command)
+      // console.debug(command)
       // Path to your .bat file
       const batFilePath = command;
       /* ----- bail out early if the target BAT is gone ----- */
       if (!fs.existsSync(batFilePath)) {
-        log.warn(`[parseBackupCommand] BAT not found → skip task: ${batFilePath}`);
+        jsonLogger.warn({ event: `[parseBackupCommand] BAT not found → skip task: ${batFilePath}` });
         return null;
       }
       

@@ -59,7 +59,7 @@ export class BackUpSetupConfigurator {
         total: config.backUpTasks.length + 1
       });
 
-      // console.log(config);
+      // console.debug(config);
 
       progressCallback({
         message: "All backup tasks scheduled successfully.",

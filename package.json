@@ -55,7 +55,9 @@
     "plist": "^3.1.0",
     "ssh2": "^1.16.0",
     "sudo-prompt": "^9.2.1",
-    "vue": "^3.3.8"
+    "vue": "^3.3.8",
+    "winston": "^3.17.0",
+    "winston-daily-rotate-file": "^5.0.0"
   },
   "optionalDependencies": {
     "dmg-license": "^1.0.9"

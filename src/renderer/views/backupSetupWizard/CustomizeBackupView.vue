@@ -283,7 +283,7 @@ const handleFolderSelect = async () => {
 
 			const scheduleConfirmed = await toggleCalendarComponent();
 			if (!scheduleConfirmed) {
-				// console.log("User cancelled scheduling, not adding task.");
+				// console.debug("User cancelled scheduling, not adding task.");
 				return;
 			}
 
@@ -297,7 +297,7 @@ const handleFolderSelect = async () => {
 				uuid: crypto.randomUUID(),
 			};
 
-			// console.log('New backup task:', newTask);
+			// console.debug('New backup task:', newTask);
 
 			backUpSetupConfig.backUpTasks.push(newTask);
 			selectedFolders.value.push({ name: folderName, path: folderPath });
@@ -365,7 +365,7 @@ const proceedToNextStep = () => {
 			const slashOrNotSlash = targetDirForSourcePart.startsWith("/") ? "" : "/";
 
 			task.target = `${selectedServer.value!.name}:${selectedServer.value!.shareName!}/${task.uuid}/${hostname}${slashOrNotSlash}${targetDirForSourcePart}`;
-			// console.log('target saved:', task.target);
+			// console.debug('target saved:', task.target);
 		});
 
 	completeCurrentStep();

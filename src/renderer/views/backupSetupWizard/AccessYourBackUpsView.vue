@@ -93,10 +93,10 @@ const handleBackUpTaskSelected = (tasks: BackUpTask[]) => {
 const backUpListRef = ref();
 
 const deleteSelectedTasks = () => {
-  // console.log("[Parent] 🗑️ deleteSelectedTasks triggered");
+  // console.debug("[Parent] 🗑️ deleteSelectedTasks triggered");
 
   if (backUpListRef.value?.deleteSelectedTasks) {
-    // console.log("[Parent] Calling child deleteSelectedTasks...");
+    // console.debug("[Parent] Calling child deleteSelectedTasks...");
     backUpListRef.value.deleteSelectedTasks();
   } else {
     console.warn("[Parent] backUpListRef or child method is undefined");
