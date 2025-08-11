@@ -9,7 +9,7 @@ echo "Build Version: $appVersion"
 
 appName=45drives-setup-wizard
 appIcon=icon.ico
-dmgName="${appName}-${appVersion}.dmg"
+dmgName="${appName}-${appVersion}"
 
 outputDir=dist/mac
 entitlementsFile=entitlements.mac.plist
