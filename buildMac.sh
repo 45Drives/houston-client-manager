@@ -2,12 +2,11 @@
 echo '----- Packaging 45drives-setup-wizard for MacOS! Please wait... -----'
 
 start_time=$(date +%s)
-fullVersionString="1.0.0"
-appVersion="1.0.0"
+# Extract version from package.json
+appVersion=$(jq -r '.version' package.json)
 
 echo "Build Version: $appVersion"
 
-appType=app-image
 appName=45drives-setup-wizard
 appIcon=icon.ico
 
