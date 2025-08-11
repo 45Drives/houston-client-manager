@@ -57,7 +57,7 @@
 
             <!-- Server Selector -->
             <div class="w-full max-w-[900px] mt-10 px-4 py-6 rounded-lg bg-gray-800">
-                <HoustonServerListView :filterOutStorageSetupComplete="false" @serverSelected="handleServerSelected" />
+                <HoustonServerListView :filterOutStorageSetupComplete="false" @serverSelected="handleServerSelected" :filter-out-non-setup-servers="false"/>
                 <div class="flex justify-end gap-4 mt-4">
                     <button class="dashboard-button-sm" @click="" :disabled="!currentServer">Houston
                         UI</button>
