@@ -1,5 +1,5 @@
 <template>
-  <CardContainer>
+  <CardContainer class="overflow-y-auto min-h-0">
     <template #header class="!text-center">
       <div class="relative flex items-center justify-center h-18  w-full">
         <div class="absolute left-0 p-1 px-4 rounded-lg">
@@ -18,28 +18,35 @@
       <!-- Complete Section -->
       <div class="complete-section flex flex-col items-center justify-center text-center">
 
-        <div v-for="completedStep in completedSteps" class="w-full max-w-xl text-left">
-          <div class="smallcheckmark ">✔ - {{ completedStep.message }}</div>
+        <div class="flex flex-col space-y-4 mt-[2rem]">
+          <div class="overflow-y-auto max-h-[40vh] p-2 space-y-4">
+            <div v-for="completedStep in completedSteps" class="w-full max-w-xl text-left">
+              <div class="smallcheckmark ">✔ - {{ completedStep.message }}</div>
+            </div>
+          </div>
         </div>
-
+        
         <div v-if="error" class="text-red-500">
           🔴 {{ error }}
         </div>
 
-        <div v-if="setupComplete === 'yes' && !error" class="flex justify-center">
-          <div class="text-left max-w-3xl">
-            <div class="checkmark text-center">✔ - DONE!</div>
-            <h2 class="text-2xl font-semibold mb-4">Backup Plan Configured</h2>
-            <p class="mb-4 text-lg">Your backup plan has been successfully set up and is now protecting your data
-              automatically.</p>
-            <p class="mb-4 text-lg">There’s nothing more to worry about—your files are safe and secure. Sit back, relax,
-              and let the scheduled backups do the work.</p>
-            <p class="mb-4 text-lg">Backups will continue to run as scheduled to ensure your data stays protected.</p>
-
-            <p class="mb-4 text-lg">NOTE: This computer and the server will have to turn on for backups to happen.</p>
-
-            <p class="mb-4 text-lg font-medium">Click "Finish" to complete the setup.</p>
-          </div>
+        <div v-if="setupComplete === 'yes' && !error"
+          class="flex flex-col items-center mt-1 px-4 py-4 max-w-6xl">
+          <div class="checkmark text-3xl mb-3">✔ - DONE!</div>
+          <p class="text-2xl mb-2 text-center">
+            Your Backup Plan is Now Active.
+          </p>
+          <p class="text-lg mb-2 text-center leading-relaxed">
+            All backup tasks have been successfully configured. Your data will now be protected automatically through
+            scheduled backups.
+          </p>
+          <p class="text-lg mb-2 text-center leading-relaxed">
+            You can now monitor and manage your backups through the <strong>Backup Manager</strong>, or configure
+            additional storage servers as needed.
+          </p>
+          <p class="text-lg mb-2 text-center leading-relaxed">
+            Backups require this computer and the backup server to be powered on at scheduled times.
+          </p>
         </div>
 
       </div>
@@ -47,9 +54,15 @@
 
     <!-- Go to Home Button (visible once complete) -->
     <template #footer>
+
       <div class="button-group-row justify-end">
-        <button :disabled="setupComplete !== 'yes'" class="btn btn-primary w-40 h-20" @click="goHome">{{ "Finish!"
-          }}</button>
+
+        <button :disabled="setupComplete !== 'yes'" class="btn btn-primary w-40 h-20" @click="goToBackupWizard">{{
+          "Go To Backup Manager" }}</button>
+
+        <button :disabled="setupComplete !== 'yes'" class="btn btn-secondary w-40 h-20" @click="goToSetupWizard">{{
+          "Setup More Storage Servers" }}</button>
+
       </div>
     </template>
 
@@ -65,7 +78,7 @@ import { EasySetupProgress, IPCRouter } from "@45drives/houston-common-lib";
 import { backUpSetupConfigKey, divisionCodeInjectionKey } from "../../keys/injection-keys";
 import GlobalSetupWizardMenu from '../../components/GlobalSetupWizardMenu.vue';
 const division = inject(divisionCodeInjectionKey);
-const { reset } = useWizardSteps('backup');
+const { setStep } = useWizardSteps('backup');
 
 const setupComplete = ref<string>("no");
 const error = ref<string>();
@@ -78,8 +91,8 @@ watch(setupComplete, (value) => {
   }
 });
 
-function goHome(): void {
-  console.log("before clearing: ", backUpSetupConfig)
+function goToBackupWizard(): void {
+  // console.debug("before clearing: ", backUpSetupConfig)
 
   if (backUpSetupConfig) {
     for (const key in backUpSetupConfig) {
@@ -93,9 +106,18 @@ function goHome(): void {
     }
   }
 
-  console.log("after clearing: ", backUpSetupConfig);
-  reset();  // Assuming this is the wizard reset
+  // console.debug("after clearing: ", backUpSetupConfig);
+  setStep(1);
 }
+
+
+function goToSetupWizard(): void {
+  IPCRouter.getInstance().send('renderer', 'action', JSON.stringify({
+    type: 'show_wizard',
+    wizard: 'storage'
+  }));
+}
+
 
 function handleActionEvent(data: string) {
   try {
@@ -148,13 +170,13 @@ onBeforeUnmount(() => {
 useEnterToAdvance(
   () => {
     if (setupComplete.value === "yes") {
-      goHome(); // Press Enter
+      goToBackupWizard(); // Press Enter
     }
   },
   300,
   () => {
     if (setupComplete.value === "yes") {
-      goHome(); // ArrowRight = Finish
+      goToBackupWizard(); // ArrowRight = Finish
     }
   },
   undefined // no need to handle ArrowLeft on this screen
