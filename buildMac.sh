@@ -3,7 +3,7 @@ echo '----- Packaging 45drives-setup-wizard for MacOS! Please wait... -----'
 
 start_time=$(date +%s)
 # Extract version from package.json
-appVersion=$(jq -r '.version' package.json)
+appVersion="$(node -p "require('./package.json').version")"
 
 echo "Build Version: $appVersion"
 
