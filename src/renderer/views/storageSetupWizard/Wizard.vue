@@ -1,6 +1,6 @@
 <template>
 
-  <Wizard :id="props.id" :steps="steps" :onComplete="(data: any) => props.onComplete(data)" :hideHeader="true"
+  <Wizard :id="props.id" :steps="steps" :onComplete="(data: any) => props.onComplete(data)" :hideHeader="true" :hideProgress="true"
     class="h-full flex-1 text-default bg-default" />
 
 </template>

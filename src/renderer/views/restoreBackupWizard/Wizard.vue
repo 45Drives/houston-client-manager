@@ -1,14 +1,14 @@
 <template>
 
-  <Wizard :id="props.id" :steps="steps" :onComplete="data => props.onComplete(data)" :hideHeader="true"
+  <Wizard :id="props.id" :steps="steps" :onComplete="data => props.onComplete(data)" :hideHeader="true" :hideProgress="true"
     class="h-full flex-1 text-default bg-default" />
   <!-- Page curl corner effect -->
-  <div class="page-corner-effect pointer-events-none"></div>
+  <!-- <div class="page-corner-effect pointer-events-none"></div> -->
 
   <!-- Double arrows -->
-  <div class="double-arrow absolute bottom-4 right-4 z-10 text-gray-400 text-xl animate-pulse pointer-events-none">
+  <!-- <div class="double-arrow absolute bottom-4 right-4 z-10 text-gray-400 text-xl animate-pulse pointer-events-none">
     &raquo;
-  </div>
+  </div> -->
 </template>
 
 <script setup lang="ts">
@@ -33,7 +33,6 @@ provide(restoreBackUpSetupDataKey, reactive({
 }))
 
 const steps: WizardStep[] = [
-  // { label: "Restore Backups", component: RestoreBackupsView }, //0
   { label: "Welcome To Restore", component: WelcomeView }, //0
   { label: "Login", component: EnterCredentialsView }, //0
   { label: "Restore", component: RestoreBackupsView }, //0

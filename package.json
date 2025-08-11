@@ -1,6 +1,6 @@
 {
   "name": "45drives-setup-wizard",
-  "version": "0.1.0",
+  "version": "1.1.0",
   "description": "Create backups to any houston servers on your local network",
   "main": "main/src/main/main.js",
   "workspaces": [
@@ -32,6 +32,7 @@
     "chokidar": "^3.5.3",
     "electron": "^32.1.2",
     "electron-builder": "^25.1.6",
+    "electron-osx-sign": "^0.6.0",
     "esbuild": "^0.25.1",
     "jsdom": "^26.0.0",
     "postcss": "^8.4.38",
@@ -46,12 +47,17 @@
     "@45drives/houston-common-lib": "workspace:*",
     "@45drives/houston-common-ui": "workspace:*",
     "asar": "^3.2.0",
+    "electron-log": "^5.4.1",
+    "electron-updater": "6.6.2",
     "multicast-dns": "^7.2.5",
     "node-localstorage": "^3.0.5",
+    "node-ssh": "^13.2.1",
     "plist": "^3.1.0",
     "ssh2": "^1.16.0",
     "sudo-prompt": "^9.2.1",
-    "vue": "^3.3.8"
+    "vue": "^3.3.8",
+    "winston": "^3.17.0",
+    "winston-daily-rotate-file": "^5.0.0"
   },
   "optionalDependencies": {
     "dmg-license": "^1.0.9"

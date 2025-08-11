@@ -1,51 +1,48 @@
 import { getOS } from "../utils";
+import path from "path";
+import fs from "fs";
 
-import path from 'path';
-import fs from 'fs';
+export default async function fetchFilesFromBackup(data: any): Promise<string[]> {
+  let basePath: string;
 
-export default async function fetchBackupsFromFile(data: any) {
+  if (getOS() === "win") {
+    // 1) if you’ve passed the mountPoint along, use that
+    if (data.mountPoint) {
+      basePath = data.mountPoint;
+    } else {
+      // 2) otherwise fall back (but ideally you’ll always have mountPoint)
+      basePath = `\\\\${data.smb_host}\\${data.smb_share}`;
+    }
+  } else if (getOS() === "mac") {
+    basePath = path.join("/Volumes", data.smb_share);
+  } else {
+    basePath = `/mnt/houston-mounts/${data.smb_share}`;
+  }
 
-  const slash = getOS() === "win" ? "\\" : "/"
-  
-  console.log(data)
-  const basePath = getOS() === "win" ? `${slash}${slash}${data.smb_host}${slash}${data.smb_share}` : `/mnt/houston-mounts/${data.smb_share}`;
   const uuid = data.uuid;
-
-  console.log("uuid", uuid)
-  console.log("basePath", basePath)
-
   const folderPath = path.join(basePath, uuid);
 
-  let files: string[] = []
   try {
-    files = listFiles(folderPath);
+    return listFiles(folderPath);
   } catch (err) {
-    console.log(err);
+    console.error(`Could not list files under ${folderPath}:`, err);
+    return [];
   }
-
-  console.log("files: ", files)
-
-  return files;
 }
 
-// Recursively list all files
-function listFiles(dir, relPath = '') {
-  console.log("listfiles")
-  const result: string[] = [];
-  const entries = fs.readdirSync(dir);
-
-  for (const entry of entries) {
-    console.log("entry", entry)
-    const fullPath = path.join(dir, entry);
-    const rel = path.join(relPath, entry);
-    const stat = fs.statSync(fullPath);
+// recursively build an array of paths _relative_ to the uuid folder
+function listFiles(dir: string, relPath = ""): string[] {
+  const out: string[] = [];
+  for (const entry of fs.readdirSync(dir)) {
+    const full = path.join(dir, entry);
+    const nextRel = path.join(relPath, entry);
+    const stat = fs.statSync(full);
 
     if (stat.isDirectory()) {
-      result.push(...listFiles(fullPath, rel));
+      out.push(...listFiles(full, nextRel));
     } else {
-      result.push(rel);
+      out.push(nextRel);
     }
   }
-
-  return result;
-};
+  return out;
+}
