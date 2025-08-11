@@ -45,8 +45,8 @@ codesign --verify -dvv "$outputDir/$appName-$appVersion.dmg"
 echo '.....DONE.'
 
 echo '----- NOTARIZING APP -----'
-xcrun notarytool submit "$outputDir/$appName.dmg" --apple-id cduffney@protocase.com --team-id $developerID --password $developerAppPassword --wait
-xcrun stapler staple "$outputDir/$appName.dmg"
+xcrun notarytool submit "$outputDir/$appName-$appVersion.dmg" --apple-id cduffney@protocase.com --team-id $developerID --password $developerAppPassword --wait
+xcrun stapler staple "$outputDir/$$appName-$appVersion.dmg"
 #echo '.....DONE.'
 
 ## IF NOTARIZATION FAILS, RUN THE BELOW COMMAND WITH THE SUBMISSION ID TO VIEW LOGS.
