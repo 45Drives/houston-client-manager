@@ -12,13 +12,14 @@ export default async function fetchBackupsFromServer(data: any, mainWindow: Brow
   const backupEventsPath = path.join(baseLogDir, '45drives_backup_events.json');
 
   let backupEvents: Array<{
+    event: string;
     uuid: string;
     source: string;
     target: string;
     timestamp: string;
     status: string;
   }> = [];
-  
+
   try {
     const raw = await fsAsync.readFile(backupEventsPath, 'utf-8');
     backupEvents = raw
@@ -87,7 +88,7 @@ export default async function fetchBackupsFromServer(data: any, mainWindow: Brow
 
       // Find the most recent backup_end event for this uuid
       const event = backupEvents
-        .filter(ev => ev.uuid === uuid && ev.status === "backup_end")
+        .filter(ev => ev.uuid === uuid && ev.event === "backup_end")
         .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())[0];
 
       let client = "";
