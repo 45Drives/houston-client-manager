@@ -9,6 +9,7 @@ echo "Build Version: $appVersion"
 
 appName=45drives-setup-wizard
 appIcon=icon.ico
+dmgName="${appName}-${appVersion}.dmg"
 
 outputDir=dist/mac
 entitlementsFile=entitlements.mac.plist
@@ -36,17 +37,17 @@ cp -R $outputDir/$appName.app $outputDir/temp
 ln -s /Applications $outputDir/temp/Applications
 
 echo '----- CREATING DMG -----'
-hdiutil create -volname "$appName" -srcfolder $outputDir/temp -ov -fs HFS+ -format UDZO -imagekey zlib-level=9 -o "$outputDir/$appName-$appVersion.dmg"
+hdiutil create -volname "$appName" -srcfolder $outputDir/temp -ov -fs HFS+ -format UDZO -imagekey zlib-level=9 -o $dmgName.dmg
 echo '.....DONE.'
 
 echo '----- CODE SIGNING DMG -----'
-codesign --deep -dvv --force --timestamp --options=runtime --entitlements $entitlementsFile --sign "$developerIdApplicationString" "$outputDir/$appName-$appVersion.dmg"
-codesign --verify -dvv "$outputDir/$appName-$appVersion.dmg"
+codesign --deep -dvv --force --timestamp --options=runtime --entitlements $entitlementsFile --sign "$developerIdApplicationString" $dmgName.dmg
+codesign --verify -dvv $dmgName.dmg
 echo '.....DONE.'
 
 echo '----- NOTARIZING APP -----'
-xcrun notarytool submit "$outputDir/$appName-$appVersion.dmg" --apple-id cduffney@protocase.com --team-id $developerID --password $developerAppPassword --wait
-xcrun stapler staple "$outputDir/$$appName-$appVersion.dmg"
+xcrun notarytool submit "$dmgName.dmg" --apple-id cduffney@protocase.com --team-id $developerID --password $developerAppPassword --wait
+xcrun stapler staple "$dmgName.dmg"
 #echo '.....DONE.'
 
 ## IF NOTARIZATION FAILS, RUN THE BELOW COMMAND WITH THE SUBMISSION ID TO VIEW LOGS.
