@@ -1,76 +1,150 @@
-import { BrowserWindow } from "electron";
-import { getOS } from "../utils";
+import { app, BrowserWindow } from "electron";
+import { getOS, extractJsonFromOutput } from "../utils";
 import { BackupEntry } from "@45drives/houston-common-lib";
 import mountSmbPopup from "../smbMountPopup";
 import path from 'path';
 import fsAsync from 'fs/promises';
 
 export default async function fetchBackupsFromServer(data: any, mainWindow: BrowserWindow): Promise<BackupEntry[]> {
-  await mountSmbPopup(data.smb_host, data.smb_share, data.smb_user, data.smb_pass, mainWindow);
+  console.debug("[DEBUG] ▶️ fetchBackupsFromServer called with:", data);
+
+  const baseLogDir = path.join(app.getPath('userData'), 'logs');
+  const backupEventsPath = path.join(baseLogDir, '45drives_backup_events.json');
+
+  let backupEvents: Array<{
+    event: string;
+    uuid: string;
+    source: string;
+    target: string;
+    timestamp: string;
+    status: string;
+  }> = [];
+
+  try {
+    const raw = await fsAsync.readFile(backupEventsPath, 'utf-8');
+    backupEvents = raw
+      .split('\n')
+      .map(line => line.trim())
+      .filter(Boolean)
+      .map(line => JSON.parse(line));
+  } catch (e) {
+    console.warn("Failed to read or parse 45drives_backup_events.json (NDJSON):", e);
+  }
+
+  // 1) mountSmbPopup returns JSON string → parse it
+  const raw = await mountSmbPopup(
+    data.smb_host,
+    data.smb_share,
+    data.smb_user,
+    data.smb_pass,
+    mainWindow,
+    "silent"
+  );
+
+  console.debug("[DEBUG] raw mountSmbPopup output:", raw);
+  
+  let mountResult: { DriveLetter: string, MountPoint: string, smb_share: string };
+  try {
+    mountResult = extractJsonFromOutput(raw);
+  } catch (e) {
+    console.error("[ERROR] Failed to JSON.parse mountSmbPopup output:", e, raw);
+    throw e;
+  }
+  console.debug("[DEBUG] parsed mountResult:", mountResult);
+
+  // 2) pick the correct root based on OS
+  let backupRoot: string;
+  if (getOS() === "win") {
+    // use the mapped drive letter, not UNC
+    backupRoot = mountResult.MountPoint;
+  } else if (getOS() === "mac") {
+    backupRoot = path.join("/Volumes", data.smb_share);
+  } else {
+    backupRoot = `/mnt/houston-mounts/${data.smb_share}`;
+  }
+  console.debug("[DEBUG] using backupRoot:", backupRoot);
+
+  // 3) defensively list top-level dirs
+  let uuidDirs: string[];
+  try {
+    uuidDirs = await fsAsync.readdir(backupRoot);
+    console.debug(`[DEBUG] found ${uuidDirs.length} UUID dirs:`, uuidDirs);
+    uuidDirs = uuidDirs
+      .filter(name => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(name));
+    console.debug(`[DEBUG] filtered UUID dirs:`, uuidDirs);
+  } catch (err) {
+    console.error(`Could not read backup root ${backupRoot}:`, err);
+    return [];
+  }
 
   const results: BackupEntry[] = [];
-
-  const slash = getOS() === "win" ? "\\" : "/"
-
-
-  const backupRoot = getOS() === "win" ? `${slash}${slash}${data.smb_host}${slash}${data.smb_share}` : `/mnt/houston-mounts/${data.smb_share}`;
-  const uuidDirs = await fsAsync.readdir(backupRoot);
+  const sep = path.sep;
 
   for (const uuid of uuidDirs) {
     try {
       const backupDir = path.join(backupRoot, uuid);
       const entries = await walkDir(backupDir);
       entries.sort((a, b) => a.length - b.length);
-      let baseFolder = uuid;
-      let lastModified = 'Unknown';
-      let keepSearchForBaseFolder = true;
 
-      for (const entry of entries) {
-        if (!await isDirectory(entry)) continue;
+      // Find the most recent backup_end event for this uuid
+      const event = backupEvents
+        .filter(ev => ev.uuid === uuid && ev.event === "backup_end")
+        .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())[0];
 
-        console.log(entry);
+      let client = "";
 
-        // Recursively gather files to find last modified time
-        const allFiles = await getAllFiles(entry);
-        const fileCount = allFiles.filter(file => !file.isDirectory()).length;
-        console.log("fileCount", fileCount)
-        if (allFiles.length) {
-          const times = await Promise.all(allFiles.map(async file => {
-            const stat = await fsAsync.stat(file.parentPath);
-            return stat.mtime;
-          }));
-          const mostRecent = new Date(Math.max(...times.map(t => t.getTime())));
-          lastModified = mostRecent.toISOString().split('T')[0];
+      if (event?.source) {
+        const normalized = (event.source || event.target || "").replace(/\\/g, '/');
+        
+        const os = getOS();
+
+        if (os === "mac") {
+          const match = normalized.match(/^\/Users\/([^/]+)/);
+          if (match) client = match[1];
+        } else if (os === "rocky" || os === "debian") {
+          const match = normalized.match(/^\/home\/([^/]+)/);
+          if (match) client = match[1];
+        } else if (os === "win") {
+          const match =
+            normalized.match(/^C:\/Users\/([^/]+)/i) ||           // Native Windows
+            normalized.match(/^\/mnt\/c\/Users\/([^/]+)/i);       // WSL-style
+          if (match) client = match[1];
         }
 
-        if (fileCount == 0 && keepSearchForBaseFolder) {
-          baseFolder = entry.replace(backupRoot, "").replace(slash + uuid + slash, "");
-        }
-        if (fileCount > 0 && keepSearchForBaseFolder) {
-          keepSearchForBaseFolder = false;
-          baseFolder = entry.replace(backupRoot, "").replace(slash + uuid + slash, "");
+        // Fallback if no OS-specific match worked
+        if (!client) {
+          const parts = normalized.split('/').filter(Boolean);
+          client = parts.length > 0 ? parts[0] : "";
         }
       }
 
-      const folders = baseFolder.split(slash);
-      let client = ""
-      if (folders.length > 0) {
-        baseFolder = baseFolder.replace(folders[0], "");
-        client = folders[0];
+      let folder = "/";
+      if (event?.source) {
+        folder = event.source;
+      } else if (event?.target) {
+        // Remove /uuid/clientname prefix from target path
+        const uuidPrefix = `/${uuid}/`;
+        const normalizedTarget = event.target.replace(/\\/g, '/');
+        if (normalizedTarget.includes(uuidPrefix)) {
+          folder = "/" + normalizedTarget.split(uuidPrefix)[1]?.split('/').slice(1).join('/');
+        }
       }
 
       results.push({
-        uuid: uuid,
-        folder: baseFolder,
+        uuid,
+        folder: folder,
         server: data.smb_host,
-        client: client,
-        lastBackup: lastModified,
+        client,
+        lastBackup: event?.timestamp
+          ? new Date(event.timestamp).toLocaleString()
+          : "Unknown",
         onSystem: true,
-        files: []
+        files: [],
+        mountPoint: mountResult.MountPoint
       });
 
     } catch (err) {
-      console.error('Failed to list backups:', err);
+      console.error("Failed to list backups for", uuid, ":", err);
     }
   }
 
@@ -79,34 +153,42 @@ export default async function fetchBackupsFromServer(data: any, mainWindow: Brow
 
 async function isDirectory(path: string) {
   try {
-    const stats = await fsAsync.stat(path);
-    return stats.isDirectory();
-  } catch (err) {
-    // Optional: handle error (e.g., path doesn't exist)
+    return (await fsAsync.stat(path)).isDirectory();
+  } catch {
     return false;
   }
 }
 
 async function walkDir(dir: string, results: string[] = []) {
+  // push the directory itself so we can consider empty-folder cases too
+  results.push(dir);
   const list = await fsAsync.readdir(dir, { withFileTypes: true });
 
-  results.push(dir);
-
-  for (const entry of list) {
-    const fullPath = path.join(dir, entry.name);
-    if (entry.isDirectory()) {
-      await walkDir(fullPath, results);
+  for (const d of list) {
+    const full = path.join(dir, d.name);
+    if (d.isDirectory()) {
+      await walkDir(full, results);
     } else {
-      results.push(fullPath);
+      results.push(full);
     }
   }
 
   return results;
 }
 
-// Helper: recursively list all files
-async function getAllFiles(dir) {
-  const entries = await fsAsync.readdir(dir, { withFileTypes: true });
+// Helper: recursively list all files (full paths)
+async function getAllFiles(dir: string): Promise<string[]> {
+  const list = await fsAsync.readdir(dir, { withFileTypes: true });
+  const out: string[] = [];
 
-  return entries;
+  for (const d of list) {
+    const full = path.join(dir, d.name);
+    if (d.isDirectory()) {
+      out.push(...await getAllFiles(full));
+    } else {
+      out.push(full);
+    }
+  }
+
+  return out;
 }

@@ -1,5 +1,5 @@
 <template>
-  <CardContainer>
+  <CardContainer class="overflow-y-auto min-h-0">
     <template #header class="!text-center">
       <div class="relative flex items-center justify-center h-18 w-full">
         <div class="absolute left-0 p-1 px-4 rounded-lg">
@@ -32,7 +32,7 @@
             <input v-model="search" type="text" placeholder="Type To Search For backup"
               class="w-full p-2 border rounded bg-white text-black" />
           </div>
-          <table class="max-h-96 overflow-y-auto w-full border text-left">
+          <table v-if="!loading" class="max-h-96 overflow-y-auto w-full border text-left">
             <thead>
               <tr class="bg-primary">
                 <th class="p-2">Folder</th>
@@ -53,6 +53,11 @@
               </tr>
             </tbody>
           </table>
+          <div v-else>
+            <div class="w-full h-[300px] flex justify-center items-center">
+              <div class="spinner"></div>
+            </div>
+          </div>
         </div>
 
         <div class="w-1/2 pl-2">
@@ -63,7 +68,7 @@
           </div>
           <div class="max-h-96 overflow-y-auto text-default" v-if="selectedBackup">
 
-            <table class="w-full border text-left">
+            <table v-if="!loading" class="w-full border text-left">
               <thead>
                 <tr class="bg-secondary">
                   <th class="p-2">File</th>
@@ -80,9 +85,13 @@
                     <input type="checkbox" v-model="file.selected" />
                   </td>
                 </tr>
-
               </tbody>
             </table>
+            <div v-else>
+              <div class="w-full h-[300px] flex justify-center items-center">
+                <div class="spinner"></div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -112,10 +121,10 @@
         <button @click="proceedToPreviousStep" class="btn btn-secondary h-20 w-40">
           Back
         </button>
-        <div v-if="selectedBackup" class="flex justify-center gap-4 mt-2">
-          <button class="btn btn-secondary px-4 py-2 rounded" @click="deselectAll">Deselect All</button>
-          <button class="btn btn-secondary px-4 py-2 rounded" @click="selectAll">Select All</button>
-          <button @click="restoreSelected" class="btn btn-primary px-4 py-2 rounded">Restore Selected
+        <div v-if="selectedBackup" class="button-group-row justify-center gap-4 mt-2">
+          <button class="btn btn-secondary px-4 py-2 " @click="deselectAll">Deselect All</button>
+          <button class="btn btn-secondary px-4 py-2 " @click="selectAll">Select All</button>
+          <button @click="restoreSelected" class="btn btn-primary px-4 py-2 ">Restore Selected
             Files</button>
         </div>
       </div>
@@ -124,7 +133,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, inject, onActivated } from 'vue'
+import { ref, computed, inject, onActivated, onDeactivated } from 'vue'
 import { useWizardSteps, DynamicBrandingLogo, confirm, CardContainer, useEnterToAdvance } from '@45drives/houston-common-ui';
 import { divisionCodeInjectionKey, restoreBackUpSetupDataKey } from '../../keys/injection-keys';
 import { IPCRouter, type BackupEntry, type FileEntry } from '@45drives/houston-common-lib';
@@ -164,18 +173,24 @@ function toggleFileSelection(file: FileEntry) {
 onActivated(() => {
 
   loading.value = true;
-  console.log("activated!")
+  // console.debug("activated!")
 
   IPCRouter.getInstance().addEventListener("action", data => {
     try {
       const response = JSON.parse(data);
       if (response.type === "fetchFilesFromBackupResult" && selectedBackup.value) {
-        const files = response.result.map((file: string) => ({ path: file.replace(selectedBackup.value!.client, ""), selected: false })) as FileEntry[]
+        // const files = response.result.map((file: string) => ({ path: file.replace(selectedBackup.value!.client, ""), selected: false })) as FileEntry[]
+        const files = response.result.map((file: string) => ({
+          path: file.replace(`${selectedBackup.value!.client}/`, "").replace(/^\/+/, ""), // ✅ Remove all leading slashes
+          selected: false
+        })) as FileEntry[];
         selectedBackup.value.files = files;
+        console.debug('selectedBackupFiles:', selectedBackup.value.files);
       } else if (response.type === "fetchBackupsFromServerResult") {
         backups.value = response.result as BackupEntry[];
+        console.debug('backupsFound:', backups.value);
       } else if (response.type === "restoreBackupsResult") {
-        console.log("restore happened")
+        // console.debug("restore happened")
         restoreProgress.value.current++;
         restoreProgress.value.lastFile = response.value.file;
         // Optional: track errors
@@ -189,6 +204,7 @@ onActivated(() => {
 
     } catch (e) { }
 
+  
     loading.value = false;
   });
 
@@ -203,7 +219,22 @@ onActivated(() => {
         smb_pass: restoreBackupsData.password,
       }
     }))
+  IPCRouter.getInstance().send("backend", "action",
+    JSON.stringify({ type: "fetchBackupEvents" })
+  )
+});
 
+onDeactivated(() => {
+  // Reset all relevant state when leaving the page
+  backups.value = [];
+  selectedBackup.value = null;
+  restoreProgress.value = {
+    current: 0,
+    total: 0,
+    lastFile: ""
+  };
+  restoredFolders.value = [];
+  showOpenFolderPrompt.value = false;
 });
 
 async function selectBackup(backup: BackupEntry) {
@@ -212,7 +243,7 @@ async function selectBackup(backup: BackupEntry) {
 }
 
 async function fetchBackupFiles(backup: BackupEntry) {
-  console.log("fetchFilesFromBackup")
+  // console.debug("fetchFilesFromBackup")
   IPCRouter.getInstance().send("backend", 'action', JSON.stringify(
     {
       type: "fetchFilesFromBackup",
@@ -259,6 +290,7 @@ const restoreSelected = async () => {
   if (!confirmed) return;
 
   const filesToRestore = selectedBackup.value.files.filter(file => file.selected)
+  console.debug("[restoreBackups] Files to restore:", filesToRestore);
 
   restoreProgress.value = {
     current: 0,
@@ -284,9 +316,15 @@ const restoreSelected = async () => {
 
 const openRestoredFolders = () => {
   for (const folder of restoredFolders.value) {
+    // const normalizedPath = folder.startsWith("/") || /^[A-Za-z]:/.test(folder)
+    //   ? folder
+    //   : `/${folder}`;
+    const fixedFolder = folder.replace(/\\/g, "/");
+    const normalizedPath = fixedFolder.match(/^([A-Za-z]:\/|\/)/) ? fixedFolder : `/${fixedFolder}`;
+
     IPCRouter.getInstance().send("backend", "action", JSON.stringify({
       type: "openFolder",
-      path: folder
+      path: normalizedPath
     }));
   }
   showOpenFolderPrompt.value = false;
@@ -322,5 +360,22 @@ table {
 th,
 td {
   border: 1px solid #ccc;
+}
+
+/* Loading spinner */
+.spinner {
+  border: 4px solid rgba(0, 0, 0, 0.1);
+  border-left-color: #2c3e50;
+  border-radius: 50%;
+  width: 40px;
+  height: 40px;
+  animation: spin 1s linear infinite;
+  margin: 20px;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 </style>

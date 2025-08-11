@@ -1,5 +1,5 @@
 <template>
-  <CardContainer>
+  <CardContainer class="overflow-y-auto min-h-0">
     <template #header>
       <div class="relative flex items-center justify-center h-18  w-full">
         <div class="absolute left-0 p-1 px-4 rounded-lg">
@@ -51,9 +51,10 @@
             Back
           </button>
 
-          <button @click="deleteSelectedTasks" class="btn btn-danger w-40 h-20"
+          <button @click="deleteSelectedTasks" class="btn btn-danger w-40 h-20 flex items-center justify-center gap-2"
             :disabled="selectedBackUpTasks.length === 0">
-            Cancel Selected Tasks
+            <span>Delete Selected</span>
+            <TrashIcon class="w-6 h-6 text-white" />
           </button>
 
           <button @click="proceedToNextStep" class="btn btn-primary w-40 h-20"
@@ -71,25 +72,31 @@
 <script setup lang="ts">
 import { BackUpTask } from '@45drives/houston-common-lib';
 import CardContainer from '../../components/CardContainer.vue';
-import { useWizardSteps, DynamicBrandingLogo, confirm, useEnterToAdvance } from '@45drives/houston-common-ui';
+import { useWizardSteps, DynamicBrandingLogo, useEnterToAdvance } from '@45drives/houston-common-ui';
 import BackUpListView from './BackUpListView.vue';
 import GlobalSetupWizardMenu from '../../components/GlobalSetupWizardMenu.vue';
-import { inject, ref } from 'vue';
-import { divisionCodeInjectionKey } from '../../keys/injection-keys';
+import { TrashIcon } from '@heroicons/vue/24/outline';
+import { inject, provide, reactive, ref } from 'vue';
+import { divisionCodeInjectionKey, reviewBackUpSetupKey } from '../../keys/injection-keys';
 const division = inject(divisionCodeInjectionKey);
+const reviewBackup = inject(reviewBackUpSetupKey);
 
 const selectedBackUpTasks = ref<BackUpTask[]>([]);
 const handleBackUpTaskSelected = (tasks: BackUpTask[]) => {
   selectedBackUpTasks.value = tasks;
+  if (reviewBackup) {
+
+    reviewBackup.tasks = tasks;
+  }
 };
 
 const backUpListRef = ref();
 
 const deleteSelectedTasks = () => {
-  // console.log("[Parent] 🗑️ deleteSelectedTasks triggered");
+  // console.debug("[Parent] 🗑️ deleteSelectedTasks triggered");
 
   if (backUpListRef.value?.deleteSelectedTasks) {
-    // console.log("[Parent] Calling child deleteSelectedTasks...");
+    // console.debug("[Parent] Calling child deleteSelectedTasks...");
     backUpListRef.value.deleteSelectedTasks();
   } else {
     console.warn("[Parent] backUpListRef or child method is undefined");

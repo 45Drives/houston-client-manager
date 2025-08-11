@@ -1,13 +1,12 @@
 <template>
-  <CardContainer class="">
+  <CardContainer class="overflow-y-auto min-h-0">
     <template #header>
       <div class="relative flex items-center justify-center h-18  w-full">
         <div class="absolute left-0 p-1 px-4 rounded-lg">
           <DynamicBrandingLogo :division="division" />
         </div>
         <p class="text-3xl font-semibold text-center">
-          Choose Your Setup Option &nbsp;
-          <CommanderToolTip :message="`Choose how your storage server will be setup and configured.`" :width="600" />
+          Choose Your Backup Type
         </p>
         <div class="absolute right-0 top-1/2 -translate-y-1/2">
           <GlobalSetupWizardMenu />
