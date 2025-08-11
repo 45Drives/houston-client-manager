@@ -7,8 +7,9 @@ appVersion=$(jq -r '.version' package.json)
 
 echo "Build Version: $appVersion"
 
-appName=45drives-setup-wizard
+appNameBase=45drives-setup-wizard
 appIcon=icon.ico
+appName="$appNameBase-$appVersion"
 
 outputDir=dist/mac
 entitlementsFile=entitlements.mac.plist
@@ -23,25 +24,25 @@ echo '.....DONE.'
 
 echo '----- CODE SIGNING APP -----'
 ## Find all files and do deep code signing.
-find $outputDir/$appName.app -type f -exec codesign --deep -dvv --force --timestamp --options=runtime --entitlements $entitlementsFile --sign "$developerIdApplicationString" {} \;
+find "$outputDir/$appName.app" -type f -exec codesign --deep -dvv --force --timestamp --options=runtime --entitlements $entitlementsFile --sign "$developerIdApplicationString" {} \;
 ## Code sign .app bundle
-codesign --deep -dvv --force --timestamp --options=runtime --entitlements $entitlementsFile --sign "$developerIdApplicationString" $outputDir/$appName.app
+codesign --deep -dvv --force --timestamp --options=runtime --entitlements $entitlementsFile --sign "$developerIdApplicationString" "$outputDir/$appName.app"
 ## Verify code signing was successful.
-codesign --verify --strict -dvv $outputDir/$appName.app
+codesign --verify --strict -dvv "$outputDir/$appName.app"
 echo '.....DONE.'
 
 ## Create a temp directory to add the symbolic link to the applications folder
 mkdir $outputDir/temp
-cp -R $outputDir/$appName.app $outputDir/temp
+cp -R "$outputDir/$appName.app" $outputDir/temp
 ln -s /Applications $outputDir/temp/Applications
 
 echo '----- CREATING DMG -----'
-hdiutil create -volname "$appName" -srcfolder $outputDir/temp -ov -fs HFS+ -format UDZO -imagekey zlib-level=9 -o $outputDir/$appName.dmg
+hdiutil create -volname "$appName" -srcfolder $outputDir/temp -ov -fs HFS+ -format UDZO -imagekey zlib-level=9 -o "$outputDir/$appName.dmg"
 echo '.....DONE.'
 
 echo '----- CODE SIGNING DMG -----'
-codesign --deep -dvv --force --timestamp --options=runtime --entitlements $entitlementsFile --sign "$developerIdApplicationString" $outputDir/$appName.dmg
-codesign --verify -dvv $outputDir/$appName.dmg
+codesign --deep -dvv --force --timestamp --options=runtime --entitlements $entitlementsFile --sign "$developerIdApplicationString" "$outputDir/$appName.dmg"
+codesign --verify -dvv "$outputDir/$appName.dmg"
 echo '.....DONE.'
 
 echo '----- NOTARIZING APP -----'
