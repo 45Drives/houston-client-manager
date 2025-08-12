@@ -1,18 +1,5 @@
 <template>
   <CardContainer class="overflow-y-auto min-h-0">
-    <template #header>
-      <div class="relative flex items-center justify-center h-24">
-        <div class="absolute left-0  p-1 px-4 rounded-lg">
-          <DynamicBrandingLogo :division="division" />
-        </div>
-        <p class="text-3xl font-semibold text-center">
-          Server Credentials
-        </p>
-        <div class="absolute right-0 top-1/2 -translate-y-1/2">
-          <GlobalSetupWizardMenu />
-        </div>
-      </div>
-    </template>
 
     <div class="flex flex-col h-full justify-center items-center text-default">
       <!-- Username and Password input fields -->
@@ -64,11 +51,13 @@
 import CardContainer from '../../components/CardContainer.vue';
 import { ref, computed, inject } from 'vue';
 import { EyeIcon, EyeSlashIcon } from "@heroicons/vue/20/solid";
-import { useWizardSteps, DynamicBrandingLogo, useAutoFocus, useEnterToAdvance } from '@45drives/houston-common-ui';
-import { backUpSetupConfigKey, divisionCodeInjectionKey } from '../../keys/injection-keys';
-import GlobalSetupWizardMenu from '../../components/GlobalSetupWizardMenu.vue';
+import { useWizardSteps, useAutoFocus, useEnterToAdvance } from '@45drives/houston-common-ui';
+import { backUpSetupConfigKey } from '../../keys/injection-keys';
+import { useHeader } from '../../composables/useHeader'
+useHeader('Server Credentials')
+
 useAutoFocus();
-const division = inject(divisionCodeInjectionKey);
+
 const { prevStep, nextStep, wizardData } = useWizardSteps("backup");
 const backUpSetupConfig = inject(backUpSetupConfigKey)!;
 

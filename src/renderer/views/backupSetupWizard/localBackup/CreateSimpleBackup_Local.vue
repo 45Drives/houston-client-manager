@@ -6,7 +6,7 @@
 					<DynamicBrandingLogo :division="division" />
 				</div>
 				<p class="text-3xl font-semibold text-center">
-					Customize Backup Plan
+					Create Simple Backup Plan!
 				</p>
 				<div class="absolute right-0 top-1/2 -translate-y-1/2">
 					<GlobalSetupWizardMenu />
@@ -27,6 +27,7 @@
 					</div>
 
 					<div class="shrink-0 space-y-2 overflow-hidden w-full">
+						<!-- Backup Location -->
 						<div class="flex items-center">
 							<div class="flex items-center w-[25%] flex-shrink-0 space-x-2">
 								<label class="text-default font-semibold text-left">Back Up Location</label>
@@ -45,12 +46,26 @@
 									{{ `\\\\${item.name}\\${item.shareName}` }}
 								</option>
 							</select>
+						</div>
 
+						<!-- Backup Frequency -->
+						<div class="shrink-0 flex flex-row items-center py-2">
+							<label class="w-[25%] text-default font-semibold text-start">
+								Backup Interval <span v-if="scheduleFrequency != 'hour'">(Starts At 12:00 AM
+									(Midnight)):</span>
+							</label>
+							<select v-model="scheduleFrequency"
+								class="bg-default h-[3rem] text-default rounded-lg px-4 flex-1 border border-default">
+								<option value="hour">Hourly</option>
+								<option value="day">Daily</option>
+								<option value="week">Weekly</option>
+								<option value="month">Monthly</option>
+							</select>
 						</div>
 
 						<!-- Folder Selection Button -->
 						<div class="flex flex-row items-center mt-4">
-							<button @click="handleFolderSelect" class="relative btn btn-secondary h-10 w-15">
+							<button @click="handleFolderSelect" class="btn btn-secondary h-10 w-15">
 								<PlusIcon class="w-6 h-6 text-white" />
 							</button>
 							<p class="text-start ml-2 font-semibold text-lg">
@@ -70,37 +85,20 @@
 								</div>
 								<input disabled :value="folder.path"
 									class="bg-default h-[3rem] mr-4 text-default rounded-lg px-4 flex-1 border border-default" />
-								<!-- Wrapper for the buttons to keep them together -->
-								<div class="flex space-x-2">
-									<button @click="editSchedule(backUpSetupConfig!.backUpTasks[index].schedule)"
-										class="btn btn-secondary h-10 w-fit flex flex-row justify-between px-3 text-center items-center">
-										<CalendarIcon class="w-6 h-6 text-white" />
-										<span class="text-sm px-2">Edit Schedule</span>
-									</button>
-									<button @click="removeFolder(index)" class="btn btn-secondary">
-										<MinusIcon class="w-6 h-6 text-white"></MinusIcon>
-									</button>
-								</div>
+								<button @click="removeFolder(index)" class="btn btn-secondary">
+									<MinusIcon class="w-6 h-6 text-white" />
+								</button>
 							</div>
 						</div>
-
 					</div>
 				</div>
-
 			</div>
 		</div>
-		<Modal :show="showCalendar" class="-mt-10" @clickOutside="">
-			<div class="w-full max-w-xl mx-auto">
-				<SimpleCalendar title="Schedule Your Backup" :taskSchedule="selectedTaskSchedule"
-					@close="handleCalendarClose(false)" @save="handleCalendarClose(true)"
-					class="border-2 border-default rounded-md w-full" />
-			</div>
-		</Modal>
 
 		<!-- Buttons -->
 		<template #footer>
 			<div class="button-group-row justify-between">
-				<button @click=" proceedToPreviousStep" class="btn btn-primary h-20 w-40">
+				<button @click="proceedToPreviousStep" class="btn btn-primary h-20 w-40">
 					Back
 				</button>
 				<button :disabled="backUpSetupConfig?.backUpTasks.length === 0" @click="proceedToNextStep"
@@ -109,7 +107,6 @@
 				</button>
 			</div>
 		</template>
-
 		<MessageDialog ref="messageFolderAlreadyAdded" message="⚠️ Folder is already added." />
 		<MessageDialog ref="messageSubFolderAlreadyAdded"
 			message="⚠️ A subfolder of this folder is already added. Please remove it first." />
@@ -120,31 +117,26 @@
 </template>
 
 <script setup lang="ts">
-import { CardContainer, CommanderToolTip, Modal, useEnterToAdvance } from "@45drives/houston-common-ui";
-import { useWizardSteps, DynamicBrandingLogo } from '@45drives/houston-common-ui';
-import { inject, ref, reactive, watch, nextTick, computed } from "vue";
+import { CardContainer, CommanderToolTip, confirm, useEnterToAdvance } from "@45drives/houston-common-ui";
+import { computed, inject, onMounted, ref, watch } from "vue";
 import { PlusIcon, MinusIcon } from "@heroicons/vue/20/solid";
-import { backUpSetupConfigKey } from "../../keys/injection-keys";
+import { useWizardSteps, DynamicBrandingLogo } from '@45drives/houston-common-ui';
+import { Server, DiscoveryState } from '../../../types'
+import { backUpSetupConfigKey, divisionCodeInjectionKey, discoveryStateInjectionKey } from "../../../keys/injection-keys";
 import MessageDialog from '../../components/MessageDialog.vue';
-import { CalendarIcon } from "@heroicons/vue/24/outline";
-import { BackUpTask, IPCRouter, TaskSchedule } from "@45drives/houston-common-lib";
-import { Server, DiscoveryState } from '../../types'
-import { SimpleCalendar } from "../../components/calendar";
-import { divisionCodeInjectionKey, discoveryStateInjectionKey } from '../../keys/injection-keys';
-import { sanitizeFilePath } from "./utils";
+import { BackUpTask, IPCMessageRouter, IPCRouter, server, unwrap } from "@45drives/houston-common-lib";
 import GlobalSetupWizardMenu from '../../components/GlobalSetupWizardMenu.vue';
+import { sanitizeFilePath } from "../utils";
 
 const division = inject(divisionCodeInjectionKey);
+// Wizard navigation
+const { completeCurrentStep, prevStep } = useWizardSteps("backup");
 
 // Reactive State
 const backUpSetupConfig = inject(backUpSetupConfigKey);
 
 const selectedFolders = ref<{ name: string; path: string }[]>([]);
 const scheduleFrequency = ref<"hour" | "day" | "week" | "month">("hour");
-const isSelectingFolder = ref(false);
-const messageFolderAlreadyAdded = ref<InstanceType<typeof MessageDialog> | null>(null);
-const messageSubFolderAlreadyAdded = ref<InstanceType<typeof MessageDialog> | null>(null);
-const messageParentFolderAlreadyAdded = ref<InstanceType<typeof MessageDialog> | null>(null);
 
 // const servers = ref<Server[]>([]);
 const discoveryState = inject<DiscoveryState>(discoveryStateInjectionKey)!
@@ -157,28 +149,18 @@ const servers = computed(() =>
 	)
 )
 
-const selectedTaskSchedule = ref<any>();
+// const servers = computed(() =>
+// 	discoveryState.servers.filter(server =>
+// 		// remove if setupComplete is false OR status is 'not complete'
+// 		server.setupComplete !== false &&
+// 		server.status !== 'not complete'
+// 	)
+// )
 
-const { completeCurrentStep, prevStep } = useWizardSteps("backup");
-
-const showCalendar = ref(false);
-let resolveCalendarPromise: ((value: boolean) => void) | null = null;
-
-function toggleCalendarComponent() {
-	showCalendar.value = true;
-
-	return new Promise<boolean>((resolve) => {
-		resolveCalendarPromise = resolve;
-	});
-}
-
-function handleCalendarClose(saved: boolean) {
-	showCalendar.value = false;
-	if (resolveCalendarPromise) {
-		resolveCalendarPromise(saved);
-		resolveCalendarPromise = null;
-	}
-}
+const isSelectingFolder = ref(false);
+const messageFolderAlreadyAdded = ref<InstanceType<typeof MessageDialog> | null>(null);
+const messageSubFolderAlreadyAdded = ref<InstanceType<typeof MessageDialog> | null>(null);
+const messageParentFolderAlreadyAdded = ref<InstanceType<typeof MessageDialog> | null>(null);
 
 const selectedServerIp = ref('');
 
@@ -202,35 +184,48 @@ watch(servers, (discoveredServers) => {
 });
 
 
-// Watch and Update Tasks When Schedule Changes
+//  Watch and Update Tasks When Schedule Changes
 watch(scheduleFrequency, (newSchedule) => {
+
 	if (backUpSetupConfig) {
+
 		backUpSetupConfig.backUpTasks = backUpSetupConfig.backUpTasks.map((task) => {
 			task.schedule.repeatFrequency = newSchedule;
+			task.schedule.startDate = getNextScheduleDate(newSchedule)
+			// console.debug("some update task.startDate:", task.schedule.startDate);
 			return task;
 		});
 	}
 });
+
+
+//  Sync `selectedFolders` with `backUpSetupConfig.backUpTasks`
+const loadExistingFolders = () => {
+	selectedFolders.value = (backUpSetupConfig?.backUpTasks ?? []).map(task => ({
+		name: task.source?.split("/").pop() ?? "Unknown Folder",
+		path: task.source
+	}));
+};
+onMounted(loadExistingFolders);
 
 // Normalize path function for cross-platform compatibility
 const normalizePath = (path: string) =>
 	path.replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase(); // Normalize for consistency
 
 watch(
-  () => backUpSetupConfig?.backUpTasks.length,
-  (newLength, oldLength) => {
-    if (newLength !== oldLength) {
-      selectedFolders.value = (backUpSetupConfig?.backUpTasks || []).map(task => ({
-        name: task.description,
-        path: task.source
-      }))
-    }
-  },
-  { immediate: true } // triggers on mount too
+	() => backUpSetupConfig?.backUpTasks.length,
+	(newLength, oldLength) => {
+		if (newLength !== oldLength) {
+			selectedFolders.value = (backUpSetupConfig?.backUpTasks || []).map(task => ({
+				name: task.description,
+				path: task.source
+			}))
+		}
+	},
+	{ immediate: true } // triggers on mount too
 )
 
 
-// Folder Selection
 const handleFolderSelect = async () => {
 	if (isSelectingFolder.value) return; // Prevent multiple popups
 	isSelectingFolder.value = true;
@@ -249,47 +244,38 @@ const handleFolderSelect = async () => {
 		const folderName = normalizedFolderPath.split("/").pop() ?? "Unknown Folder";
 
 		if (backUpSetupConfig?.backUpTasks) {
-			const existingFolders = backUpSetupConfig.backUpTasks.map(task =>
+			const existingFolders = backUpSetupConfig.backUpTasks.map((task) =>
 				normalizePath(task.source.trim())
 			);
 
-			// Prevent exact duplicates
+			//  Prevent Duplicate Folder Selection (Case-Insensitive)
 			if (existingFolders.includes(normalizedFolderPath)) {
 				messageFolderAlreadyAdded.value?.show();
 				return;
 			}
 
-			// Prevent adding child folder of an existing one
-			if (existingFolders.some(existingPath =>
+			//  Prevent Adding a Child Folder if Parent is Already in the List
+			if (existingFolders.some((existingPath: string) =>
 				normalizedFolderPath.startsWith(existingPath + "/") || normalizedFolderPath.startsWith(existingPath + "\\")
 			)) {
 				messageParentFolderAlreadyAdded.value?.show();
+
 				return;
 			}
 
-			// Prevent adding parent folder if subfolder already exists
-			if (existingFolders.some(existingPath =>
+			//  Prevent Adding a Parent Folder if Any Child is Already in the List
+			if (existingFolders.some((existingPath: string) =>
 				existingPath.startsWith(normalizedFolderPath + "/") || existingPath.startsWith(normalizedFolderPath + "\\")
 			)) {
 				messageSubFolderAlreadyAdded.value?.show();
+
 				return;
 			}
 
-			// Ask user to confirm schedule via calendar
-			selectedTaskSchedule.value = reactive<TaskSchedule>({
-				repeatFrequency: 'day',
-				startDate: new Date()
-			});
 
-			const scheduleConfirmed = await toggleCalendarComponent();
-			if (!scheduleConfirmed) {
-				// console.debug("User cancelled scheduling, not adding task.");
-				return;
-			}
-
-			// Add new task
+			//  Add New Folder if No Conflicts
 			const newTask: BackUpTask = {
-				schedule: selectedTaskSchedule.value,
+				schedule: { startDate: getNextScheduleDate(scheduleFrequency.value), repeatFrequency: scheduleFrequency.value },
 				description: `Backup task for ${folderName}`,
 				source: folderPath,
 				target: `\\\\${selectedServer.value?.name}\\${selectedServer.value?.shareName}`,
@@ -297,44 +283,21 @@ const handleFolderSelect = async () => {
 				uuid: crypto.randomUUID(),
 			};
 
-			// console.debug('New backup task:', newTask);
+			// console.debug("NewTask.Startdate:", newTask.schedule.startDate);
 
 			backUpSetupConfig.backUpTasks.push(newTask);
 			selectedFolders.value.push({ name: folderName, path: folderPath });
-
-			if (!backUpSetupConfig.backUpTasks.length) {
-				selectedFolders.value = [];
+			if (!backUpSetupConfig?.backUpTasks) {
+				selectedFolders.value = []
 			}
 		}
 	} catch (error) {
 		console.error("Error selecting folder:", error);
 	} finally {
-		isSelectingFolder.value = false;
+		isSelectingFolder.value = false; // Reset state after operation
 	}
 };
-
-
-async function editSchedule(taskSchedule: TaskSchedule) {
-	// Set the selected schedule for editing
-	selectedTaskSchedule.value = reactive({
-		repeatFrequency: taskSchedule.repeatFrequency,
-		startDate: new Date(taskSchedule.startDate),
-	});
-
-	// Wait for Vue to update before showing the modal
-	await nextTick();
-
-	// Open the calendar modal
-	const scheduleConfirmed = await toggleCalendarComponent();
-
-	// If the user saves, update the task schedule
-	if (scheduleConfirmed) {
-		taskSchedule.repeatFrequency = selectedTaskSchedule.value.repeatFrequency;
-		taskSchedule.startDate = selectedTaskSchedule.value.startDate;
-	}
-}
-
-// Remove Folder from List
+//  Remove Folder from List
 const removeFolder = (index: number) => {
 	selectedFolders.value.splice(index, 1);
 	if (backUpSetupConfig) {
@@ -344,6 +307,42 @@ const removeFolder = (index: number) => {
 	}
 };
 
+function getNextScheduleDate(frequency: 'hour' | 'day' | 'week' | 'month'): Date {
+	const now = new Date();
+	const nextDate = new Date(now);
+
+	switch (frequency) {
+		case 'hour':
+			nextDate.setMinutes(0, 0, 0);
+			nextDate.setHours(now.getHours() + 1);
+			break;
+
+		case 'day':
+			nextDate.setHours(0, 0, 0, 0);
+			if (now >= nextDate) {
+				nextDate.setDate(nextDate.getDate() + 1);
+			}
+			break;
+
+		case 'week':
+			nextDate.setHours(0, 0, 0, 0);
+			nextDate.setDate(now.getDate() + 7);
+			break;
+
+		case 'month':
+			nextDate.setHours(0, 0, 0, 0);
+			const currentDay = now.getDate();
+			nextDate.setMonth(now.getMonth() + 1);
+			if (nextDate.getDate() < currentDay) {
+				nextDate.setDate(1); // fallback to end of month
+			}
+			break;
+	}
+	// console.debug("nextDate ", nextDate)
+
+	return nextDate;
+}
+
 let hostname = ""
 IPCRouter.getInstance().addEventListener("action", (data) => {
 	try {
@@ -351,30 +350,28 @@ IPCRouter.getInstance().addEventListener("action", (data) => {
 
 		if (jsondata.type === "sendHostname") {
 			hostname = sanitizeFilePath(jsondata.hostname);
-		} 
-	} catch (_e) {}
+		}
+	} catch (_e) { }
 })
+
 
 IPCRouter.getInstance().send("backend", "action", "requestHostname");
 
 // Navigation
 const proceedToNextStep = () => {
+
 	backUpSetupConfig?.backUpTasks.forEach(
 		(task: BackUpTask) => {
 			const targetDirForSourcePart = sanitizeFilePath(task.source);
 			const slashOrNotSlash = targetDirForSourcePart.startsWith("/") ? "" : "/";
 
 			task.target = `${selectedServer.value!.name}:${selectedServer.value!.shareName!}/${task.uuid}/${hostname}${slashOrNotSlash}${targetDirForSourcePart}`;
-			// console.debug('target saved:', task.target);
+			console.debug('task saved:', task);
 		});
 
 	completeCurrentStep();
 }
-
-// Proceed to Previous Step
-const proceedToPreviousStep = () => {
-	prevStep();
-};
+const proceedToPreviousStep = () => prevStep();
 
 useEnterToAdvance(
 	() => {
@@ -392,5 +389,4 @@ useEnterToAdvance(
 		proceedToPreviousStep(); // ← Arrow
 	}
 );
-
 </script>

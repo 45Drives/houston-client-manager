@@ -1,19 +1,5 @@
 <template>
   <CardContainer class="overflow-y-auto min-h-0">
-    <!-- Header -->
-    <template #header>
-      <div class="relative flex items-center justify-center h-18  w-full">
-        <div class="absolute left-0 p-1 px-4 rounded-lg">
-          <DynamicBrandingLogo :division="division" />
-        </div>
-        <p class="text-3xl font-semibold text-center">
-          Server Credentials
-        </p>
-        <div class="absolute right-0 top-1/2 -translate-y-1/2">
-          <GlobalSetupWizardMenu />
-        </div>
-      </div>
-    </template>
 
     <!-- Main Content -->
     <div class="flex flex-col gap-8 px-8 py-6 text-default text-center items-center">
@@ -26,7 +12,7 @@
       <div class="flex flex-col lg:flex-row gap-10 w-full justify-center items-center">
         <!-- Server Selection -->
         <div class="w-full lg:w-2/5">
-          <HoustonServerListView class="w-full text-xl" :filterOutStorageSetupComplete="false"
+          <HoustonServerListView class="w-full text-xl" :filterOutStorageSetupComplete="false" :filterOutNonSetupServers="true"
             @serverSelected="handleServerSelected" :selectedServer="restoreBackUpData.server" />
         </div>
 
@@ -81,11 +67,12 @@
 import CardContainer from '../../components/CardContainer.vue';
 import { ref, computed, inject } from 'vue';
 import { EyeIcon, EyeSlashIcon } from "@heroicons/vue/20/solid";
-import { useWizardSteps, DynamicBrandingLogo, useAutoFocus, useEnterToAdvance } from '@45drives/houston-common-ui';
+import { useWizardSteps, useAutoFocus, useEnterToAdvance } from '@45drives/houston-common-ui';
 import { divisionCodeInjectionKey, restoreBackUpSetupDataKey } from '../../keys/injection-keys';
 import HoustonServerListView from '../../components/HoustonServerListView.vue';
 import { Server } from '../../types';
-import GlobalSetupWizardMenu from '../../components/GlobalSetupWizardMenu.vue';
+import { useHeader } from '../../composables/useHeader'
+useHeader('Select Server + Enter Credentials')
 useAutoFocus();
 const division = inject(divisionCodeInjectionKey);
 const restoreBackUpData = inject(restoreBackUpSetupDataKey)!;

@@ -1,121 +1,100 @@
 <template>
-  <div class="flex flex-col">
-    <div class="">
-      <div class="grid gap-2" :class="{
-        'grid-cols-1': backUpTasks.length <= 2,
-        'md:grid-cols-2': backUpTasks.length >= 3,
-        'lg:grid-cols-3': backUpTasks.length >= 5
-      }">
-
-        <div :class="{
-          'col-span-1': backUpTasks.length <= 2,
-          'col-span-2': backUpTasks.length >= 3,
-          'col-span-3': backUpTasks.length >= 5
-        }">
-          Refresh the list of tasks. You maybe be prompted for access.
-          <button class="btn btn-secondary text-sm relative" @click.stop="fetchBackupTasks()">
-            Refresh List
-          </button>
-        </div>
-
-        <div v-if="isLoading" class="w-full h-[300px] flex justify-center items-center" :class="{
-          'col-span-1': backUpTasks.length <= 2,
-          'col-span-2': backUpTasks.length >= 3,
-          'col-span-3': backUpTasks.length >= 5
-        }">
-          <div class="spinner"></div>
-        </div>
-
-        <div v-else-if="backUpTasks.length === 0" class="text-center py-8">
-          No Tasks Found
-        </div>
-        
-        <!-- Backup Card -->
-        <div v-else v-for="task in backUpTasks" :key="task.uuid"
-          class="relative border-4 rounded-lg shadow-sm p-2 space-y-2 cursor-pointer items-center bg-default"
-          :class="[selectedBackUps.some(t => t.uuid === task.uuid) ? 'border-primary' : 'border-default']"
-          @click="toggleSelection(task)">
-
-          <input type="checkbox" class="input-checkbox absolute top-2 left-2 z-10"
-            :checked="selectedBackUps.some(t => t.uuid === task.uuid)" @change.stop="toggleSelection(task)" />
-
-          <div class="space-y-2 text-default">
-            <div>
-              <div class="text-label">Folder</div>
-              <div class="px-2 py-1 text-sm truncate" :title="task.source">
-                {{ task.source }}
-              </div>
-            </div>
-
-            <div>
-              <div class="text-label" :title="task.target">Backup Location</div>
-              <div class="px-2 py-1 text-sm truncate" :title="`${task.host}:${task.share}`">
-                {{ task.host }}:{{ task.share }}
-              </div>
-              <div class="px-2 py-1 text-sm truncate" :title="task.target">
-                {{ task.target }}
-              </div>
-            </div>
-
-            <!-- <div class="text-xs font-medium" :class="{
-              'text-success': task.status === 'online',
-              'text-warning': task.status === 'missing_folder',
-              'text-error': task.status && task.status !== 'online' && task.status !== 'missing_folder'
-            }">
-              Status: <span>{{ getTaskStatusText(task) }}</span>
-            </div> -->
-
-            <div class="text-feedback font-semibold pt-2">
-              Next backup will occur at
-              {{ getNextBackupDate(task.schedule.startDate, task.schedule.repeatFrequency).toLocaleString([], {
-              weekday: 'short', year: 'numeric', month: 'short', day: 'numeric',
-              hour: '2-digit', minute: '2-digit'
-              }) }} ({{ formatFrequency(task.schedule.repeatFrequency) }})
-            </div>
-
-          </div>
-          <div class="flex justify-between items-center pt-2">
-            <button class="btn btn-secondary text-sm relative" @click.stop="editSchedule(task)">
-              <!-- Edit Schedule -->
-              <PencilIcon class="w-6 h-6 text-white" />
-            </button>
-            <button @click.stop="backupNow(task)" class="btn btn-primary text-base">
-              Backup Now
-            </button>
-            <button @click.stop="deleteThisTask(task)" class="btn btn-danger text-sm">
-              <!-- Remove Task -->
-              <TrashIcon class="w-6 h-6 text-white" />
-            </button>
-          </div>
-        </div>
+  <div class="flex flex-col gap-3">
+    <!-- Toolbar -->
+    <div class="flex flex-row items-center justify-between font-bold">
+      <div class="flex items-center justify-start">
+        <button class="btn btn-primary text-sm mr-3" @click.stop="fetchBackupTasks">
+          <PlusIcon class="w-5 h-5 text-white" />
+        </button>
+        Schedule New Backup
+      </div>
+      <div class="flex items-center justify-end">
+        Refresh Backup List
+        <button class="btn btn-secondary text-sm ml-3" @click.stop="newBackupTask">
+          <ArrowPathIcon class="w-5 h-5 text-white" />
+        </button>
       </div>
     </div>
-  </div>
 
-  <Modal :show="showCalendar" class="-mt-10" @clickOutside="">
-    <div class="w-full max-w-xl mx-auto">
-      <SimpleCalendar title="Edit Backup Schedule" :taskSchedule="selectedTaskSchedule"
-        @close="handleCalendarClose(false)" @save="handleCalendarClose(true)"
-        class="border-2 border-default rounded-md w-full" />
+
+    <!-- Loading / Empty States -->
+    <div v-if="isLoading" class="w-full h-[200px] flex justify-center items-center">
+      <div class="spinner" />
     </div>
-  </Modal>
-  <CredentialsModal ref="credsModalRef" />
+    <div v-else-if="backUpTasks.length === 0" class="flex flex-col items-center text-center py-4">
+      <span class="text-muted italic text-xl">No Tasks Found</span>
+      <button @click.stop="newBackupTask" class="btn btn-primary px-5 w-80 h-20 mt-2 text-2xl font-bold">Schedule First Backup</button>
+    </div>
+
+    <!-- Table -->
+    <div v-else class="overflow-x-auto">
+      <table class="min-w-full text-sm">
+        <thead class="text-left sticky top-0 bg-well z-10">
+          <tr class="border-b border-default">
+            <th class="px-3 py-2 w-10">
+              <input type="checkbox" class="input-checkbox" :checked="allSelected" @change="toggleSelectAll"
+                :aria-checked="allSelected" />
+            </th>
+            <th class="px-3 py-2">ID</th>
+            <th class="px-3 py-2">Type</th>
+            <th class="px-3 py-2">Source</th>
+            <th class="px-3 py-2">Destination</th>
+            <th class="px-3 py-2">Frequency</th>
+            <th class="px-3 py-2">Last Run at</th>
+            <th class="px-3 py-2">Next Run at</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="task in backUpTasks" :key="task.uuid" class="border-b border-default cursor-pointer select-none"
+            :class="rowClass(task)" @click="toggleSelection(task)">
+            <td class="px-3 py-2">
+              <input type="checkbox" class="input-checkbox" :checked="isSelected(task)"
+                @change.stop="toggleSelection(task)" :aria-checked="isSelected(task)" />
+            </td>
+            <td class="px-3 py-2 font-mono text-xs truncate max-w-[16ch]" :title="task.uuid">{{ task.uuid }}</td>
+            <td class="px-3 py-2">{{ taskType(task) }}</td>
+            <td class="px-3 py-2 truncate" :title="sourceText(task)">{{ sourceText(task) }}</td>
+            <td class="px-3 py-2 truncate" :title="destinationText(task)">{{ destinationText(task) }}</td>
+            <td class="px-3 py-2 capitalize">{{ formatFrequency(task.schedule?.repeatFrequency) }}</td>
+            <td class="px-3 py-2" :title="formatDateTime(getLastRunAt(task))">{{ formatDateTime(getLastRunAt(task)) }}
+            </td>
+            <td class="px-3 py-2"
+              :title="formatDateTime(getNextBackupDate(task.schedule.startDate, task.schedule.repeatFrequency))">
+              {{ formatDateTime(getNextBackupDate(task.schedule.startDate, task.schedule.repeatFrequency)) }}
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Calendar Modal for editing a single task schedule -->
+    <Modal :show="showCalendar" class="-mt-10" @clickOutside="">
+      <div class="w-full max-w-xl mx-auto">
+        <SimpleCalendar title="Edit Backup Schedule" :taskSchedule="selectedTaskSchedule"
+          @close="handleCalendarClose(false)" @save="handleCalendarClose(true)"
+          class="border-2 border-default rounded-md w-full" />
+      </div>
+    </Modal>
+    <CredentialsModal ref="credsModalRef" />
+  </div>
 </template>
 
-
 <script setup lang="ts">
-import { inject, nextTick, onActivated, onDeactivated, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
+import { computed, inject, nextTick, onActivated, onMounted, onUnmounted, reactive, ref } from 'vue';
 import { BackUpTask, IPCRouter, unwrap } from '@45drives/houston-common-lib';
 import { Modal, confirm } from '@45drives/houston-common-ui';
 import CredentialsModal from "../../components/CredentialsModal.vue";
 import { formatFrequency } from "./utils";
 import { SimpleCalendar } from "../../components/calendar";
-import { PencilIcon, TrashIcon } from '@heroicons/vue/24/outline';
 import { thisOsInjectionKey } from '../../keys/injection-keys';
+import { ArrowPathIcon, PlusIcon } from '@heroicons/vue/24/outline';
+
+const emit = defineEmits<{ (event: 'backUpTaskSelected', tasks: BackUpTask[]): void }>();
+
 const backUpTasks = ref<BackUpTask[]>([]);
 const selectedBackUps = ref<BackUpTask[]>([]);
-const thisOs = inject(thisOsInjectionKey);
 const isLoading = ref(true);
+const thisOs = inject(thisOsInjectionKey);
 
 const credsModalRef = ref<InstanceType<typeof CredentialsModal> | null>(null);
 
@@ -123,121 +102,97 @@ const selectedTaskSchedule = ref<any>();
 const showCalendar = ref(false);
 let resolveCalendarPromise: ((value: boolean) => void) | null = null;
 
-function toggleCalendarComponent() {
-  showCalendar.value = true;
+function isSelected(task: BackUpTask) {
+  return selectedBackUps.value.some(t => t.uuid === task.uuid);
+}
 
-  return new Promise<boolean>((resolve) => {
-    resolveCalendarPromise = resolve;
+const allSelected = computed(() => backUpTasks.value.length > 0 && selectedBackUps.value.length === backUpTasks.value.length);
+
+function toggleSelectAll() {
+  if (allSelected.value) {
+    selectedBackUps.value = [];
+  } else {
+    selectedBackUps.value = backUpTasks.value.map(t => ({ ...t }));
+  }
+  emit('backUpTaskSelected', [...selectedBackUps.value]);
+}
+
+function rowClass(task: BackUpTask) {
+  return isSelected(task)
+    ? 'bg-primary/10 border-primary'
+    : 'bg-default hover:bg-well';
+}
+
+function toggleSelection(task: BackUpTask) {
+  const i = selectedBackUps.value.findIndex(t => t.uuid === task.uuid);
+  if (i !== -1) selectedBackUps.value.splice(i, 1); else selectedBackUps.value.push(task);
+  emit('backUpTaskSelected', [...selectedBackUps.value]);
+}
+
+function taskType(task: BackUpTask) {
+  // Heuristic: remote if host/share are set
+  return task.host && task.share ? 'Remote' : 'Local';
+}
+
+function trimLeadingSlash(p?: string) { return (p || '').replace(/^\/+/, ''); }
+
+function destinationText(task: BackUpTask) {
+  // Destination is Host+Share+Folder minus the ID segment if present
+  const base = `${task.host ?? ''}${task.share ? `:${task.share}` : ''}`;
+  let folder = trimLeadingSlash(task.target || '');
+  if (folder.endsWith(task.uuid)) {
+    folder = folder.slice(0, -task.uuid.length).replace(/\/?$/, '').replace(/\/$/, '');
+  }
+  return `${base}${folder ? '/' + folder : ''}` || '-';
+}
+
+function sourceText(task: BackUpTask) {
+  if (taskType(task) === 'Local') return task.source || '-';
+  const base = `${task.host ?? ''}${task.share ? `:${task.share}` : ''}`;
+  const folder = trimLeadingSlash(task.source || '');
+  return `${base}${folder ? '/' + folder : ''}` || '-';
+}
+
+function formatDateTime(dt?: Date | string | number | null) {
+  if (!dt) return '—';
+  const d = dt instanceof Date ? dt : new Date(dt);
+  if (Number.isNaN(d.getTime())) return '—';
+  return d.toLocaleString([], {
+    weekday: 'short', year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
   });
 }
 
-function handleCalendarClose(saved: boolean) {
-  showCalendar.value = false;
-  if (resolveCalendarPromise) {
-    resolveCalendarPromise(saved);
-    resolveCalendarPromise = null;
-  }
+function getLastRunAt(task: any): Date | null {
+  // Fallback across possible names your backend might use
+  return task.lastRunAt || task.lastRun || task.lastRunTime || task.previousRunAt || null;
 }
-
-watch(backUpTasks, () => {
-  const buttons = document.querySelectorAll('.btn');
-  buttons.forEach(button => {
-    button.addEventListener('click', () => {
-      buttons.forEach(btn => btn.classList.remove('selected'));
-      button.classList.add('selected');
-    });
-  });
-})
-
-function isScheduledButNotRunYet(task: BackUpTask): boolean {
-  return (new Date(task.schedule.startDate).getTime() > Date.now());
-}
-
-const getTaskStatusText = (task: BackUpTask): string => {
-  switch (task.status) {
-    case 'online':
-      return 'Available (Online)';
-    case 'missing_folder':
-      if (isScheduledButNotRunYet(task)) {
-        return "Scheduled But Hasn't Run Yet"
-      } else {
-        return "Unavailable (Folder Missing) — has backup run yet?";
-      }
-    case 'offline_unreachable':
-      return "Unavailable (Host Unreachable)";
-    case 'offline_invalid_credentials':
-      return "Unavailable (Invalid Credentials)";
-    case 'offline_insufficient_permissions':
-      return "Unavailable (Insufficient Permissions)";
-    case 'offline_connection_error':
-      return "Unavailable (Connection Error)";
-    case 'checking':
-    default:
-      return "Checking status...";
-  }
-};
 
 function getNextBackupDate(startDate: Date, repeatFrequency: string): Date {
   const now = new Date();
   let nextDate = new Date(startDate);
-
   while (nextDate <= now) {
     switch (repeatFrequency) {
-      case 'hour':
-        nextDate.setHours(nextDate.getHours() + 1);
-        break;
-      case 'day':
-        nextDate.setDate(nextDate.getDate() + 1);
-        break;
-      case 'week':
-        nextDate.setDate(nextDate.getDate() + 7);
-        break;
-      case 'month':
-        nextDate.setMonth(nextDate.getMonth() + 1);
-        break;
-      default:
-        break;
+      case 'hour': nextDate.setHours(nextDate.getHours() + 1); break;
+      case 'day': nextDate.setDate(nextDate.getDate() + 1); break;
+      case 'week': nextDate.setDate(nextDate.getDate() + 7); break;
+      case 'month': nextDate.setMonth(nextDate.getMonth() + 1); break;
+      default: break;
     }
   }
-
   return nextDate;
 }
 
-
-// Define event emitter
-const emit = defineEmits<{
-  (event: 'backUpTaskSelected', tasks: BackUpTask[]): void;
-}>();
-
-
-const toggleSelection = (task: BackUpTask) => {
-  const index = selectedBackUps.value.findIndex(t => t.uuid === task.uuid);
-
-  if (index !== -1) {
-    selectedBackUps.value.splice(index, 1);
-  } else {
-    console.debug('task selected:', task);
-    selectedBackUps.value.push(task);
-  }
-
-  emit('backUpTaskSelected', [...selectedBackUps.value]);
-};
-
-async function editSchedule(selectedBackUp: BackUpTask) {
-  // Set the selected schedule for editing
+// Exposed hooks for parent actions
+async function editSelectedSchedules() {
+  if (selectedBackUps.value.length !== 1) return; // simple single-edit for now
+  const selectedBackUp = selectedBackUps.value[0];
   selectedTaskSchedule.value = reactive({
     repeatFrequency: selectedBackUp.schedule.repeatFrequency,
     startDate: new Date(selectedBackUp.schedule.startDate),
   });
-
-  // Wait for Vue to update before showing the modal
   await nextTick();
-
-  // Open the calendar modal
-  const scheduleConfirmed = await toggleCalendarComponent();
-
-  // If the user saves, update the task schedule
-  if (scheduleConfirmed && selectedBackUp) {
+  const confirmed = await toggleCalendarComponent();
+  if (confirmed) {
     selectedBackUp.schedule.repeatFrequency = selectedTaskSchedule.value.repeatFrequency;
     selectedBackUp.schedule.startDate = selectedTaskSchedule.value.startDate;
     IPCRouter.getInstance().send("backend", "action", JSON.stringify({
@@ -249,7 +204,78 @@ async function editSchedule(selectedBackUp: BackUpTask) {
   }
 }
 
-function waitForNextMessage(type: string): Promise<any> {
+function runSelectedNow() {
+  selectedBackUps.value.forEach(task => {
+    IPCRouter.getInstance().send('backend', 'action', JSON.stringify({ type: 'runBackUpTaskNow', task }));
+  });
+}
+
+function cancelSelected() {
+  // batch delete UI already exists in parent via deleteSelectedTasks()
+}
+
+function newBackupTask() {
+
+}
+
+// Calendar helpers
+function toggleCalendarComponent() {
+  showCalendar.value = true;
+  return new Promise<boolean>((resolve) => { resolveCalendarPromise = resolve; });
+}
+function handleCalendarClose(saved: boolean) {
+  showCalendar.value = false;
+  if (resolveCalendarPromise) { resolveCalendarPromise(saved); resolveCalendarPromise = null; }
+}
+
+// IPC + polling
+function fetchBackupTasks() { IPCRouter.getInstance().send('backend', 'action', 'requestBackUpTasks'); }
+let ipcActionHandler: ((raw: string) => void) | null = null;
+let pollingInterval: ReturnType<typeof setInterval>;
+let pollingSuspended = false;
+let shortPollingUntil = 0;
+function getPollingInterval(): number { return Date.now() < shortPollingUntil ? 5000 : 15000; }
+function pollStatuses() {
+  if (pollingSuspended || backUpTasks.value.length === 0) return;
+  IPCRouter.getInstance().send('backend', 'action', JSON.stringify({
+    type: 'checkBackUpStatuses',
+    tasks: backUpTasks.value.map(task => ({ ...task }))
+  }));
+}
+
+onMounted(() => {
+  ipcActionHandler = (raw: string) => {
+    try {
+      const msg = JSON.parse(raw);
+      if (msg.type === 'sendBackupTasks') {
+        msg.tasks.forEach((task: BackUpTask) => {
+          if (task.schedule?.startDate) task.schedule.startDate = new Date(task.schedule.startDate);
+        });
+        backUpTasks.value = msg.tasks;
+        isLoading.value = false;
+      } else if (msg.type === 'backUpStatusesUpdated') {
+        msg.tasks.forEach((updated: BackUpTask) => {
+          const i = backUpTasks.value.findIndex(t => t.uuid === updated.uuid);
+          if (i !== -1) backUpTasks.value[i].status = updated.status;
+        });
+      }
+    } catch (e) { console.warn('❌ Failed to parse IPC action message:', raw); }
+  };
+  IPCRouter.getInstance().addEventListener('action', ipcActionHandler);
+  fetchBackupTasks();
+  pollingInterval = setInterval(() => { if (!pollingSuspended) pollStatuses(); }, getPollingInterval());
+});
+
+onActivated(() => { fetchBackupTasks(); });
+
+onUnmounted(() => {
+  if (ipcActionHandler) IPCRouter.getInstance().removeEventListener('action', ipcActionHandler);
+  clearInterval(pollingInterval);
+});
+
+// Deletions (used by parent)
+let isHandlingNextClick = false;
+async function waitForNextMessage(type: string): Promise<any> {
   return new Promise((resolve) => {
     const handler = (raw: string) => {
       try {
@@ -258,246 +284,46 @@ function waitForNextMessage(type: string): Promise<any> {
           IPCRouter.getInstance().removeEventListener('action', handler);
           resolve(msg);
         }
-      } catch (e) {
-        console.warn("Failed to parse IPC message in waitForNextMessage", raw);
-      }
+      } catch { }
     };
-
     IPCRouter.getInstance().addEventListener('action', handler);
   });
 }
 
-let isHandlingNextClick = false;
-
-const deleteThisTask = async (task: BackUpTask) => {
-  // console.debug("[Child] 🔥 deleteThisTask executing");
-
-  // console.debug("[Child] Selected for deletion:", task);
-  if (isHandlingNextClick) return; // ⛔ prevent reentry
-  isHandlingNextClick = true;
-
+async function deleteSelectedTasks() {
+  if (isHandlingNextClick) return; isHandlingNextClick = true;
   try {
-    const confirmed = await unwrap(confirm({
-      header: "Delete Backup Task?",
-      body: `Are you sure you want to delete the backup task from "${task.source}" to "${task.target}"? This action cannot be undone.`,
-      dangerous: true,
-      confirmButtonText: "Delete",
-      cancelButtonText: "Cancel"
-    }));
-
-    if (!confirmed) return;
-
-    // Remove from selectedBackUps
-    selectedBackUps.value = selectedBackUps.value.filter(t => t.uuid !== task.uuid);
-
-    // Emit updated selection to parent
-    emit('backUpTaskSelected', [...selectedBackUps.value]);
-
-    pollingSuspended = true;
-
-    // Send deletion
-    IPCRouter.getInstance().send("backend", "action", JSON.stringify({
-      type: "removeBackUpTask",
-      task
-    }));
-
-    // ✅ Wait for updated tasks from backend
-    const result = await waitForNextMessage("sendBackupTasks");
-
-    result.tasks.forEach((task: BackUpTask) => {
-      if (task.schedule?.startDate) {
-        task.schedule.startDate = new Date(task.schedule.startDate);
-      }
-    });
-
-    backUpTasks.value = result.tasks;
-    pollingSuspended = false;
-
-  } finally {
-    // 🔓 Reallow clicks after dialog
-    isHandlingNextClick = false;
-  }
-
-};
-
-const deleteSelectedTasks = async () => {
-  if (isHandlingNextClick) return; // ⛔ prevent reentry
-  isHandlingNextClick = true;
-
-  try {
-    const count = selectedBackUps.value.length;
-    if (count === 0) return;
-
-    const cleanTasks = selectedBackUps.value.map(task => ({ ...task }));
-
+    const count = selectedBackUps.value.length; if (count === 0) return;
     const confirmed = await unwrap(confirm({
       header: `Delete Selected Backup Task${count > 1 ? 's' : ''}?`,
       body: `Are you sure you want to delete ${count} selected backup task${count > 1 ? 's' : ''}? This action cannot be undone.`,
-      dangerous: true,
-      confirmButtonText: "Delete",
-      cancelButtonText: "Cancel"
+      dangerous: true, confirmButtonText: 'Delete', cancelButtonText: 'Cancel'
     }));
-
     if (!confirmed) return;
-
+    const cleanTasks = selectedBackUps.value.map(t => ({ ...t }));
     pollingSuspended = true;
-
-    // Immediately clear selection in UI
-    selectedBackUps.value = [];
-    emit('backUpTaskSelected', []);
-
-    // Send deletion
-    if (count === 1) {
-      IPCRouter.getInstance().send("backend", "action", JSON.stringify({
-        type: "removeBackUpTask",
-        task: cleanTasks[0]
-      }));
-    } else {
-      IPCRouter.getInstance().send("backend", "action", JSON.stringify({
-        type: "removeMultipleBackUpTasks",
-        tasks: cleanTasks
-      }));
-    }
-
-    // ✅ Wait for updated tasks from backend
-    const result = await waitForNextMessage("sendBackupTasks");
-
-    result.tasks.forEach((task: BackUpTask) => {
-      if (task.schedule?.startDate) {
-        task.schedule.startDate = new Date(task.schedule.startDate);
-      }
-    });
-
-    backUpTasks.value = result.tasks;
-    pollingSuspended = false;
-
-  } finally {
-    // 🔓 Reallow clicks after dialog
-    isHandlingNextClick = false;
-  }
-};
-
+    selectedBackUps.value = []; emit('backUpTaskSelected', []);
+    IPCRouter.getInstance().send('backend', 'action', JSON.stringify(count === 1
+      ? { type: 'removeBackUpTask', task: cleanTasks[0] }
+      : { type: 'removeMultipleBackUpTasks', tasks: cleanTasks }
+    ));
+    const result = await waitForNextMessage('sendBackupTasks');
+    result.tasks.forEach((task: BackUpTask) => { if (task.schedule?.startDate) task.schedule.startDate = new Date(task.schedule.startDate); });
+    backUpTasks.value = result.tasks; pollingSuspended = false;
+  } finally { isHandlingNextClick = false; }
+}
 
 function backupNow(task: BackUpTask) {
   pollingSuspended = true;
-
-  IPCRouter.getInstance().send("backend", "action", JSON.stringify({
-    type: "runBackUpTaskNow",
-    task
-  }));
-
-  shortPollingUntil = Date.now() + 30000;
-
-  setTimeout(() => {
-    pollingSuspended = false;
-  }, 8000); // delay resuming status check
-
+  IPCRouter.getInstance().send('backend', 'action', JSON.stringify({ type: 'runBackUpTaskNow', task }));
+  shortPollingUntil = Date.now() + 30000; setTimeout(() => { pollingSuspended = false; }, 8000);
 }
 
-
-function fetchBackupTasks() {
-  IPCRouter.getInstance().send('backend', 'action', 'requestBackUpTasks');
-}
-
-// IPCRouter.getInstance().addEventListener('action', (raw: string) => {
-//   const message = JSON.parse(raw);
-//   if (message.type === 'backUpStatusesUpdated') {
-//     const updated = message.tasks as BackUpTask[];
-//     backUpTasks.value = updated.map(task => ({
-//       ...task,
-//       schedule: { ...task.schedule, startDate: new Date(task.schedule.startDate) }
-//     }));
-//   }
-// });
-
-let pollingInterval: ReturnType<typeof setInterval>;
-
-
-let ipcActionHandler: ((raw: string) => void) | null = null;
-
-onMounted(() => {
-  // Set up event handler
-  ipcActionHandler = (raw: string) => {
-    try {
-      const msg = JSON.parse(raw);
-      if (msg.type === 'sendBackupTasks') {
-        msg.tasks.forEach((task: BackUpTask) => {
-          if (task.schedule?.startDate) {
-            task.schedule.startDate = new Date(task.schedule.startDate);
-          }
-        });
-        backUpTasks.value = msg.tasks;
-        isLoading.value = false;
-      } else if (msg.type === 'backUpStatusesUpdated') {
-        msg.tasks.forEach((updated: BackUpTask) => {
-          const index = backUpTasks.value.findIndex(t => t.uuid === updated.uuid);
-          if (index !== -1) {
-            backUpTasks.value[index].status = updated.status;
-          }
-        });
-      }
-    } catch (e) {
-      console.warn("❌ Failed to parse IPC action message:", raw);
-    }
-  };
-
-  IPCRouter.getInstance().addEventListener('action', ipcActionHandler);
-
-  // Initial fetch
-  fetchBackupTasks();
-
-  // Polling
-  pollingInterval = setInterval(() => {
-    if (!pollingSuspended) {
-      pollStatuses();
-    }
-  }, getPollingInterval());
-});
-
-onActivated(() => {
-  fetchBackupTasks(); // Just re-fetch when reactivated
-});
-
-onUnmounted(() => {
-  if (ipcActionHandler) {
-    IPCRouter.getInstance().removeEventListener('action', ipcActionHandler);
-  }
-  clearInterval(pollingInterval);
-});
-
-
-let shortPollingUntil = 0;
-
-function getPollingInterval(): number {
-  const now = Date.now();
-  return now < shortPollingUntil ? 5000 : 15000; // 5s when short-polling, else 15s
-}
-
-onDeactivated(() => {
-  clearInterval(pollingInterval);
-});
-
-let pollingSuspended = false;
-
-function pollStatuses() {
-  if (pollingSuspended || backUpTasks.value.length === 0) return;
-
-  IPCRouter.getInstance().send('backend', 'action', JSON.stringify({
-    type: 'checkBackUpStatuses',
-    tasks: backUpTasks.value.map(task => ({ ...task })) // plain copies
-  }));
-}
-
-
-defineExpose({
-  deleteSelectedTasks
-});
-
-
+// expose to parent
+defineExpose({ deleteSelectedTasks, editSelectedSchedules, runSelectedNow });
 </script>
 
 <style scoped>
-/* Loading spinner */
 .spinner {
   border: 4px solid rgba(0, 0, 0, 0.1);
   border-left-color: #2c3e50;
@@ -510,7 +336,7 @@ defineExpose({
 
 @keyframes spin {
   to {
-    transform: rotate(360deg);
+    transform: rotate(360deg)
   }
 }
 </style>

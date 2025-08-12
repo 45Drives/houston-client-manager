@@ -318,9 +318,10 @@ function createWindow() {
     } else if (data === "show_storage_setup_wizard" || data === "show_backup_setup_wizard" || data === "show_restore-backup_setup_wizard") {
       IPCRouter.getInstance().send('renderer', 'action', data);
       return;
-    } else if (data === "show_dashboard") {
-      IPCRouter.getInstance().send('renderer', 'action', 'show_dashboard');
     }
+    //  else if (data === "show_dashboard") {
+    //   IPCRouter.getInstance().send('renderer', 'action', 'show_dashboard');
+    // }
     else {
       try {
         // console.debug("[Main] 📩 Raw message received:", data);

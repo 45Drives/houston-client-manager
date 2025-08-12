@@ -121,12 +121,12 @@ import { CardContainer, CommanderToolTip, confirm, useEnterToAdvance } from "@45
 import { computed, inject, onMounted, ref, watch } from "vue";
 import { PlusIcon, MinusIcon } from "@heroicons/vue/20/solid";
 import { useWizardSteps, DynamicBrandingLogo } from '@45drives/houston-common-ui';
-import { Server, DiscoveryState } from '../../types'
-import { backUpSetupConfigKey, divisionCodeInjectionKey, discoveryStateInjectionKey } from "../../keys/injection-keys";
+import { Server, DiscoveryState } from '../../../types'
+import { backUpSetupConfigKey, divisionCodeInjectionKey, discoveryStateInjectionKey } from "../../../keys/injection-keys";
 import MessageDialog from '../../components/MessageDialog.vue';
 import { BackUpTask, IPCMessageRouter, IPCRouter, server, unwrap } from "@45drives/houston-common-lib";
 import GlobalSetupWizardMenu from '../../components/GlobalSetupWizardMenu.vue';
-import { sanitizeFilePath } from "./utils";
+import { sanitizeFilePath } from "../utils";
 
 const division = inject(divisionCodeInjectionKey);
 // Wizard navigation

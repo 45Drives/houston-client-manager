@@ -26,6 +26,7 @@ contextBridge.exposeInMainWorld('electron', {
 
     removeListener: (channel: string, listener: (...args: any[]) => void) =>
       ipcRenderer.removeListener(channel, listener),    
+    removeAllListeners: (channel: string) => ipcRenderer.removeAllListeners(channel),
   },
   selectFolder: () => ipcRenderer.invoke('dialog:openFolder'),
   getOS: () => ipcRenderer.invoke('get-os'),

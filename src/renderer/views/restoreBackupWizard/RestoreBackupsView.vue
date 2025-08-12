@@ -1,19 +1,5 @@
 <template>
   <CardContainer class="overflow-y-auto min-h-0">
-    <template #header class="!text-center">
-      <div class="relative flex items-center justify-center h-18 w-full">
-        <div class="absolute left-0 p-1 px-4 rounded-lg">
-          <DynamicBrandingLogo :division="division" />
-        </div>
-        <p class="text-3xl font-semibold text-center">
-          Restore Backups
-        </p>
-        <div class="absolute right-0 top-1/2 -translate-y-1/2">
-          <GlobalSetupWizardMenu />
-        </div>
-      </div>
-      <div v-if="loading">Loading... Please Wait</div>
-    </template>
 
     <div class="w-full">
       <p class="text-1xl font-semibold text-center">
@@ -134,12 +120,12 @@
 
 <script setup lang="ts">
 import { ref, computed, inject, onActivated, onDeactivated } from 'vue'
-import { useWizardSteps, DynamicBrandingLogo, confirm, CardContainer, useEnterToAdvance } from '@45drives/houston-common-ui';
-import { divisionCodeInjectionKey, restoreBackUpSetupDataKey } from '../../keys/injection-keys';
+import { useWizardSteps, confirm, CardContainer, useEnterToAdvance } from '@45drives/houston-common-ui';
+import { restoreBackUpSetupDataKey } from '../../keys/injection-keys';
 import { IPCRouter, type BackupEntry, type FileEntry } from '@45drives/houston-common-lib';
-import GlobalSetupWizardMenu from '../../components/GlobalSetupWizardMenu.vue';
+import { useHeader } from '../../composables/useHeader'
+useHeader('Restore Files from Backups')
 
-const division = inject(divisionCodeInjectionKey);
 const restoreBackupsData = inject(restoreBackUpSetupDataKey)!;
 const loading = ref<boolean>(true);
 const restoreProgress = ref<{ current: number; total: number; lastFile: string }>({
