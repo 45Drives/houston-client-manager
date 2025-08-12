@@ -24,20 +24,20 @@ echo '.....DONE.'
 
 echo '----- CODE SIGNING APP -----'
 ## Find all files and do deep code signing.
-find $outputDir/$appName.app -type f -exec codesign --deep -dvv --force --timestamp --options=runtime --entitlements $entitlementsFile --sign "$developerIdApplicationString" {} \;
+find $outputDir/$dmgName.app -type f -exec codesign --deep -dvv --force --timestamp --options=runtime --entitlements $entitlementsFile --sign "$developerIdApplicationString" {} \;
 ## Code sign .app bundle
-codesign --deep -dvv --force --timestamp --options=runtime --entitlements $entitlementsFile --sign "$developerIdApplicationString" $outputDir/$appName.app
+codesign --deep -dvv --force --timestamp --options=runtime --entitlements $entitlementsFile --sign "$developerIdApplicationString" $outputDir/$dmgName.app
 ## Verify code signing was successful.
-codesign --verify --strict -dvv $outputDir/$appName.app
+codesign --verify --strict -dvv $outputDir/$dmgName.app
 echo '.....DONE.'
 
 ## Create a temp directory to add the symbolic link to the applications folder
 mkdir $outputDir/temp
-cp -R $outputDir/$appName.app $outputDir/temp
+cp -R $outputDir/$dmgName.app $outputDir/temp
 ln -s /Applications $outputDir/temp/Applications
 
 echo '----- CREATING DMG -----'
-hdiutil create -volname "$appName" -srcfolder $outputDir/temp -ov -fs HFS+ -format UDZO -imagekey zlib-level=9 -o $dmgName.dmg
+hdiutil create -volname "$dmgName" -srcfolder $outputDir/temp -ov -fs HFS+ -format UDZO -imagekey zlib-level=9 -o $dmgName.dmg
 echo '.....DONE.'
 
 echo '----- CODE SIGNING DMG -----'
