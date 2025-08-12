@@ -1,18 +1,5 @@
 <template>
   <CardContainer class="overflow-y-auto min-h-0">
-    <template #header>
-      <div class="relative flex items-center justify-center h-18  w-full">
-        <div class="absolute left-0 p-1 px-4 rounded-lg">
-          <DynamicBrandingLogo :division="division" />
-        </div>
-        <p class="text-3xl font-semibold text-center">
-          Welcome to the 45Drives Setup Wizard!
-        </p>
-        <div class="absolute right-0 top-1/2 -translate-y-1/2">
-          <GlobalSetupWizardMenu />
-        </div>
-      </div>
-    </template>
 
     <div class="flex flex-col h-full justify-center items-center space-y-6 text-left">
       <p class="w-9/12 text-2xl">
@@ -50,8 +37,11 @@
 
     <!-- Buttons -->
     <template #footer>
-      <div class="button-group-row w-full justify-end">
-        <button @click="proceedToNextStep" class="btn btn-primary w-40 h-20">
+      <div class="button-group-row w-full justify-between">
+        <button type="button" @click="goBackStep" class="btn btn-secondary w-40 h-20">
+          Back
+        </button>
+        <button type="button" @click="proceedToNextStep" class="btn btn-primary w-40 h-20">
           Next
         </button>
       </div>
@@ -63,13 +53,12 @@
 <script setup lang="ts">
 import CardContainer from '../../components/CardContainer.vue';
 import { CommanderToolTip } from '../../components/commander';
-import { useWizardSteps, DynamicBrandingLogo, useEnterToAdvance } from '@45drives/houston-common-ui';
-import GlobalSetupWizardMenu from '../../components/GlobalSetupWizardMenu.vue';
-import { divisionCodeInjectionKey } from '../../keys/injection-keys';
-import { inject } from 'vue';
+import { useWizardSteps, useEnterToAdvance } from '@45drives/houston-common-ui';
+import { useRouter } from 'vue-router'
+import { useHeader } from '../../composables/useHeader'
+useHeader('Welcome to the 45Drives Setup Wizard!')
 
-const division = inject(divisionCodeInjectionKey);
-
+const router = useRouter()
 const { completeCurrentStep } = useWizardSteps("setup");
 
 const proceedToNextStep =  () => {
@@ -86,6 +75,9 @@ useEnterToAdvance(
   }
 );
 
+const goBackStep = () => {
+  router.push({ name: 'dashboard' }) // or use a path: router.push('/dashboard')
+}
 
 </script>
 

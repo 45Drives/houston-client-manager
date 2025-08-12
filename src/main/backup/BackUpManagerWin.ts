@@ -28,6 +28,14 @@ import { exec } from "child_process";
 const TASK_ID = "Houston_Backup_Task";
 const logPath = path.join(app.getPath('userData'), 'logs');
 
+/* Per-user storage to avoid admin prompts for file IO.
+* Scripts & creds live under %LOCALAPPDATA%\houston-backups\...
+* Logs stay under app.getPath('userData') as before. */
+const USER_LOCALAPPDATA = process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local');
+const HOUSTON_USER_DIR = path.join(USER_LOCALAPPDATA, 'houston-backups');
+const SCRIPTS_DIR = path.join(HOUSTON_USER_DIR, 'scripts');
+const CREDS_DIR = path.join(HOUSTON_USER_DIR, 'credentials');
+
 interface TaskData {
   source?: string;
   target?: string;
@@ -78,23 +86,32 @@ export class BackUpManagerWin implements BackUpManager {
 
 
   private getTaskPaths(task: BackUpTask) {
-    const pgm = process.env.ProgramData ?? "C:\\ProgramData";
     const share = task.share || task.target.split(":")[1].split("/")[0];
     return {
-      bat: path.join(pgm, "houston-backups", "scripts", `Houston_Backup_Task_${task.uuid}.bat`),
-      log: path.join(pgm, "houston-backups", "logs", `backup_task_${task.uuid}.log`),
-      cred: path.join(pgm, "houston-backups", "credentials", `${share}.cred`),
+      bat: path.join(SCRIPTS_DIR, `Houston_Backup_Task_${task.uuid}.bat`),
+      log: path.join(logPath, `backup_task_${task.uuid}.log`), // logs under userData
+      cred: path.join(CREDS_DIR, `${share}.cred`),
       share
     };
   }
+
   
   queryTasks(): Promise<BackUpTask[]> {
-    const powerShellScript = `Get-ScheduledTask | Where-Object {$_.TaskName -like '*${TASK_ID}*'} | Select-Object TaskName, Triggers, Actions, State | ConvertTo-Json -depth 10`
+    const powerShellScript = `
+    $me = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
+    Get-ScheduledTask |
+      Where-Object {
+        $_.TaskName -like '*${TASK_ID}*' -and
+        $_.Principal.UserId -eq $me
+      } |
+      Select-Object TaskName, Triggers, Actions, State, Principal |
+      ConvertTo-Json -Depth 10
+  `;
 
-    return this.runScriptAdmin(powerShellScript, "query_tasks")
+    return this.runScript(powerShellScript, "query_tasks")
       .then(result => {
         if (!result.stdout || !result.stdout.trim()) {
-          return [];                     // nothing to parse, no tasks
+          return [];
         }
 
         try {
@@ -104,6 +121,7 @@ export class BackUpManagerWin implements BackUpManager {
           return tasksAsArray.map(task => {
             const actionProps = task.Actions[0].CimInstanceProperties;
             let command: string | null = null;
+
             for (let i = 0; i < actionProps.length; i++) {
               const prop = actionProps[i];
               if (prop.Name === 'Arguments' && prop.Value) {
@@ -116,17 +134,17 @@ export class BackUpManagerWin implements BackUpManager {
             }
 
             if (!command) {
-              console.debug("No Command:", actionProps)
+              console.debug("No Command:", actionProps);
               return null;
             }
-            const actionDetails = this.parseBackupCommand(command)
-            console.debug(actionDetails)
-            if (!actionDetails) {
-              console.debug("task.Actions:", command)
-              return null;
-            }
-            const trigger = this.convertTriggersToTaskSchedule(task.Triggers);
 
+            const actionDetails = this.parseBackupCommand(command);
+            if (!actionDetails) {
+              console.debug("task.Actions:", command);
+              return null;
+            }
+
+            const trigger = this.convertTriggersToTaskSchedule(task.Triggers);
             if (!trigger) {
               console.debug("Failed to parse Trigger:", task.Triggers);
               return null;
@@ -149,25 +167,24 @@ export class BackUpManagerWin implements BackUpManager {
             }
 
             return backUpTask;
-          }).filter(task => task !== null) as BackUpTask[];
+          }).filter(t => t !== null) as BackUpTask[];
 
         } catch (parseError) {
           console.error('Error parsing JSON:', parseError);
           return [];
         }
-
       });
-
   }
 
+
   private scriptPath(uuid: string): string {
+    // Store scripts in per-user %LOCALAPPDATA%\houston-backups\scripts
     return path.join(
-      process.env.ProgramData ?? 'C:\\ProgramData',
-      'houston-backups',
-      'scripts',
+      SCRIPTS_DIR,
       `${TASK_ID}_${uuid}.bat`
     );
   }
+
 
   async schedule(
     task: BackUpTask,
@@ -178,29 +195,42 @@ export class BackUpManagerWin implements BackUpManager {
     return Promise.resolve({stdout: "", stderr: ""})
   }
 
-  runNow(task: BackUpTask): Promise<{ stdout: string; stderr: string }> {
+  async runNow(task: BackUpTask): Promise<{ stdout: string; stderr: string }> {
     const taskName = `${TASK_ID}_${task.uuid}`;
-    const powerShellScript = `Start-ScheduledTask -TaskName "${taskName}"`;
+    const ps = `Start-ScheduledTask -TaskName "${taskName}"`;
 
-    return this.runScriptAdmin(powerShellScript, `run_task_${task.uuid}`)
-      .then((result) => {
-        if (result.stderr && result.stderr.trim() !== "") {
-          return Promise.reject({
-            message: `Scheduled task "${taskName}" may have failed to start.`,
-            ...result,
-          });
+    // 1) Try without elevation first
+    try {
+      const res = await this.runScript(ps, `run_task_${task.uuid}_user`);
+      if (res.stderr && res.stderr.trim() !== "") {
+        // treat noisy stderr as failure to trigger fallback
+        throw Object.assign(new Error(`User-mode start produced stderr`), { res });
+      }
+      return res;
+    } catch (e: any) {
+      // 2) Fallback to admin
+      try {
+        const adminRes = await this.runScriptAdmin(ps, `run_task_${task.uuid}_admin`);
+        if (adminRes.stderr && adminRes.stderr.trim() !== "") {
+          throw Object.assign(new Error(`Admin start produced stderr`), { res: adminRes });
         }
-        return result;
-      })
-      .catch((err: any) => {
-        return Promise.reject({
-          message: `Failed to start scheduled task "${taskName}"`,
-          stdout: err?.stdout ?? "",
-          stderr: err?.stderr ?? "",
-          code: err?.code ?? "unknown",
-        });
-      });
+        return adminRes;
+      } catch (adminErr: any) {
+        // 3) Bubble a clear error if both paths fail
+        const u = (e && e.res) ? e.res : { stdout: "", stderr: "", code: "unknown" };
+        const a = (adminErr && adminErr.res) ? adminErr.res : { stdout: "", stderr: "", code: "unknown" };
+        throw {
+          message: `Failed to start scheduled task "${taskName}" (user & admin)`,
+          userStdout: u.stdout ?? "",
+          userStderr: u.stderr ?? (u.error ?? ""),
+          adminStdout: a.stdout ?? "",
+          adminStderr: a.stderr ?? (a.error ?? ""),
+          code: adminErr?.code ?? e?.code ?? "unknown",
+        };
+      }
+    }
   }
+
 
   addUserToBackupOperatorsGroup() {
     return `
@@ -267,8 +297,12 @@ if (-not $hasBatchLogon -or -not $hasServiceLogon) {
     onProgress?: (done: number, total: number, msg: string) => void
   ): Promise<void> {
 
-    const scriptsDir = path.join(process.env.ProgramData ?? 'C:\\ProgramData', 'houston-backups', 'scripts');
-    const credDir = path.join(process.env.ProgramData ?? 'C:\\ProgramData', 'houston-backups', 'credentials');
+    // const scriptsDir = path.join(process.env.ProgramData ?? 'C:\\ProgramData', 'houston-backups', 'scripts');
+    // const credDir = path.join(process.env.ProgramData ?? 'C:\\ProgramData', 'houston-backups', 'credentials');
+    // We still elevate this whole function (task creation needs S4U + registration),
+    // but we write to per-user dirs so future reads/writes don't need admin.
+    const scriptsDir = SCRIPTS_DIR.replace(/\\/g, '\\\\');
+    const credDir = CREDS_DIR.replace(/\\/g, '\\\\');
 
     const psLines: string[] = [
       `# Backup-Operators membership & rights`,
@@ -289,6 +323,8 @@ if (-not $hasBatchLogon -or -not $hasServiceLogon) {
       t.host = smbHost;
       t.share = smbShare;
 
+      // const credFile = path.join(credDir, `${smbShare}.cred`).replace(/\\/g, '\\\\');
+      // const batPathEsc = this.scriptPath(t.uuid).replace(/\\/g, '\\\\');
       const credFile = path.join(credDir, `${smbShare}.cred`).replace(/\\/g, '\\\\');
       const batPathEsc = this.scriptPath(t.uuid).replace(/\\/g, '\\\\');
 
@@ -379,12 +415,13 @@ if (-not $hasBatchLogon -or -not $hasServiceLogon) {
   ): string {
     const mountBat = getMountSmbScript();
 
-    const credFile = path.join(
-      process.env.ProgramData || 'C:\\ProgramData',
-      'houston-backups',
-      'credentials',
-      `${task.share}.cred`
-    );
+    // const credFile = path.join(
+    //   process.env.ProgramData || 'C:\\ProgramData',
+    //   'houston-backups',
+    //   'credentials',
+    //   `${task.share}.cred`
+    // );
+    const credFile = path.join(CREDS_DIR, `${task.share}.cred`);
 
     // remove any leading "\" so drive:\<path> is well-formed 
     const rawDst = getSmbTargetFromSmbTarget(task.target)
@@ -433,8 +470,8 @@ if (-not $hasBatchLogon -or -not $hasServiceLogon) {
   set "NETWORK_PATH=\\\\!SMB_HOST!\\!SMB_SHARE!"
   
   :: --- ensure log directory ---
-  if not exist "%ProgramData%\\houston-backups\\logs" (
-    mkdir "%ProgramData%\\houston-backups\\logs"
+  if not exist "${logPath}" (
+    mkdir "${logPath}"
   )
   
   :: --- run everything inside a single redirect block ---
@@ -518,32 +555,76 @@ if (-not $hasBatchLogon -or -not $hasServiceLogon) {
   }
   
 
+  // async unschedule(task: BackUpTask): Promise<void> {
+  //   const { bat, log, cred } = this.getTaskPaths(task);
+
+  //   // one PS script to both unregister and delete
+  //   const ps = `
+  //   # unregister the scheduled task
+  //   if (Get-ScheduledTask -TaskName "${TASK_ID}_${task.uuid}" -ErrorAction SilentlyContinue) {
+  //     Unregister-ScheduledTask -TaskName "${TASK_ID}_${task.uuid}" -Confirm:$false
+  //   }
+
+  //   # delete the on-disk artifacts
+  //   Remove-Item -Path "${bat}"   -Force -ErrorAction SilentlyContinue
+  //   # Remove-Item -Path "${log}"   -Force -ErrorAction SilentlyContinue
+
+  //   # prune the credential file if no other task uses it
+  //   $share = "${task.share}"
+  //   $inUse = (Get-ScheduledTask | Where-Object TaskName -like "*${TASK_ID}_*" `
+  //     + `| ForEach-Object { $_.TaskName.Split('_')[-1] } `
+  //     + `| Where-Object { $_ -eq "${task.uuid}" }).Count -gt 0
+  //   if (-not $inUse) {
+  //     Remove-Item -Path "${cred}" -Force -ErrorAction SilentlyContinue
+  //   }
+  // `;
+
+  //   await this.runScriptAdmin(ps, `unschedule_and_cleanup_${task.uuid}`);
+  // }
   async unschedule(task: BackUpTask): Promise<void> {
-    const { bat, log, cred } = this.getTaskPaths(task);
+    const { bat, cred } = this.getTaskPaths(task);
 
-    // one PS script to both unregister and delete
+    const batEsc = bat.replace(/\\/g, '\\\\');
+    const credEsc = cred.replace(/\\/g, '\\\\');
+    const scriptsDirEsc = SCRIPTS_DIR.replace(/\\/g, '\\\\');
+    const taskName = `${TASK_ID}_${task.uuid}`;
+
     const ps = `
-    # unregister the scheduled task
-    if (Get-ScheduledTask -TaskName "${TASK_ID}_${task.uuid}" -ErrorAction SilentlyContinue) {
-      Unregister-ScheduledTask -TaskName "${TASK_ID}_${task.uuid}" -Confirm:$false
+# 1) Unregister the scheduled task if it exists
+if (Get-ScheduledTask -TaskName "${taskName}" -ErrorAction SilentlyContinue) {
+  Unregister-ScheduledTask -TaskName "${taskName}" -Confirm:$false
+}
+
+# 2) Remove the BAT script for this task
+Remove-Item -Path "${batEsc}" -Force -ErrorAction SilentlyContinue
+
+# 3) Remove the credential file only if no other BAT references its share
+$credPath = "${credEsc}"
+$shareInUse = $false
+try {
+  $otherBats = Get-ChildItem -Path "${scriptsDirEsc}" -Filter "Houston_Backup_Task_*.bat" -ErrorAction SilentlyContinue
+  foreach ($b in $otherBats) {
+    # Any script still referencing this share?
+    if (Select-String -Path $b.FullName -Pattern "SMB_SHARE=${task.share}" -SimpleMatch -Quiet) {
+      $shareInUse = $true
+      break
     }
-
-    # delete the on-disk artifacts
-    Remove-Item -Path "${bat}"   -Force -ErrorAction SilentlyContinue
-    # Remove-Item -Path "${log}"   -Force -ErrorAction SilentlyContinue
-
-    # prune the credential file if no other task uses it
-    $share = "${task.share}"
-    $inUse = (Get-ScheduledTask | Where-Object TaskName -like "*${TASK_ID}_*" `
-      + `| ForEach-Object { $_.TaskName.Split('_')[-1] } `
-      + `| Where-Object { $_ -eq "${task.uuid}" }).Count -gt 0
-    if (-not $inUse) {
-      Remove-Item -Path "${cred}" -Force -ErrorAction SilentlyContinue
-    }
-  `;
-
-    await this.runScriptAdmin(ps, `unschedule_and_cleanup_${task.uuid}`);
   }
+} catch {}
+
+if (-not $shareInUse) {
+  Remove-Item -Path $credPath -Force -ErrorAction SilentlyContinue
+}
+`.trim();
+
+    // Try without elevation first; fallback to admin only if needed
+    try {
+      await this.runScript(ps, `unschedule_and_cleanup_${task.uuid}_user`);
+    } catch {
+      await this.runScriptAdmin(ps, `unschedule_and_cleanup_${task.uuid}_admin`);
+    }
+  }
+
 
   protected dailyTaskTriggerUpdate(schedule: TaskSchedule) {
     const dailyTaskTriggerUpdate = `
@@ -560,37 +641,101 @@ $task | Set-ScheduledTask
   }
 
   /** Unschedule & clean up MANY tasks in one go */
+  // async unscheduleSelectedTasks(tasks: BackUpTask[]): Promise<void> {
+  //   // build PS lines to unregister each task
+  //   const unregisterLines = tasks.map(t =>
+  //     `if (Get-ScheduledTask -TaskName "${TASK_ID}_${t.uuid}" -ErrorAction SilentlyContinue) { ` +
+  //     `Unregister-ScheduledTask -TaskName "${TASK_ID}_${t.uuid}" -Confirm:$false }`
+  //   );
+
+  //   // collect all file paths
+  //   const bats = tasks.map(t => `"${this.getTaskPaths(t).bat}"`);
+  //   const logs = tasks.map(t => `"${this.getTaskPaths(t).log}"`);
+  //   const creds = Array.from(
+  //     new Set(tasks.map(t => this.getTaskPaths(t).cred))
+  //   ).map(p => `"${p}"`);
+
+  //   // combine into one PS blob
+  //   const ps = [
+  //     '# — unregister all selected tasks',
+  //     ...unregisterLines,
+  //     '',
+  //     '# — delete .bat scripts',
+  //     `Remove-Item -Path ${bats.join(', ')} -Force -ErrorAction SilentlyContinue`,
+  //     '',
+  //     // '# — delete .log files',
+  //     // `Remove-Item -Path ${logs.join(', ')} -Force -ErrorAction SilentlyContinue`,
+  //     '',
+  //     '# — delete orphaned .cred files',
+  //     `Remove-Item -Path ${creds.join(', ')} -Force -ErrorAction SilentlyContinue`
+  //   ].join('\n');
+
+  //   // run it once as admin
+  //   await this.runScriptAdmin(ps, 'bulk_unschedule_and_cleanup');
+  // }
   async unscheduleSelectedTasks(tasks: BackUpTask[]): Promise<void> {
-    // build PS lines to unregister each task
-    const unregisterLines = tasks.map(t =>
-      `if (Get-ScheduledTask -TaskName "${TASK_ID}_${t.uuid}" -ErrorAction SilentlyContinue) { ` +
-      `Unregister-ScheduledTask -TaskName "${TASK_ID}_${t.uuid}" -Confirm:$false }`
-    );
+    if (!tasks || tasks.length === 0) return;
 
-    // collect all file paths
-    const bats = tasks.map(t => `"${this.getTaskPaths(t).bat}"`);
-    const logs = tasks.map(t => `"${this.getTaskPaths(t).log}"`);
-    const creds = Array.from(
-      new Set(tasks.map(t => this.getTaskPaths(t).cred))
-    ).map(p => `"${p}"`);
+    const scriptsDirEsc = SCRIPTS_DIR.replace(/\\/g, '\\\\');
 
-    // combine into one PS blob
-    const ps = [
-      '# — unregister all selected tasks',
-      ...unregisterLines,
-      '',
-      '# — delete .bat scripts',
-      `Remove-Item -Path ${bats.join(', ')} -Force -ErrorAction SilentlyContinue`,
-      '',
-      // '# — delete .log files',
-      // `Remove-Item -Path ${logs.join(', ')} -Force -ErrorAction SilentlyContinue`,
-      '',
-      '# — delete orphaned .cred files',
-      `Remove-Item -Path ${creds.join(', ')} -Force -ErrorAction SilentlyContinue`
-    ].join('\n');
+    // Build lists for PS
+    const taskNames = tasks.map(t => `${TASK_ID}_${t.uuid}`);
+    const bats = tasks.map(t => this.getTaskPaths(t).bat);
+    const shares = Array.from(new Set(tasks.map(t => t.share!).filter(Boolean)));
 
-    // run it once as admin
-    await this.runScriptAdmin(ps, 'bulk_unschedule_and_cleanup');
+    // Escape for PS array literals
+    const psTaskNames = taskNames.map(s => `"${s}"`).join(', ');
+    const psBats = bats.map(p => `"${p.replace(/\\/g, '\\\\')}"`).join(', ');
+    const psShares = shares.map(s => `"${s}"`).join(', ');
+
+    const ps = `
+# Inputs
+$TaskNames = @(${psTaskNames})
+$BatPaths  = @(${psBats})
+$Shares    = @(${psShares})
+
+# 1) Unregister all selected tasks (ignore if missing)
+foreach ($tn in $TaskNames) {
+  try {
+    if (Get-ScheduledTask -TaskName $tn -ErrorAction SilentlyContinue) {
+      Unregister-ScheduledTask -TaskName $tn -Confirm:$false
+    }
+  } catch {}
+}
+
+# 2) Delete their BAT scripts
+if ($BatPaths.Length -gt 0) {
+  try { Remove-Item -Path $BatPaths -Force -ErrorAction SilentlyContinue } catch {}
+}
+
+# 3) For each share, delete its cred file only if no remaining BAT references it
+try {
+  $remainingBats = @()
+  try { $remainingBats = Get-ChildItem -Path "${scriptsDirEsc}" -Filter "Houston_Backup_Task_*.bat" -ErrorAction SilentlyContinue } catch {}
+
+  foreach ($share in $Shares) {
+    $inUse = $false
+    foreach ($b in $remainingBats) {
+      if (Select-String -Path $b.FullName -Pattern ("SMB_SHARE=" + $share) -SimpleMatch -Quiet) {
+        $inUse = $true
+        break
+      }
+    }
+
+    if (-not $inUse) {
+      # cred path is %LOCALAPPDATA%\\houston-backups\\credentials\\<share>.cred
+      $credPath = Join-Path (Join-Path $env:LOCALAPPDATA "houston-backups\\credentials") ($share + ".cred")
+      try { Remove-Item -Path $credPath -Force -ErrorAction SilentlyContinue } catch {}
+    }
+  }
+} catch {}
+`.trim();
+
+    try {
+      await this.runScript(ps, 'bulk_unschedule_and_cleanup_user');
+    } catch {
+      await this.runScriptAdmin(ps, 'bulk_unschedule_and_cleanup_admin');
+    }
   }
 
 

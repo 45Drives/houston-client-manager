@@ -9,3 +9,4 @@ yarn.lock
 .idea
 package-lin-mac-sshpass.sh
 factory-reset-server.sh
+manup-electron.py

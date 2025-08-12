@@ -21,9 +21,9 @@ const props = defineProps<{
 
 const steps = [
   { label: "Welcome", component: WelcomeView },
-  { label: "Unbox", component: UnboxingView },
-  { label: "Plug in Power", component: PluginInPowerView },
-  { label: "Plug in Ethernet", component: PluginInEthernetView },
+  { label: "Unboxing", component: UnboxingView },
+  { label: "Plug-In Power", component: PluginInPowerView },
+  { label: "Plug-In Ethernet", component: PluginInEthernetView },
   { label: "Power On", component: PowerOnView },
   { label: "Server Discovery", component: DiscoveryNonSetupServersView },
 ];
