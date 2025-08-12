@@ -1,18 +1,5 @@
 <template>
   <CardContainer class="overflow-y-auto min-h-0">
-    <template #header>
-      <div class="relative flex items-center justify-center h-18  w-full">
-        <div class="absolute left-0 p-1 px-4 rounded-lg">
-          <DynamicBrandingLogo :division="division" />
-        </div>
-        <p class="text-3xl font-semibold text-center">
-          Review Your Backups
-        </p>
-        <div class="absolute right-0 top-1/2 -translate-y-1/2">
-          <GlobalSetupWizardMenu />
-        </div>
-      </div>
-    </template>
 
     <div class="flex flex-col h-full justify-center items-center text-default">
       <!-- Header with instructions -->
@@ -79,14 +66,14 @@
 
 <script setup lang="ts">
 import CardContainer from '../../components/CardContainer.vue';
-import GlobalSetupWizardMenu from '../../components/GlobalSetupWizardMenu.vue';
 import { ref, computed, inject, watch } from 'vue';
 import { EyeIcon, EyeSlashIcon } from "@heroicons/vue/20/solid";
-import { useWizardSteps, DynamicBrandingLogo, useEnterToAdvance, useAutoFocus } from '@45drives/houston-common-ui';
+import { useWizardSteps, useEnterToAdvance, useAutoFocus } from '@45drives/houston-common-ui';
 import { BackUpTask, IPCRouter } from '@45drives/houston-common-lib';
-import { divisionCodeInjectionKey, reviewBackUpSetupKey, thisOsInjectionKey } from '../../keys/injection-keys';
+import { reviewBackUpSetupKey, thisOsInjectionKey } from '../../keys/injection-keys';
+import { useHeader } from '../../composables/useHeader'
+useHeader('View Backup')
 useAutoFocus();
-const division = inject(divisionCodeInjectionKey);
 const { prevStep, wizardData } = useWizardSteps("backup");
 const thisOs = inject(thisOsInjectionKey);
 

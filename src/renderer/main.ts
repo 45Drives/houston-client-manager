@@ -25,16 +25,21 @@ console.error = (...args: any[]) => {
 // console.warn = (...args) => log.warn(...args);
 // console.debug = (...args) => log.debug(...args);
 
+import { IPCRouter } from '@45drives/houston-common-lib'
+IPCRouter.initRenderer()
+
 import { createApp } from 'vue';
 import "@45drives/houston-common-css/src/index.css"; 
 import "@45drives/houston-common-ui/style.css"; 
 import "./style.css"; 
-import App from './App.vue';
+import AppShell from '../app/AppShell.vue'
+import { router } from '../app/routes'
 import { enterNextDirective } from '@45drives/houston-common-ui'
 
 document.title = `45Drives Setup & Backup Wizard v${__APP_VERSION__}`;
 
-const app = createApp(App);
+const app = createApp(AppShell)
+app.use(router)
 app.directive('enter-next', enterNextDirective);
 app.mount('#app');
 document.documentElement.classList.add('theme-homelab');

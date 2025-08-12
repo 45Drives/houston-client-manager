@@ -7,24 +7,32 @@
         <teleport to="body">
             <div v-if="show"
                 class="fixed z-50 right-0 mt-2 w-60 bg-well shadow-lg rounded-lg border p-4 text-left text-default"
-                ref="menuRef" :style="{
-                    top: `${menuPosition.top}px`,
-                    left: `${menuPosition.left}px`
-                }">
-
-                <div v-if="!server" class="mb-2 text-center items-center">
+                ref="menuRef" :style="{ top: `${menuPosition.top}px`, left: `${menuPosition.left}px` }">
+                <!-- Navigation -->
+                <div class="mb-2 text-center items-center">
                     <p class="text-xs text-default mb-1">Navigation</p>
-                    <button class="btn btn-secondary wizard-btn w-full mb-1" :class="buttonClass(null)"
-                        @click="showDashboard">Dashboard</button>
-                    <button class="btn btn-secondary wizard-btn w-full mb-1" :class="buttonClass('storage')"
-                        @click="showWizard('storage')">Setup Wizard</button>
+
+                    <!-- Optional Dashboard -->
+                    <button class="btn btn-secondary wizard-btn w-full mb-1" :class="buttonClass('dashboard')"
+                        @click="goto('dashboard')">
+                        Dashboard
+                    </button>
+
+                    <button class="btn btn-secondary wizard-btn w-full mb-1" :class="buttonClass('setup')"
+                        @click="goto('setup')">
+                        Setup Wizard
+                    </button>
                     <button class="btn btn-secondary wizard-btn w-full mb-1" :class="buttonClass('backup')"
-                        @click="showWizard('backup')">Backup Client</button>
-                    <button class="btn btn-secondary wizard-btn w-full mb-1" :class="buttonClass('restore-backup')"
-                        @click="showWizard('restore-backup')">Restore Backup</button>
+                        @click="goto('backup')">
+                        Backup Client
+                    </button>
+                    <button class="btn btn-secondary wizard-btn w-full mb-1" :class="buttonClass('restore')"
+                        @click="goto('restore')">
+                        Restore Backup
+                    </button>
                 </div>
 
-
+                <!-- Themes -->
                 <div class="mb-2 text-center items-center">
                     <p class="text-xs text-default mb-1">Themes</p>
                     <button class="btn theme-btn theme-btn-default w-full mb-1"
@@ -35,6 +43,7 @@
                         @click="setTheme('theme-professional')">45Pro</button>
                 </div>
 
+                <!-- Dark mode -->
                 <div class="mb-2 items-center">
                     <button
                         class="theme-btn text-xs w-full mb-1 flex flex-row items-center text-center justify-center space-x-2 text-white rounded-md"
@@ -42,7 +51,7 @@
                         <transition name="fade" mode="out-in">
                             <component :is="darkMode ? SunIcon : MoonIcon" class="w-6 h-6" />
                         </transition>
-                        <span class="mb-0.5 font-semibold" :class="darkMode ? 'ml-5' : ' ml-4'">{{ darkModeLabel
+                        <span class="mb-0.5 font-semibold" :class="darkMode ? 'ml-5' : 'ml-4'">{{ darkModeLabel
                             }}</span>
                     </button>
                 </div>
@@ -51,41 +60,22 @@
     </div>
 </template>
 
+
 <script setup lang="ts">
-import { computed, ref, inject, type Ref, nextTick, onMounted, onBeforeUnmount } from 'vue'
-import { IPCRouter } from '@45drives/houston-common-lib'
+import { computed, ref, nextTick, onMounted, onBeforeUnmount } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
 import { Bars3Icon, MoonIcon, SunIcon } from '@heroicons/vue/24/outline'
 import { toggleDarkMode, useDarkModeState } from '@45drives/houston-common-ui'
-import { currentWizardInjectionKey } from '../keys/injection-keys';
 
 interface GlobalSetupWizardMenuProps {
     server?: boolean;
 }
+defineProps<GlobalSetupWizardMenuProps>()
 
-const props = defineProps<GlobalSetupWizardMenuProps>();
+const router = useRouter()
+const route = useRoute()
 
-const currentWizard = inject(
-    currentWizardInjectionKey,
-    ref('storage')
-) as Ref<'storage' | 'backup' | 'restore-backup' | null>;
-
-
-if (!currentWizard) {
-    throw new Error("currentWizard was not provided");
-}
-
-const buttonClass = (type: 'storage' | 'backup' | 'restore-backup' | null) => {
-    return [
-        'wizard-btn',
-        currentWizard?.value === type ? 'animate-glow' : ''
-    ].join(' ')
-}
-
-function showDashboard() {
-    currentWizard.value = null;
-    IPCRouter.getInstance().send('renderer', 'action', 'show_dashboard');
-}
-
+// --- Popover state & positioning ---
 const show = ref(false)
 const menuRef = ref<HTMLElement | null>(null)
 const menuButton = ref<HTMLElement | null>(null)
@@ -93,48 +83,34 @@ const menuPosition = ref({ top: 0, left: 0 })
 
 const toggle = async () => {
     show.value = !show.value
-
     if (show.value && menuButton.value) {
         await nextTick()
         const rect = menuButton.value.getBoundingClientRect()
-        menuPosition.value = {
-            top: rect.bottom + 8,
-            left: rect.right - 240, // assuming menu is 240px wide
-        }
+        menuPosition.value = { top: rect.bottom + 8, left: rect.right - 240 }
     }
 }
 
 const handleClickOutside = (event: MouseEvent) => {
     const path = event.composedPath()
-    if (
-        show.value &&
-        menuRef.value &&
-        !path.includes(menuRef.value) &&
-        !path.includes(menuButton.value as Node)
-    ) {
+    if (show.value && menuRef.value && !path.includes(menuRef.value) && !path.includes(menuButton.value as Node)) {
         show.value = false
     }
 }
-
-const handleKeydown = (event: KeyboardEvent) => {
-    if (event.key === 'Escape') {
-        show.value = false
-    }
-}
+const handleKeydown = (event: KeyboardEvent) => { if (event.key === 'Escape') show.value = false }
 
 onMounted(() => {
     document.addEventListener('click', handleClickOutside)
     document.addEventListener('keydown', handleKeydown)
 })
-
 onBeforeUnmount(() => {
     document.removeEventListener('click', handleClickOutside)
     document.removeEventListener('keydown', handleKeydown)
 })
 
+// --- Dark mode + theme buttons ---
 const darkMode = useDarkModeState()
-const darkModeLabel = computed(() => (darkMode.value ? "Light Mode" : "Dark Mode"))
-const darkModeButtonClass = computed(() => (darkMode.value ? "btn-sun" : "btn-moon"))
+const darkModeLabel = computed(() => (darkMode.value ? 'Light Mode' : 'Dark Mode'))
+const darkModeButtonClass = computed(() => (darkMode.value ? 'btn-sun' : 'btn-moon'))
 
 function setTheme(theme: 'theme-default' | 'theme-homelab' | 'theme-professional') {
     const root = document.documentElement
@@ -142,19 +118,15 @@ function setTheme(theme: 'theme-default' | 'theme-homelab' | 'theme-professional
     root.classList.add(theme)
 }
 
-function showWizard(type: 'storage' | 'backup' | 'restore-backup') {
-    if (currentWizard.value === type) {
-        // Reassign to force update (quickly unset then set again)
-        currentWizard.value = null;
-        requestAnimationFrame(() => {
-            currentWizard.value = type;
-        });
-    } else {
-        currentWizard.value = type;
-        // IPCRouter.getInstance().send('renderer', 'action', `show_${type}_setup_wizard`);
-        IPCRouter.getInstance().send('renderer', 'action', JSON.stringify({ type: 'show_wizard', wizard: type }));
-    }
+// --- Router navigation (new format) ---
+function goto(name: 'dashboard' | 'setup' | 'backup' | 'restore') {
+    router.push({ name })
+    show.value = false
 }
+
+const isActive = (name: string) => route.name === name
+const buttonClass = (name: 'setup' | 'backup' | 'restore' | 'dashboard') =>
+    ['wizard-btn', isActive(name) ? 'animate-glow' : ''].join(' ')
 </script>
 
 <style scoped>

@@ -1,19 +1,6 @@
 <template>
   <CardContainer class="overflow-y-auto min-h-0">
-    <template #header>
-      <div class="relative flex items-center justify-center h-18  w-full">
-        <div class="absolute left-0 p-1 px-4 rounded-lg">
-          <DynamicBrandingLogo :division="division" />
-        </div>
-        <p class="text-3xl font-semibold text-center">
-          Review Your Backups
-        </p>
-        <div class="absolute right-0 top-1/2 -translate-y-1/2">
-          <GlobalSetupWizardMenu />
-        </div>
-      </div>
-    </template>
-
+    
     <div class="flex flex-col h-full justify-center items-center">
       <p class="w-9/12 text-center text-2xl">
         Select a backup from the list to view. You may be prompted for password.
@@ -72,13 +59,13 @@
 <script setup lang="ts">
 import { BackUpTask } from '@45drives/houston-common-lib';
 import CardContainer from '../../components/CardContainer.vue';
-import { useWizardSteps, DynamicBrandingLogo, useEnterToAdvance } from '@45drives/houston-common-ui';
+import { useWizardSteps, useEnterToAdvance } from '@45drives/houston-common-ui';
 import BackUpListView from './BackUpListView.vue';
-import GlobalSetupWizardMenu from '../../components/GlobalSetupWizardMenu.vue';
 import { TrashIcon } from '@heroicons/vue/24/outline';
-import { inject, provide, reactive, ref } from 'vue';
-import { divisionCodeInjectionKey, reviewBackUpSetupKey } from '../../keys/injection-keys';
-const division = inject(divisionCodeInjectionKey);
+import { inject, ref } from 'vue';
+import { reviewBackUpSetupKey } from '../../keys/injection-keys';
+import { useHeader } from '../../composables/useHeader'
+useHeader('Review Your Backups')
 const reviewBackup = inject(reviewBackUpSetupKey);
 
 const selectedBackUpTasks = ref<BackUpTask[]>([]);
