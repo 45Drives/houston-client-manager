@@ -2,14 +2,14 @@
 echo '----- Packaging 45drives-setup-wizard for MacOS! Please wait... -----'
 
 start_time=$(date +%s)
-fullVersionString="1.0.0"
-appVersion="1.0.0"
+# Extract version from package.json
+appVersion="$(node -p "require('./package.json').version")"
 
 echo "Build Version: $appVersion"
 
-appType=app-image
 appName=45drives-setup-wizard
 appIcon=icon.ico
+dmgName="${appName}-${appVersion}"
 
 outputDir=dist/mac
 entitlementsFile=entitlements.mac.plist
@@ -24,30 +24,30 @@ echo '.....DONE.'
 
 echo '----- CODE SIGNING APP -----'
 ## Find all files and do deep code signing.
-find $outputDir/$appName.app -type f -exec codesign --deep -dvv --force --timestamp --options=runtime --entitlements $entitlementsFile --sign "$developerIdApplicationString" {} \;
+find $outputDir/$dmgName.app -type f -exec codesign --deep -dvv --force --timestamp --options=runtime --entitlements $entitlementsFile --sign "$developerIdApplicationString" {} \;
 ## Code sign .app bundle
-codesign --deep -dvv --force --timestamp --options=runtime --entitlements $entitlementsFile --sign "$developerIdApplicationString" $outputDir/$appName.app
+codesign --deep -dvv --force --timestamp --options=runtime --entitlements $entitlementsFile --sign "$developerIdApplicationString" $outputDir/$dmgName.app
 ## Verify code signing was successful.
-codesign --verify --strict -dvv $outputDir/$appName.app
+codesign --verify --strict -dvv $outputDir/$dmgName.app
 echo '.....DONE.'
 
 ## Create a temp directory to add the symbolic link to the applications folder
 mkdir $outputDir/temp
-cp -R $outputDir/$appName.app $outputDir/temp
+cp -R $outputDir/$dmgName.app $outputDir/temp
 ln -s /Applications $outputDir/temp/Applications
 
 echo '----- CREATING DMG -----'
-hdiutil create -volname "$appName" -srcfolder $outputDir/temp -ov -fs HFS+ -format UDZO -imagekey zlib-level=9 -o $outputDir/$appName.dmg
+hdiutil create -volname "$dmgName" -srcfolder $outputDir/temp -ov -fs HFS+ -format UDZO -imagekey zlib-level=9 -o $dmgName.dmg
 echo '.....DONE.'
 
 echo '----- CODE SIGNING DMG -----'
-codesign --deep -dvv --force --timestamp --options=runtime --entitlements $entitlementsFile --sign "$developerIdApplicationString" $outputDir/$appName.dmg
-codesign --verify -dvv $outputDir/$appName.dmg
+codesign --deep -dvv --force --timestamp --options=runtime --entitlements $entitlementsFile --sign "$developerIdApplicationString" $dmgName.dmg
+codesign --verify -dvv $dmgName.dmg
 echo '.....DONE.'
 
 echo '----- NOTARIZING APP -----'
-xcrun notarytool submit "$outputDir/$appName.dmg" --apple-id cduffney@protocase.com --team-id $developerID --password $developerAppPassword --wait
-xcrun stapler staple "$outputDir/$appName.dmg"
+xcrun notarytool submit "$dmgName.dmg" --apple-id cduffney@protocase.com --team-id $developerID --password $developerAppPassword --wait
+xcrun stapler staple "$dmgName.dmg"
 #echo '.....DONE.'
 
 ## IF NOTARIZATION FAILS, RUN THE BELOW COMMAND WITH THE SUBMISSION ID TO VIEW LOGS.
