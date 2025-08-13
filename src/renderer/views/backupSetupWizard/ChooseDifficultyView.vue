@@ -1,18 +1,5 @@
 <template>
   <CardContainer class="overflow-y-auto min-h-0">
-    <template #header>
-      <div class="relative flex items-center justify-center h-18  w-full">
-        <div class="absolute left-0 p-1 px-4 rounded-lg">
-          <DynamicBrandingLogo :division="division" />
-        </div>
-        <p class="text-3xl font-semibold text-center">
-          Choose Your Backup Type
-        </p>
-        <div class="absolute right-0 top-1/2 -translate-y-1/2">
-          <GlobalSetupWizardMenu />
-        </div>
-      </div>
-    </template>
 
     <div class="grid grid-cols-2 gap-10 text-2xl w-9/12 mx-auto">
       <CardContainer class="col-span-1 bg-accent border-default rounded-md">
@@ -23,7 +10,7 @@
         </template>
         <div>
           <p>
-            Quick and effortless method to setup your backup plan 45Drives Best Practice. Select <b>SIMPLE</b> and we
+            Quick and effortless method to setup your backup plan 45Drives Best Practice. Select <b>SIMPLE</b> to choose from our preset intervals and we
             will configure the backup plan for you.
           </p>
         </div>
@@ -41,12 +28,9 @@
 
         <div>
           <p>
-            Full control and flexibility? Select <b>CUSTOM</b> and you’ll have the options to choose your configuration
-            details such as what time to run the backup.
+            Full control and flexibility? Select <b>CUSTOM</b> and you’ll have the option to fine-tune your backup start time and frequency.
           </p>
         </div>
-
-
       </CardContainer>
     </div>
 
@@ -61,19 +45,17 @@
 <script setup lang="ts">
 import CardContainer from '../../components/CardContainer.vue';
 import { CommanderToolTip } from '../../components/commander';
-import { useWizardSteps, DynamicBrandingLogo, useEnterToAdvance } from '@45drives/houston-common-ui';
-import { divisionCodeInjectionKey } from '../../keys/injection-keys';
-import { inject } from 'vue';
-import GlobalSetupWizardMenu from '../../components/GlobalSetupWizardMenu.vue';
-const division = inject(divisionCodeInjectionKey);
-const { completeCurrentStep, prevStep } = useWizardSteps("backup");
+import { useWizardSteps, useEnterToAdvance } from '@45drives/houston-common-ui';
+import { useHeader } from '../../composables/useHeader'
+useHeader('Choose Your Backup Schedule Type')
+const { completeCurrentStep, prevStep } = useWizardSteps("backup-new");
 
 const startCreateBackupSchedualSetup = () => {
-  completeCurrentStep(true, { choice: "simple" });
+  completeCurrentStep(true, { planType: "simple" });
 };
 
 const startCustomSetup = () => {
-  completeCurrentStep(true, { choice: "custom" });
+  completeCurrentStep(true, { planType: "custom" });
 
 };
 

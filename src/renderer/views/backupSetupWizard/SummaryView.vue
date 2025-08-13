@@ -80,7 +80,7 @@ const thisOs = inject(thisOsInjectionKey);
 
 const isFirstBackupRun = ref(false);
 
-const { completeCurrentStep, prevStep } = useWizardSteps("backup");
+const { completeCurrentStep, prevStep } = useWizardSteps("backup-new");
 
 const backUpSetupConfig = inject(backUpSetupConfigKey);
 

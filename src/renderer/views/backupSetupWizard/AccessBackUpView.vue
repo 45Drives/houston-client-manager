@@ -74,7 +74,7 @@ import { reviewBackUpSetupKey, thisOsInjectionKey } from '../../keys/injection-k
 import { useHeader } from '../../composables/useHeader'
 useHeader('View Backup')
 useAutoFocus();
-const { prevStep, wizardData } = useWizardSteps("backup");
+const { prevStep, wizardData } = useWizardSteps("backup-new");
 const thisOs = inject(thisOsInjectionKey);
 
 const reviewBackup = inject(reviewBackUpSetupKey);

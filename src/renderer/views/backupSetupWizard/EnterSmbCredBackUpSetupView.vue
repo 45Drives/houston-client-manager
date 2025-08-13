@@ -58,7 +58,7 @@ useHeader('Server Credentials')
 
 useAutoFocus();
 
-const { prevStep, nextStep, wizardData } = useWizardSteps("backup");
+const { prevStep, nextStep, wizardData } = useWizardSteps("backup-new");
 const backUpSetupConfig = inject(backUpSetupConfigKey)!;
 
 const openingBackup = ref(false);

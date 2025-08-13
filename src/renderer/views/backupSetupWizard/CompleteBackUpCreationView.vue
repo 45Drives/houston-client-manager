@@ -65,7 +65,7 @@ import { EasySetupProgress, IPCRouter } from "@45drives/houston-common-lib";
 import { backUpSetupConfigKey } from "../../keys/injection-keys";
 import { useHeader } from '../../composables/useHeader'
 useHeader('Congratulations')
-const { setStep } = useWizardSteps('backup');
+const { setStep } = useWizardSteps('backup-new');
 
 const setupComplete = ref<string>("no");
 const error = ref<string>();
@@ -94,7 +94,7 @@ function goToBackupWizard(): void {
   }
 
   // console.debug("after clearing: ", backUpSetupConfig);
-  setStep(1);
+  setStep(0);
 }
 
 
