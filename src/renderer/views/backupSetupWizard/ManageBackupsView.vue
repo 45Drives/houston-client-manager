@@ -4,12 +4,18 @@
             <p class="w-full text-center text-2xl">Here are your currently scheduled backups. <br />
                 Select one or more backup tasks to view, edit, run or cancel.
             </p>
+            <!-- <div class="w-full my-auto">
+ -->
 
-            <div class="overflow-hidden w-full">
-                <div class="bg-well p-4 rounded-lg border border-default max-h-[50vh] overflow-y-auto">
-                    <BackUpListView ref="backUpListRef" class="p-2" @backUpTaskSelected="handleBackUpTaskSelected" />
+                <div class="overflow-hidden w-full items-center justify-center">
+                    <div class="bg-well p-4 rounded-lg border border-default max-h-[50vh] min-h-[50vh] overflow-y-auto">
+                        <BackUpListView ref="backUpListRef" class="p-2 border border-default rounded-md"
+                            @backUpTaskSelected="handleBackUpTaskSelected" />
+                    </div>
                 </div>
-            </div>
+
+
+            <!-- </div> -->
         </div>
 
         <template #footer>
@@ -19,7 +25,7 @@
                     <!-- <button @click="" class="btn btn-primary w-40 h-20">
                                 Restore Files
                             </button> -->
-                    <div class="flex flex-wrap gap-3 items-center justify-end mt-2">
+                    <div class="flex flex-wrap gap-3 items-center justify-end">
                         <button class="btn btn-secondary w-40 h-20 px-5" :disabled="selectedBackUpTasks.length !== 1"
                             @click="viewSelected">View Selected Backup{{ selectedBackUpTasks.length > 1 ? 's' : ''
                             }}</button>
@@ -30,8 +36,9 @@
                             @click="editSelected">Edit Selected Backup{{ selectedBackUpTasks.length > 1 ? 's' : ''
                             }}</button>
                         <button class="btn btn-secondary w-40 h-20 px-5" :disabled="selectedBackUpTasks.length !== 1"
-                            @click="viewSelectedLog">Check Selected Backup's Logs{{ selectedBackUpTasks.length > 1 ? 's' : ''
-                            }}</button>
+                            @click="viewSelectedLog">Check Selected Backup{{ selectedBackUpTasks.length > 1 ? "s'"
+                            : "'s"
+                            }} Logs</button>
                         <button class="btn btn-danger w-40 h-20 px-5" :disabled="selectedBackUpTasks.length === 0"
                             @click="deleteSelectedTasks">Cancel Selected Backup{{ selectedBackUpTasks.length > 1 ? 's' :
                             '' }}</button>
@@ -72,13 +79,19 @@ function runSelected() {
     backUpListRef.value?.runSelectedNow?.();
 }
 
+// function editSelected() {
+//     backUpListRef.value?.editSelectedSchedules?.();
+// }
+// In BackupHome.vue
 function editSelected() {
-    backUpListRef.value?.editSelectedSchedules?.();
+    const ids = selectedBackUpTasks.value.map(t => t.uuid).join(',');
+    router.push({ name: 'backups-bulk-edit', query: { ids } });
 }
+
 
 function viewSelected() {
     // Reuse your wizard flow; this just triggers the same next step action
-    proceedToNextStep();
+    // proceedToNextStep();
 }
 
 function viewSelectedLog() {
@@ -87,7 +100,7 @@ function viewSelectedLog() {
     backUpListRef.value?.editSelectedSchedules?.();
 }
 
-const { completeCurrentStep, unCompleteCurrentStep } = useWizardSteps('backup');
+const { completeCurrentStep, unCompleteCurrentStep, prevStep } = useWizardSteps('backup-root');
 
 const proceedToNextStep = async () => {
     if (selectedBackUpTasks.value.length < 1) throw new Error('Select at least one backup task to proceed');
@@ -95,7 +108,10 @@ const proceedToNextStep = async () => {
     completeCurrentStep(true, selectedBackUpTasks.value);
 };
 
-const proceedToPreviousStep = async () => { goBackStep(); };
+const proceedToPreviousStep = async () => { 
+    // goBackStep();
+    prevStep();
+ };
 
 useEnterToAdvance(() => { }, 300, () => { }, () => { proceedToPreviousStep(); });
 

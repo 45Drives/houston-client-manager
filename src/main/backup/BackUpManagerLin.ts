@@ -70,7 +70,8 @@ export class BackUpManagerLin implements BackUpManager {
           mirror,
           description: descMatch ? descMatch[1] : "Unnamed",
           schedule: parsedSchedule ?? { repeatFrequency: "day", startDate },
-          status: "checking"
+          status: "checking",
+          type: 'local'
         };
 
         // 🔍 Perform status check

@@ -1,18 +1,5 @@
 <template>
 	<CardContainer class="overflow-y-auto min-h-0">
-		<template #header class="!text-center">
-			<div class="relative flex items-center justify-center h-18  w-full">
-				<div class="absolute left-0 p-1 px-4 rounded-lg">
-					<DynamicBrandingLogo :division="division" />
-				</div>
-				<p class="text-3xl font-semibold text-center">
-					Create Simple Backup Plan!
-				</p>
-				<div class="absolute right-0 top-1/2 -translate-y-1/2">
-					<GlobalSetupWizardMenu />
-				</div>
-			</div>
-		</template>
 
 		<div class="flex flex-col max-h-[calc(100vh-12rem)] min-h-0 flex-1 overflow-hidden">
 			<div class="flex flex-col h-full min-h-0">
@@ -34,12 +21,6 @@
 								<CommanderToolTip
 									:message="`This is the designated backup storage location you set up earlier.`" />
 							</div>
-							<!-- <select v-model="selectedServer"
-								class="bg-default h-[3rem] text-default rounded-lg px-4 flex-1 border border-default">
-								<option v-for="item in servers" :key="item.ip" :value="item">
-									{{ `\\\\${item.name}\\${item.shareName}` }}
-								</option>
-							</select> -->
 							<select v-model="selectedServerIp"
 								class="bg-default h-[3rem] text-default rounded-lg px-4 flex-1 border border-default">>
 								<option v-for="item in servers" :key="item.ip" :value="item.ip">
@@ -117,20 +98,19 @@
 </template>
 
 <script setup lang="ts">
-import { CardContainer, CommanderToolTip, confirm, useEnterToAdvance } from "@45drives/houston-common-ui";
-import { computed, inject, onMounted, ref, watch } from "vue";
+import { CardContainer, CommanderToolTip, confirm, useEnterToAdvance, WizardState } from "@45drives/houston-common-ui";
+import { computed, inject, InjectionKey, onMounted, ref, watch } from "vue";
 import { PlusIcon, MinusIcon } from "@heroicons/vue/20/solid";
-import { useWizardSteps, DynamicBrandingLogo } from '@45drives/houston-common-ui';
-import { Server, DiscoveryState } from '../../../types'
-import { backUpSetupConfigKey, divisionCodeInjectionKey, discoveryStateInjectionKey } from "../../../keys/injection-keys";
+import { useWizardSteps } from '@45drives/houston-common-ui';
+import { Server, DiscoveryState } from '../../types'
+import { backUpSetupConfigKey, divisionCodeInjectionKey, discoveryStateInjectionKey } from "../../keys/injection-keys";
 import MessageDialog from '../../components/MessageDialog.vue';
 import { BackUpTask, IPCMessageRouter, IPCRouter, server, unwrap } from "@45drives/houston-common-lib";
-import GlobalSetupWizardMenu from '../../components/GlobalSetupWizardMenu.vue';
-import { sanitizeFilePath } from "../utils";
+import { sanitizeFilePath } from "./utils";
+import { useHeader } from '../../composables/useHeader'
+useHeader('Create Your Simple Backup Plan')
 
-const division = inject(divisionCodeInjectionKey);
-// Wizard navigation
-const { completeCurrentStep, prevStep } = useWizardSteps("backup");
+const { completeCurrentStep, prevStep } = useWizardSteps('backup-new');
 
 // Reactive State
 const backUpSetupConfig = inject(backUpSetupConfigKey);

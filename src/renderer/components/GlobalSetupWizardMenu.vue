@@ -36,11 +36,11 @@
                 <div class="mb-2 text-center items-center">
                     <p class="text-xs text-default mb-1">Themes</p>
                     <button class="btn theme-btn theme-btn-default w-full mb-1"
-                        @click="setTheme('theme-default')">Default</button>
+                        @click="selectTheme('theme-default')">Default</button>
                     <button class="btn theme-btn theme-btn-homelab w-full mb-1"
-                        @click="setTheme('theme-homelab')">45Homelab</button>
+                        @click="selectTheme('theme-homelab')">45Homelab</button>
                     <button class="btn theme-btn theme-btn-professional w-full mb-1"
-                        @click="setTheme('theme-professional')">45Pro</button>
+                        @click="selectTheme('theme-professional')">45Pro</button>
                 </div>
 
                 <!-- Dark mode -->
@@ -66,6 +66,7 @@ import { computed, ref, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { Bars3Icon, MoonIcon, SunIcon } from '@heroicons/vue/24/outline'
 import { toggleDarkMode, useDarkModeState } from '@45drives/houston-common-ui'
+import { useThemeFromAlias } from '../composables/useThemeFromAlias'
 
 interface GlobalSetupWizardMenuProps {
     server?: boolean;
@@ -112,10 +113,15 @@ const darkMode = useDarkModeState()
 const darkModeLabel = computed(() => (darkMode.value ? 'Light Mode' : 'Dark Mode'))
 const darkModeButtonClass = computed(() => (darkMode.value ? 'btn-sun' : 'btn-moon'))
 
-function setTheme(theme: 'theme-default' | 'theme-homelab' | 'theme-professional') {
-    const root = document.documentElement
-    root.classList.remove('theme-default', 'theme-homelab', 'theme-professional')
-    root.classList.add(theme)
+// function setTheme(theme: 'theme-default' | 'theme-homelab' | 'theme-professional') {
+//     const root = document.documentElement
+//     root.classList.remove('theme-default', 'theme-homelab', 'theme-professional')
+//     root.classList.add(theme)
+// }
+const { setTheme, currentTheme } = useThemeFromAlias()
+
+function selectTheme(theme: 'theme-default' | 'theme-homelab' | 'theme-professional') {
+   setTheme(theme) // updates currentTheme, which updates currentDivision, which updates the logo
 }
 
 // --- Router navigation (new format) ---

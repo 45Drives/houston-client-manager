@@ -7,6 +7,7 @@ type Division = 'homelab' | 'professional' | 'default'
 const aliasToTheme: Record<string, Theme> = {
   homelab: 'theme-homelab',
   professional: 'theme-professional',
+  default: 'theme-default',
 }
 
 const themeToDivision: Record<Theme, Division> = {
