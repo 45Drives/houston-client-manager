@@ -3,14 +3,14 @@
     <!-- Toolbar -->
     <div class="flex flex-row items-center justify-between font-bold">
       <div class="flex items-center justify-start">
-        <button class="btn btn-primary text-sm mr-3" @click.stop="fetchBackupTasks">
+        <button class="btn btn-primary text-sm mr-3" @click.stop="newBackupTask">
           <PlusIcon class="w-5 h-5 text-white" />
         </button>
         Schedule New Backup
       </div>
       <div class="flex items-center justify-end">
         Refresh Backup List
-        <button class="btn btn-secondary text-sm ml-3" @click.stop="newBackupTask">
+        <button class="btn btn-secondary text-sm ml-3" @click.stop="fetchBackupTasks">
           <ArrowPathIcon class="w-5 h-5 text-white" />
         </button>
       </div>
@@ -29,7 +29,7 @@
     <!-- Table -->
     <div v-else class="overflow-x-auto">
       <table class="min-w-full text-sm">
-        <thead class="text-left sticky top-0 bg-well z-10">
+        <thead class="text-left sticky top-0 bg-accent z-10">
           <tr class="border-b border-default">
             <th class="px-3 py-2 w-10">
               <input type="checkbox" class="input-checkbox" :checked="allSelected" @change="toggleSelectAll"
@@ -88,7 +88,9 @@ import { formatFrequency } from "./utils";
 import { SimpleCalendar } from "../../components/calendar";
 import { thisOsInjectionKey } from '../../keys/injection-keys';
 import { ArrowPathIcon, PlusIcon } from '@heroicons/vue/24/outline';
+import { useRouter } from 'vue-router';
 
+const router = useRouter();
 const emit = defineEmits<{ (event: 'backUpTaskSelected', tasks: BackUpTask[]): void }>();
 
 const backUpTasks = ref<BackUpTask[]>([]);
@@ -131,7 +133,8 @@ function toggleSelection(task: BackUpTask) {
 
 function taskType(task: BackUpTask) {
   // Heuristic: remote if host/share are set
-  return task.host && task.share ? 'Remote' : 'Local';
+  // return task.host && task.share ? 'Remote' : 'Local';
+  return task.type! || 'N/A';
 }
 
 function trimLeadingSlash(p?: string) { return (p || '').replace(/^\/+/, ''); }
@@ -215,7 +218,7 @@ function cancelSelected() {
 }
 
 function newBackupTask() {
-
+  router.push({ path: '/backup/new' });
 }
 
 // Calendar helpers
@@ -229,7 +232,12 @@ function handleCalendarClose(saved: boolean) {
 }
 
 // IPC + polling
-function fetchBackupTasks() { IPCRouter.getInstance().send('backend', 'action', 'requestBackUpTasks'); }
+function fetchBackupTasks() { 
+  isLoading.value = true;
+  IPCRouter.getInstance().send('backend', 'action', 'requestBackUpTasks'); 
+  isLoading.value = false;
+}
+
 let ipcActionHandler: ((raw: string) => void) | null = null;
 let pollingInterval: ReturnType<typeof setInterval>;
 let pollingSuspended = false;
@@ -313,11 +321,11 @@ async function deleteSelectedTasks() {
   } finally { isHandlingNextClick = false; }
 }
 
-function backupNow(task: BackUpTask) {
-  pollingSuspended = true;
-  IPCRouter.getInstance().send('backend', 'action', JSON.stringify({ type: 'runBackUpTaskNow', task }));
-  shortPollingUntil = Date.now() + 30000; setTimeout(() => { pollingSuspended = false; }, 8000);
-}
+// function backupNow(task: BackUpTask) {
+//   pollingSuspended = true;
+//   IPCRouter.getInstance().send('backend', 'action', JSON.stringify({ type: 'runBackUpTaskNow', task }));
+//   shortPollingUntil = Date.now() + 30000; setTimeout(() => { pollingSuspended = false; }, 8000);
+// }
 
 // expose to parent
 defineExpose({ deleteSelectedTasks, editSelectedSchedules, runSelectedNow });
