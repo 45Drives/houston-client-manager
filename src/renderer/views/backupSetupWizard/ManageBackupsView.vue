@@ -1,68 +1,141 @@
 <template>
     <CardContainer class="overflow-y-auto min-h-0">
-        <div class="flex flex-col h-full items-stretch gap-4">
-            <p class="w-full text-center text-2xl">Here are your currently scheduled backups. <br />
-                Select one or more backup tasks to view, edit, run or cancel.
+        <div class="flex flex-col h-full items-stretch gap-3">
+            <p class="w-full text-center text-2xl">Here are your currently scheduled backups.
+                Select <b>LOCAL</b>
+                <CommanderToolTip
+                    :message="'Local backups are backups coming from this computer (the Client) and sent to 45Drives hardware (the Server).'" />
+                or <b>REMOTE</b>
+                <CommanderToolTip
+                    :message="'Remote backups are backups coming from a 45Drives Server to another Server or to a Cloud Provider.'" />
+                to view those backups.
             </p>
-            <!-- <div class="w-full my-auto">
- -->
 
-                <div class="overflow-hidden w-full items-center justify-center">
-                    <div class="bg-well p-4 rounded-lg border border-default max-h-[50vh] min-h-[50vh] overflow-y-auto">
-                        <BackUpListView ref="backUpListRef" class="p-2 border border-default rounded-md"
-                            @backUpTaskSelected="handleBackUpTaskSelected" />
+            <!-- Toggle row centered, with remote controls on the right -->
+            <div class="w-full grid items-center gap-3 grid-cols-[1fr_auto_1fr]">
+                <!-- right: remote-only controls -->
+                <div v-if="activeTab === 'remote'" class="col-start-1 justify-self-start flex items-center gap-3">
+                    <span class="text-sm text-default">
+                        {{ currentServer ? `Viewing: ${currentServer.name || currentServer.ip}` : 'Select a server' }}
+                    </span>
+                </div>
+                <!-- center: tabs -->
+                <div class="col-start-2 justify-self-center">
+                    <div class="inline-flex rounded-lg border border-default overflow-hidden">
+                        <button class="px-4 py-2 text-sm font-medium"
+                            :class="activeTab === 'local' ? 'bg-primary text-primary-foreground' : 'bg-well hover:bg-muted'"
+                            @click="activeTab = 'local'">
+                            LOCAL
+                        </button>
+                        <button class="px-4 py-2 text-sm font-medium border-l border-default"
+                            :class="activeTab === 'remote' ? 'bg-primary text-primary-foreground' : 'bg-well hover:bg-muted'"
+                            @click="activeTab = 'remote'">
+                            REMOTE
+                        </button>
                     </div>
                 </div>
 
+                <!-- right: remote-only controls -->
+                <div v-if="activeTab === 'remote'" class="col-start-3 justify-self-end flex items-center gap-2">
+                    <label class="text-sm">Server:</label>
+                    <select v-model="selectedIp" :title="selectedIp"
+                        class="input-textlike border rounded px-3 py-1 min-w-64">
+                        <option value="">Select Server</option>
+                        <option v-for="opt in serversForDropdown" :key="opt.ip" :value="opt.ip">
+                            {{ opt.label }}
+                        </option>
+                    </select>
+                </div>
+            </div>
 
-            <!-- </div> -->
+            <div v-if="activeTab === 'local'" class="overflow-hidden w-full text-left items-center justify-center">
+                <div class="bg-well p-2 rounded-lg border border-default h-[64vh] flex flex-col">
+                    <BackUpListView ref="backUpListRef" class="flex-1 min-h-0"
+                        @backUpTaskSelected="handleBackUpTaskSelected" />
+                </div>
+                <div class="button-group-row w-full justify-between item-center mt-2">
+                    <button class="btn btn-secondary w-64 h-10 px-5" :disabled="selectedBackUpTasks.length !== 1"
+                        @click="viewSelected">View Selected Backup{{ selectedBackUpTasks.length > 1 ? 's' : ''
+                        }}</button>
+                    <!-- <button class="btn btn-primary w-64 h-10 px-5" :disabled="selectedBackUpTasks.length === 0"
+                        @click="runSelected">Run Selected Backup{{ selectedBackUpTasks.length > 1 ? 's' : '' }} NOW
+                    </button> -->
+                    <button class="btn btn-primary w-64 h-10 px-5 min-w-64"
+                        :disabled="selectedBackUpTasks.length === 0 || isRunningNow" @click="runSelected">
+                        <template v-if="!isRunningNow">
+                            Run Selected Backup{{ selectedBackUpTasks.length > 1 ? 's' : '' }} NOW
+                        </template>
+                        <template v-else>
+                            <span class="inline-flex items-center text-center gap-2">
+                                Starting…
+                                <div class="justify-self-end spinner"></div>
+                            </span>
+                        </template>
+                    </button>
+                    <button class="btn btn-secondary w-64 h-10 px-5" :disabled="selectedBackUpTasks.length !== 1"
+                        @click="editSelected">Edit Selected Backup{{ selectedBackUpTasks.length > 1 ? 's' : ''
+                        }}</button>
+                    <button class="btn btn-secondary w-64 h-10 px-5" :disabled="selectedBackUpTasks.length !== 1"
+                        @click="viewSelectedLog">Check Selected Backup{{ selectedBackUpTasks.length > 1 ? "s'"
+                        : "'s"
+                        }} Logs</button>
+                    <button class="btn btn-danger w-64 h-10 px-5" :disabled="selectedBackUpTasks.length === 0"
+                        @click="deleteSelectedTasks">Cancel Selected Backup{{ selectedBackUpTasks.length > 1 ? 's' :
+                        '' }}</button>
+                </div>
+            </div>
+            <div v-else class="overflow-hidden w-full items-center justify-center ">
+                <div class="bg-well p-2 rounded-lg border border-default h-[64vh] flex flex-col">
+                    <div class="flex-1 min-h-0">
+                        <CockpitWebview v-if="currentServer" :key="currentServer.ip" routePath="/scheduler-test"
+                            hash="simple" wrapperClass="h-full rounded-lg" heightClass="h-full"
+                            :openDevtoolsInDev="true" />
+                        <div v-else class="h-full flex flex-col items-center justify-center text-default">
+                            <span>
+                                Select a server to load the remote backup scheduler.
+                            </span>
+                            <div class="col-start-3 justify-self-end flex items-center gap-3">
+                                <select v-model="selectedIp" :title="selectedIp"
+                                    class="input-textlike border rounded px-3 py-1 min-w-72 text-left">
+                                    <option value="">Select Server</option>
+                                    <option v-for="opt in serversForDropdown" :key="opt.ip" :value="opt.ip">
+                                        {{ opt.label }}
+                                    </option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
 
         <template #footer>
-            <div class="button-group-row w-full justify-end">
-                <div class="button-group-row w-full justify-between">
-                    <button @click="proceedToPreviousStep" class="btn btn-secondary w-40 h-20">Back</button>
-                    <!-- <button @click="" class="btn btn-primary w-40 h-20">
-                                Restore Files
-                            </button> -->
-                    <div class="flex flex-wrap gap-3 items-center justify-end">
-                        <button class="btn btn-secondary w-40 h-20 px-5" :disabled="selectedBackUpTasks.length !== 1"
-                            @click="viewSelected">View Selected Backup{{ selectedBackUpTasks.length > 1 ? 's' : ''
-                            }}</button>
-                        <button class="btn btn-primary w-40 h-20 px-5" :disabled="selectedBackUpTasks.length === 0"
-                            @click="runSelected">Run Selected Backup NOW{{ selectedBackUpTasks.length > 1 ? 's' : ''
-                            }}</button>
-                        <button class="btn btn-secondary w-40 h-20 px-5" :disabled="selectedBackUpTasks.length !== 1"
-                            @click="editSelected">Edit Selected Backup{{ selectedBackUpTasks.length > 1 ? 's' : ''
-                            }}</button>
-                        <button class="btn btn-secondary w-40 h-20 px-5" :disabled="selectedBackUpTasks.length !== 1"
-                            @click="viewSelectedLog">Check Selected Backup{{ selectedBackUpTasks.length > 1 ? "s'"
-                            : "'s"
-                            }} Logs</button>
-                        <button class="btn btn-danger w-40 h-20 px-5" :disabled="selectedBackUpTasks.length === 0"
-                            @click="deleteSelectedTasks">Cancel Selected Backup{{ selectedBackUpTasks.length > 1 ? 's' :
-                            '' }}</button>
-                    </div>
-                </div>
+            <div class="button-group-row w-full justify-start">
+                <button @click="proceedToPreviousStep" class="btn btn-secondary w-40 h-20">Back</button>
             </div>
         </template>
     </CardContainer>
 </template>
 
 <script setup lang="ts">
-import { BackUpTask } from '@45drives/houston-common-lib';
+import { BackUpTask, IPCRouter } from '@45drives/houston-common-lib';
 import CardContainer from '../../components/CardContainer.vue';
+import CockpitWebview from '../../components/CockpitWebview.vue';
 import { useWizardSteps, useEnterToAdvance } from '@45drives/houston-common-ui';
 import BackUpListView from './BackUpListView.vue';
-import { inject, ref } from 'vue';
-import { reviewBackUpSetupKey } from '../../keys/injection-keys';
+import { computed, inject, Ref, ref, watch, onMounted, onBeforeUnmount } from 'vue';
+import { currentServerInjectionKey, discoveryStateInjectionKey, reviewBackUpSetupKey } from '../../keys/injection-keys';
 import { useRouter } from 'vue-router';
 import { useHeader } from '../../composables/useHeader';
+import CommanderToolTip from '../../components/commander/CommanderToolTip.vue';
+import { DiscoveryState, type Server as ServerType } from '../../types';
+
 useHeader('Manage Your Backups');
 
 const reviewBackup = inject(reviewBackUpSetupKey);
 const router = useRouter();
 const selectedBackUpTasks = ref<BackUpTask[]>([]);
+const activeTab = ref<'local' | 'remote'>('local');
 
 const handleBackUpTaskSelected = (tasks: BackUpTask[]) => {
     selectedBackUpTasks.value = tasks;
@@ -71,18 +144,74 @@ const handleBackUpTaskSelected = (tasks: BackUpTask[]) => {
 
 const backUpListRef = ref<InstanceType<typeof BackUpListView> | null>(null);
 
+const currentServer = inject<Ref<ServerType | null>>(currentServerInjectionKey, ref(null) as any)
+const discoveryState = inject<DiscoveryState>(discoveryStateInjectionKey)!
+const selectedIp = ref<string>('')
+const serversForDropdown = computed(() =>
+    discoveryState.servers.map(s => ({
+        ip: s.ip,
+        label: s.name && s.name !== s.ip ? `${s.name} (${s.ip})` : s.ip
+    }))
+)
+
+watch(serversForDropdown, (list) => {
+    // If no servers, or the currently selected IP disappeared, reset to empty
+    if (!list.length || (selectedIp.value && !list.some(x => x.ip === selectedIp.value))) {
+        selectedIp.value = ''
+        if (currentServer) currentServer.value = null
+    }
+}, { immediate: true })
+
+
+watch(selectedIp, (ip) => {
+    const srv = discoveryState.servers.find(s => s.ip === ip) || null
+    if (srv) {
+        currentServer!.value = srv
+        // If you cache credentials per-IP, you can also emit 'store-manual-creds' here.
+    }
+})
+
+
 const deleteSelectedTasks = () => {
     backUpListRef.value?.deleteSelectedTasks?.();
 };
 
-function runSelected() {
-    backUpListRef.value?.runSelectedNow?.();
+// function runSelected() {
+//     backUpListRef.value?.runSelectedNow?.();
+// }
+async function runSelected() {
+    if (selectedBackUpTasks.value.length === 0 || isRunningNow.value) return;
+
+    isRunningNow.value = true;
+    runningTaskIds.value = selectedBackUpTasks.value.map(t => t.uuid);
+    runningTaskNames.value = selectedBackUpTasks.value.map(t => (t.description || '').trim());
+
+    // fallback, just in case no event ever comes
+    if (clearSpinnerTimer) window.clearTimeout(clearSpinnerTimer);
+    clearSpinnerTimer = window.setTimeout(stopRunningUi, 20000);
+
+    try {
+        await backUpListRef.value?.runSelectedNow?.();
+    } catch {
+        stopRunningUi();
+    }
 }
+
+function maybeClearFromNotification(message: string) {
+    if (!isRunningNow.value) return;
+    const m = message.match(/Backup task "(.+?)"/i);
+    if (!m) return;
+    const desc = m[1].trim();
+    if (runningTaskNames.value.some(n => n === desc)) {
+        stopRunningUi();
+    }
+}
+
 
 // function editSelected() {
 //     backUpListRef.value?.editSelectedSchedules?.();
 // }
-// In BackupHome.vue
+
 function editSelected() {
     const ids = selectedBackUpTasks.value.map(t => t.uuid).join(',');
     router.push({ name: 'backups-bulk-edit', query: { ids } });
@@ -116,6 +245,66 @@ const proceedToPreviousStep = async () => {
 useEnterToAdvance(() => { }, 300, () => { }, () => { proceedToPreviousStep(); });
 
 const goBackStep = () => { router.push({ name: 'dashboard' }); };
+
+const isRunningNow = ref(false);
+const runningTaskIds = ref<string[]>([]);
+const runningTaskNames = ref<string[]>([]);   // NEW
+let clearSpinnerTimer: number | null = null;
+
+function stopRunningUi() {
+    isRunningNow.value = false;
+    runningTaskIds.value = [];
+    runningTaskNames.value = [];
+    if (clearSpinnerTimer) { window.clearTimeout(clearSpinnerTimer); clearSpinnerTimer = null; }
+}
+
+// listen for the “done/updated” message from main.ts
+const actionHandler = (raw: string) => {
+    try {
+        const msg = JSON.parse(raw);
+
+        if (msg?.type === 'notification' && msg.message) {
+            maybeClearFromNotification(msg.message); 
+        }
+
+
+        if (msg?.type === 'backUpStatusesUpdated') {
+            const containsRanTask = (msg.tasks || []).some((t: any) =>
+                runningTaskIds.value.includes(t.uuid)
+            );
+            if (containsRanTask) stopRunningUi();
+        }
+    } catch { }
+};
+
+
+onMounted(() => {
+    IPCRouter.getInstance().addEventListener('action', actionHandler);
+});
+
+onBeforeUnmount(() => {
+    try { IPCRouter.getInstance().removeEventListener?.('action', actionHandler); } catch { }
+});
 </script>
 
-<style scoped></style>
+<style scoped>
+.spinner {
+    width: 1.25rem;
+    /* 20px */
+    height: 1.25rem;
+    border: 2px solid rgba(0, 0, 0, 0.15);
+    border-left-color: #2c3e50;
+    border-radius: 9999px;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    0% {
+        transform: rotate(0deg);
+    }
+
+    100% {
+        transform: rotate(360deg);
+    }
+}
+</style>

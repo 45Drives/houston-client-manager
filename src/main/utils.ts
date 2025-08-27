@@ -198,6 +198,7 @@ export function formatDateForTask(date) {
 
   return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
 }
+
 export function formatDateForTask2(date) {
   const pad = (n) => String(n).padStart(2, '0');
 

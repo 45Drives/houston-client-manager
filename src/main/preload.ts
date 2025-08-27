@@ -1,18 +1,3 @@
-// import log from 'electron-log';
-// log.transports.console.level = false;
-// console.debug = (...args) => log.info(...args);
-// console.error = (...args) => log.error(...args);
-// console.warn = (...args) => log.warn(...args);
-// console.debug = (...args) => log.debug(...args);
-
-// process.on('uncaughtException', (error) => {
-//   log.error('Uncaught Exception:', error);
-// });
-
-// process.on('unhandledRejection', (reason, promise) => {
-//   log.error('Unhandled Rejection at:', promise, 'reason:', reason);
-// });
-
 import { contextBridge, ipcRenderer, IpcRendererEvent } from 'electron';
 
 contextBridge.exposeInMainWorld('electron', {
