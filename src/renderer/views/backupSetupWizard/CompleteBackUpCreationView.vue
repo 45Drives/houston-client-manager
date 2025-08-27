@@ -64,8 +64,11 @@ import { useWizardSteps} from "@45drives/houston-common-ui";
 import { EasySetupProgress, IPCRouter } from "@45drives/houston-common-lib";
 import { backUpSetupConfigKey } from "../../keys/injection-keys";
 import { useHeader } from '../../composables/useHeader'
+import { useRouter } from 'vue-router'
+const router = useRouter()
+
 useHeader('Congratulations')
-const { setStep } = useWizardSteps('backup-new');
+// const { setStep } = useWizardSteps('backup-new');
 
 const setupComplete = ref<string>("no");
 const error = ref<string>();
@@ -94,9 +97,10 @@ function goToBackupWizard(): void {
   }
 
   // console.debug("after clearing: ", backUpSetupConfig);
-  setStep(0);
-}
+  // setStep(0);
 
+  router.push({ name: 'backup' })
+}
 
 function goToSetupWizard(): void {
   IPCRouter.getInstance().send('renderer', 'action', JSON.stringify({

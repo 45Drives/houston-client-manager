@@ -48,6 +48,7 @@ import { Server } from './types';
 import mountSmbPopup from './smbMountPopup';
 import { IPCRouter } from '../../houston-common/houston-common-lib/lib/electronIPC/IPCRouter';
 import { getOS } from './utils';
+import { v4 as uuidv4 } from 'uuid';
 import { BackUpManager, BackUpManagerLin, BackUpManagerMac, BackUpManagerWin, BackUpSetupConfigurator } from './backup';
 import { BackUpSetupConfig, BackUpTask, server, unwrap } from '@45drives/houston-common-lib';
 import fetchBackups from './backup/FetchBackups';
@@ -61,6 +62,19 @@ let discoveredServers: Server[] = [];
 export let jsonLogger: ReturnType<typeof createLogger>;
 
 // const blockerId = powerSaveBlocker.start("prevent-app-suspension");
+
+const idFile = path.join(app.getPath('userData'), 'client-id.txt');
+let installId = fs.existsSync(idFile) ? fs.readFileSync(idFile, 'utf-8').trim() : '';
+if (!installId) { installId = uuidv4(); fs.writeFileSync(idFile, installId, 'utf-8'); }
+
+const clientIdent = { installId };
+
+ipcMain.on('renderer-ready', (e) => {
+  e.sender.send('client-ident', clientIdent);
+});
+
+// NEW: request/response path
+ipcMain.handle('get-client-ident', async () => ({ installId }))
 
 app.commandLine.appendSwitch('ignore-certificate-errors', 'true');
 
@@ -279,21 +293,39 @@ function createWindow() {
     return await doFallbackScan();
   });
 
-  function notify(message: string) {
-    // console.debug("[Main] 🔔 notify() called with:", message);
+  // function notify(message: string) {
+  //   // console.debug("[Main] 🔔 notify() called with:", message);
 
-    if (!mainWindow || !mainWindow.webContents || mainWindow.webContents.isDestroyed()) {
-      console.warn("[Main] ❌ mainWindow/webContents not ready");
-      return;
-    }
+  //   if (!mainWindow || !mainWindow.webContents || mainWindow.webContents.isDestroyed()) {
+  //     console.warn("[Main] ❌ mainWindow/webContents not ready");
+  //     return;
+  //   }
     
-    if (rendererIsReady && mainWindow?.webContents) {
+  //   if (rendererIsReady && mainWindow?.webContents) {
+  //     mainWindow.webContents.send("notification", message);
+  //   } else {
+  //     bufferedNotifications.push(message);
+  //   }
+  // }
+  
+  function notify(message: string) {
+    if (!mainWindow || mainWindow.webContents?.isDestroyed()) return;
+
+    if (rendererIsReady) {
       mainWindow.webContents.send("notification", message);
+      // 🆕 also mirror to the same bus your page already listens to
+      try {
+        IPCRouter.getInstance().send(
+          'renderer',
+          'action',
+          JSON.stringify({ type: 'notification', message })
+        );
+      } catch { /* no-op */ }
     } else {
       bufferedNotifications.push(message);
     }
   }
-  
+
 
   IPCRouter.getInstance().addEventListener('action', async (data) => {
     // console.debug('action data:', data);

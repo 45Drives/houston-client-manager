@@ -1,18 +1,3 @@
-// import log from 'electron-log';
-// log.transports.console.level = false;
-// process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
-// console.debug = (...args) => log.info(...args);
-// console.error = (...args) => log.error(...args);
-// console.warn = (...args) => log.warn(...args);
-// console.debug = (...args) => log.debug(...args);
-
-// process.on('uncaughtException', (error) => {
-//   log.error('Uncaught Exception:', error);
-// });
-
-// process.on('unhandledRejection', (reason, promise) => {
-//   log.error('Unhandled Rejection at:', promise, 'reason:', reason);
-// });
 import { jsonLogger } from '../main'; 
 import { BackUpManager } from "./types";
 import { BackUpTask, backupTaskTag, TaskSchedule } from "@45drives/houston-common-lib";
@@ -50,12 +35,13 @@ export class BackUpManagerLin implements BackUpManager {
         const targetMatch = content.match(/TARGET='([^']+)'/);
         const smbHostMatch = content.match(/SMB_HOST='([^']+)'/);
         const smbShareMatch = content.match(/SMB_SHARE='([^']+)'/);
+        const smbUserMatch = content.match(/SMB_USER='([^']+)'/);
         const startDateMatch = content.match(/START_DATE='([^']+)'/);
         const startDate = startDateMatch ? new Date(startDateMatch[1]) : new Date();
         const descMatch = content.match(/Starting backup task: '([^']+)'/);
         const mirror = content.includes("--delete");
 
-        if (!uuidMatch || !sourceMatch || !targetMatch || !smbHostMatch || !smbShareMatch) continue;
+        if (!uuidMatch || !sourceMatch || !targetMatch || !smbHostMatch || !smbShareMatch || !smbUserMatch) continue;
 
         const cronLines = execSync("crontab -l 2>/dev/null || true").toString().split("\n");
         const matchingLine = cronLines.find(line => line.includes(uuidMatch[1]));
@@ -71,7 +57,7 @@ export class BackUpManagerLin implements BackUpManager {
           description: descMatch ? descMatch[1] : "Unnamed",
           schedule: parsedSchedule ?? { repeatFrequency: "day", startDate },
           status: "checking",
-          type: 'local'
+          smb_user: smbUserMatch[1]
         };
 
         // 🔍 Perform status check
@@ -373,13 +359,17 @@ echo "${fstabEntry}" >> /etc/fstab
   EVENT_LOG='${LOG_DIR}/45drives_backup_events.json'
   SMB_HOST='${smbHost}'
   SMB_SHARE='${smbShare}'
+  SMB_USER='${username}'
   SOURCE='${task.source}/'
   TARGET='${target}'
   LOG_FILE='${logPath}'
   MOUNT_DIR='${mountDir}'
   START_DATE='${task.schedule.startDate}'
 
-  echo '{"event":"backup_start","timestamp":"'$(date -Iseconds)'","uuid":"'"${task.uuid}"'","host":"'"${smbHost}"'","share":"'"${smbShare}"'","source":"'"${task.source}"'","target":"'"${target}"'"}' >> "$EVENT_LOG"
+  CLIENT_ID_FILE='${path.join(app.getPath("userData"), "client-id.txt")}'
+  INSTALL_ID="$(cat "$CLIENT_ID_FILE" 2>/dev/null || true)"
+
+  echo '{"event":"backup_start","timestamp":"'$(date -Iseconds)'","uuid":"'"${task.uuid}"'","host":"'"${smbHost}"'","share":"'"${smbShare}"'","source":"'"${task.source}"'","target":"'"${target}"'","install_id":"'"$INSTALL_ID"'","smb_user":"'"$SMB_USER"'"}' >> "$EVENT_LOG"
   mkdir -p "$(dirname "$LOG_FILE")"
 
   cleanup() {
@@ -405,6 +395,15 @@ echo "${fstabEntry}" >> /etc/fstab
     fi
     echo "[SUCCESS] SMB share mounted at $MOUNT_DIR"
 
+    UUID="$(printf '%s' "$TARGET" | awk -F/ '{print $2}')"
+
+    MARKER_DIR="$MOUNT_DIR/$UUID/.houston"
+    MARKER_FILE="$MARKER_DIR/client.json"
+    mkdir -p "$MARKER_DIR"
+
+    printf '{"install_id":"%s","smb_user":"%s","user":"%s","host":"%s","platform":"linux"}\n' \
+    "$INSTALL_ID" "$SMB_USER" "$(id -un)" "$(hostname -s)" > "$MARKER_FILE"
+
     mkdir -p "$MOUNT_DIR/$TARGET"
     echo "[INFO] Running rsync..."
     rsync -a${task.mirror ? ' --delete' : ''} "$SOURCE" "$MOUNT_DIR/$TARGET" >> "$LOG_FILE" 2>&1
@@ -418,7 +417,7 @@ echo "${fstabEntry}" >> /etc/fstab
     fi
 
     STATUS=$([ $RSYNC_STATUS -eq 0 ] && echo "success" || echo "failure")
-    echo '{"event":"backup_end","timestamp":"'"$(date -Iseconds)"'","uuid":"'"${task.uuid}"'","host":"'"${smbHost}"'","share":"'"${smbShare}"'","source":"'"${task.source}"'","target":"'"${target}"'","status":"'"$STATUS"'"}' >> "$EVENT_LOG"
+      echo '{"event":"backup_end","timestamp":"'"$(date -Iseconds)"'","uuid":"'"${task.uuid}"'","host":"'"${smbHost}"'","share":"'"${smbShare}"'","source":"'"${task.source}"'","target":"'"${target}"'","status":"'"$STATUS"'","install_id":"'"$INSTALL_ID"'","smb_user":"'"$SMB_USER"'"}' >> "$EVENT_LOG"
 
     echo "===== [$(date -Iseconds)] Backup task completed ====="
   } 2>&1 | tee -a "$LOG_FILE"

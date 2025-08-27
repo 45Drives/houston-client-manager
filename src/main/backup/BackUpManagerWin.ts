@@ -1,19 +1,3 @@
-// import log from 'electron-log';
-// log.transports.console.level = false;
-// process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
-// console.log = (...args) => log.info(...args);
-// console.error = (...args) => log.error(...args);
-// console.warn = (...args) => log.warn(...args);
-// console.debug = (...args) => log.debug(...args);
-
-// process.on('uncaughtException', (error) => {
-//   log.error('Uncaught Exception:', error);
-// });
-
-// process.on('unhandledRejection', (reason, promise) => {
-//   log.error('Unhandled Rejection at:', promise, 'reason:', reason);
-// });
-
 import { jsonLogger } from '../main';
 import { BackUpManager } from "./types";
 import { BackUpTask, TaskSchedule } from "@45drives/houston-common-lib";
@@ -45,6 +29,7 @@ interface TaskData {
   uuid?: string;
   SMB_HOST?: string;
   SMB_SHARE?: string;
+  SMB_USER?: string;
 }
 
 export class BackUpManagerWin implements BackUpManager {
@@ -159,7 +144,8 @@ export class BackUpManagerWin implements BackUpManager {
               mirror: actionDetails.mirror === true,
               host: actionDetails.SMB_HOST,
               share: actionDetails.SMB_SHARE,
-              status: "checking"
+              status: "checking",
+              smb_user: (actionDetails as any).SMB_USER   
             };
 
             if ((actionDetails as any).START_DATE) {
@@ -333,7 +319,7 @@ if (-not $hasBatchLogon -or -not $hasServiceLogon) {
       psLines.push(`"password=${password}` + `" | Out-File -Append  -Encoding ascii "${credFile}"`);
 
       /* 2️⃣  BAT file */
-      const batTxt = this.buildActionBat(t);
+      const batTxt = this.buildActionBat(t, username);
       psLines.push(`[IO.File]::WriteAllText("${batPathEsc}", @'\n${batTxt}\n'@)`);
 
       /* 3️⃣  ScheduledTask */
@@ -410,150 +396,293 @@ if (-not $hasBatchLogon -or -not $hasServiceLogon) {
  * We keep it in one place so both `schedule()` and `scheduleAllTasks()` use the
  * exact same payload.
  */
-  private buildActionBat(
-    task: BackUpTask
-  ): string {
+  // private buildActionBat(
+  //   task: BackUpTask
+  // ): string {
+  //   const mountBat = getMountSmbScript();
+
+  //   // const credFile = path.join(
+  //   //   process.env.ProgramData || 'C:\\ProgramData',
+  //   //   'houston-backups',
+  //   //   'credentials',
+  //   //   `${task.share}.cred`
+  //   // );
+  //   const credFile = path.join(CREDS_DIR, `${task.share}.cred`);
+
+  //   // remove any leading "\" so drive:\<path> is well-formed 
+  //   const rawDst = getSmbTargetFromSmbTarget(task.target)
+  //     .replace(/\//g, '\\')
+  //     .replace(/^\\/, '');
+
+  //   const logFile = path.join(
+  //     logPath,
+  //     `Houston_Backup_Task_${task.uuid}.log`
+  //   );
+  //   const eventLog = path.join(logPath, `45drives_backup_events.json`);
+
+  //   return `
+  // @echo off
+  // setlocal enabledelayedexpansion
+
+  // :: get ISO timestamp via PowerShell
+  // for /f "delims=" %%I in ('powershell -NoProfile -Command "Get-Date -Format o"') do set "TS=%%I"
+
+  // :: read install_id for events + marker
+  // set "CLIENT_ID_FILE=${path.join(app.getPath('userData'), 'client-id.txt').replace(/\\/g, '\\\\')}"
+  // set "INSTALL_ID="
+  // if exist "%CLIENT_ID_FILE%" for /f "usebackq delims=" %%I in ("%CLIENT_ID_FILE%") do set "INSTALL_ID=%%I"
+  
+  // :: --- backup_start event ---
+  //   echo {^"event^":^"backup_start^",^"timestamp^":^"!TS!^",^"uuid^":^"${task.uuid}"^,^"host^":^"${task.host}"^,^"share^":^"${task.share}"^,^"source^":^"${task.source}"^,^"target^":^"${rawDst}"^,^"install_id^":^"!INSTALL_ID!"^} >> "${eventLog}"
+
+  // :: --- Houston backup task metadata (for reference) ---
+  // :: uuid        = ${task.uuid}
+  // :: description = ${task.description}
+  // :: source      = ${task.source}
+  // :: target      = ${rawDst}
+  // :: mirror      = ${task.mirror}
+  // :: START_DATE  = ${task.schedule.startDate.toISOString()}
+  // :: SMB_HOST    = ${task.host}
+  // :: SMB_SHARE   = ${task.share}
+  
+  // :: --- export all four params as env vars ---
+  // set "CRED_FILE=${credFile}"
+  // set "SMB_HOST=${task.host}"
+  // set "SMB_SHARE=${task.share}"
+  
+  // :: turn delayed expansion on so we can use !VAR!
+  // setlocal EnableDelayedExpansion
+  
+  // :: --- prepare paths ---
+  // set "LOG=${logFile}"
+  // set "SOURCE=${task.source}"
+  // set "DST_PATH=${rawDst}"
+  // set "mountBat=${mountBat}"
+  // set "NETWORK_PATH=\\\\!SMB_HOST!\\!SMB_SHARE!"
+  
+  // :: --- ensure log directory ---
+  // if not exist "${logPath}" (
+  //   mkdir "${logPath}"
+  // )
+  
+  // :: --- run everything inside a single redirect block ---
+  // echo ==========================================================
+  // echo [!date! !time!]  START  ${task.uuid}
+  // echo  Source      : !SOURCE!
+  // echo  Target      : !DST_PATH!
+  // echo  NetworkPath : !NETWORK_PATH!
+  // echo ----------------------------------------------------------
+
+  // :: --- DEBUG: show exactly what we're about to run ---
+  // echo [DEBUG] mount command: cmd /c ""!mountBat!" "!SMB_HOST!" "!SMB_SHARE!" "!CRED_FILE!"" >> "%LOG%" 2>&1
+
+  // :: --- actually run it & capture JSON + stderr ---
+  // set "TEMP_JSON=%TEMP%\mount_result_%RANDOM%.txt"
+  // cmd /c ""!mountBat!" "!SMB_HOST!" "!SMB_SHARE!" "!CRED_FILE!"" > "!TEMP_JSON!" 2>&1
+
+  // :: Debug
+  // echo [DEBUG] mount output: >> "%LOG%"
+  // type "!TEMP_JSON!" >> "%LOG%"
+  // echo !TEMP_JSON!
+
+  // :: Extract line with DriveLetter
+  // set "json="
+  // for /f "delims=" %%L in ('findstr "DriveLetter" "!TEMP_JSON!"') do (
+  //     call set "json=%%L"
+  // )
+
+  // echo !json!
+
+  // :: Write json to temp file
+  // echo !json! > "%TEMP%\__extract.json"
+
+  // :: Extract drive letter
+  // for /f "tokens=2 delims=:" %%a in ('findstr /i "DriveLetter" "%TEMP%\__extract.json"') do (
+  //     set "temp=%%a"
+  // )
+
+  // set "temp=!temp:"=!"
+  // set "temp=!temp: =!"
+  // set "drive=!temp:~0,1!"
+
+  // echo !drive!
+  // :: Clean up temp file
+  // del "%TEMP%\__extract.json" >nul 2>&1
+
+  // :: Build DEST
+  // set "DEST=!drive!:\!DST_PATH!"
+
+  // echo !DEST!
+
+  // rem DST_PATH starts with: \UUID\host\...
+  // for /f "tokens=1 delims=\\" %%U in ("!DST_PATH!") do set "UUID=%%U"
+
+  // set "MARKER_DIR=!drive!:\!UUID!\.houston"
+  // if not exist "!MARKER_DIR!" mkdir "!MARKER_DIR!"
+  // > "!MARKER_DIR!\client.json" echo {"install_id":"!INSTALL_ID!","user":"%USERNAME%","host":"%COMPUTERNAME%","platform":"win"}
+
+  // rem --- copy payload with robocopy ---
+  // mkdir "!DEST!" 2>nul
+  // echo [INFO] Running robocopy ...
+  // robocopy "!SOURCE!" "!DEST!" /E /Z /FFT /R:2 /W:5 /V /NP
+  // set "RC=!errorlevel!"
+
+  // :: --- backup_end event ---
+  // for /f "delims=" %%I in ('powershell -NoProfile -Command "Get-Date -Format o"') do set "TS2=%%I"
+  // set "STATUS="
+  // if !RC! EQU 0 (set STATUS=success) else (set STATUS=failure)
+  // echo {^"event^":^"backup_end^",^"timestamp^":^"!TS2!^",^"uuid^":^"${task.uuid}"^,^"host^":^"${task.host}"^,^"share^":^"${task.share}"^,^"source^":^"${task.source}"^,^"target^":^"${rawDst}"^,^"status^":^"!STATUS!"^,^"install_id^":^"!INSTALL_ID!"^} >> "${eventLog}"
+
+  // rem --- clean up the mapping ---
+  // timeout /t 2 >nul
+  // net use !drive!: /delete /y >> "%LOG%" 2>&1
+
+  // rem --- interpret robocopy return codes ---
+  // rem Exit codes: 0 = no copy needed, 1 = some files copied, 8+ = errors
+  // if !RC! GEQ 8 (
+  //   echo [ERROR] robocopy returned !RC! >> "%LOG%" 2>&1
+  //   exit /b !RC!
+  // ) else (
+  //   echo [INFO] robocopy completed with code !RC! >> "%LOG%" 2>&1
+  // )
+
+  // :: --- final exit ---
+  // echo [!date! !time!]  END    rc=!RC! >> "!LOG!" 2>&1
+  // exit /b !RC!
+  // `.trimStart();
+  // }
+  
+  private buildActionBat(task: BackUpTask, smbUser: string): string {
     const mountBat = getMountSmbScript();
 
-    // const credFile = path.join(
-    //   process.env.ProgramData || 'C:\\ProgramData',
-    //   'houston-backups',
-    //   'credentials',
-    //   `${task.share}.cred`
-    // );
     const credFile = path.join(CREDS_DIR, `${task.share}.cred`);
-
-    // remove any leading "\" so drive:\<path> is well-formed 
     const rawDst = getSmbTargetFromSmbTarget(task.target)
       .replace(/\//g, '\\')
       .replace(/^\\/, '');
 
-    const logFile = path.join(
-      logPath,
-      `Houston_Backup_Task_${task.uuid}.log`
-    );
+    const logFile = path.join(logPath, `Houston_Backup_Task_${task.uuid}.log`);
     const eventLog = path.join(logPath, `45drives_backup_events.json`);
 
     return `
-  @echo off
-  setlocal enabledelayedexpansion
+@echo off
+setlocal enabledelayedexpansion
 
-  :: get ISO timestamp via PowerShell
-  for /f "delims=" %%I in ('powershell -NoProfile -Command "Get-Date -Format o"') do set "TS=%%I"
+:: --- Houston backup task metadata (for queryTasks) -------------------------
+:: uuid        = ${task.uuid}
+:: description = ${task.description}
+:: source      = ${task.source}
+:: target      = ${rawDst}
+:: mirror      = ${task.mirror}
+:: START_DATE  = ${task.schedule.startDate.toISOString()}
+:: SMB_HOST    = ${task.host}
+:: SMB_SHARE   = ${task.share}
+:: SMB_USER    = ${smbUser}
 
-  :: --- backup_start event ---
-  echo {^"event^":^"backup_start^",^"timestamp^":^"!TS!^",^"uuid^":^"${task.uuid}"^,^"host^":^"${task.host}"^,^"share^":^"${task.share}"^,^"source^":^"${task.source}"^,^"target^":^"${rawDst}"^} >> "${eventLog}"
+:: identities and constants
+set "CRED_FILE=${credFile.replace(/\\/g, '\\\\')}"
+set "SMB_HOST=${task.host}"
+set "SMB_SHARE=${task.share}"
+set "SOURCE=${task.source}"
+set "DST_PATH=${rawDst}"
+set "LOG=${logFile.replace(/\\/g, '\\\\')}"
+set "EVENT_LOG=${eventLog.replace(/\\/g, '\\\\')}"
+set "MOUNTBAT=${mountBat}"
+set "NETWORK_PATH=\\\\!SMB_HOST!\\!SMB_SHARE!"
+set "SMB_USER=${smbUser}"
 
-  :: --- Houston backup task metadata (for reference) ---
-  :: uuid        = ${task.uuid}
-  :: description = ${task.description}
-  :: source      = ${task.source}
-  :: target      = ${rawDst}
-  :: mirror      = ${task.mirror}
-  :: START_DATE  = ${task.schedule.startDate.toISOString()}
-  :: SMB_HOST    = ${task.host}
-  :: SMB_SHARE   = ${task.share}
-  
-  :: --- export all four params as env vars ---
-  set "CRED_FILE=${credFile}"
-  set "SMB_HOST=${task.host}"
-  set "SMB_SHARE=${task.share}"
-  
-  :: turn delayed expansion on so we can use !VAR!
-  setlocal EnableDelayedExpansion
-  
-  :: --- prepare paths ---
-  set "LOG=${logFile}"
-  set "SOURCE=${task.source}"
-  set "DST_PATH=${rawDst}"
-  set "mountBat=${mountBat}"
-  set "NETWORK_PATH=\\\\!SMB_HOST!\\!SMB_SHARE!"
-  
-  :: --- ensure log directory ---
-  if not exist "${logPath}" (
-    mkdir "${logPath}"
+:: install_id from client-id.txt
+set "CLIENT_ID_FILE=${path.join(app.getPath('userData'), 'client-id.txt').replace(/\\/g, '\\\\')}"
+set "INSTALL_ID="
+if exist "%CLIENT_ID_FILE%" for /f "usebackq delims=" %%I in ("%CLIENT_ID_FILE%") do set "INSTALL_ID=%%I"
+
+:: fallback (if somehow SMB_USER was blank) read from cred file
+if "%SMB_USER%"=="" (
+  for /f "tokens=1,2 delims==" %%A in ('findstr /i "^username=" "%CRED_FILE%"') do (
+    if /i "%%A"=="username" set "SMB_USER=%%B"
   )
-  
-  :: --- run everything inside a single redirect block ---
-  echo ==========================================================
-  echo [!date! !time!]  START  ${task.uuid}
-  echo  Source      : !SOURCE!
-  echo  Target      : !DST_PATH!
-  echo  NetworkPath : !NETWORK_PATH!
-  echo ----------------------------------------------------------
+)
 
-  :: --- DEBUG: show exactly what we're about to run ---
-  echo [DEBUG] mount command: cmd /c ""!mountBat!" "!SMB_HOST!" "!SMB_SHARE!" "!CRED_FILE!"" >> "%LOG%" 2>&1
+:: ensure log directory
+if not exist "${logPath.replace(/\\/g, '\\\\')}" mkdir "${logPath.replace(/\\/g, '\\\\')}"
 
-  :: --- actually run it & capture JSON + stderr ---
-  set "TEMP_JSON=%TEMP%\mount_result_%RANDOM%.txt"
-  cmd /c ""!mountBat!" "!SMB_HOST!" "!SMB_SHARE!" "!CRED_FILE!"" > "!TEMP_JSON!" 2>&1
+:: timestamp(ISO 8601)
+for /f "delims=" %%I in ('powershell -NoProfile -Command "Get-Date -Format o"') do set "TS=%%I"
 
-  :: Debug
-  echo [DEBUG] mount output: >> "%LOG%"
-  type "!TEMP_JSON!" >> "%LOG%"
-  echo !TEMP_JSON!
+:: --- backup_start (with install_id + smb_user) -----------------------------
+>> "%EVENT_LOG%" echo {^"event^":^"backup_start^",^"timestamp^":^"!TS!^",^"uuid^":^"${task.uuid}"^,^"host^":^"${task.host}"^,^"share^":^"${task.share}"^,^"source^":^"${task.source}"^,^"target^":^"${rawDst}"^,^"install_id^":^"!INSTALL_ID!"^,^"smb_user^":^"!SMB_USER!"^}
 
-  :: Extract line with DriveLetter
-  set "json="
-  for /f "delims=" %%L in ('findstr "DriveLetter" "!TEMP_JSON!"') do (
-      call set "json=%%L"
-  )
+echo ==========================================================
+echo [!date! !time!]  START  ${task.uuid}
+echo  Source      : !SOURCE!
+echo  Target      : !DST_PATH!
+echo  NetworkPath : !NETWORK_PATH!
+echo ----------------------------------------------------------
 
-  echo !json!
+:: --- mount SMB and extract drive letter via the helper ---------------------
+echo [DEBUG] mount command: cmd /c ""%MOUNTBAT%" "!SMB_HOST!" "!SMB_SHARE!" "!CRED_FILE!"" >> "%LOG%" 2>&1
 
-  :: Write json to temp file
-  echo !json! > "%TEMP%\__extract.json"
+set "TEMP_JSON=%TEMP%\\mount_result_%RANDOM%.txt"
+cmd /c ""%MOUNTBAT%" "!SMB_HOST!" "!SMB_SHARE!" "!CRED_FILE!"" > "!TEMP_JSON!" 2>&1
 
-  :: Extract drive letter
-  for /f "tokens=2 delims=:" %%a in ('findstr /i "DriveLetter" "%TEMP%\__extract.json"') do (
-      set "temp=%%a"
-  )
+echo [DEBUG] mount output: >> "%LOG%"
+type "!TEMP_JSON!" >> "%LOG%"
 
-  set "temp=!temp:"=!"
-  set "temp=!temp: =!"
-  set "drive=!temp:~0,1!"
+set "json="
+for /f "delims=" %%L in ('findstr "DriveLetter" "!TEMP_JSON!"') do (
+  call set "json=%%L"
+)
+del "!TEMP_JSON!" >nul 2>&1
 
-  echo !drive!
-  :: Clean up temp file
-  del "%TEMP%\__extract.json" >nul 2>&1
+echo !json! > "%TEMP%\\__extract.json"
+for /f "tokens=2 delims=:" %%a in ('findstr /i "DriveLetter" "%TEMP%\\__extract.json"') do set "temp=%%a"
+set "temp=!temp:"=!"
+set "temp=!temp: =!"
+set "drive=!temp:~0,1!"
+del "%TEMP%\\__extract.json" >nul 2>&1
 
-  :: Build DEST
-  set "DEST=!drive!:\!DST_PATH!"
+if not defined drive (
+  echo [ERROR] Could not determine drive letter >> "%LOG%" 2>&1
+  set "RC=8"
+  goto :_finish
+)
 
-  echo !DEST!
+set "DEST=!drive!:\\!DST_PATH!"
+echo [DEBUG] DEST=!DEST! >> "%LOG%"
 
-  rem --- copy payload with robocopy ---
-  mkdir "!DEST!" 2>nul
-  echo [INFO] Running robocopy ...
-  robocopy "!SOURCE!" "!DEST!" /E /Z /FFT /R:2 /W:5 /V /NP
-  set "RC=!errorlevel!"
+:: ---- marker: write install_id + smb_user at \\UUID\\.houston\\client.json --
+for /f "tokens=1 delims=\\" %%U in ("!DST_PATH!") do set "UUID=%%U"
+set "MARKER_DIR=!drive!:\\!UUID!\\.houston"
+if not exist "!MARKER_DIR!" mkdir "!MARKER_DIR!"
+> "!MARKER_DIR!\\client.json" echo {"install_id":"!INSTALL_ID!","smb_user":"!SMB_USER!","user":"%USERNAME%","host":"%COMPUTERNAME%","platform":"win"}
 
-  :: --- backup_end event ---
-  for /f "delims=" %%I in ('powershell -NoProfile -Command "Get-Date -Format o"') do set "TS2=%%I"
-  set "STATUS="
-  if !RC! EQU 0 (set STATUS=success) else (set STATUS=failure)
-  echo {^"event^":^"backup_end^",^"timestamp^":^"!TS2!^",^"uuid^":^"${task.uuid}"^,^"host^":^"${task.host}"^,^"share^":^"${task.share}"^,^"source^":^"${task.source}"^,^"target^":^"${rawDst}"^,^"status^":^"!STATUS!"^} >> "${eventLog}"
+:: --- copy payload ----------------------------------------------------------
+mkdir "!DEST!" 2>nul
+echo [INFO] Running robocopy ...
+robocopy "!SOURCE!" "!DEST!" /E /Z /FFT /R:2 /W:5 /V /NP
+set "RC=!errorlevel!"
 
-  rem --- clean up the mapping ---
-  timeout /t 2 >nul
-  net use !drive!: /delete /y >> "%LOG%" 2>&1
+:_finish
+:: --- backup_end (with install_id + smb_user) -------------------------------
+for /f "delims=" %%I in ('powershell -NoProfile -Command "Get-Date -Format o"') do set "TS2=%%I"
+set "STATUS="
+if !RC! GEQ 8 (set STATUS=failure) else (set STATUS=success)
+>> "%EVENT_LOG%" echo {^"event^":^"backup_end^",^"timestamp^":^"!TS2!^",^"uuid^":^"${task.uuid}"^,^"host^":^"${task.host}"^,^"share^":^"${task.share}"^,^"source^":^"${task.source}"^,^"target^":^"${rawDst}"^,^"status^":^"!STATUS!"^,^"install_id^":^"!INSTALL_ID!"^,^"smb_user^":^"!SMB_USER!"^}
 
-  rem --- interpret robocopy return codes ---
-  rem Exit codes: 0 = no copy needed, 1 = some files copied, 8+ = errors
-  if !RC! GEQ 8 (
-    echo [ERROR] robocopy returned !RC! >> "%LOG%" 2>&1
-    exit /b !RC!
-  ) else (
-    echo [INFO] robocopy completed with code !RC! >> "%LOG%" 2>&1
-  )
+:: --- clean up mapping + exit code interpretation ---------------------------
+timeout /t 2 >nul
+if defined drive net use !drive!: /delete /y >> "%LOG%" 2>&1
 
-  :: --- final exit ---
-  echo [!date! !time!]  END    rc=!RC! >> "!LOG!" 2>&1
+if !RC! GEQ 8 (
+  echo [ERROR] robocopy returned !RC! >> "%LOG%" 2>&1
   exit /b !RC!
-  `.trimStart();
+) else (
+  echo [INFO] robocopy completed with code !RC! >> "%LOG%" 2>&1
+)
+echo [!date! !time!]  END    rc=!RC! >> "%LOG%" 2>&1
+exit /b !RC!
+`.trimStart();
   }
-  
+
 
   // async unschedule(task: BackUpTask): Promise<void> {
   //   const { bat, log, cred } = this.getTaskPaths(task);
