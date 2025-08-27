@@ -401,8 +401,8 @@ echo "${fstabEntry}" >> /etc/fstab
     MARKER_FILE="$MARKER_DIR/client.json"
     mkdir -p "$MARKER_DIR"
 
-    printf '{"install_id":"%s","smb_user":"%s","user":"%s","host":"%s","platform":"linux"}\n' \
-    "$INSTALL_ID" "$SMB_USER" "$(id -un)" "$(hostname -s)" > "$MARKER_FILE"
+    printf '{"install_id":"%s","smb_user":"%s","source":"%s","user":"%s","host":"%s","platform":"linux"}\n' \
+    "$INSTALL_ID" "$SMB_USER" "$SOURCE" "$(id -un)" "$(hostname -s)" > "$MARKER_FILE"
 
     mkdir -p "$MOUNT_DIR/$TARGET"
     echo "[INFO] Running rsync..."

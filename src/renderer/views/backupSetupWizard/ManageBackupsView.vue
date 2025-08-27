@@ -200,12 +200,14 @@ async function runSelected() {
 function maybeClearFromNotification(message: string) {
     if (!isRunningNow.value) return;
     const m = message.match(/Backup task "(.+?)"/i);
-    if (!m) return;
-    const desc = m[1].trim();
-    if (runningTaskNames.value.some(n => n === desc)) {
+    if (m && runningTaskNames.value.includes(m[1].trim())) {
         stopRunningUi();
+        IPCRouter.getInstance().send('backend', 'action',
+            JSON.stringify({ type: 'fetchBackupEvents' })
+        );
     }
 }
+
 
 
 // function editSelected() {

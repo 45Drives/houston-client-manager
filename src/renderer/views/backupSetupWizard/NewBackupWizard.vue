@@ -1,6 +1,6 @@
 <template>
 
-    <Wizard :id="wizardId" :steps="steps" :onComplete="data => props.onComplete(data)" :hideHeader="true"
+    <Wizard :id="wizardId" :steps="steps" :onComplete="data => onComplete" :hideHeader="true"
         :hideProgress="true" class="h-full flex-1 text-default bg-default" />
 
 </template>
@@ -72,6 +72,6 @@ const steps: WizardStep[] = [
     },
 ]
 
-const onComplete = () => router.push({ name: 'backup' })
+const onComplete = () => router.replace({ name: 'backup-list' })
 provide('wizardKey', wizardId)
 </script>
