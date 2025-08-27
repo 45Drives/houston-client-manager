@@ -243,11 +243,10 @@ function createWindow() {
   let rendererIsReady = false;
   let bufferedNotifications: string[] = [];
 
-  ipcMain.on("renderer-ready", (event) => {
+  ipcMain.on('renderer-ready', (e) => {
+    if (rendererIsReady) return;          // guard
     rendererIsReady = true;
-    bufferedNotifications.forEach(msg => {
-      event.sender.send("notification", msg);
-    });
+    bufferedNotifications.forEach(msg => e.sender.send('notification', msg));
     bufferedNotifications = [];
   });
 
@@ -308,22 +307,38 @@ function createWindow() {
   //   }
   // }
   
+  // function notify(message: string) {
+  //   if (!mainWindow || mainWindow.webContents?.isDestroyed()) return;
+
+  //   if (rendererIsReady) {
+  //     mainWindow.webContents.send("notification", message);
+  //     // 🆕 also mirror to the same bus your page already listens to
+  //     try {
+  //       IPCRouter.getInstance().send(
+  //         'renderer',
+  //         'action',
+  //         JSON.stringify({ type: 'notification', message })
+  //       );
+  //     } catch { /* no-op */ }
+  //   } else {
+  //     bufferedNotifications.push(message);
+  //   }
+  // }
   function notify(message: string) {
     if (!mainWindow || mainWindow.webContents?.isDestroyed()) return;
 
-    if (rendererIsReady) {
-      mainWindow.webContents.send("notification", message);
-      // 🆕 also mirror to the same bus your page already listens to
-      try {
-        IPCRouter.getInstance().send(
-          'renderer',
-          'action',
-          JSON.stringify({ type: 'notification', message })
-        );
-      } catch { /* no-op */ }
-    } else {
-      bufferedNotifications.push(message);
-    }
+    // always send to the standard channel
+    mainWindow.webContents.send("notification", message);
+
+    // mirror to your IPCRouter bus; if nothing is listening, no harm done
+    try {
+      IPCRouter.getInstance().send(
+        'renderer', 'action',
+        JSON.stringify({ type: 'notification', message })
+      );
+    } catch { }
+
+    if (!rendererIsReady) bufferedNotifications.push(message);
   }
 
 

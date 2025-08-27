@@ -21,7 +21,7 @@ console.error = (...args: any[]) => {
 import { IPCRouter } from '@45drives/houston-common-lib'
 IPCRouter.initRenderer()
 
-import { createApp } from 'vue';
+import { createApp, onMounted } from 'vue';
 import "@45drives/houston-common-css/src/index.css"; 
 import "@45drives/houston-common-ui/style.css"; 
 import "./style.css"; 
@@ -36,6 +36,7 @@ app.use(router)
 app.directive('enter-next', enterNextDirective);
 app.mount('#app');
 document.documentElement.classList.add('theme-homelab');
+window.electron?.ipcRenderer.send('renderer-ready');
 
 const IGNORE = [
     'setup() return property "_" should not start with "$" or "_"',

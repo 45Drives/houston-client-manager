@@ -591,8 +591,8 @@ fi
 uuid="$(printf '%s' "${target}" | awk -F/ '{print $2}')"
 marker_dir="${mountPoint}/$uuid/.houston"
 mkdir -p "$marker_dir"
-printf '{"install_id":"%s","smb_user":"%s","user":"%s","host":"%s","platform":"mac"}\n' \
-  "$INSTALL_ID" "$SMB_USER" "$(id -un)" "$(hostname -s)" > "$marker_dir/client.json"
+printf '{"install_id":"%s","smb_user":"%s","source":"%s","user":"%s","host":"%s","platform":"mac"}\n' \
+  "$INSTALL_ID" "$SMB_USER" "$SOURCE" "$(id -un)" "$(hostname -s)" > "$marker_dir/client.json"
 
 # ---------- copy -------------------------------------------------------------
 mkdir -p "${dir}"

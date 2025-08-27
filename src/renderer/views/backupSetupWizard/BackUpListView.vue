@@ -172,8 +172,8 @@ function formatDateTime(dt?: Date | string | number | null) {
 }
 
 function getLastRunAt(task: any): Date | null {
-  // Fallback across possible names your backend might use
-  return task.lastRunAt || task.lastRun || task.lastRunTime || task.previousRunAt || null;
+  const cand = task.lastRunAt ?? task.lastRun ?? task.lastRunTime ?? task.previousRunAt ?? null;
+  return cand ? new Date(cand) : null;
 }
 
 function getNextBackupDate(startDate: Date, repeatFrequency: string): Date {
@@ -241,8 +241,13 @@ function handleCalendarClose(saved: boolean) {
 function fetchBackupTasks() { 
   isLoading.value = true;
   IPCRouter.getInstance().send('backend', 'action', 'requestBackUpTasks'); 
-  isLoading.value = false;
+  // isLoading.value = false;
 }
+
+function fetchBackupEvents() {
+  IPCRouter.getInstance().send('backend', 'action', JSON.stringify({ type: 'fetchBackupEvents' }));
+}
+
 
 let ipcActionHandler: ((raw: string) => void) | null = null;
 let pollingInterval: ReturnType<typeof setInterval>;
@@ -262,16 +267,32 @@ onMounted(() => {
     try {
       const msg = JSON.parse(raw);
       if (msg.type === 'sendBackupTasks') {
-        msg.tasks.forEach((task: BackUpTask) => {
-          if (task.schedule?.startDate) task.schedule.startDate = new Date(task.schedule.startDate);
+        msg.tasks.forEach((t: BackUpTask) => {
+          if (t.schedule?.startDate) t.schedule.startDate = new Date(t.schedule.startDate);
         });
         backUpTasks.value = msg.tasks;
+        fetchBackupEvents();                   // <-- pull the NDJSON after tasks arrive
         isLoading.value = false;
       } else if (msg.type === 'backUpStatusesUpdated') {
         msg.tasks.forEach((updated: BackUpTask) => {
           const i = backUpTasks.value.findIndex(t => t.uuid === updated.uuid);
           if (i !== -1) backUpTasks.value[i].status = updated.status;
         });
+      } else if (msg.type === 'sendBackupEvents') {
+        const latest: Record<string, Date> = {};
+        for (const ev of (msg.events ?? [])) {
+          if (ev?.uuid && ev?.timestamp) {
+            const ts = new Date(ev.timestamp);
+            if (!Number.isNaN(ts.getTime())) {
+              const prev = latest[ev.uuid];
+              if (!prev || ts > prev) latest[ev.uuid] = ts;
+            }
+          }
+        }
+        // merge into tasks
+        backUpTasks.value = backUpTasks.value.map(t =>
+          latest[t.uuid] ? { ...t, lastRunAt: latest[t.uuid] } : t
+        );
       }
     } catch (e) { console.warn('❌ Failed to parse IPC action message:', raw); }
   };
