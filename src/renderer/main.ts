@@ -18,13 +18,6 @@ console.error = (...args: any[]) => {
     _origError(...args)
 }
 
-// import log from 'electron-log';
-// log.transports.console.level = false;
-// console.log = (...args) => log.info(...args);
-// console.error = (...args) => log.error(...args);
-// console.warn = (...args) => log.warn(...args);
-// console.debug = (...args) => log.debug(...args);
-
 import { IPCRouter } from '@45drives/houston-common-lib'
 IPCRouter.initRenderer()
 

@@ -23,20 +23,21 @@
     </div>
     <div v-else-if="backUpTasks.length === 0" class="flex flex-col items-center text-center py-4">
       <span class="text-muted italic text-xl">No Tasks Found</span>
-      <button @click.stop="newBackupTask" class="btn btn-primary px-5 w-80 h-20 mt-2 text-2xl font-bold">Schedule First Backup</button>
+      <button @click.stop="newBackupTask" class="btn btn-primary px-5 w-80 h-20 mt-2 text-2xl font-bold">Schedule First
+        Backup</button>
     </div>
 
     <!-- Table -->
     <div v-else class="overflow-x-auto">
       <table class="min-w-full text-sm">
-        <thead class="text-left sticky top-0 bg-accent z-10">
+        <thead class="text-left sticky top-0 bg-accent">
           <tr class="border-b border-default">
             <th class="px-3 py-2 w-10">
               <input type="checkbox" class="input-checkbox" :checked="allSelected" @change="toggleSelectAll"
                 :aria-checked="allSelected" />
             </th>
             <th class="px-3 py-2">ID</th>
-            <th class="px-3 py-2">Type</th>
+            <th class="px-3 py-2">Samba User</th>
             <th class="px-3 py-2">Source</th>
             <th class="px-3 py-2">Destination</th>
             <th class="px-3 py-2">Frequency</th>
@@ -45,16 +46,16 @@
           </tr>
         </thead>
         <tbody>
-          <tr v-for="task in backUpTasks" :key="task.uuid" class="border-b border-default cursor-pointer select-none"
-            :class="rowClass(task)" @click="toggleSelection(task)">
+          <tr v-for="task in backUpTasks" :key="task.uuid" :class="rowClass(task)" :aria-selected="isSelected(task)"
+            tabindex="0" @click="toggleSelection(task)">
             <td class="px-3 py-2">
               <input type="checkbox" class="input-checkbox" :checked="isSelected(task)"
                 @change.stop="toggleSelection(task)" :aria-checked="isSelected(task)" />
             </td>
             <td class="px-3 py-2 font-mono text-xs truncate max-w-[16ch]" :title="task.uuid">{{ task.uuid }}</td>
-            <td class="px-3 py-2">{{ taskType(task) }}</td>
+            <td class="px-3 py-2" :title="task.smb_user">{{ task.smb_user }}</td>
             <td class="px-3 py-2 truncate" :title="sourceText(task)">{{ sourceText(task) }}</td>
-            <td class="px-3 py-2 truncate" :title="destinationText(task)">{{ destinationText(task) }}</td>
+            <td class="px-3 py-2 truncate" :title="fullDestPath(task)">{{ destinationText(task) }}</td>
             <td class="px-3 py-2 capitalize">{{ formatFrequency(task.schedule?.repeatFrequency) }}</td>
             <td class="px-3 py-2" :title="formatDateTime(getLastRunAt(task))">{{ formatDateTime(getLastRunAt(task)) }}
             </td>
@@ -120,9 +121,10 @@ function toggleSelectAll() {
 }
 
 function rowClass(task: BackUpTask) {
-  return isSelected(task)
-    ? 'bg-primary/10 border-primary'
-    : 'bg-default hover:bg-well';
+  return [
+    'border-b border-default cursor-pointer select-none transition-colors',
+    isSelected(task) ? 'row-selected' : 'row-hover'
+  ];
 }
 
 function toggleSelection(task: BackUpTask) {
@@ -131,15 +133,20 @@ function toggleSelection(task: BackUpTask) {
   emit('backUpTaskSelected', [...selectedBackUps.value]);
 }
 
-function taskType(task: BackUpTask) {
-  // Heuristic: remote if host/share are set
-  // return task.host && task.share ? 'Remote' : 'Local';
-  return task.type! || 'N/A';
-}
-
 function trimLeadingSlash(p?: string) { return (p || '').replace(/^\/+/, ''); }
 
 function destinationText(task: BackUpTask) {
+  // Destination is Host+Share+Folder minus the ID segment if present
+  const base = `${task.host ?? ''}${task.share ? `:${task.share}` : ''}`;
+  // let folder = trimLeadingSlash(task.target || '');
+  // if (folder.endsWith(task.uuid)) {
+  //   folder = folder.slice(0, -task.uuid.length).replace(/\/?$/, '').replace(/\/$/, '');
+  // }
+  // return `${base}${folder ? '/' + folder : ''}` || '-';
+  return base;
+}
+
+function fullDestPath(task: BackUpTask) {
   // Destination is Host+Share+Folder minus the ID segment if present
   const base = `${task.host ?? ''}${task.share ? `:${task.share}` : ''}`;
   let folder = trimLeadingSlash(task.target || '');
@@ -150,7 +157,6 @@ function destinationText(task: BackUpTask) {
 }
 
 function sourceText(task: BackUpTask) {
-  if (taskType(task) === 'Local') return task.source || '-';
   const base = `${task.host ?? ''}${task.share ? `:${task.share}` : ''}`;
   const folder = trimLeadingSlash(task.source || '');
   return `${base}${folder ? '/' + folder : ''}` || '-';
