@@ -36,4 +36,4 @@ rsync -avz \
   "$WIN_HOST:$REMOTE_BUILD_DIR/dist/45drives-setup-wizard*" \
   "$LOCAL_OUTPUT_DIR/"
 
-echo "✅ All builds completed. Output is in: $LOCAL_OUTPUT_DIR"
+echo " All builds completed. Output is in: $LOCAL_OUTPUT_DIR"

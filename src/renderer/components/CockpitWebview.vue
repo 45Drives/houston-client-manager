@@ -142,7 +142,8 @@ const onWebViewLoaded = async () => {
     }
 
     const user = manualCreds.value?.username ?? 'root'
-    const pass = manualCreds.value?.password ?? '45Dr!ves'
+    // const pass = manualCreds.value?.password ?? '45Dr!ves'
+    const pass = manualCreds.value?.password ?? 'password'
 
     try {
         await loginIntoCockpit(webview.value, { user, pass })

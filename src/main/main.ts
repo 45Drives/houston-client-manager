@@ -87,9 +87,9 @@ function checkLogDir(): string {
     if (!fs.existsSync(baseLogDir)) {
       fs.mkdirSync(baseLogDir, { recursive: true });
     }
-    console.debug(`✅ Log directory ensured: ${baseLogDir}`);
+    console.debug(` Log directory ensured: ${baseLogDir}`);
   } catch (e: any) {
-    console.error(`❌ Failed to create log directory (${baseLogDir}):`, e.message);
+    console.error(` Failed to create log directory (${baseLogDir}):`, e.message);
   }
   return baseLogDir;
 }
@@ -264,29 +264,27 @@ function createWindow() {
 
     try {
       const res = await installServerDepsRemotely({ host, username, password });
-      console.debug("✅ install-cockpit-module →", res);
+      console.debug(" install-cockpit-module →", res);
       return res;
     } catch (err) {
-      console.error("❌ install-cockpit-module error:", err);
+      console.error(" install-cockpit-module error:", err);
       throw err;            // so the renderer gets the real stack
     }
   });
   
   ipcMain.handle('get-os', () => getOS());
 
-  ipcMain.handle("backup:isFirstRunNeeded", (_evt, host, share) => {
+  ipcMain.handle("backup:isFirstRunNeeded", (_evt, host, share, smbUser) => {
     const manager = getBackUpManager();
     if (
       manager &&
       (getOS() === "rocky" || getOS() === "debian") &&
       typeof manager.isFirstBackupNeeded === "function"
     ) {
-      return manager.isFirstBackupNeeded(host, share); // MUST RETURN
+      return (manager as any).isFirstBackupNeeded(host, share, smbUser);
     }
-
-    return false;
+    return true;
   });
-
   
   ipcMain.handle('scan-network-fallback', async () => {
     return await doFallbackScan();
@@ -296,7 +294,7 @@ function createWindow() {
   //   // console.debug("[Main] 🔔 notify() called with:", message);
 
   //   if (!mainWindow || !mainWindow.webContents || mainWindow.webContents.isDestroyed()) {
-  //     console.warn("[Main] ❌ mainWindow/webContents not ready");
+  //     console.warn("[Main]  mainWindow/webContents not ready");
   //     return;
   //   }
     
@@ -496,34 +494,34 @@ function createWindow() {
             console.debug('🧪 Trying to open folder:', folderPath);
 
             const exists = fs.existsSync(folderPath);
-            console.debug('✅ Exists:', exists);
+            console.debug(' Exists:', exists);
 
             if (!exists) {
-              notify(`❌ Folder does not exist: ${folderPath}`);
+              notify(` Folder does not exist: ${folderPath}`);
               return;
             }
 
             const stats = fs.statSync(folderPath);
             if (!stats.isDirectory()) {
-              notify(`❌ Not a directory: ${folderPath}`);
+              notify(` Not a directory: ${folderPath}`);
               return;
             }
 
             shell.openPath(folderPath).then(result => {
               if (result) {
-                console.error(`❌ shell.openPath failed:`, result);
-                notify(`❌ Error opening folder: ${result}`);
+                console.error(` shell.openPath failed:`, result);
+                notify(` Error opening folder: ${result}`);
               } else {
                 notify(`📂 Opened folder: ${folderPath}`);
               }
             });
           } catch (err) {
-            notify(`❌ Exception while opening folder: ${folderPath}`);
+            notify(` Exception while opening folder: ${folderPath}`);
             console.error("Error opening folder:", folderPath, err);
           }
 
         } else if (message.type === 'checkBackUpStatuses') {
-          // console.debug("✅ Received checkBackUpStatuses")
+          // console.debug(" Received checkBackUpStatuses")
           const tasks: BackUpTask[] = message.tasks;
           const updatedTasks: BackUpTask[] = [];
           for (const task of tasks) {
@@ -588,13 +586,13 @@ function createWindow() {
               console.warn("⚠️ Backup completed with warnings/errors in stderr:", result.stderr);
             }
 
-            console.debug("✅ runNow completed:", result);
+            console.debug(" runNow completed:", result);
             jsonLogger.info({
               event: 'runBackUpTaskNow_success',
               taskUuid: task.uuid,
               stderr: result.stderr || null,
             });
-            notify(`✅ Backup task "${task.description}" started successfully.`);
+            notify(` Backup task "${task.description}" started successfully.`);
 
             setTimeout(async () => {
               try {
@@ -608,14 +606,14 @@ function createWindow() {
               }
             }, 5000);
           } catch (err: any) {
-            console.error("❌ runNow failed:", err);
+            console.error(" runNow failed:", err);
             jsonLogger.error({
               event: 'runBackUpTaskNow_error',
               taskUuid: task.uuid,
               error: err.stderr?.trim() || err.message,
             });
             const errorMsg = err?.stderr || err?.message || JSON.stringify(err);
-            notify(`❌ Backup task "${task.description}" failed to run: ${errorMsg}`);
+            notify(` Backup task "${task.description}" failed to run: ${errorMsg}`);
           }
 
         } else if (message.type === 'addManualIP') {
@@ -903,7 +901,7 @@ function createWindow() {
         }
       }
     } catch (error) {
-      // console.error(`❌ [pollActions] fetch failed for ${server.ip}`, error);
+      // console.error(` [pollActions] fetch failed for ${server.ip}`, error);
     }
   }
 
@@ -1070,11 +1068,11 @@ app.whenReady().then(() => {
   });
 
   autoUpdater.on('update-not-available', (info) => {
-    log.info('✅ No update available:', info);
+    log.info(' No update available:', info);
   });
 
   autoUpdater.on('error', (err) => {
-    log.error('❌ Update error:', err);
+    log.error(' Update error:', err);
   });
 
   autoUpdater.on('download-progress', (progressObj) => {
@@ -1086,7 +1084,7 @@ app.whenReady().then(() => {
 
   if (process.platform !== 'linux') {
     autoUpdater.on('update-downloaded', (info) => {
-      log.info('✅ Update downloaded. Will install on quit:', info);
+      log.info(' Update downloaded. Will install on quit:', info);
       // autoUpdater.quitAndInstall(); // Optional
     });
 
@@ -1123,7 +1121,7 @@ ipcMain.on('check-for-updates', () => {
 });
 
 app.on('window-all-closed', () => {
-  // ✅ This ensures your app fully quits on Windows
+  //  This ensures your app fully quits on Windows
   if (process.platform !== 'darwin') {
     app.quit();
   }
