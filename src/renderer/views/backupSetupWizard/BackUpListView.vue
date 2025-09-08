@@ -294,7 +294,7 @@ onMounted(() => {
           latest[t.uuid] ? { ...t, lastRunAt: latest[t.uuid] } : t
         );
       }
-    } catch (e) { console.warn('❌ Failed to parse IPC action message:', raw); }
+    } catch (e) { console.warn(' Failed to parse IPC action message:', raw); }
   };
   IPCRouter.getInstance().addEventListener('action', ipcActionHandler);
   fetchBackupTasks();

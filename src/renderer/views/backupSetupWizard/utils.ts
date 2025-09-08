@@ -25,7 +25,7 @@ export function deconstructFullTarget(fullPath: string): {
         const match = fullPath.match(/^([^:]+):([^/]+)\/(.+)$/);
 
         if (!match) {
-            console.warn("❌ Invalid full SMB path format:", fullPath);
+            console.warn(" Invalid full SMB path format:", fullPath);
             return null;
         }
 
@@ -33,7 +33,7 @@ export function deconstructFullTarget(fullPath: string): {
 
         return { smbHost, smbShare, targetPath };
     } catch (err) {
-        console.error("❌ Failed to parse full SMB path:", err);
+        console.error(" Failed to parse full SMB path:", err);
         return null;
     }
 }
