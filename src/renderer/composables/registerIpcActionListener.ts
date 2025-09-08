@@ -149,7 +149,7 @@ export function registerIpcActionListener(opts: Options) {
             break;
         }
       } catch (err) {
-        console.error("❌ IPC action handler error:", err);
+        console.error(" IPC action handler error:", err);
       }
     };
 

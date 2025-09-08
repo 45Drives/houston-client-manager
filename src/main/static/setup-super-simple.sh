@@ -104,7 +104,7 @@ else
 fi
 
 if [[ "$NODE_VERSION" =~ ^18\. ]]; then
-  echo "[INFO] ✅ Node.js v18 is already installed."
+  echo "[INFO]  Node.js v18 is already installed."
 else
   echo "[INFO] Installing Node.js v18 via NVM..."
 
@@ -122,7 +122,7 @@ else
   nvm install 18
   nvm alias default 18
 
-  echo "[INFO] ✅ Node.js v18 installed and set as default via NVM."
+  echo "[INFO]  Node.js v18 installed and set as default via NVM."
 fi
 
 # Symlink Node.js binary globally (optional, for systemd services)
@@ -137,9 +137,9 @@ for node_dir in "$HOME/.nvm/versions/node"/v18*/bin; do
 done
 
 if node -v | grep -q '^v18'; then
-  echo "[INFO] ✅ Node.js v18 is now the active system version"
+  echo "[INFO]  Node.js v18 is now the active system version"
 else
-  echo "[WARN] ❌ Node.js v18 symlink may not have taken effect globally"
+  echo "[WARN]  Node.js v18 symlink may not have taken effect globally"
 fi
 
 # set up 45Drives repo

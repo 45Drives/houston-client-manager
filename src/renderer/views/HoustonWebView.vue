@@ -1,5 +1,5 @@
 <template>
-    <CockpitWebview routePath="/super-simple-setup" heightClass="h-[100vh]" wrapperClass="h-[100vh]"
+    <CockpitWebview routePath="/super-simple-setup-test" heightClass="h-[100vh]" wrapperClass="h-[100vh]"
         :openDevtoolsInDev="true" />
 </template>
 

@@ -44,13 +44,13 @@ build_linux() {
     "$LINUX_HOST:$REMOTE_BUILD_DIR/dist/45drives-setup-wizard*" \
     "$LOCAL_OUTPUT_DIR/linux/"
 
-  echo "✅ Linux build complete."
+  echo " Linux build complete."
 }
 
 if build_linux; then
   echo "✓ Linux build succeeded"
 else
-  echo "❌ Linux build failed"
+  echo " Linux build failed"
   exit 1
 fi
 

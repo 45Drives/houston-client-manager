@@ -98,7 +98,7 @@ onMounted(async () => {
   const share = path.split("/")[0];
   actualHost.value = host;
   actualShare.value = share;
-  const result = await window.electron.isFirstRunNeeded(host, share);
+  const result = await window.electron.isFirstRunNeeded(host, share, backUpSetupConfig.username);
   // console.debug("First run result:", result);
 
   isFirstBackupRun.value = result;

@@ -76,32 +76,45 @@ export class BackUpManagerLin implements BackUpManager {
 
     return tasks;
   }
-  
-
 
   isFirstBackupNeeded(
     smbHost: string,
-    smbShare: string
+    smbShare: string,
+    smbUser?: string
   ): boolean {
-    const mountRoot = "/mnt/houston-mounts";
-    const credFile = `/etc/samba/houston-credentials/${smbShare}.cred`;
     const fstabPath = "/etc/fstab";
+    const mountBase = "/mnt/houston-mounts";
+    const credBase = "/etc/samba/houston-credentials";
 
     try {
-      /* 1 ─ root mount directory */
-      if (!fs.existsSync(mountRoot)) return true;
+      // If we don't know which SMB user this is for, require a first run
+      // so we can capture per-user credentials & create the keyed entries.
+      if (!smbUser || !smbUser.trim()) return true;
 
-      /* 2 ─ credentials file for this share */
+      const safe = (s: string) => s.replace(/[^A-Za-z0-9_.-]/g, "_");
+      const key = `${safe(smbHost)}_${safe(smbShare)}_${safe(smbUser)}`;
+
+      const mountDir = `${mountBase}/${key}`;
+      const credFile = `${credBase}/${key}.cred`;
+
+      // 1) base mount root present?
+      if (!fs.existsSync(mountBase)) return true;
+
+      // 2) per-user cred file present?
       if (!fs.existsSync(credFile)) return true;
 
-      /* 3 ─ fstab line containing //host/share and our cred file */
+      // 3) fstab has a matching line for this host/share + mountDir + credFile?
       const fstab = fs.readFileSync(fstabPath, "utf-8");
-      const hasLine = fstab.includes(`//${smbHost}/${smbShare}`)
-        && fstab.includes(`credentials=${credFile}`);
-      return !hasLine;                // if the line is missing → need first run
+      const hasLine =
+        fstab.includes(`//${smbHost}/${smbShare}`) &&
+        fstab.includes(mountDir) &&
+        fstab.includes(`credentials=${credFile}`);
+
+      // If the exact keyed line is missing → we still need the first run
+      return !hasLine;
     } catch (err) {
       console.warn("isFirstBackupNeeded():", err);
-      return true;                    // be cautious if something goes wrong
+      return true; // be cautious if anything goes wrong
     }
   }
 
@@ -313,36 +326,76 @@ export class BackUpManagerLin implements BackUpManager {
   }
   
 
+//   protected ensureFstabEntry(smbHost: string, smbShare: string, username: string, password: string): void {
+//     const credDir = "/etc/samba/houston-credentials";
+//     const credFile = `${credDir}/${smbShare}.cred`;
+//     const mountDir = `/mnt/houston-mounts/${smbShare}`;
+//     const localUser = os.userInfo().username;
+
+//     const uid = typeof process.getuid === 'function' ? process.getuid() : 1000;
+//     const gid = typeof process.getgid === 'function' ? process.getgid() : 1000;
+
+//     const fstabEntry = `//${smbHost}/${smbShare} ${mountDir} cifs credentials=${credFile},iocharset=utf8,rw,uid=${uid},gid=${gid},vers=3.0,user,noauto 0 0`;
+
+//     const fstab = fs.readFileSync("/etc/fstab", "utf-8");
+//     if (!fstab.includes(`//${smbHost}/${smbShare}`)) {
+//       const tempScript = `/tmp/add_fstab_entry_${smbShare}.sh`;
+//       const scriptContent = `#!/bin/bash
+// mkdir -p "${credDir}"
+// echo "username=${username}" > "${credFile}"
+// echo "password=${password}" >> "${credFile}"
+// chown ${localUser}:${localUser} "${credFile}"
+// chmod 600 "${credFile}"
+// mkdir -p "${mountDir}"
+// chown ${localUser}:${localUser} "${mountDir}"
+// chmod 755 "${mountDir}"
+// echo "${fstabEntry}" >> /etc/fstab
+// `;
+
+//       fs.writeFileSync(tempScript, scriptContent, { mode: 0o700 });
+//       execSync(`${this.pkexec} bash "${tempScript}"`);
+//     }
+//   }
+
   protected ensureFstabEntry(smbHost: string, smbShare: string, username: string, password: string): void {
     const credDir = "/etc/samba/houston-credentials";
-    const credFile = `${credDir}/${smbShare}.cred`;
-    const mountDir = `/mnt/houston-mounts/${smbShare}`;
-    const localUser = os.userInfo().username;
+    const safe = (s: string) => s.replace(/[^A-Za-z0-9_.-]/g, "_");
+    const key = `${safe(smbHost)}_${safe(smbShare)}_${safe(username)}`;
+
+    const credFile = `${credDir}/${key}.cred`;
+    const mountDir = `/mnt/houston-mounts/${key}`;
 
     const uid = typeof process.getuid === 'function' ? process.getuid() : 1000;
     const gid = typeof process.getgid === 'function' ? process.getgid() : 1000;
 
-    const fstabEntry = `//${smbHost}/${smbShare} ${mountDir} cifs credentials=${credFile},iocharset=utf8,rw,uid=${uid},gid=${gid},vers=3.0,user,noauto 0 0`;
+    const fstabEntry =
+      `//${smbHost}/${smbShare} ${mountDir} cifs ` +
+      `credentials=${credFile},iocharset=utf8,rw,uid=${uid},gid=${gid},vers=3.0,users,noauto 0 0`;
 
     const fstab = fs.readFileSync("/etc/fstab", "utf-8");
-    if (!fstab.includes(`//${smbHost}/${smbShare}`)) {
-      const tempScript = `/tmp/add_fstab_entry_${smbShare}.sh`;
+    if (!fstab.includes(mountDir)) {
+      const tempScript = `/tmp/add_fstab_${key}.sh`;
       const scriptContent = `#!/bin/bash
+set -e
 mkdir -p "${credDir}"
-echo "username=${username}" > "${credFile}"
-echo "password=${password}" >> "${credFile}"
-chown ${localUser}:${localUser} "${credFile}"
+cat > "${credFile}" <<EOF
+username=${username}
+password=${password}
+EOF
+chown ${os.userInfo().username}:${os.userInfo().username} "${credFile}"
 chmod 600 "${credFile}"
+
 mkdir -p "${mountDir}"
-chown ${localUser}:${localUser} "${mountDir}"
+chown ${os.userInfo().username}:${os.userInfo().username} "${mountDir}"
 chmod 755 "${mountDir}"
+
 echo "${fstabEntry}" >> /etc/fstab
 `;
-
       fs.writeFileSync(tempScript, scriptContent, { mode: 0o700 });
       execSync(`${this.pkexec} bash "${tempScript}"`);
     }
   }
+
 
   protected generateBackupScript(task: BackUpTask, username: string, password: string, scriptPath: string): void {
     const [smbHost, smbSharePart] = task.target.split(":");
@@ -352,7 +405,11 @@ echo "${fstabEntry}" >> /etc/fstab
     this.ensureFstabEntry(smbHost, smbShare, username, password);
 
     const logPath = path.join(LOG_DIR, `Houston_Backup_Task_${task.uuid}.log`);
-    const mountDir = `/mnt/houston-mounts/${smbShare}`;
+    // const mountDir = `/mnt/houston-mounts/${smbShare}`;
+    const safe = (s: string) => s.replace(/[^A-Za-z0-9_.-]/g, "_");
+    const key = `${safe(smbHost)}_${safe(smbShare)}_${safe(username)}`;
+    const mountDir = `/mnt/houston-mounts/${key}`;  // instead of /mnt/houston-mounts/${smbShare}
+
     const target = getSmbTargetFromSmbTarget(task.target);
 
     const scriptContent = `#!/bin/bash
