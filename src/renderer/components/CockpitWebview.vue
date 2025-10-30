@@ -99,7 +99,6 @@ webview.value?.addEventListener('console-message', (e: any) => {
     else console.log(msg)
 })
 
-
 onMounted(async () => {
     window.electron?.ipcRenderer.on('client-ident', (_e, x) => {
         if (!clientId.value) clientId.value = x?.installId || ''
@@ -141,9 +140,11 @@ const onWebViewLoaded = async () => {
         routerRenderer.setCockpitWebView(view)
     }
 
-    const user = manualCreds.value?.username ?? 'root'
+    // const user = manualCreds.value?.username ?? 'root'
     // const pass = manualCreds.value?.password ?? '45Dr!ves'
-    const pass = manualCreds.value?.password ?? 'password'
+    // const pass = manualCreds.value?.password ?? 'bello'
+    if (!manualCreds.value) { loadingWebview.value = false; return; }
+    const { username: user, password: pass } = manualCreds.value;
 
     try {
         await loginIntoCockpit(webview.value, { user, pass })
@@ -173,6 +174,39 @@ const onWebViewLoaded = async () => {
 watch(currentUrl, (url) => {
     loadingWebview.value = url !== 'about:blank'
 }, { immediate: true })
+
+window.electron?.ipcRenderer.on('store-manual-creds', (_e, creds: { ip: string; username: string; password: string }) => {
+    if (currentServer.value?.ip === creds.ip) {
+        manualCreds.value = creds;
+    }
+});
+
+async function logoutFromCurrentServer() {
+    const ip = currentServer.value?.ip;
+    if (!ip || !webview.value) return;
+
+    const origin = `https://${ip}:9090`;
+    const wc = webview.value.getWebContents?.();
+    const sess = wc?.session;
+
+    try {
+        // Clear auth + storage scoped to the Cockpit origin
+        await sess?.clearAuthCache({ type: 'password' });
+        await sess?.clearStorageData({
+            origin,
+            storages: ['cookies', 'localstorage', 'indexdb', 'serviceworkers', 'cachestorage'],
+        });
+    } catch (e) {
+        console.error('Logout clear error:', e);
+    }
+
+    // Optional: drop our in-memory creds and reload the page
+    manualCreds.value = null;
+    loadingWebview.value = true;
+    webview.value.reload();
+}
+
+defineExpose({ logoutFromCurrentServer });
 </script>
 
 <style scoped>

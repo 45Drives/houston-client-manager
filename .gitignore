@@ -10,3 +10,4 @@ yarn.lock
 package-lin-mac-sshpass.sh
 factory-reset-server.sh
 manup-electron.py
+./buildMac.sh

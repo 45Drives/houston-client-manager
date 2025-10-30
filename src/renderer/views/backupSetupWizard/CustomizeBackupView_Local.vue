@@ -21,7 +21,7 @@
 									:message="`This is the designated backup storage location you set up earlier.`" />
 							</div>
 							<select v-model="selectedServerIp"
-								class="bg-default h-[3rem] text-default rounded-lg px-4 flex-1 border border-default">>
+								class="bg-default h-[3rem] text-default rounded-lg px-4 flex-1 border border-default">
 								<option v-for="item in servers" :key="item.ip" :value="item.ip">
 									{{ `\\\\${item.name}\\${item.shareName}` }}
 								</option>
