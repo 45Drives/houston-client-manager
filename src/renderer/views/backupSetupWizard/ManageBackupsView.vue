@@ -36,7 +36,7 @@
                 </div>
 
                 <!-- right: remote-only controls -->
-                <div v-if="activeTab === 'remote'" class="col-start-3 justify-self-end flex items-center gap-2">
+                <!-- <div v-if="activeTab === 'remote'" class="col-start-3 justify-self-end flex items-center gap-2">
                     <label class="text-sm">Server:</label>
                     <select v-model="selectedIp" :title="selectedIp"
                         class="input-textlike border rounded px-3 py-1 min-w-64">
@@ -45,6 +45,39 @@
                             {{ opt.label }}
                         </option>
                     </select>
+                </div> -->
+                <div v-if="activeTab === 'remote'" class="col-start-3 justify-self-end flex items-center gap-2">
+                    <label class="text-sm">Server:</label>
+                    <select v-model="selectedIp" :title="selectedIp"
+                        class="input-textlike border rounded px-3 py-1 min-w-64">
+                        <option value="">Select Server</option>
+
+                        <optgroup v-if="favoriteServers.length" label="Favorites">
+                            <option v-for="opt in favoriteServers" :key="'fav-' + opt.ip" :value="opt.ip">
+                                {{ opt.label }}
+                            </option>
+                        </optgroup>
+
+                        <optgroup label="Discovered">
+                            <option v-for="opt in serversForDropdown" :key="opt.ip" :value="opt.ip">
+                                {{ opt.label }}
+                            </option>
+                        </optgroup>
+                    </select>
+
+                    <button class="btn btn-primary h-9 px-3" :disabled="!selectedIp" @click="openLogin">
+                        Connect…
+                    </button>
+
+                    <button v-if="currentServer" class="btn btn-secondary h-9 px-3"
+                        @click="cockpitRef?.logoutFromCurrentServer()" title="Clear Cockpit session & reload">
+                        Log out
+                    </button>
+
+                    <button v-if="activeCredId && currentServer" class="btn btn-danger h-9 px-3" @click="forgetActive"
+                        title="Remove saved credentials for this host">
+                        Forget saved login
+                    </button>
                 </div>
             </div>
 
@@ -87,9 +120,9 @@
             <div v-else class="overflow-hidden w-full items-center justify-center ">
                 <div class="bg-well p-2 rounded-lg border border-default h-[64vh] flex flex-col">
                     <div class="flex-1 min-h-0">
-                        <CockpitWebview v-if="currentServer" :key="currentServer.ip" routePath="/scheduler-test"
-                            hash="simple" wrapperClass="h-full rounded-lg" heightClass="h-full"
-                            :openDevtoolsInDev="true" />
+                        <CockpitWebview v-if="currentServer" :key="currentServer.ip" ref="cockpitRef"
+                            routePath="/scheduler-test" hash="simple" wrapperClass="h-full rounded-lg"
+                            heightClass="h-full" :openDevtoolsInDev="true" />
                         <div v-else class="h-full flex flex-col items-center justify-center text-default">
                             <span>
                                 Select a server to load the remote backup scheduler.
@@ -115,12 +148,15 @@
             </div>
         </template>
     </CardContainer>
+    <ServerLoginModal :open="loginOpen" :host="selectedIp || null" :displayName="selectedOptionLabel"
+        :presetUsername="prefillUsername" @cancel="closeLogin" @submit="onLoginSubmit" />
 </template>
 
 <script setup lang="ts">
 import { BackUpTask, IPCRouter } from '@45drives/houston-common-lib';
 import CardContainer from '../../components/CardContainer.vue';
 import CockpitWebview from '../../components/CockpitWebview.vue';
+import ServerLoginModal from './ServerLoginModal.vue';
 import { useWizardSteps, useEnterToAdvance } from '@45drives/houston-common-ui';
 import BackUpListView from './BackUpListView.vue';
 import { computed, inject, Ref, ref, watch, onMounted, onBeforeUnmount } from 'vue';
@@ -153,6 +189,129 @@ const serversForDropdown = computed(() =>
         label: s.name && s.name !== s.ip ? `${s.name} (${s.ip})` : s.ip
     }))
 )
+
+// Reference to the Cockpit view to call logout()
+const cockpitRef = ref<InstanceType<typeof CockpitWebview> | null>(null);
+
+// Saved creds metadata (from keychain-backed DB in main)
+type SavedServer = { id: string; host: string; name?: string; username: string; favorite?: boolean; lastUsedAt?: number };
+const savedServers = ref<SavedServer[]>([]);
+const activeCredId = ref<string | null>(null);
+
+// Modal control + UX helpers
+const loginOpen = ref(false);
+const prefillUsername = ref<string | null>(null);
+
+const selectedOptionLabel = computed(() => {
+    const ip = selectedIp.value;
+    if (!ip) return '';
+    const fav = savedServers.value.find(s => s.host === ip && s.favorite);
+    if (fav) return `${fav.name || ip} (${fav.username})`;
+    const disc = serversForDropdown.value.find(o => o.ip === ip);
+    return disc?.label || ip;
+});
+
+const favoriteServers = computed(() =>
+    savedServers.value
+        .filter(s => s.favorite)
+        .map(s => ({ ip: s.host, label: `${s.name || s.host} (${s.username})` }))
+);
+
+async function loadSavedServers() {
+    savedServers.value = await window.electron?.ipcRenderer.invoke('cred:list-servers') ?? [];
+}
+onMounted(loadSavedServers);
+
+function openLogin() {
+  // If we already have saved creds for this host, skip modal and connect now
+  maybeAutoConnect(true /*forceModalIfNoSaved*/);
+}
+
+function closeLogin() {
+  loginOpen.value = false;
+}
+
+function sendCredsToWebview(ip: string, username: string, password: string) {
+  window.electron?.ipcRenderer.send('store-manual-creds', { ip, username, password });
+}
+
+// Called when the modal form is submitted
+async function onLoginSubmit({ username, password, remember }:
+  { username: string; password: string; remember: boolean }) {
+  const ip = selectedIp.value!;
+  if (remember) {
+    const res = await window.electron?.ipcRenderer.invoke('cred:save', {
+      host: ip, username, password, favorite: true,
+    });
+    activeCredId.value = res?.id ?? null;
+    await loadSavedServers();
+  }
+
+  sendCredsToWebview(ip, username, password);
+
+  // Set the currentServer so webview mounts
+  const srv = discoveryState.servers.find(s => s.ip === ip) || null;
+  if (srv) currentServer!.value = srv;
+
+  // Close modal and scrub (modal component already scrubs password)
+  prefillUsername.value = null;
+  loginOpen.value = false;
+
+  // Optional: mark last-used
+  if (activeCredId.value) window.electron?.ipcRenderer.invoke('cred:touch', activeCredId.value);
+}
+
+// “Forget saved login” button
+async function forgetActive() {
+  if (!activeCredId.value) return;
+  await window.electron?.ipcRenderer.invoke('cred:remove', activeCredId.value);
+  activeCredId.value = null;
+  await loadSavedServers();
+  // also clear session
+  cockpitRef.value?.logoutFromCurrentServer();
+}
+
+async function maybeAutoConnect(forceModalIfNoSaved = false) {
+    const ip = selectedIp.value;
+    if (!ip) return;
+
+    const saved = await window.electron?.ipcRenderer.invoke('cred:get-for', ip);
+    if (saved?.username && saved?.password) {
+        activeCredId.value = saved.id;
+        sendCredsToWebview(ip, saved.username, saved.password);
+        const srv = discoveryState.servers.find(s => s.ip === ip) || null;
+        if (srv) currentServer!.value = srv;
+        return; // done
+    }
+
+    // No saved creds — show modal
+    prefillUsername.value = null; // or remember last entered name if you want
+    if (forceModalIfNoSaved) loginOpen.value = true;
+}
+
+watch(selectedIp, async (ip) => {
+    activeCredId.value = null;
+    if (!ip) return;
+
+    // If a favorite exists, auto-connect immediately
+    const fav = savedServers.value.find(s => s.host === ip && s.favorite);
+    if (fav) {
+        const saved = await window.electron?.ipcRenderer.invoke('cred:get-for', ip);
+        if (saved?.username && saved?.password) {
+            activeCredId.value = saved.id;
+            sendCredsToWebview(ip, saved.username, saved.password);
+            const srv = discoveryState.servers.find(s => s.ip === ip) || null;
+            if (srv) currentServer!.value = srv;
+            // Don’t open modal
+            return;
+        }
+    }
+
+    // Otherwise, wait for user to click “Connect…”
+});
+
+
+
 
 watch(serversForDropdown, (list) => {
     // If no servers, or the currently selected IP disappeared, reset to empty

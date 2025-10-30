@@ -370,11 +370,12 @@ export class BackUpManagerLin implements BackUpManager {
 
     const fstabEntry =
       `//${smbHost}/${smbShare} ${mountDir} cifs ` +
-      `credentials=${credFile},iocharset=utf8,rw,uid=${uid},gid=${gid},vers=3.0,users,noauto 0 0`;
+      `credentials=${credFile},iocharset=utf8,rw,uid=${uid},gid=${gid},vers=3.0,user,noauto 0 0`;
 
     const fstab = fs.readFileSync("/etc/fstab", "utf-8");
     if (!fstab.includes(mountDir)) {
-      const tempScript = `/tmp/add_fstab_${key}.sh`;
+      // const tempScript = `/tmp/add_fstab_${key}.sh`;
+      
       const scriptContent = `#!/bin/bash
 set -e
 mkdir -p "${credDir}"
@@ -391,8 +392,14 @@ chmod 755 "${mountDir}"
 
 echo "${fstabEntry}" >> /etc/fstab
 `;
+      // fs.writeFileSync(tempScript, scriptContent, { mode: 0o700 });
+      // execSync(`${this.pkexec} bash "${tempScript}"`);
+      
+      const tempScript = fs.mkdtempSync(path.join(os.tmpdir(), 'houston-'));
       fs.writeFileSync(tempScript, scriptContent, { mode: 0o700 });
       execSync(`${this.pkexec} bash "${tempScript}"`);
+      try { fs.unlinkSync(tempScript); } catch { }
+
     }
   }
 

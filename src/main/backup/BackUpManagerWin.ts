@@ -217,65 +217,6 @@ export class BackUpManagerWin implements BackUpManager {
     }
   }
 
-
-  addUserToBackupOperatorsGroup() {
-    return `
-# Get current members of Backup Operators
-$groupMembers = Get-LocalGroupMember -Group "Backup Operators" | Select-Object -ExpandProperty Name
-Write-Output "Group Members: $groupMembers"
-
-# Check if user is already a member before adding
-if ($groupMembers -notcontains $user) {
-    Add-LocalGroupMember -Group "Backup Operators" -Member $user
-    Write-Output "$user added to Backup Operators."
-} else {
-    Write-Output "$user is already a member of Backup Operators."
-}    
-`
-  }
-
-  getAddBackupGroupsToLogOnBatchAndService() {
-    return `
-# Check if "Backup Operators" has the required rights
-$backupOperatorsGroup = "Backup Operators"
-$requiredRights = @("SeBatchLogonRight", "SeServiceLogonRight")
-
-# Export current security settings
-$cfgFile = "$env:TEMP\\secpol.cfg"
-secedit /export /areas USER_RIGHTS /cfg $cfgFile
-
-# Get current rights from the policy
-$content = Get-Content $cfgFile
-$batchLogonRight = ($content | Select-String "SeBatchLogonRight").Line
-$serviceLogonRight = ($content | Select-String "SeServiceLogonRight").Line
-
-# Check if Backup Operators already have the rights
-$hasBatchLogon = $batchLogonRight -like "*S-1-5-32-551"
-$hasServiceLogon = $serviceLogonRight -like "*S-1-5-32-551"
-
-# If Backup Operators do not have the required rights, modify the policy
-if (-not $hasBatchLogon -or -not $hasServiceLogon) {
-    Write-Output "Backup Operators do not have the required rights. Updating permissions..."
-
-    # Modify the policy file
-    if (-not $hasBatchLogon) {
-        $content = $content -replace "(SeBatchLogonRight =.*)", "\`$1, *S-1-5-32-551"
-    }
-    if (-not $hasServiceLogon) {
-        $content = $content -replace "(SeServiceLogonRight =.*)", "\`$1, *S-1-5-32-551"
-    }
-
-    # Save changes and apply policy
-    $content | Set-Content $cfgFile
-    secedit /configure /db c:\\windows\\security\\local.sdb /cfg $cfgFile /areas USER_RIGHTS /quiet
-    Write-Output "Permissions updated. Restart required for changes to take effect."
-} else {
-    Write-Output "Backup Operators already have the required rights."
-}
-`
-  }
-
-
   async scheduleAllTasks(
     tasks: BackUpTask[],
     username: string,
@@ -291,11 +232,6 @@ if (-not $hasBatchLogon -or -not $hasServiceLogon) {
     const credDir = CREDS_DIR.replace(/\\/g, '\\\\');
 
     const psLines: string[] = [
-      `# Backup-Operators membership & rights`,
-      `$user = "$env:USERNAME"`,
-      `${this.addUserToBackupOperatorsGroup()}`,
-      `${this.getAddBackupGroupsToLogOnBatchAndService()}`,
-
       `New-Item -ItemType Directory -Force -Path "${scriptsDir}" | Out-Null`,
       `New-Item -ItemType Directory -Force -Path "${credDir}"   | Out-Null`
     ];

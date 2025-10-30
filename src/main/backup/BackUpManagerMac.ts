@@ -179,7 +179,7 @@ EOF_${uuid}
       "#!/bin/bash",
       "set -e",                                            // Stop on first error
       `mkdir -p "${scriptDir}" "${logDir}"`,
-      `chmod 1777 "${logDir}"`
+      `chmod 700 "${logDir}"`
     ];
 
     /* 1a ─ System-keychain credentials (once per share) */
@@ -211,7 +211,7 @@ EOF_${uuid}
           `cat <<EOF_${uuid} > "${scriptPath}"`,
           scriptBody,
           "EOF_${uuid}",
-          `chmod 1777 "${scriptPath}"`
+          `chmod 700 "${scriptPath}"`
         );
     }
 

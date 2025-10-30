@@ -35,7 +35,7 @@ process.on('unhandledRejection', (reason, promise) => {
   log.error('Unhandled Rejection at:', promise, 'reason:', reason);
 });
 
-import { app, BrowserWindow, ipcMain, dialog, shell } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, shell, session } from 'electron';
 import { autoUpdater } from 'electron-updater';
 import { createLogger, format } from 'winston';
 import DailyRotateFile from 'winston-daily-rotate-file';
@@ -57,6 +57,8 @@ import restoreBackups from './backup/RestoreBackups';
 import { checkBackupTaskStatus } from './backup/CheckSmbStatus';
 import { installServerDepsRemotely } from './installServerDeps';
 import { checkSSH } from './setupSsh';
+import { registerCredsIPC } from './creds.ipc';
+import { getPin, isHostPinned, rememberPin } from './certPins'
 
 let discoveredServers: Server[] = [];
 export let jsonLogger: ReturnType<typeof createLogger>;
@@ -1013,6 +1015,47 @@ app.whenReady().then(() => {
       })
     ]
   });
+
+
+  session.defaultSession.setCertificateVerifyProc((req, cb) => {
+    // Quick dev escape for localhost
+    if (process.env.NODE_ENV === 'development' &&
+      (req.hostname === 'localhost' || req.hostname.startsWith('127.')))
+      return cb(0);
+
+    const presented = req.certificate.fingerprint;
+    const pinned = getPin(req.hostname);
+
+    // known & matches → allow
+    if (pinned && pinned.fingerprint === presented) return cb(0);
+
+    // known & changed → ask to update or block
+    if (pinned && pinned.fingerprint !== presented) {
+      dialog.showMessageBox({
+        type: 'warning',
+        message: `Certificate changed for ${req.hostname}`,
+        detail: `Pinned: ${pinned.fingerprint}\nPresented: ${presented}\n\nBlock unless you know the cert rotated.`,
+        buttons: ['Block', 'Trust & Update Pin'],
+        cancelId: 0, defaultId: 0, noLink: true
+      }).then(({ response }) => {
+        if (response === 1) { rememberPin(req.hostname, presented); cb(0); }
+        else cb(-2);
+      });
+      return;
+    }
+
+    // first seen → TOFU prompt
+    dialog.showMessageBox({
+      type: 'question',
+      message: `Trust this server?`,
+      detail: `Host: ${req.hostname}\nFingerprint: ${presented}`,
+      buttons: ['Cancel', 'Trust'],
+      cancelId: 0, defaultId: 1, noLink: true
+    }).then(({ response }) => {
+      if (response === 1) { rememberPin(req.hostname, presented); cb(0); }
+      else cb(-2);
+    });
+  });
   
   // const origConsole = {
   //   log: console.debug,
@@ -1106,6 +1149,7 @@ app.whenReady().then(() => {
     return result.canceled ? null : result.filePaths[0]; // Return full folder path
   });
 
+  registerCredsIPC(ipcMain, app);
   createWindow();
   app.on('activate', function () {
     // On macOS it's common to re-create a window in the app when the
