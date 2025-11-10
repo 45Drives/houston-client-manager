@@ -771,7 +771,7 @@ function createWindow() {
 
           if (!server.manuallyAdded && !server.fallbackAdded) {
             try {
-              const fetchResponse = await fetch(`http://${server.ip}:9095/setup-status`);
+              const fetchResponse = await fetch(`http://${server.ip}:9099/setup-status`);
               if (fetchResponse.ok) {
                 const setupStatusResponse = await fetchResponse.json();
                 server.status = setupStatusResponse.status ?? 'unknown';
@@ -837,7 +837,7 @@ function createWindow() {
 
   async function pollActions(server: Server) {
     try {
-      const response = await fetch(`http://${server.ip}:9095/actions?client_ip=${getLocalIP()}`);
+      const response = await fetch(`http://${server.ip}:9099/actions?client_ip=${getLocalIP()}`);
       const data = await response.json();
 
       if (data.action) {
