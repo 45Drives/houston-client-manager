@@ -106,7 +106,7 @@ function isPortOpen(ip: string, port: number, timeout = 2000): Promise<boolean> 
 
 // Timeout duration in milliseconds (e.g., 30 seconds)
 const TIMEOUT_DURATION = 10000;
-const serviceType = '_houstonserver._tcp.local'; // Define the service you're looking for
+const serviceType = 'houstonserver_legacy._tcp.local';
 
 const getLocalIP = () => {
   const nets = os.networkInterfaces();
@@ -733,7 +733,7 @@ function createWindow() {
 
         if (ipAnswer && ipAnswer.data) {
           const serverIp = ipAnswer.data as string;
-          const instance = answer1.name;    // e.g. "hl4-test._houstonserver._tcp.local"
+          const instance = answer1.name;    // e.g. "hl4-test.houstonserver_legacy._tcp.local"
 
           // Parse TXT into a map
           const txtRecord: Record<string, string> = {};
@@ -744,7 +744,7 @@ function createWindow() {
             });
           }
 
-          // Derive a friendly name (strip off the "._houstonserver._tcp.local" suffix)
+          // Derive a friendly name (strip off the ".houstonserver_legacy._tcp.local" suffix)
           const [bare] = instance.split('._');
           const displayName = `${bare}.local`;
 
@@ -816,7 +816,7 @@ function createWindow() {
 
   const mdnsInterval = setInterval(() => {
     mDNSClient.query({
-      questions: [{ name: '_houstonserver._tcp.local', type: 'PTR' }],
+      questions: [{ name: 'houstonserver_legacy._tcp.local', type: 'PTR' }],
     })
   }, 5000);
 

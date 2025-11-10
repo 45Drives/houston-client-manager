@@ -5,7 +5,8 @@ REMOTE_BUILD_DIR="build_houston_m_temp"
 LOCAL_APP_DIR="$(cd "$(dirname "$0")"; pwd)"
 LOCAL_OUTPUT_DIR="$LOCAL_APP_DIR/builds"
 
-# Create output dir\mkdir -p "$LOCAL_OUTPUT_DIR"
+# Create output dir
+mkdir -p "$LOCAL_OUTPUT_DIR"
 
 # SSH hosts
 LINUX_HOST="root@192.168.123.5"
@@ -35,6 +36,9 @@ build_linux() {
     export NVM_DIR=\$HOME/.nvm
     [ -s \"\$NVM_DIR/nvm.sh\" ] && . \"\$NVM_DIR/nvm.sh\"
     nvm use 23
+    corepack enable
+    corepack prepare yarn@stable --activate
+    yarn --version
     yarn install
     yarn build:linux
   '"

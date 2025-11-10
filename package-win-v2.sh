@@ -3,7 +3,7 @@ set -x
 set -e
 
 # Configuration: Set your remote Windows host
-WIN_HOST="user@192.168.208.39"
+WIN_HOST="user@192.168.207.55"
 
 # Remote and local paths
 REMOTE_BUILD_DIR="build_houston_m_temp"
