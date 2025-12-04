@@ -638,7 +638,7 @@ if (Get-ScheduledTask -TaskName "${taskName}" -ErrorAction SilentlyContinue) {
       // Step 2: Recreate with new schedule
       await this.schedule(task, username, password); // Provide actual username/password if required
     } catch (err) {
-      console.error(`❌ Failed to update schedule for ${taskName}:`, err);
+      console.error(` Failed to update schedule for ${taskName}:`, err);
       throw new Error(`Failed to update task: ${err instanceof Error ? err.message : String(err)}`);
     }
   }

@@ -283,7 +283,7 @@ const installModule = async (
     }
     return result;
   } catch (err: any) {
-    console.error("❌ installModule failed:", err);
+    console.error(" installModule failed:", err);
     statusMessage.value = "Could not connect or authenticate.";
     return { success: false, error: err.message };
   } finally {
