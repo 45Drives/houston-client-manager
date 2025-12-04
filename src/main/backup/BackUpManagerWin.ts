@@ -17,7 +17,7 @@
 import { jsonLogger } from '../main';
 import { BackUpManager } from "./types";
 import { BackUpTask, TaskSchedule } from "@45drives/houston-common-lib";
-import { formatDateForTask, formatDateForTask2, getAppPath, getMountSmbScript, getSmbTargetFromSmbTarget } from "../utils";
+import { formatDateForTask, getMountSmbScript, getSmbTargetFromSmbTarget } from "../utils";
 import sudo from 'sudo-prompt';
 import path from "path";
 import { app } from 'electron';
@@ -337,7 +337,7 @@ if (-not $hasBatchLogon -or -not $hasServiceLogon) {
           # 6.) Trigger: Monthly
           $triggers = $task.Triggers
           $trigger = $triggers.Create(4)
-          $trigger.StartBoundary = "${formatDateForTask2(t.schedule.startDate)}"
+          $trigger.StartBoundary = "${formatDateForTask(t.schedule.startDate, true)}"
           $trigger.DaysOfMonth = 1
           $trigger.MonthsOfYear = 0x0FFF
 

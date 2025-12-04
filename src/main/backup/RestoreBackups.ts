@@ -28,7 +28,7 @@ export default async function restoreBackups(
 
   const folderPath = path.join(basePath, uuid, client !== uuid ? client : '');
   console.debug("📂 Source folderPath:", folderPath);
-  console.debug("📁 Files to restore:", files);
+  console.debug(" Files to restore:", files);
 
   // 2) Copy each file, reporting back via IPC
   for (const relFile of files) {
@@ -38,14 +38,14 @@ export default async function restoreBackups(
       destPath = fixWinPath(relFile);
     }
 
-    console.debug(`🔄 Preparing restore:`);
+    console.debug(` Preparing restore:`);
     console.debug(`  relFile:        ${relFile}`);
     console.debug(`  sourcePath:     ${sourcePath}`);
     console.debug(`  destPath (raw): ${destPath}`);
 
     try {
       await fsAsync.access(sourcePath);
-      console.debug("  ✅ Source file exists");
+      console.debug("   Source file exists");
     } catch {
       console.error(`  ❌ Source file NOT found: ${sourcePath}`);
       IPCRouter.send("renderer", "action", JSON.stringify({
@@ -86,7 +86,7 @@ export default async function restoreBackups(
     console.error("❌ Failed to send restore completion:", e);
   }
 
-  console.debug("=== ✅ restoreBackups finished ===");
+  console.debug("===  restoreBackups finished ===");
 }
 
 // async function copyFile(
@@ -109,7 +109,7 @@ export default async function restoreBackups(
 
 //   // Copy the file
 //   await fsAsync.copyFile(sourcePath, destFullPath);
-//   console.debug(`✅ Copied ${sourcePath} → ${destFullPath}`);
+//   console.debug(` Copied ${sourcePath} → ${destFullPath}`);
 //   return { file: originalFilePath };
 // }
 
@@ -126,13 +126,13 @@ async function copyFile(
   try {
     await fsAsync.mkdir(dir, { recursive: true });
     await fsAsync.access(dir, fsAsync.constants.W_OK);
-    console.debug(`  ✅ Destination dir exists and is writable: ${dir}`);
+    console.debug(`   Destination dir exists and is writable: ${dir}`);
   } catch (e) {
     throw new Error(`Destination folder not writable: ${dir}`);
   }
 
   await fsAsync.copyFile(sourcePath, destFullPath);
-  console.debug(`  ✅ File copied successfully`);
+  console.debug(`   File copied successfully`);
   require("child_process").execSync(`dir "${path.dirname(destFullPath)}"`);
 
   return { file: originalFilePath };

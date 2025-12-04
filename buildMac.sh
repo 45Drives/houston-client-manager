@@ -48,7 +48,7 @@ echo '.....DONE.'
 echo '----- NOTARIZING APP -----'
 xcrun notarytool submit "$dmgName.dmg" --apple-id cduffney@protocase.com --team-id $developerID --password $developerAppPassword --wait
 xcrun stapler staple "$dmgName.dmg"
-#echo '.....DONE.'
+echo '.....DONE.'
 
 ## IF NOTARIZATION FAILS, RUN THE BELOW COMMAND WITH THE SUBMISSION ID TO VIEW LOGS.
 #xcrun notarytool log <submissionID> --apple-id cduffney@protocase.com --team-id CNDSVW45N4 --password umth-oikr-xdlc-zrrw

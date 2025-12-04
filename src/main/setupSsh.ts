@@ -1,11 +1,9 @@
-import { exec } from "child_process";
-import path from "path";
+import path from "path"
 import fs from "fs";
-import { getAppPath, getOS } from "./utils";
+import { getAsset } from "./utils";
+import { getKeyDir, ensureKeyPair } from "./crossPlatformSsh";
 import { NodeSSH } from 'node-ssh';
-import { getAsset } from './utils';
 import net from 'net';
-import { app } from 'electron';
 
 export function checkSSH(host: string, timeout = 3000): Promise<boolean> {
   return new Promise((resolve) => {
@@ -17,39 +15,28 @@ export function checkSSH(host: string, timeout = 3000): Promise<boolean> {
     sock.connect(22, host);
   });
 }
-// 🧩 Generates + uploads SSH key
-export async function setupSshKey(host: string, username: string, password: string): Promise<void> {
-  const ssh = await connectWithPassword({ host, username: username, password: password });
-  // const sshDir = path.join(getAppPath(), ".ssh");
-  const sshDir = path.join(app.getPath('userData'), '.ssh');
-  const privateKeyPath = path.join(sshDir, "id_rsa");
-  const publicKeyPath = path.join(sshDir, "id_rsa.pub");
 
-  if (!fs.existsSync(sshDir)) fs.mkdirSync(sshDir, { recursive: true });
+// Generates + uploads SSH key
+export async function setupSshKey(
+  host: string,
+  username: string,
+  password: string
+): Promise<void> {
+  const ssh = await connectWithPassword({ host, username, password });
 
-  if (!fs.existsSync(privateKeyPath)) {
-    const sshKeygen = getOS() === 'win'
-      ? `${path.join(process.resourcesPath, "static", "bin", 'ssh-keygen.exe')}`
-      : 'ssh-keygen';
-    if (!fs.existsSync(sshKeygen)) {
-      throw new Error(`ssh-keygen not found at ${sshKeygen}`);
-    }
-      
-    await new Promise<void>((resolve, reject) => {
-      exec(`"${sshKeygen}" -t rsa -b 4096 -f "${privateKeyPath}" -N ""`, (err) => {
-        if (err) reject(err);
-        else resolve();
-      });
-    });
-  }
+  const keyDir = getKeyDir();
+  await fs.promises.mkdir(keyDir, { recursive: true });
 
-  const publicKey = fs.readFileSync(publicKeyPath, 'utf8');
+  const privateKeyPath = path.join(keyDir, "id_rsa");
+  const publicKeyPath = `${privateKeyPath}.pub`;
 
-  // await ssh.connect({
-  //   host,
-  //   username,
-  //   password
-  // });
+  // This uses the crossPlatformSsh implementation, which already:
+  // - Resolves ssh-keygen correctly on Windows vs macOS/Linux
+  // - Checks PATH on non-Windows via `which`
+  // - Throws a clear error if it's truly missing
+  await ensureKeyPair(privateKeyPath, publicKeyPath);
+
+  const publicKey = await fs.promises.readFile(publicKeyPath, "utf8");
 
   await ssh.execCommand(`
     mkdir -p ~/.ssh &&
@@ -59,6 +46,7 @@ export async function setupSshKey(host: string, username: string, password: stri
 
   ssh.dispose();
 }
+
 
 async function connectWithPassword({
   host,
@@ -88,7 +76,7 @@ async function connectWithPassword({
 }
 
 
-// 🧩 Upload and run install script
+//  Upload and run install script
 export async function runBootstrapScript(
   host: string,
   username: string,

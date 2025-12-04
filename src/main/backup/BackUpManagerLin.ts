@@ -73,7 +73,7 @@ export class BackUpManagerLin implements BackUpManager {
           status: "checking"
         };
 
-        // 🔍 Perform status check
+        //  Perform status check
         // try {
         //   task.status = await checkBackupTaskStatus(task);
         // } catch (err) {

@@ -181,7 +181,7 @@ onActivated(() => {
       if (response.type === "fetchFilesFromBackupResult" && selectedBackup.value) {
         // const files = response.result.map((file: string) => ({ path: file.replace(selectedBackup.value!.client, ""), selected: false })) as FileEntry[]
         const files = response.result.map((file: string) => ({
-          path: file.replace(`${selectedBackup.value!.client}/`, "").replace(/^\/+/, ""), // ✅ Remove all leading slashes
+          path: file.replace(`${selectedBackup.value!.client}/`, "").replace(/^\/+/, ""), //  Remove all leading slashes
           selected: false
         })) as FileEntry[];
         selectedBackup.value.files = files;
