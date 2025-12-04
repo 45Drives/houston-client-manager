@@ -54,7 +54,7 @@ build_linux() {
 if build_linux; then
   echo "✓ Linux build succeeded"
 else
-  echo "❌ Linux build failed"
+  echo " Linux build failed"
   exit 1
 fi
 

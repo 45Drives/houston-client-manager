@@ -144,7 +144,7 @@ export function reconstructFullTarget(scriptPath: string): string {
     const targetMatch = content.match(/TARGET=['"]([^'"]+)['"]/);
 
     if (!hostMatch || !shareMatch || !targetMatch) {
-      console.warn("❌ Missing SMB_HOST, SMB_SHARE, or TARGET in script:", scriptPath);
+      console.warn(" Missing SMB_HOST, SMB_SHARE, or TARGET in script:", scriptPath);
       return '';
     }
 
@@ -154,7 +154,7 @@ export function reconstructFullTarget(scriptPath: string): string {
 
     return `${smbHost}:${smbShare}/${targetPath}`;
   } catch (err) {
-    console.error("❌ Failed to read or parse script:", err);
+    console.error(" Failed to read or parse script:", err);
     return '';
   }
 }

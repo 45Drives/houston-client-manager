@@ -533,7 +533,7 @@ onMounted(async () => {
             break;
         }
       } catch (err) {
-        console.error("❌ IPC action handler error:", err);
+        console.error(" IPC action handler error:", err);
       }
     };
 

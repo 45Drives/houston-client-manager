@@ -47,7 +47,7 @@ export default async function restoreBackups(
       await fsAsync.access(sourcePath);
       console.debug("   Source file exists");
     } catch {
-      console.error(`  ❌ Source file NOT found: ${sourcePath}`);
+      console.error(`   Source file NOT found: ${sourcePath}`);
       IPCRouter.send("renderer", "action", JSON.stringify({
         type: "restoreBackupsResult",
         result: { file: relFile, error: `Source file not found: ${sourcePath}` },
@@ -62,7 +62,7 @@ export default async function restoreBackups(
         result,
       }));
     } catch (err) {
-      console.error(`  ❌ Copy failed:`, err);
+      console.error(`   Copy failed:`, err);
       IPCRouter.send("renderer", "action", JSON.stringify({
         type: "restoreBackupsResult",
         result: { file: relFile, error: (err as Error).message },
@@ -83,7 +83,7 @@ export default async function restoreBackups(
       allFolders: restoredFolders,
     }));
   } catch (e) {
-    console.error("❌ Failed to send restore completion:", e);
+    console.error(" Failed to send restore completion:", e);
   }
 
   console.debug("===  restoreBackups finished ===");

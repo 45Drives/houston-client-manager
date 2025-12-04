@@ -139,7 +139,7 @@ done
 if node -v | grep -q '^v18'; then
   echo "[INFO]  Node.js v18 is now the active system version"
 else
-  echo "[WARN] ❌ Node.js v18 symlink may not have taken effect globally"
+  echo "[WARN]  Node.js v18 symlink may not have taken effect globally"
 fi
 
 # set up 45Drives repo

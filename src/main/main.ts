@@ -75,7 +75,7 @@ function checkLogDir(): string {
     }
     console.debug(` Log directory ensured: ${baseLogDir}`);
   } catch (e: any) {
-    console.error(`❌ Failed to create log directory (${baseLogDir}):`, e.message);
+    console.error(` Failed to create log directory (${baseLogDir}):`, e.message);
   }
   return baseLogDir;
 }
@@ -254,7 +254,7 @@ function createWindow() {
       console.debug(" install-cockpit-module →", res);
       return res;
     } catch (err) {
-      console.error("❌ install-cockpit-module error:", err);
+      console.error(" install-cockpit-module error:", err);
       throw err;            // so the renderer gets the real stack
     }
   });
@@ -283,7 +283,7 @@ function createWindow() {
     // console.debug("[Main]  notify() called with:", message);
 
     if (!mainWindow || !mainWindow.webContents || mainWindow.webContents.isDestroyed()) {
-      console.warn("[Main] ❌ mainWindow/webContents not ready");
+      console.warn("[Main]  mainWindow/webContents not ready");
       return;
     }
     
@@ -446,26 +446,26 @@ function createWindow() {
             console.debug(' Exists:', exists);
 
             if (!exists) {
-              notify(`❌ Folder does not exist: ${folderPath}`);
+              notify(` Folder does not exist: ${folderPath}`);
               return;
             }
 
             const stats = fs.statSync(folderPath);
             if (!stats.isDirectory()) {
-              notify(`❌ Not a directory: ${folderPath}`);
+              notify(` Not a directory: ${folderPath}`);
               return;
             }
 
             shell.openPath(folderPath).then(result => {
               if (result) {
-                console.error(`❌ shell.openPath failed:`, result);
-                notify(`❌ Error opening folder: ${result}`);
+                console.error(` shell.openPath failed:`, result);
+                notify(` Error opening folder: ${result}`);
               } else {
                 notify(`📂 Opened folder: ${folderPath}`);
               }
             });
           } catch (err) {
-            notify(`❌ Exception while opening folder: ${folderPath}`);
+            notify(` Exception while opening folder: ${folderPath}`);
             console.error("Error opening folder:", folderPath, err);
           }
 
@@ -555,14 +555,14 @@ function createWindow() {
               }
             }, 5000);
           } catch (err: any) {
-            console.error("❌ runNow failed:", err);
+            console.error(" runNow failed:", err);
             jsonLogger.error({
               event: 'runBackUpTaskNow_error',
               taskUuid: task.uuid,
               error: err.stderr?.trim() || err.message,
             });
             const errorMsg = err?.stderr || err?.message || JSON.stringify(err);
-            notify(`❌ Backup task "${task.description}" failed to run: ${errorMsg}`);
+            notify(` Backup task "${task.description}" failed to run: ${errorMsg}`);
           }
 
         } else if (message.type === 'addManualIP') {
@@ -850,7 +850,7 @@ function createWindow() {
         }
       }
     } catch (error) {
-      // console.error(`❌ [pollActions] fetch failed for ${server.ip}`, error);
+      // console.error(` [pollActions] fetch failed for ${server.ip}`, error);
     }
   }
 
@@ -1021,7 +1021,7 @@ app.whenReady().then(() => {
   // });
 
   // autoUpdater.on('error', (err) => {
-  //   log.error('❌ Update error:', err);
+  //   log.error(' Update error:', err);
   // });
 
   // autoUpdater.on('download-progress', (progressObj) => {

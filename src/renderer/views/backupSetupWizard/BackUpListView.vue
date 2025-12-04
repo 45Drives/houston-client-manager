@@ -437,7 +437,7 @@ onMounted(() => {
         });
       }
     } catch (e) {
-      console.warn("❌ Failed to parse IPC action message:", raw);
+      console.warn(" Failed to parse IPC action message:", raw);
     }
   };
 
