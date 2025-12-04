@@ -25,7 +25,7 @@ EXCLUDES=(
 
 # ========== Linux Build ==========
 build_linux() {
-  echo "🐧 Starting Linux build…"
+  echo " Starting Linux build…"
   ssh $SSH_OPTS "$LINUX_HOST" "rm -rf $REMOTE_BUILD_DIR"
   rsync -avz --progress "${EXCLUDES[@]}" -e "ssh $SSH_OPTS" \
     "$LOCAL_APP_DIR/" "$LINUX_HOST:$REMOTE_BUILD_DIR/"
@@ -48,7 +48,7 @@ build_linux() {
     "$LINUX_HOST:$REMOTE_BUILD_DIR/dist/45drives-setup-wizard*" \
     "$LOCAL_OUTPUT_DIR/linux/"
 
-  echo "✅ Linux build complete."
+  echo " Linux build complete."
 }
 
 if build_linux; then
@@ -58,4 +58,4 @@ else
   exit 1
 fi
 
-echo "🎉 All builds succeeded! Output in: $LOCAL_OUTPUT_DIR"
+echo " All builds succeeded! Output in: $LOCAL_OUTPUT_DIR"

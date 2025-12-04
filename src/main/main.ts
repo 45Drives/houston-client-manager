@@ -36,7 +36,7 @@ process.on('unhandledRejection', (reason, promise) => {
 });
 
 import { app, BrowserWindow, ipcMain, dialog, shell } from 'electron';
-import { autoUpdater } from 'electron-updater';
+// import { autoUpdater } from 'electron-updater';
 import { createLogger, format } from 'winston';
 import DailyRotateFile from 'winston-daily-rotate-file';
 import path, { join } from 'path';
@@ -73,7 +73,7 @@ function checkLogDir(): string {
     if (!fs.existsSync(baseLogDir)) {
       fs.mkdirSync(baseLogDir, { recursive: true });
     }
-    console.debug(`✅ Log directory ensured: ${baseLogDir}`);
+    console.debug(` Log directory ensured: ${baseLogDir}`);
   } catch (e: any) {
     console.error(`❌ Failed to create log directory (${baseLogDir}):`, e.message);
   }
@@ -237,9 +237,9 @@ function createWindow() {
     bufferedNotifications = [];
   });
 
-  ipcMain.on('check-for-updates', () => {
-    autoUpdater.checkForUpdatesAndNotify();
-  });
+  // ipcMain.on('check-for-updates', () => {
+  //   autoUpdater.checkForUpdatesAndNotify();
+  // });
 
   ipcMain.handle('install-cockpit-module', async (_event, { host, username, password }) => {
     // 4. Store manual creds for login UI (if needed)
@@ -251,7 +251,7 @@ function createWindow() {
 
     try {
       const res = await installServerDepsRemotely({ host, username, password });
-      console.debug("✅ install-cockpit-module →", res);
+      console.debug(" install-cockpit-module →", res);
       return res;
     } catch (err) {
       console.error("❌ install-cockpit-module error:", err);
@@ -280,7 +280,7 @@ function createWindow() {
   });
 
   function notify(message: string) {
-    // console.debug("[Main] 🔔 notify() called with:", message);
+    // console.debug("[Main]  notify() called with:", message);
 
     if (!mainWindow || !mainWindow.webContents || mainWindow.webContents.isDestroyed()) {
       console.warn("[Main] ❌ mainWindow/webContents not ready");
@@ -318,10 +318,10 @@ function createWindow() {
     } 
     else {
       try {
-        // console.debug("[Main] 📩 Raw message received:", data);
+        // console.debug("[Main]  Raw message received:", data);
 
         const message = JSON.parse(data);
-        // console.debug("[Main] 📩 Parsed message:", message);
+        // console.debug("[Main]  Parsed message:", message);
         if (message.type === 'configureBackUp') {
 
           message.config.backUpTasks.forEach(backUpTask => {
@@ -366,9 +366,9 @@ function createWindow() {
 
           try {
             await backupManager.unschedule(task);
-            notify(`🗑️ Successfully removed ${task.source} → ${task.target}`);
+            notify(` Successfully removed ${task.source} → ${task.target}`);
 
-            // 🔄 After deletion, re-send updated tasks
+            //  After deletion, re-send updated tasks
             const tasks = await backupManager.queryTasks();
 
             IPCRouter.getInstance().send('renderer', 'action', JSON.stringify({
@@ -443,7 +443,7 @@ function createWindow() {
             console.debug('🧪 Trying to open folder:', folderPath);
 
             const exists = fs.existsSync(folderPath);
-            console.debug('✅ Exists:', exists);
+            console.debug(' Exists:', exists);
 
             if (!exists) {
               notify(`❌ Folder does not exist: ${folderPath}`);
@@ -470,7 +470,7 @@ function createWindow() {
           }
 
         } else if (message.type === 'checkBackUpStatuses') {
-          // console.debug("✅ Received checkBackUpStatuses")
+          // console.debug(" Received checkBackUpStatuses")
           const tasks: BackUpTask[] = message.tasks;
           const updatedTasks: BackUpTask[] = [];
           for (const task of tasks) {
@@ -532,16 +532,16 @@ function createWindow() {
             const result = await (backupManager as any).runNow(task);
 
             if (result.stderr && result.stderr.trim() !== "") {
-              console.warn("⚠️ Backup completed with warnings/errors in stderr:", result.stderr);
+              console.warn(" Backup completed with warnings/errors in stderr:", result.stderr);
             }
 
-            console.debug("✅ runNow completed:", result);
+            console.debug(" runNow completed:", result);
             jsonLogger.info({
               event: 'runBackUpTaskNow_success',
               taskUuid: task.uuid,
               stderr: result.stderr || null,
             });
-            notify(`✅ Backup task "${task.description}" started successfully.`);
+            notify(` Backup task "${task.description}" started successfully.`);
 
             setTimeout(async () => {
               try {
@@ -901,7 +901,7 @@ app.whenReady().then(() => {
   console.debug('log dir:', resolvedLogDir);
   log.transports.file.resolvePathFn = () =>
     path.join(resolvedLogDir, 'main.log');
-  log.info("🟢 Logging initialized.");
+  log.info(" Logging initialized.");
   log.info("Log file path:", log.transports.file.getFile().path);
 
 
@@ -998,52 +998,52 @@ app.whenReady().then(() => {
     jsonLogger.error({ event: 'unhandledRejection', reason, promise: String(promise) });
   });
 
-  autoUpdater.logger = log;
-  (autoUpdater.logger as typeof log).transports.file.level = 'info';
+  // autoUpdater.logger = log;
+  // (autoUpdater.logger as typeof log).transports.file.level = 'info';
 
-  autoUpdater.on('checking-for-update', () => {
-    log.info('🔄 Checking for update...');
-  });
+  // autoUpdater.on('checking-for-update', () => {
+  //   log.info(' Checking for update...');
+  // });
 
-  autoUpdater.on('update-available', (info) => {
-    log.info('⬇️ Update available:', info);
+  // autoUpdater.on('update-available', (info) => {
+  //   log.info('⬇️ Update available:', info);
 
-    if (process.platform === 'linux') {
-      // Notify renderer that a manual download is needed
-      const url = 'https://github.com/45Drives/houston-client-manager/releases/latest';
-      const win = BrowserWindow.getAllWindows()[0];
-      win?.webContents.send('update-available-linux', url);
-    }
-  });
+  //   if (process.platform === 'linux') {
+  //     // Notify renderer that a manual download is needed
+  //     const url = 'https://github.com/45Drives/houston-client-manager/releases/latest';
+  //     const win = BrowserWindow.getAllWindows()[0];
+  //     win?.webContents.send('update-available-linux', url);
+  //   }
+  // });
 
-  autoUpdater.on('update-not-available', (info) => {
-    log.info('✅ No update available:', info);
-  });
+  // autoUpdater.on('update-not-available', (info) => {
+  //   log.info(' No update available:', info);
+  // });
 
-  autoUpdater.on('error', (err) => {
-    log.error('❌ Update error:', err);
-  });
+  // autoUpdater.on('error', (err) => {
+  //   log.error('❌ Update error:', err);
+  // });
 
-  autoUpdater.on('download-progress', (progressObj) => {
-    const logMsg = `📦 Download speed: ${progressObj.bytesPerSecond} - Downloaded ${progressObj.percent.toFixed(
-      1
-    )}% (${progressObj.transferred}/${progressObj.total})`;
-    log.info(logMsg);
-  });
+  // autoUpdater.on('download-progress', (progressObj) => {
+  //   const logMsg = `📦 Download speed: ${progressObj.bytesPerSecond} - Downloaded ${progressObj.percent.toFixed(
+  //     1
+  //   )}% (${progressObj.transferred}/${progressObj.total})`;
+  //   log.info(logMsg);
+  // });
 
-  if (process.platform !== 'linux') {
-    autoUpdater.on('update-downloaded', (info) => {
-      log.info('✅ Update downloaded. Will install on quit:', info);
-      // autoUpdater.quitAndInstall(); // Optional
-    });
+  // if (process.platform !== 'linux') {
+  //   autoUpdater.on('update-downloaded', (info) => {
+  //     log.info(' Update downloaded. Will install on quit:', info);
+  //     // autoUpdater.quitAndInstall(); // Optional
+  //   });
 
-    autoUpdater.checkForUpdatesAndNotify();
-  } else {
-    autoUpdater.checkForUpdates(); // Only checks, doesn't download
-  }
+  //   autoUpdater.checkForUpdatesAndNotify();
+  // } else {
+  //   autoUpdater.checkForUpdates(); // Only checks, doesn't download
+  // }
 
-  // Automatically check for updates and notify user if one is downloaded
-  autoUpdater.checkForUpdatesAndNotify();
+  // // Automatically check for updates and notify user if one is downloaded
+  // autoUpdater.checkForUpdatesAndNotify();
 
   ipcMain.handle("is-dev", async () => process.env.NODE_ENV === 'development');
 
@@ -1065,12 +1065,10 @@ app.whenReady().then(() => {
   });
 
 });
-ipcMain.on('check-for-updates', () => {
-  autoUpdater.checkForUpdatesAndNotify();
-});
+
 
 app.on('window-all-closed', () => {
-  // ✅ This ensures your app fully quits on Windows
+  // This ensures app fully quits on Windows
   if (process.platform !== 'darwin') {
     app.quit();
   }

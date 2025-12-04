@@ -1,10 +1,9 @@
 import path from "path";
 import { app } from "electron";
-import os from "os";
 import fs from "fs";
 import { execFile, spawnSync } from "child_process";
 import { promisify } from "util";
-import { getOS, getAppPath, getAsset } from "./utils";
+import { getOS, getAsset } from "./utils";
 
 const execFileAsync = promisify(execFile);
 
@@ -21,17 +20,22 @@ export function getAgentSocket(): string | undefined {
 
 /* ---------- ssh-keygen ---------- */
 export async function ensureKeyPair(pk: string, pub: string) {
+    // Ensure parent dir exists
+    await fs.promises.mkdir(path.dirname(pk), { recursive: true });
+
     try {
         await fs.promises.access(pk);
         await fs.promises.access(pub);
         return;
     } catch { /* fall through to generate */ }
 
-    const sshKeygen = getOS() === 'win'
+    const isWin = getOS() === 'win';
+
+    const sshKeygen = isWin
         ? await getAsset('static/bin', 'ssh-keygen.exe')
         : 'ssh-keygen';
 
-    if (getOS() !== 'win') {
+    if (!isWin) {
         const which = spawnSync('which', [sshKeygen]);
         if (which.status !== 0) {
             throw new Error(`ssh-keygen binary not found in $PATH`);
@@ -46,7 +50,6 @@ export async function ensureKeyPair(pk: string, pub: string) {
         { windowsHide: true }
     );
 }
-
 
 /* ---------- per-OS paths that your callers need ---------- */
 export function getKeyDir() {

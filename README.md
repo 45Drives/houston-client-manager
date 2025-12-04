@@ -1,4 +1,4 @@
-# 🚀 45Drives Setup Wizard
+# 45Drives Setup Wizard
 
 The 45Drives Setup Wizard connects your personal computer to a 45Drives server to configure storage, schedule backups, and manage ongoing tasks. Follow the instructions below to download, install, and launch the application on your preferred platform.
 
@@ -6,13 +6,13 @@ The 45Drives Setup Wizard connects your personal computer to a 45Drives server t
 
 ## Installation Steps
 
-### 🪟 Windows
+###  Windows
 
 1. Download the Windows Installer:  
    \`45drives-setup-wizard.Setup.1.0.0.exe\`  
 2. Run the installer and follow the on-screen prompts.  
 3. After installation:  
-   - ✅ If the **Run 45Drives Setup Wizard** checkbox is selected at the end, the app will launch automatically.  
+   -  If the **Run 45Drives Setup Wizard** checkbox is selected at the end, the app will launch automatically.  
    - 🖱️ Otherwise, launch it anytime from:  
      - Desktop shortcut  
      - Start Menu → **45Drives Setup Wizard**
@@ -26,7 +26,7 @@ The 45Drives Setup Wizard connects your personal computer to a 45Drives server t
 
 ---
 
-### 🍎 macOS
+###  macOS
 
 1. Download the macOS disk image:  
    \`45drives-setup-wizard.dmg\`  
@@ -35,8 +35,8 @@ The 45Drives Setup Wizard connects your personal computer to a 45Drives server t
 
 #### First-Time Launch
 
-- 🛡️ macOS may warn: “Are you sure you want to open this application?” → Click **Open**.  
-- 🔐 **Full Disk Access Required** for cron-backed backups of protected folders.
+-  macOS may warn: “Are you sure you want to open this application?” → Click **Open**.  
+-  **Full Disk Access Required** for cron-backed backups of protected folders.
 
 **Grant Full Disk Access to \`cron\`:**  
 1. System Settings → Privacy & Security → Full Disk Access  
@@ -46,7 +46,7 @@ The 45Drives Setup Wizard connects your personal computer to a 45Drives server t
 
 ---
 
-### 🐧 Linux
+###  Linux
 
 #### Download the Installer
 
@@ -56,13 +56,13 @@ The 45Drives Setup Wizard connects your personal computer to a 45Drives server t
 | Ubuntu / Debian          | \`45drives-setup-wizard_1.0.0_amd64.deb\`              |
 | Arch Linux               | \`45drives-setup-wizard-1.0.0.pacman\`                 |
 
-#### 📥 Installation Methods
+####  Installation Methods
 
-##### 🖼️ GUI Install  
+#####  GUI Install  
 1. Double-click the downloaded file.  
 2. Complete installation via GNOME Software, KDE Discover, etc.
 
-##### 🖥️ CLI Install  
+#####  CLI Install  
 \`\`\`bash
 # Rocky / RHEL
 sudo dnf install ./45drives-setup-wizard-1.0.0.x86_64.rpm
@@ -74,7 +74,7 @@ sudo apt install ./45drives-setup-wizard_1.0.0_amd64.deb
 sudo pacman -U ./45drives-setup-wizard-1.0.0.pacman
 \`\`\`
 
-#### 🏁 Launch the Application
+####  Launch the Application
 
 - From your desktop environment’s launcher (search “45Drives Setup Wizard”), or  
 - In a terminal:  
@@ -82,22 +82,22 @@ sudo pacman -U ./45drives-setup-wizard-1.0.0.pacman
   45drives-setup-wizard
   \`\`\`
 
-**🔐 Root Privileges**  
+** Root Privileges**  
 Requested only when necessary to:  
-- 📁 Create an \`fstab\` entry for SMB mounts  
-- ⏰ Install a \`cron\` job for scheduled backups  
-- 🔓 Access protected folders  
+-  Create an \`fstab\` entry for SMB mounts  
+-  Install a \`cron\` job for scheduled backups  
+-  Access protected folders  
 Subsequent tasks for the same server usually won’t require re-elevation.
 
 ---
 
-## 🛠️ Setting Up a Server
+##  Setting Up a Server
 
 On first launch, the wizard appears automatically. If you land in the Backup Client, open the ☰ menu and select **Setup**.
 
 1. **Welcome Screen**  
    - Overview of what the app will do  
-   - ℹ️ Tooltips for more info  
+   -  Tooltips for more info  
    - Click **Next** to proceed  
 
 2. **Physical Setup**  
@@ -108,7 +108,7 @@ On first launch, the wizard appears automatically. If you land in the Backup Cli
 
 ---
 
-## 🔎 Discovering a Server
+##  Discovering a Server
 
 - Auto-detects 45Drives servers on your local network.  
 - Listed under **Discovered 45Drives Storage Servers**.
@@ -121,27 +121,27 @@ On first launch, the wizard appears automatically. If you land in the Backup Cli
 
 ---
 
-## ⚙️ Simple Setup
+##  Simple Setup
 
 ### Configuration Prompts
 
-- 📛 **Server Name** (hostname)  
-- 👤 **Initial user** & password  
-- 🗂️ **Network Folder Name** (SMB share)
+-  **Server Name** (hostname)  
+-  **Initial user** & password  
+-  **Network Folder Name** (SMB share)
 
 Options:  
 - Set a root password  
 - Use the same or a new password for root  
 
-⚠️ Root credentials cannot be recovered—store them safely!
+ Root credentials cannot be recovered—store them safely!
 
 ---
 
-## 🧩 Disk Summary
+##  Disk Summary
 
 3D disk viewer shows drive status:  
-- 🔶 Orange = issue detected  
-- 🟩 Green = selected
+-  Orange = issue detected  
+-  Green = selected
 
 Enable **Active Backup** to create two mirrored pools:  
 - **Primary Pool** (Magenta)  
@@ -149,7 +149,7 @@ Enable **Active Backup** to create two mirrored pools:
 
 ---
 
-## ✅ Final Summary & Setup
+##  Final Summary & Setup
 
 - Review all settings  
 - Click **Back** to revise, or **Complete Setup** to start  
@@ -157,7 +157,7 @@ Enable **Active Backup** to create two mirrored pools:
 
 ---
 
-## 🎯 Post-Setup Options
+##  Post-Setup Options
 
 - **Go to Backup Manager** – schedule/run backups  
 - **Set Up More Storage Servers** – discovery screen  
@@ -165,17 +165,17 @@ Enable **Active Backup** to create two mirrored pools:
 
 ---
 
-## 💾 Backup Manager
+##  Backup Manager
 
-### 🖥️ Welcome Page
+###  Welcome Page
 
 - Click **Next** to choose:  
   - **Create Backup Schedule**  
   - **Review Your Backups**
 
-### 📅 Create Backup Schedule
+###  Create Backup Schedule
 
-#### 🟢 Simple Backup
+####  Simple Backup
 
 - Backup Location  
 - Interval (hourly/daily/weekly/monthly)  
@@ -185,7 +185,7 @@ Enable **Active Backup** to create two mirrored pools:
 
 > All folders share the same interval.
 
-#### ⚙️ Custom Backup
+####  Custom Backup
 
 1. Select **Backup Location**  
 2. ➕ Add folder  
@@ -193,43 +193,43 @@ Enable **Active Backup** to create two mirrored pools:
 4. **Save Schedule**  
 5. Repeat for more tasks  
 
-✏️ Edit (✏️) or Delete (🗑️) tasks as needed.  
+ Edit or Delete tasks as needed.  
 Click **Next** when done.
 
-### 🔐 Server Credentials
+###  Server Credentials
 
 Enter setup Username & Password → **Next**.
 
-### 📄 Backup Summary
+###  Backup Summary
 
 Shows:  
 - Backup Server  
 - Folder list  
 - Interval/settings  
 
-🔔 Notes:  
+ Notes:  
 - **Linux**: banner for initial \`sudo\` prompt.  
 - **Windows/macOS**: UAC/elevation prompts.
 
 Click **Next**.
 
-### ✅ Backup Confirmation
+###  Backup Confirmation
 
 Success screen → **Go to Backup Manager**.
 
-### 🔍 Review Your Backups
+###  Review Your Backups
 
 - List of scheduled tasks  
 
 **Controls per task:**  
-- ✏️ Edit Schedule  
-- 🕐 Backup Now  
-- 🗑️ Delete Task  
+-  Edit Schedule  
+-  Backup Now  
+-  Delete Task  
 
 **Multi-select:**  
 - Highlight tasks → **Delete Selected**
 
-### 🔗 Open Backup Folders
+###  Open Backup Folders
 
 1. Select tasks  
 2. **Next**  
@@ -240,7 +240,7 @@ Mounts SMB share & opens server directories.
 
 ---
 
-### 🔄 Restore Backups
+###  Restore Backups
 
 In the Restore Backup module (☰ menu):
 
@@ -267,7 +267,7 @@ In the Restore Backup module (☰ menu):
    - **Open All** opens restored folders  
    - **Dismiss** closes the dialog
 
-🎉 Your files are back in their original locations!
+ Your files are back in their original locations!
 
 ---
 

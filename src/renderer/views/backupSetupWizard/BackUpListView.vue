@@ -301,7 +301,7 @@ const deleteThisTask = async (task: BackUpTask) => {
       task
     }));
 
-    // ✅ Wait for updated tasks from backend
+    //  Wait for updated tasks from backend
     const result = await waitForNextMessage("sendBackupTasks");
 
     result.tasks.forEach((task: BackUpTask) => {
@@ -314,7 +314,7 @@ const deleteThisTask = async (task: BackUpTask) => {
     pollingSuspended = false;
 
   } finally {
-    // 🔓 Reallow clicks after dialog
+    //  Reallow clicks after dialog
     isHandlingNextClick = false;
   }
 
@@ -359,7 +359,7 @@ const deleteSelectedTasks = async () => {
       }));
     }
 
-    // ✅ Wait for updated tasks from backend
+    //  Wait for updated tasks from backend
     const result = await waitForNextMessage("sendBackupTasks");
 
     result.tasks.forEach((task: BackUpTask) => {
@@ -372,7 +372,7 @@ const deleteSelectedTasks = async () => {
     pollingSuspended = false;
 
   } finally {
-    // 🔓 Reallow clicks after dialog
+    //  Reallow clicks after dialog
     isHandlingNextClick = false;
   }
 };

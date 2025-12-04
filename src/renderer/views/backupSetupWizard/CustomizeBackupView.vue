@@ -110,11 +110,11 @@
 			</div>
 		</template>
 
-		<MessageDialog ref="messageFolderAlreadyAdded" message="⚠️ Folder is already added." />
+		<MessageDialog ref="messageFolderAlreadyAdded" message=" Folder is already added." />
 		<MessageDialog ref="messageSubFolderAlreadyAdded"
-			message="⚠️ A subfolder of this folder is already added. Please remove it first." />
+			message=" A subfolder of this folder is already added. Please remove it first." />
 		<MessageDialog ref="messageParentFolderAlreadyAdded"
-			message="⚠️ A parent folder is already added. You cannot add a subfolder." />
+			message=" A parent folder is already added. You cannot add a subfolder." />
 
 	</CardContainer>
 </template>

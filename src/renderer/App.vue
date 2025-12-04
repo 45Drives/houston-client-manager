@@ -8,7 +8,7 @@
       <div id="spinner" class="spinner"></div>
     </div>
 
-    <!-- 🎯 MAIN APP CONTENT -->
+    <!--  MAIN APP CONTENT -->
     <div v-else class="w-full h-full relative flex flex-col items-center justify-center">
 
       <div class="w-full h-full flex items-center justify-center" v-if="currentWizard === 'storage'">
@@ -160,7 +160,7 @@ async function waitForServerRebootAndOpenHouston() {
     const houstonUrl = `https://${serverIp}:9090`;
     window.open(houstonUrl, '_blank', 'width=1200,height=800,noopener,noreferrer');
 
-    // ✅ Toast success once
+    //  Toast success once
     if (serverIp !== lastToastShownIp) {
       pushNotification(new Notification(
         'Server Available',
@@ -225,7 +225,7 @@ async function waitForServerRebootAndShowWizard() {
 
     await nextTick();
 
-    // ✅ Trigger the "Server Available" toast directly here
+    //  Trigger the "Server Available" toast directly here
     if (serverIp !== lastToastShownIp) {
       pushNotification(new Notification(
         'Server Available',
@@ -288,7 +288,7 @@ async function waitForServerReboot() {
   if (serverUp) {
     await nextTick();
 
-    // ✅ Trigger the "Server Available" toast directly here
+    //  Trigger the "Server Available" toast directly here
     if (serverIp !== lastToastShownIp) {
       pushNotification(new Notification(
         'Server Available',
@@ -372,7 +372,7 @@ function isJsonString(str: string) {
 }
 
 window.electron.ipcRenderer.on('notification', (_event, message: string) => {
-  // console.debug("[Renderer] 🔔 Received notification:", message);
+  // console.debug("[Renderer]  Received notification:", message);
 
   if (message.startsWith("Error")) {
     reportError(new Error(message));
