@@ -1,14 +1,8 @@
 function initLogging(resolvedLogDir: string) {
-  const dropNoisyMdns = format((info) => {
-    if (process.env.NODE_ENV !== 'development') {
-      if (info.event === 'mdns.upsert' && info.changed !== true) return false;
-      if (info.event === 'mdns.response') return false;
-    }
-    return info;
-  });
+  const isDev = process.env.NODE_ENV === 'development';
 
   jsonLogger = createLogger({
-    level: 'info',
+    level: isDev ? 'debug' : 'info',
     format: format.combine(
       format.timestamp(),
       format((info) => {
@@ -27,13 +21,10 @@ function initLogging(resolvedLogDir: string) {
         datePattern: 'YYYY-MM-DD',
         maxFiles: '14d',
         zippedArchive: true,
-        level: 'info',
-        format: format.combine(
-          dropNoisyMdns(),
-          format.json()
-        )
-      })
-    ]
+        level: isDev ? 'debug' : 'info',
+        format: format.combine(format.json()),
+      }),
+    ],
   });
 
   const originalConsole = {
@@ -44,37 +35,62 @@ function initLogging(resolvedLogDir: string) {
     debug: console.debug,
   };
 
-
-  const dual = (lvl: 'info' | 'warn' | 'error' | 'debug') =>
-    (...args: any[]) => {
-      // Message string similar to real console.log
+  console.log = (...args: any[]) => {
+    try {
       const msg = util.format(...args);
+      jsonLogger.info({ message: msg });
+    } catch { }
+    if (isDev) originalConsole.log(...args);
+  };
 
-      // Optional: capture non-primitive args for structured logging
-      const meta: Record<string, unknown> = {};
+  console.info = (...args: any[]) => {
+    try {
+      const msg = util.format(...args);
+      jsonLogger.info({ message: msg });
+    } catch { }
+    if (isDev) originalConsole.info(...args);
+  };
+
+  console.warn = (...args: any[]) => {
+    try {
+      const msg = util.format(...args);
+      jsonLogger.warn({ message: msg });
+    } catch { }
+    if (isDev) originalConsole.warn(...args);
+  };
+
+  console.error = (...args: any[]) => {
+    try {
+      const msg = util.format(...args);
+      const meta: any = {};
+
       if (args.length === 1 && args[0] instanceof Error) {
         meta.error = {
           message: args[0].message,
           stack: args[0].stack,
           name: args[0].name,
         };
-      } else if (args.some(a => typeof a === 'object')) {
-        meta.args = args;
       }
 
-      (jsonLogger as any)[lvl]({ message: msg, ...meta });
+      jsonLogger.error(meta.error ? { message: msg, ...meta } : { message: msg });
+    } catch { }
+    if (isDev) originalConsole.error(...args);
+  };
 
-      if (process.env.NODE_ENV === 'development') {
-        // Preserve the original behavior as much as possible
-        (originalConsole as any)[lvl](...args);
-      }
-    };
+  console.debug = (...args: any[]) => {
+    try {
+      const msg = util.format(...args);
+      jsonLogger.debug({ message: msg });
+    } catch { }
+    if (isDev) originalConsole.debug(...args);
+  };
+}
 
-  console.log = dual('info');
-  console.info = dual('info');
-  console.warn = dual('warn');
-  console.error = dual('error');
-  console.debug = dual('debug');
+
+import log from 'electron-log';
+log.transports.console.level = false;
+process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+// process.env.NODE_ENV = 'development';
 
   process.on('uncaughtException', (err: any) => {
     jsonLogger.error({
@@ -96,7 +112,7 @@ function initLogging(resolvedLogDir: string) {
           : reason,
     });
   });
-}
+// }
 
 import util from 'util';
 import { app, BrowserWindow, ipcMain, dialog, shell } from 'electron';
@@ -126,8 +142,6 @@ export let jsonLogger: ReturnType<typeof createLogger>;
 export function jl(level: 'info' | 'warn' | 'error' | 'debug', event: string, extra: Record<string, any> = {}) {
   try { (jsonLogger as any)[level]({ event, ...extra }); } catch { }
 }
-
-// const blockerId = powerSaveBlocker.start("prevent-app-suspension");
 
 app.commandLine.appendSwitch('ignore-certificate-errors', 'true');
 
@@ -173,7 +187,7 @@ function isPortOpen(ip: string, port: number, timeout = 2000): Promise<boolean> 
 
 // Timeout duration in milliseconds (e.g., 30 seconds)
 const TIMEOUT_DURATION = 10000;
-const serviceType = 'houstonserver_legacy._tcp.local';
+const serviceType = '_houstonserver_legacy._tcp.local';
 
 const getLocalIP = () => {
   const nets = os.networkInterfaces();
@@ -304,27 +318,69 @@ function createWindow() {
     bufferedNotifications = [];
   });
 
+  ipcMain.on('renderer-log', (_event, payload: { level: string; args: any[] }) => {
+    const { level, args } = payload || {};
+    const lvl = (level === 'log' ? 'info' : level) as 'info' | 'warn' | 'error' | 'debug';
+
+    try {
+      (console as any)[lvl](...args);
+    } catch (e) {
+
+      try {
+        console.error('renderer-log handler failed:', e);
+      } catch { }
+    }
+  });
+
+
   // ipcMain.on('check-for-updates', () => {
   //   autoUpdater.checkForUpdatesAndNotify();
   // });
 
-  ipcMain.handle('install-cockpit-module', async (_event, { host, username, password }) => {
-    // 4. Store manual creds for login UI (if needed)
-    mainWindow.webContents.send('store-manual-creds', {
-      ip: host,
-      username,
-      password,
-    });
+  ipcMain.handle(
+    "install-cockpit-module",
+    async (event, { host, username, password, id }: { host: string; username: string; password: string; id: string }) => {
+      
+      mainWindow.webContents.send('store-manual-creds', {
+        ip: host,
+        username,
+        password,
+      });
 
-    try {
-      const res = await installServerDepsRemotely({ host, username, password });
-      console.debug(" install-cockpit-module →", res);
-      return res;
-    } catch (err) {
-      console.error(" install-cockpit-module error:", err);
-      throw err;            // so the renderer gets the real stack
-    }
-  });
+      const send = (label: string, step?: string) => {
+        console.debug("main.send setup-progress:", { id, step, label });
+        event.sender.send("setup-progress", {
+          id,
+          ts: Date.now(),
+          step,
+          label,
+        });
+      };
+
+      send("Starting setup…", "start");
+
+      try {
+        const res = await installServerDepsRemotely({
+          host,
+          username,
+          password,
+          onProgress: ({ step, label }) => send(label, step),
+        });
+
+        send(
+          res.success ? "Setup complete." : "Setup failed.",
+          res.success ? "done" : "error",
+        );
+
+        return res;
+      } catch (err: any) {
+        // const msg = err?.message || String(err);
+        // send("Setup failed.", "error");
+        // return { success: false, error: msg };
+        throw err;
+      }
+    },
+  );
   
   ipcMain.handle('get-os', () => getOS());
 
@@ -560,15 +616,6 @@ function createWindow() {
             if (backUpManager !== null) {
               const tasks = await backUpManager.queryTasks();
 
-              // for (const task of tasks) {
-              //   try {
-              //     task.status = await checkBackupTaskStatus(task);
-              //   } catch (err) {
-              //     console.error(`Failed to check status for ${task.description}:`, err);
-              //     task.status = 'offline_connection_error';
-              //   }
-              // }
-
               IPCRouter.getInstance().send('renderer', 'action', JSON.stringify({
                 type: 'sendBackupTasks',
                 tasks
@@ -784,7 +831,22 @@ function createWindow() {
 
 
   // Start listening for devices
-  mDNSClient.on('response', async (response) => {
+  mDNSClient.on("response", async (response) => {
+    try {
+      handleMdnsResponse(response);
+    } catch (err) {
+      try { console.error("mDNS error:", err); } catch { }
+    }
+  });
+
+  async function handleMdnsResponse(response: any) {
+    if (
+      !mainWindow ||
+      mainWindow.isDestroyed() ||
+      mainWindow.webContents.isDestroyed()
+    ) {
+      return;
+    }
     // Combine answers + additionals into one array
     const records = [
       ...response.answers,
@@ -810,7 +872,8 @@ function createWindow() {
               txtRecord[k] = v;
             });
           }
-
+          // console.debug("mDNS TXT record for", answer1.name, ":", txtRecord);
+          
           // Derive a friendly name (strip off the ".houstonserver_legacy._tcp.local" suffix)
           const [bare] = instance.split('._');
           const displayName = `${bare}.local`;
@@ -835,6 +898,7 @@ function createWindow() {
             manuallyAdded: false,
             fallbackAdded: false,
           };
+          // console.debug("Upserting Server:", server);
 
           if (!server.manuallyAdded && !server.fallbackAdded) {
             try {
@@ -875,15 +939,15 @@ function createWindow() {
       }
     }
 
-    if (mainWindow) {
-      mainWindow.webContents.send('discovered-servers', discoveredServers);
-      mainWindow.webContents.send('client-ip', getLocalIP());
-    }
-  });
+    mainWindow.webContents.send('discovered-servers', discoveredServers);
+    mainWindow.webContents.send('client-ip', getLocalIP());
+
+  }
+// );
 
   const mdnsInterval = setInterval(() => {
     mDNSClient.query({
-      questions: [{ name: 'houstonserver_legacy._tcp.local', type: 'PTR' }],
+      questions: [{ name: '_houstonserver_legacy._tcp.local', type: 'PTR' }],
     })
   }, 5000);
 
@@ -973,6 +1037,91 @@ app.whenReady().then(() => {
 
   console.debug('userData is here:', app.getPath('userData'))
   console.debug('log dir:', resolvedLogDir);
+/*   log.transports.file.resolvePathFn = () =>
+    path.join(resolvedLogDir, 'main.log');
+  log.info(" Logging initialized.");
+  log.info("Log file path:", log.transports.file.getFile().path);
+
+  // console.debug('userData is here:', app.getPath('userData'))
+  // console.debug('log dir:', resolvedLogDir);
+
+  const { combine, timestamp, json } = format;
+
+
+  // only let through events (which all have an "event" field)
+  const preserveEventsOrErrors = format((info) => {
+    // keep if it's an error or warning,
+    // or if we've attached an "event" property
+    if (['error', 'warn'].includes(info.level) || info.event) {
+      return info;
+    }
+    return false;
+  });
+
+  jsonLogger = createLogger({
+    level: 'info',
+    format: format.combine(
+      format.timestamp(),
+      // <-- this filter will DROP any record whose message includes your TLS warning
+      format((info) => {
+        if (
+          typeof info.message === 'string' &&
+          info.message.includes(
+            'Warning: Setting the NODE_TLS_REJECT_UNAUTHORIZED'
+          )
+        ) {
+          return false;
+        }
+        return info;
+      })(),
+      format.json()
+    ),
+    transports: [
+      new DailyRotateFile({
+        dirname: resolvedLogDir,
+        filename: '45drives-setup-wizard-%DATE%.json',
+        datePattern: 'YYYY-MM-DD',
+        maxFiles: '14d',
+        zippedArchive: true,
+      })
+    ]
+  });
+
+
+  // const origConsole = {
+  //   log: console.debug,
+  //   warn: console.warn,
+  //   error: console.error,
+  //   debug: console.debug,
+  // };
+
+  // Monkey‐patch so calls go to both electron-log + jsonLogger
+  console.debug = (...args: any[]) => {
+    log.info(...args);
+    jsonLogger.info({ message: args.map(String).join(' ') });
+  };
+  console.warn = (...args: any[]) => {
+    log.warn(...args);
+    jsonLogger.warn({ message: args.map(String).join(' ') });
+  };
+  console.error = (...args: any[]) => {
+    log.error(...args);
+    jsonLogger.error({ message: args.map(String).join(' ') });
+  };
+  console.debug = (...args: any[]) => {
+    log.debug(...args);
+    jsonLogger.debug({ message: args.map(String).join(' ') });
+  };
+
+  process.on('uncaughtException', (err) => {
+    log.error('Uncaught Exception:', err);
+    jsonLogger.error({ event: 'uncaughtException', error: err.stack || err.message });
+  });
+
+  process.on('unhandledRejection', (reason, promise) => {
+    log.error('Unhandled Rejection at:', promise, 'reason:', reason);
+    jsonLogger.error({ event: 'unhandledRejection', reason, promise: String(promise) });
+  }); */
 
   // autoUpdater.logger = log;
   // (autoUpdater.logger as typeof log).transports.file.level = 'info';
@@ -982,7 +1131,7 @@ app.whenReady().then(() => {
   // });
 
   // autoUpdater.on('update-available', (info) => {
-  //   log.info('⬇️ Update available:', info);
+  //   log.info(' Update available:', info);
 
   //   if (process.platform === 'linux') {
   //     // Notify renderer that a manual download is needed

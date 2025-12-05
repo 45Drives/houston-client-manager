@@ -13,7 +13,7 @@ The 45Drives Setup Wizard connects your personal computer to a 45Drives server t
 2. Run the installer and follow the on-screen prompts.  
 3. After installation:  
    -  If the **Run 45Drives Setup Wizard** checkbox is selected at the end, the app will launch automatically.  
-   - 🖱️ Otherwise, launch it anytime from:  
+   -  Otherwise, launch it anytime from:  
      - Desktop shortcut  
      - Start Menu → **45Drives Setup Wizard**
 
