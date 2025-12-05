@@ -6,7 +6,7 @@ import path from 'path';
 import fsAsync from 'fs/promises';
 
 export default async function fetchBackupsFromServer(data: any, mainWindow: BrowserWindow): Promise<BackupEntry[]> {
-  console.debug("[DEBUG] ▶️ fetchBackupsFromServer called with:", data);
+  console.debug("[DEBUG] fetchBackupsFromServer called with:", data);
 
   const baseLogDir = path.join(app.getPath('userData'), 'logs');
   const backupEventsPath = path.join(baseLogDir, '45drives_backup_events.json');

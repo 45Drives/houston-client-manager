@@ -270,10 +270,10 @@ function waitForNextMessage(type: string): Promise<any> {
 let isHandlingNextClick = false;
 
 const deleteThisTask = async (task: BackUpTask) => {
-  // console.debug("[Child] 🔥 deleteThisTask executing");
+  // console.debug("[Child]  deleteThisTask executing");
 
   // console.debug("[Child] Selected for deletion:", task);
-  if (isHandlingNextClick) return; // ⛔ prevent reentry
+  if (isHandlingNextClick) return; //  prevent reentry
   isHandlingNextClick = true;
 
   try {
@@ -321,7 +321,7 @@ const deleteThisTask = async (task: BackUpTask) => {
 };
 
 const deleteSelectedTasks = async () => {
-  if (isHandlingNextClick) return; // ⛔ prevent reentry
+  if (isHandlingNextClick) return; //  prevent reentry
   isHandlingNextClick = true;
 
   try {

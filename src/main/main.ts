@@ -1,40 +1,104 @@
-// 1) capture originals
-const _origWarn = console.warn.bind(console)
-const _origError = console.error.bind(console)
+function initLogging(resolvedLogDir: string) {
+  const dropNoisyMdns = format((info) => {
+    if (process.env.NODE_ENV !== 'development') {
+      if (info.event === 'mdns.upsert' && info.changed !== true) return false;
+      if (info.event === 'mdns.response') return false;
+    }
+    return info;
+  });
 
-// 2) override warn & error
-console.warn = (...args: any[]) => {
-  const msg = args.map(String).join(' ')
-  if (
-    msg.includes('APPIMAGE env is not defined') ||
-    msg.includes('NODE_TLS_REJECT_UNAUTHORIZED')
-  ) return
-  _origWarn(...args)
+  jsonLogger = createLogger({
+    level: 'info',
+    format: format.combine(
+      format.timestamp(),
+      format((info) => {
+        if (
+          typeof info.message === 'string' &&
+          info.message.includes('Warning: Setting the NODE_TLS_REJECT_UNAUTHORIZED')
+        ) return false;
+        return info;
+      })(),
+      format.json()
+    ),
+    transports: [
+      new DailyRotateFile({
+        dirname: resolvedLogDir,
+        filename: '45drives-setup-wizard-%DATE%.json',
+        datePattern: 'YYYY-MM-DD',
+        maxFiles: '14d',
+        zippedArchive: true,
+        level: 'info',
+        format: format.combine(
+          dropNoisyMdns(),
+          format.json()
+        )
+      })
+    ]
+  });
+
+  const originalConsole = {
+    log: console.log,
+    info: console.info,
+    warn: console.warn,
+    error: console.error,
+    debug: console.debug,
+  };
+
+
+  const dual = (lvl: 'info' | 'warn' | 'error' | 'debug') =>
+    (...args: any[]) => {
+      // Message string similar to real console.log
+      const msg = util.format(...args);
+
+      // Optional: capture non-primitive args for structured logging
+      const meta: Record<string, unknown> = {};
+      if (args.length === 1 && args[0] instanceof Error) {
+        meta.error = {
+          message: args[0].message,
+          stack: args[0].stack,
+          name: args[0].name,
+        };
+      } else if (args.some(a => typeof a === 'object')) {
+        meta.args = args;
+      }
+
+      (jsonLogger as any)[lvl]({ message: msg, ...meta });
+
+      if (process.env.NODE_ENV === 'development') {
+        // Preserve the original behavior as much as possible
+        (originalConsole as any)[lvl](...args);
+      }
+    };
+
+  console.log = dual('info');
+  console.info = dual('info');
+  console.warn = dual('warn');
+  console.error = dual('error');
+  console.debug = dual('debug');
+
+  process.on('uncaughtException', (err: any) => {
+    jsonLogger.error({
+      event: 'uncaughtException',
+      error: {
+        name: err?.name,
+        message: err?.message,
+        stack: err?.stack,
+      },
+    });
+  });
+
+  process.on('unhandledRejection', (reason: any, promise) => {
+    jsonLogger.error({
+      event: 'unhandledRejection',
+      reason:
+        reason instanceof Error
+          ? { name: reason.name, message: reason.message, stack: reason.stack }
+          : reason,
+    });
+  });
 }
 
-console.error = (...args: any[]) => {
-  const msg = args.map(String).join(' ')
-  if (msg.includes('NODE_TLS_REJECT_UNAUTHORIZED')) return
-  _origError(...args)
-}
-
-import log from 'electron-log';
-log.transports.console.level = false;
-process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
-// process.env.NODE_ENV = 'development';
-console.log = (...args) => log.info(...args);
-console.error = (...args) => log.error(...args);
-console.warn = (...args) => log.warn(...args);
-console.debug = (...args) => log.debug(...args);
-
-process.on('uncaughtException', (error) => {
-  log.error('Uncaught Exception:', error);
-});
-
-process.on('unhandledRejection', (reason, promise) => {
-  log.error('Unhandled Rejection at:', promise, 'reason:', reason);
-});
-
+import util from 'util';
 import { app, BrowserWindow, ipcMain, dialog, shell } from 'electron';
 // import { autoUpdater } from 'electron-updater';
 import { createLogger, format } from 'winston';
@@ -59,6 +123,9 @@ import { checkSSH } from './setupSsh';
 
 let discoveredServers: Server[] = [];
 export let jsonLogger: ReturnType<typeof createLogger>;
+export function jl(level: 'info' | 'warn' | 'error' | 'debug', event: string, extra: Record<string, any> = {}) {
+  try { (jsonLogger as any)[level]({ event, ...extra }); } catch { }
+}
 
 // const blockerId = powerSaveBlocker.start("prevent-app-suspension");
 
@@ -440,7 +507,7 @@ function createWindow() {
         } else if (message.type === 'openFolder') {
           const folderPath: string = message.path;
           try {
-            console.debug('🧪 Trying to open folder:', folderPath);
+            console.debug(' Trying to open folder:', folderPath);
 
             const exists = fs.existsSync(folderPath);
             console.debug(' Exists:', exists);
@@ -461,7 +528,7 @@ function createWindow() {
                 console.error(` shell.openPath failed:`, result);
                 notify(` Error opening folder: ${result}`);
               } else {
-                notify(`📂 Opened folder: ${folderPath}`);
+                notify(` Opened folder: ${folderPath}`);
               }
             });
           } catch (err) {
@@ -528,7 +595,7 @@ function createWindow() {
           }
 
           try {
-            console.debug("▶️ Attempting to run backup:", task.description);
+            console.debug(" Attempting to run backup:", task.description);
             const result = await (backupManager as any).runNow(task);
 
             if (result.stderr && result.stderr.trim() !== "") {
@@ -897,106 +964,15 @@ app.on('web-contents-created', (_event, contents) => {
 
 app.whenReady().then(() => {
   const resolvedLogDir = checkLogDir();
+  initLogging(resolvedLogDir);
+  jl('info', 'app.ready', {
+    userData: app.getPath('userData'),
+    logsDir: resolvedLogDir,
+    env: process.env.NODE_ENV || 'production'
+  });
+
   console.debug('userData is here:', app.getPath('userData'))
   console.debug('log dir:', resolvedLogDir);
-  log.transports.file.resolvePathFn = () =>
-    path.join(resolvedLogDir, 'main.log');
-  log.info(" Logging initialized.");
-  log.info("Log file path:", log.transports.file.getFile().path);
-
-
-  const { combine, timestamp, json } = format;
-  // structured JSON logger used alongside electron-log
-  // jsonLogger = createLogger({
-  //   level: 'info',
-  //   format: format.combine(
-  //     format.timestamp(),
-  //     format.json()
-  //   ),
-  //   transports: [
-  //     new DailyRotateFile({
-  //       dirname: resolvedLogDir,
-  //       filename: '45drives-setup-wizard-%DATE%.json',
-  //       datePattern: 'YYYY-MM-DD',
-  //       maxFiles: '14d',
-  //       zippedArchive: true,
-  //     })
-  //   ]
-  // });
-
-  // only let through events (which all have an "event" field)
-  const preserveEventsOrErrors = format((info) => {
-    // keep if it's an error or warning,
-    // or if we've attached an "event" property
-    if (['error', 'warn'].includes(info.level) || info.event) {
-      return info;
-    }
-    return false;
-  });
-
-  jsonLogger = createLogger({
-    level: 'info',
-    format: format.combine(
-      format.timestamp(),
-      // <-- this filter will DROP any record whose message includes your TLS warning
-      format((info) => {
-        if (
-          typeof info.message === 'string' &&
-          info.message.includes(
-            'Warning: Setting the NODE_TLS_REJECT_UNAUTHORIZED'
-          )
-        ) {
-          return false;
-        }
-        return info;
-      })(),
-      format.json()
-    ),
-    transports: [
-      new DailyRotateFile({
-        dirname: resolvedLogDir,
-        filename: '45drives-setup-wizard-%DATE%.json',
-        datePattern: 'YYYY-MM-DD',
-        maxFiles: '14d',
-        zippedArchive: true,
-      })
-    ]
-  });
-  
-  // const origConsole = {
-  //   log: console.debug,
-  //   warn: console.warn,
-  //   error: console.error,
-  //   debug: console.debug,
-  // };
-
-  // Monkey‐patch so calls go to both electron-log + jsonLogger
-  console.debug = (...args: any[]) => {
-    log.info(...args);
-    jsonLogger.info({ message: args.map(String).join(' ') });
-  };
-  console.warn = (...args: any[]) => {
-    log.warn(...args);
-    jsonLogger.warn({ message: args.map(String).join(' ') });
-  };
-  console.error = (...args: any[]) => {
-    log.error(...args);
-    jsonLogger.error({ message: args.map(String).join(' ') });
-  };
-  console.debug = (...args: any[]) => {
-    log.debug(...args);
-    jsonLogger.debug({ message: args.map(String).join(' ') });
-  };
-
-  process.on('uncaughtException', (err) => {
-    log.error('Uncaught Exception:', err);
-    jsonLogger.error({ event: 'uncaughtException', error: err.stack || err.message });
-  });
-
-  process.on('unhandledRejection', (reason, promise) => {
-    log.error('Unhandled Rejection at:', promise, 'reason:', reason);
-    jsonLogger.error({ event: 'unhandledRejection', reason, promise: String(promise) });
-  });
 
   // autoUpdater.logger = log;
   // (autoUpdater.logger as typeof log).transports.file.level = 'info';
@@ -1025,7 +1001,7 @@ app.whenReady().then(() => {
   // });
 
   // autoUpdater.on('download-progress', (progressObj) => {
-  //   const logMsg = `📦 Download speed: ${progressObj.bytesPerSecond} - Downloaded ${progressObj.percent.toFixed(
+  //   const logMsg = ` Download speed: ${progressObj.bytesPerSecond} - Downloaded ${progressObj.percent.toFixed(
   //     1
   //   )}% (${progressObj.transferred}/${progressObj.total})`;
   //   log.info(logMsg);

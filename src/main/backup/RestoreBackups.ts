@@ -10,7 +10,7 @@ export default async function restoreBackups(
 ) {
   const os = getOS();
 
-  console.debug("=== 🟡 restoreBackups triggered ===");
+  console.debug("===  restoreBackups triggered ===");
   console.debug("Incoming restore data:", JSON.stringify(data, null, 2));
 
   // 1) Determine the root of the share
@@ -27,7 +27,7 @@ export default async function restoreBackups(
   const files = data.files as string[];
 
   const folderPath = path.join(basePath, uuid, client !== uuid ? client : '');
-  console.debug("📂 Source folderPath:", folderPath);
+  console.debug(" Source folderPath:", folderPath);
   console.debug(" Files to restore:", files);
 
   // 2) Copy each file, reporting back via IPC
@@ -76,7 +76,7 @@ export default async function restoreBackups(
       new Set(files.map((f: string) => path.dirname(f)))
     ).map(f => (os === "win" ? fixWinPath(f) : f));
 
-    console.debug("📬 Restored folders:", restoredFolders);
+    console.debug(" Restored folders:", restoredFolders);
 
     IPCRouter.send("renderer", "action", JSON.stringify({
       type: "restoreCompleted",
@@ -89,37 +89,13 @@ export default async function restoreBackups(
   console.debug("===  restoreBackups finished ===");
 }
 
-// async function copyFile(
-//   sourcePath: string,
-//   destRelPath: string,
-//   originalFilePath: string
-// ) {
-//   const destFullPath = normalizeRestorePath(destRelPath);
-//   console.debug("Restoring", sourcePath, "→", destFullPath);
-
-//   const dir = path.dirname(destFullPath);
-
-//   try {
-//     // Check if directory exists and is writable
-//     await fsAsync.mkdir(dir, { recursive: true });
-//     await fsAsync.access(dir, fsAsync.constants.W_OK);
-//   } catch (e) {
-//     throw new Error(`Destination folder not writable: ${dir}`);
-//   }
-
-//   // Copy the file
-//   await fsAsync.copyFile(sourcePath, destFullPath);
-//   console.debug(` Copied ${sourcePath} → ${destFullPath}`);
-//   return { file: originalFilePath };
-// }
-
 async function copyFile(
   sourcePath: string,
   destRelPath: string,
   originalFilePath: string
 ) {
   const destFullPath = normalizeRestorePath(destRelPath);
-  console.debug(`📦 copyFile(): ${sourcePath} → ${destFullPath}`);
+  console.debug(` copyFile(): ${sourcePath} → ${destFullPath}`);
 
   const dir = path.dirname(destFullPath);
 
