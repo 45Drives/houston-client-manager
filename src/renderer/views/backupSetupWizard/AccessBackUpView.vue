@@ -235,7 +235,7 @@ const handleOpen = () => {
         finalPath = `/mnt/houston-mounts/${task.share}${normalized}`;
       }
 
-      console.debug("📂 Opening folder:", finalPath);
+      console.debug(" Opening folder:", finalPath);
       IPCRouter.getInstance().send("backend", "action", JSON.stringify({
         type: "openFolder",
         path: finalPath
