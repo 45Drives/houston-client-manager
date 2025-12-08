@@ -17,7 +17,7 @@
     <div class="grid grid-cols-2 gap-10 text-2xl w-9/12 mx-auto">
       <CardContainer class="col-span-1 bg-accent border-default rounded-md">
         <template #header>
-          <button @click="startCreateBackupSchedualSetup" class="btn btn-secondary w-full h-40 text-6xl">
+          <button @click="startCreateBackupScheduleSetup" class="btn btn-secondary w-full h-40 text-6xl">
             SIMPLE
           </button>
         </template>
@@ -68,12 +68,12 @@ import GlobalSetupWizardMenu from '../../components/GlobalSetupWizardMenu.vue';
 const division = inject(divisionCodeInjectionKey);
 const { completeCurrentStep, prevStep } = useWizardSteps("backup");
 
-const startCreateBackupSchedualSetup = () => {
-  completeCurrentStep(true, { choice: "simple" });
+const startCreateBackupScheduleSetup = () => {
+  completeCurrentStep(true, { planType: "simple" });
 };
 
 const startCustomSetup = () => {
-  completeCurrentStep(true, { choice: "custom" });
+  completeCurrentStep(true, { planType: "custom" });
 
 };
 

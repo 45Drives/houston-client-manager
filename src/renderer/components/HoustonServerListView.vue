@@ -27,8 +27,10 @@
             <div v-if="!showNoServers" class="spinner my-4"></div>
 
             <!-- show no servers message after timeout -->
-            <div v-else-if="showNoServers" class="my-4 text-muted">
-              No servers detected.
+            <div v-else-if="showNoServers" class="my-4 text-muted w-full flex justify-center mt-2">
+              <div class="">
+                No servers detected.
+              </div>
             </div>
 
           </tr>

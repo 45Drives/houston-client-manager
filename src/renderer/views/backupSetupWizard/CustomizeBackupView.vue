@@ -152,7 +152,6 @@ const discoveryState = inject<DiscoveryState>(discoveryStateInjectionKey)!
 
 const servers = computed(() =>
 	discoveryState.servers.filter(server =>
-		server.setupComplete === true &&
 		server.status === 'complete'
 	)
 )
