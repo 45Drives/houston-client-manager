@@ -1,18 +1,3 @@
-// import log from 'electron-log';
-// log.transports.console.level = false;
-// console.debug = (...args) => log.info(...args);
-// console.error = (...args) => log.error(...args);
-// console.warn = (...args) => log.warn(...args);
-// console.debug = (...args) => log.debug(...args);
-
-// process.on('uncaughtException', (error) => {
-//   log.error('Uncaught Exception:', error);
-// });
-
-// process.on('unhandledRejection', (reason, promise) => {
-//   log.error('Unhandled Rejection at:', promise, 'reason:', reason);
-// });
-
 import { contextBridge, ipcRenderer, IpcRendererEvent } from 'electron';
 
 contextBridge.exposeInMainWorld('electron', {
@@ -31,6 +16,13 @@ contextBridge.exposeInMainWorld('electron', {
   getOS: () => ipcRenderer.invoke('get-os'),
   isFirstRunNeeded: (host: string, share: string) =>
     ipcRenderer.invoke("backup:isFirstRunNeeded", host, share),
+  log: {
+    debug: (...args: any[]) => ipcRenderer.send('renderer-log', { level: 'debug', args }),
+    info: (...args: any[]) => ipcRenderer.send('renderer-log', { level: 'info', args }),
+    warn: (...args: any[]) => ipcRenderer.send('renderer-log', { level: 'warn', args }),
+    error: (...args: any[]) => ipcRenderer.send('renderer-log', { level: 'error', args }),
+    log: (...args: any[]) => ipcRenderer.send('renderer-log', { level: 'log', args }),
+  },
 });
 
 contextBridge.exposeInMainWorld('logger', {

@@ -117,7 +117,10 @@
         4.) Check if the server has internet access. ping google.ca
         `" />
         </p>
-        <div v-if="isInstalling" class="justify-self-center spinner"></div>
+        <div v-if="isInstalling" class="w-full flex justify-center mt-2">
+          <div class="spinner"></div>
+        </div>
+
       </details>
 
 
@@ -258,10 +261,14 @@ const rebootFunction = inject<() => Promise<void>>('reboot-function')!;
 const installModule = async (
   host: string,
   username: string,
-  password: string
+  password: string,
 ): Promise<InstallResult> => {
   isInstalling.value = true;
   statusMessage.value = "Connecting to server, uploading SSH key and installing packages… This may take several minutes.";
+
+  // Unique ID for this install so we can filter progress messages
+  const id = crypto.randomUUID();
+  const unlisten = listenSetupProgress(id);
 
   try {
     const result = await IPCRouter
@@ -270,26 +277,50 @@ const installModule = async (
         host,
         username,
         password,
+        id,
       });
 
     console.debug("installModule result:", result);
+
     if (!result.success) {
+      // Main process will already have sent a "Setup failed." message,
+      // but ensure we leave a useful message here too.
       statusMessage.value = result.error || "Installation failed.";
     } else if (result.reboot) {
+      // This message will override whatever the last progress label was.
       statusMessage.value = "Setup installed. Server will reboot to finish enabling ZFS…";
       await rebootFunction();
     } else {
       statusMessage.value = "Modules installed and SSH key uploaded!";
     }
+
     return result;
   } catch (err: any) {
-    console.error(" installModule failed:", err);
+    console.error("installModule failed:", err);
     statusMessage.value = "Could not connect or authenticate.";
     return { success: false, error: err.message };
   } finally {
     isInstalling.value = false;
+    unlisten?.();
   }
 };
+
+
+function listenSetupProgress(id: string) {
+  const handler = (_event: any, msg: any) => {
+    console.debug("renderer setup-progress:", msg);
+    if (!msg || msg.id !== id) return;
+    if (msg.label) {
+      statusMessage.value = msg.label;
+    }
+  };
+
+  window.electron?.ipcRenderer.on("setup-progress", handler);
+
+  return () => {
+    window.electron?.ipcRenderer.removeListener("setup-progress", handler);
+  };
+}
 
 async function addManualIp() {
   const ip = manualIp.value.trim();
@@ -344,7 +375,6 @@ const proceedToNextStep = async () => {
     }
   } 
 
-  // now do your existing installModule flow, pulling creds from the cache:
   if (srv.manuallyAdded || srv.fallbackAdded) {
     const { username, password } = manualCredentials.value[srv.ip];
     const result = await installModule(srv.ip, username, password);
