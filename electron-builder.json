@@ -15,8 +15,7 @@
         "shortcutName": "45Drives Setup Wizard"
     },
     "mac": {
-        "sign": false,
-        "appOutDir": "dist"
+        "sign": false
     },
     "win": {
         "target": "nsis",
