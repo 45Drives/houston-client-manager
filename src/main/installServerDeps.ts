@@ -114,7 +114,7 @@ export async function installServerDepsRemotely({
     } catch (err: any) {
         const msg = err?.message || String(err);
         send("error", `Installation failed: ${msg}`);
-        console.error("SSH failure:", err?.level, err?.description, err?.message);
+        console.error("SSH failure:", err?.message);
         return { success: false, error: msg };
     }
 }
