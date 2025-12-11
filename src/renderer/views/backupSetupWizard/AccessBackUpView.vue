@@ -136,31 +136,48 @@ const handleOpen = () => {
       const msg = JSON.parse(raw);
       if (msg.action !== 'mountSmbResult') return;
 
-      // Extract the JSON payload
-      const info = typeof msg.result === 'string'
+      // Unwrap payload from main
+      const payload = typeof msg.result === 'string'
         ? JSON.parse(msg.result)
         : msg.result;
 
-      // What the script actually returned as mount point:
-      const mountPoint = info.MountPoint
-        ?? (info.DriveLetter ? `${info.DriveLetter}:\\` : null);
+      if (!payload || payload.success === false) {
+        console.warn("Mount failed or invalid payload:", payload);
+        openingBackup.value = false;
+        return;
+      }
 
-      // Figure out *which* key to assign this to…
+      // This is the real mount info (Linux/mac/macOS/Windows JSON)
+      const info = payload.mount ?? payload;
+
+      const mountPoint =
+        info.MountPoint ??
+        (info.DriveLetter ? `${info.DriveLetter}:\\` : null);
+
       let key: string | undefined;
 
       if (thisOs!.value === 'win' && info.smb_share) {
-        // Windows .bat echoes {"DriveLetter":..., "smb_share": "..."}
+        // Windows case
         key = info.smb_share;
-      }
-      else if (info.smb_server) {
-        // Linux & mac both echo smb_server + either "share" or "smb_share"
+      } else if (info.smb_server) {
+        // Linux/mac: smb_server + share
         const serverHost = info.smb_server
           .replace(/^smb:\/\//, '')
           .split('/')[0];
-        const shareName = info.smb_share
-          ?? info.share
-          ?? mountPoint.split(/[\\/]/).filter(Boolean).pop();
-        key = `${serverHost}:${shareName}`;
+
+        const shareName =
+          info.smb_share ??
+          info.share ??
+          (mountPoint
+            ? mountPoint
+              .split(/[\\/]/)
+              .filter(Boolean)
+              .pop()
+            : undefined);
+
+        if (shareName) {
+          key = `${serverHost}:${shareName}`;
+        }
       }
 
       if (key && mountPoint) {
@@ -169,10 +186,10 @@ const handleOpen = () => {
         console.warn("Could not derive key or mountPoint from:", info);
       }
 
-      // Mark that key as done
-      if (key) remainingKeys.delete(key);
+      if (key) {
+        remainingKeys.delete(key);
+      }
 
-      // Once they’re all mounted, open the folders
       if (remainingKeys.size === 0) {
         finishOpening();
       }
@@ -181,6 +198,7 @@ const handleOpen = () => {
       openingBackup.value = false;
     }
   };
+
 
   IPCRouter.getInstance().addEventListener("action", smbMountListener);
 
