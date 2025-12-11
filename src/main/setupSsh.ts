@@ -180,7 +180,7 @@ export async function runBootstrapScript(
   let rebootRequired = false;
 
   const result = await ssh.execCommand(
-    `sudo -S -p '' bash "${scriptRemotePath}"`,
+    `sudo -S -p '' bash -c 'tr -d "\\r" < "${scriptRemotePath}" | bash'`,
     {
       cwd: "/tmp",
       stdin: password + "\n",
