@@ -6,8 +6,6 @@ import path from 'path';
 import fsAsync from 'fs/promises';
 
 export default async function fetchBackupsFromServer(data: any, mainWindow: BrowserWindow): Promise<BackupEntry[]> {
-  console.debug("[DEBUG] fetchBackupsFromServer called with:", data);
-
   const baseLogDir = path.join(app.getPath('userData'), 'logs');
   const backupEventsPath = path.join(baseLogDir, '45drives_backup_events.json');
 
@@ -27,6 +25,9 @@ export default async function fetchBackupsFromServer(data: any, mainWindow: Brow
       .map(line => line.trim())
       .filter(Boolean)
       .map(line => JSON.parse(line));
+
+    console.debug("[DEBUG] loaded backupEvents:", backupEvents);
+    
   } catch (e) {
     console.warn("Failed to read or parse 45drives_backup_events.json (NDJSON):", e);
   }
@@ -72,6 +73,14 @@ export default async function fetchBackupsFromServer(data: any, mainWindow: Brow
     uuidDirs = uuidDirs
       .filter(name => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(name));
     console.debug(`[DEBUG] filtered UUID dirs:`, uuidDirs);
+
+    for (const uuid of uuidDirs) {
+      console.debug("[DEBUG] handling uuid:", uuid);
+
+      const matchingEvents = backupEvents.filter(ev => ev.uuid === uuid && ev.event === "backup_end");
+      console.debug("[DEBUG] matchingEvents for uuid:", uuid, matchingEvents);
+
+    }
   } catch (err) {
     console.error(`Could not read backup root ${backupRoot}:`, err);
     return [];
@@ -91,11 +100,12 @@ export default async function fetchBackupsFromServer(data: any, mainWindow: Brow
         .filter(ev => ev.uuid === uuid && ev.event === "backup_end")
         .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())[0];
 
+      // --- CLIENT ---
+
       let client = "";
 
       if (event?.source) {
-        const normalized = (event.source || event.target || "").replace(/\\/g, '/');
-        
+        const normalized = (event.source || event.target || "").replace(/\\/g, "/");
         const os = getOS();
 
         if (os === "mac") {
@@ -106,43 +116,101 @@ export default async function fetchBackupsFromServer(data: any, mainWindow: Brow
           if (match) client = match[1];
         } else if (os === "win") {
           const match =
-            normalized.match(/^C:\/Users\/([^/]+)/i) ||           // Native Windows
-            normalized.match(/^\/mnt\/c\/Users\/([^/]+)/i);       // WSL-style
+            normalized.match(/^C:\/Users\/([^/]+)/i) ||
+            normalized.match(/^\/mnt\/c\/Users\/([^/]+)/i);
           if (match) client = match[1];
         }
 
         // Fallback if no OS-specific match worked
         if (!client) {
-          const parts = normalized.split('/').filter(Boolean);
+          const parts = normalized.split("/").filter(Boolean);
           client = parts.length > 0 ? parts[0] : "";
         }
       }
 
+      // If still no client, try to infer from directory structure:
+      if (!client) {
+        const relPaths = entries
+          .map(p => path.relative(backupDir, p))
+          .filter(p => p && !p.startsWith(".."));
+
+        if (relPaths.length > 0) {
+          const firstRel = relPaths[0];
+          const parts = firstRel.split(path.sep).filter(Boolean);
+          if (parts.length > 0) {
+            client = parts[0];
+          }
+        }
+      }
+
+      // --- FOLDER ---
+
       let folder = "/";
+
       if (event?.source) {
+        // show the original source path (what you backed up)
         folder = event.source;
       } else if (event?.target) {
         // Remove /uuid/clientname prefix from target path
         const uuidPrefix = `/${uuid}/`;
-        const normalizedTarget = event.target.replace(/\\/g, '/');
+        const normalizedTarget = event.target.replace(/\\/g, "/");
         if (normalizedTarget.includes(uuidPrefix)) {
-          folder = "/" + normalizedTarget.split(uuidPrefix)[1]?.split('/').slice(1).join('/');
+          folder =
+            "/" +
+            normalizedTarget
+              .split(uuidPrefix)[1]
+              ?.split("/")
+              .slice(1)
+              .join("/");
+        }
+      } else {
+        // Fallback: infer from directory structure
+        const relPaths = entries
+          .map(p => path.relative(backupDir, p))
+          .filter(p => p && !p.startsWith(".."));
+
+        if (relPaths.length > 0) {
+          // e.g. client/Documents or just client
+          const firstRel = relPaths[0];
+          const parts = firstRel.split(path.sep).filter(Boolean);
+          if (parts.length > 1) {
+            folder = "/" + parts.slice(1).join("/");
+          }
+        }
+      }
+
+      // --- LAST BACKUP ---
+
+      let lastBackup = "Unknown";
+
+      if (event?.timestamp) {
+        lastBackup = new Date(event.timestamp).toLocaleString();
+      } else {
+        // Fallback: newest mtime under this uuid folder
+        try {
+          let newest = 0;
+          for (const p of entries) {
+            const stat = await fsAsync.stat(p);
+            if (stat.mtimeMs > newest) newest = stat.mtimeMs;
+          }
+          if (newest > 0) {
+            lastBackup = new Date(newest).toLocaleString();
+          }
+        } catch (e) {
+          console.warn("Could not derive lastBackup from filesystem for uuid", uuid, e);
         }
       }
 
       results.push({
         uuid,
-        folder: folder,
+        folder,
         server: data.smb_host,
         client,
-        lastBackup: event?.timestamp
-          ? new Date(event.timestamp).toLocaleString()
-          : "Unknown",
+        lastBackup,
         onSystem: true,
         files: [],
-        mountPoint: mountResult.MountPoint
+        mountPoint: mountResult.MountPoint,
       });
-
     } catch (err) {
       console.error("Failed to list backups for", uuid, ":", err);
     }

@@ -73,13 +73,24 @@
               }) }} ({{ formatFrequency(task.schedule.repeatFrequency) }})
             </div>
 
+
+            <!-- In-progress overlay -->
+            <div v-if="isRunning(task)"
+              class="absolute inset-0 rounded-lg bg-black/40 flex flex-col items-center justify-center z-20">
+              <div class="spinner"></div>
+              <div class="text-sm font-semibold text-white">
+                Backup in progress…
+              </div>
+            </div>
+
+
           </div>
           <div class="flex justify-between items-center pt-2">
             <button class="btn btn-secondary text-sm relative" @click.stop="editSchedule(task)">
               <!-- Edit Schedule -->
               <PencilIcon class="w-6 h-6 text-white" />
             </button>
-            <button @click.stop="backupNow(task)" class="btn btn-primary text-base">
+            <button @click.stop="backupNow(task)" class="btn btn-primary text-base" :disabled="isRunning(task)">
               Backup Now
             </button>
             <button @click.stop="deleteThisTask(task)" class="btn btn-danger text-sm">
@@ -151,6 +162,22 @@ watch(backUpTasks, () => {
 
 function isScheduledButNotRunYet(task: BackUpTask): boolean {
   return (new Date(task.schedule.startDate).getTime() > Date.now());
+}
+
+const runningBackups = ref<string[]>([]);
+
+function markRunning(uuid: string) {
+  if (!runningBackups.value.includes(uuid)) {
+    runningBackups.value.push(uuid);
+  }
+}
+
+function markFinished(uuid: string) {
+  runningBackups.value = runningBackups.value.filter(id => id !== uuid);
+}
+
+function isRunning(task: BackUpTask): boolean {
+  return runningBackups.value.includes(task.uuid);
 }
 
 const getTaskStatusText = (task: BackUpTask): string => {
@@ -380,6 +407,7 @@ const deleteSelectedTasks = async () => {
 
 function backupNow(task: BackUpTask) {
   pollingSuspended = true;
+  markRunning(task.uuid);
 
   IPCRouter.getInstance().send("backend", "action", JSON.stringify({
     type: "runBackUpTaskNow",
@@ -391,24 +419,14 @@ function backupNow(task: BackUpTask) {
   setTimeout(() => {
     pollingSuspended = false;
   }, 8000); // delay resuming status check
-
 }
+
 
 
 function fetchBackupTasks() {
   IPCRouter.getInstance().send('backend', 'action', 'requestBackUpTasks');
 }
 
-// IPCRouter.getInstance().addEventListener('action', (raw: string) => {
-//   const message = JSON.parse(raw);
-//   if (message.type === 'backUpStatusesUpdated') {
-//     const updated = message.tasks as BackUpTask[];
-//     backUpTasks.value = updated.map(task => ({
-//       ...task,
-//       schedule: { ...task.schedule, startDate: new Date(task.schedule.startDate) }
-//     }));
-//   }
-// });
 
 let pollingInterval: ReturnType<typeof setInterval>;
 
@@ -435,6 +453,10 @@ onMounted(() => {
             backUpTasks.value[index].status = updated.status;
           }
         });
+      } else if (msg.type === 'backupRunStarted') {
+        markRunning(msg.taskUuid);
+      } else if (msg.type === 'backupRunFinished') {
+        markFinished(msg.taskUuid);
       }
     } catch (e) {
       console.warn(" Failed to parse IPC action message:", raw);

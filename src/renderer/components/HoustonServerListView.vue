@@ -22,34 +22,35 @@
             <td class="border border-default p-2 text-center">{{ srv.name }}</td>
             <td class="border border-default p-2 text-center">{{ srv.ip }}</td>
           </tr>
-          <tr v-if="servers.length === 0" class="flex flex-row items-center text-center">
-            <!-- show spinner while loading -->
-            <div v-if="!showNoServers" class="spinner my-4"></div>
 
-            <!-- show no servers message after timeout -->
-            <div v-else-if="showNoServers" class="my-4 text-muted w-full flex justify-center mt-2">
-              <div class="">
+          <!-- Empty state row -->
+          <tr v-if="servers.length === 0">
+            <td colspan="3" class="py-4 text-center">
+              <!-- spinner -->
+              <div v-if="!showNoServers" class="spinner inline-block"></div>
+
+              <!-- no servers text -->
+              <span v-else class="text-muted mx-auto">
                 No servers detected.
-              </div>
-            </div>
-
+              </span>
+            </td>
           </tr>
         </tbody>
+
       </table>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, withDefaults, defineProps, defineEmits, watch, inject, computed, onMounted } from 'vue'
+import { ref, watch, inject, computed, onMounted } from 'vue'
 import type { Server, DiscoveryState } from '../types'
 import { discoveryStateInjectionKey } from '../keys/injection-keys';
 
 // 1) defineProps + withDefaults to make `selectedServer` optional (defaults to null)
 const props = withDefaults(
   defineProps<{
-    filterOutStorageSetupComplete: boolean;
-    filterOutNonSetupServers: boolean;
+    filterMode?: 'all' | 'onlyComplete' | 'onlyIncomplete';
     selectedServer?: Server | null;
   }>(),
   { selectedServer: null }
@@ -62,22 +63,15 @@ const emit = defineEmits<{
 
 // 3) manage your discovered servers
 const discoveryState = inject<DiscoveryState>(discoveryStateInjectionKey)!
-// const servers = computed(() => discoveryState.servers)
-
 
 const servers = computed(() => {
-  if (props.filterOutNonSetupServers) {
-    return discoveryState.servers.filter(server => 
-      server.setupComplete === true &&
-      server.status === 'complete'
-    )
-  } else if (props.filterOutStorageSetupComplete) {
-    return discoveryState.servers.filter(server =>
-      server.setupComplete === false &&
-      server.status === 'not complete'
-    )
-  } else {
-    return discoveryState.servers;
+  switch (props.filterMode) {
+    case 'onlyComplete':
+      return discoveryState.servers.filter(s => s.setupComplete && s.status === 'complete')
+    case 'onlyIncomplete':
+      return discoveryState.servers.filter(s => !s.setupComplete && s.status === 'not complete')
+    default:
+      return discoveryState.servers
   }
 })
 
@@ -111,4 +105,25 @@ function onSelect(srv: Server) {
 }
 </script>
 
-<style scoped></style>
+<style scoped>
+    /* Loading spinner */
+    .spinner {
+      border: 4px solid rgba(0, 0, 0, 0.1);
+      border-left-color: #2c3e50;
+      border-radius: 50%;
+      width: 40px;
+      height: 40px;
+      animation: spin 1s linear infinite;
+      margin: 20px;
+    }
+  
+    @keyframes spin {
+      0% {
+        transform: rotate(0deg);
+      }
+  
+      100% {
+        transform: rotate(360deg);
+      }
+    }
+</style>

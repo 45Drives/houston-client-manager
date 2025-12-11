@@ -161,6 +161,8 @@ export async function runBootstrapScript(
   host: string,
   username: string,
   privateKeyPath: string,
+  password: string,
+  onLine?: (line: string, stream: "stdout" | "stderr") => void,
 ): Promise<boolean> {
   const ssh = new NodeSSH();
   const scriptLocalPath = await getAsset("static", "setup-super-simple.sh");
@@ -171,31 +173,53 @@ export async function runBootstrapScript(
     username,
     privateKey: fs.readFileSync(privateKeyPath, "utf8"),
     readyTimeout: 20_000,
-    // debug: info => console.debug('⎇ SSH DEBUG:', info),
   });
+
   await ssh.putFile(scriptLocalPath, scriptRemotePath);
 
   let rebootRequired = false;
 
-  await ssh.exec(
-    // run line-buffered
-    `stdbuf -oL -eL bash "${scriptRemotePath}"`,
-    [],                               // no positional parameters
+  const result = await ssh.execCommand(
+    `sudo -S -p '' bash "${scriptRemotePath}"`,
     {
-      cwd: '/tmp',
-      stream: 'both',                 // get both stdout and stderr
-      execOptions: { pty: true },     // ← THIS is the only change
+      cwd: "/tmp",
+      stdin: password + "\n",
+      execOptions: { pty: true },
       onStdout(chunk) {
         const line = chunk.toString().trim();
-        console.debug(`[${host}] ${line}`);
-        if (line.includes('[REBOOT_NEEDED]')) rebootRequired = true;
+        if (!line) return;
+
+        // hard stop: do NOT ever log or bubble the raw password
+        if (line === password) return;
+
+        console.info(`[bootstrap stdout ${host}] ${line}`);
+        onLine?.(line, "stdout");
+        if (line.includes("[REBOOT_NEEDED]")) rebootRequired = true;
       },
       onStderr(chunk) {
-        console.warn(`[${host}] ${chunk.toString().trim()}`);
+        const text = chunk.toString().trim();
+        if (!text) return;
+
+        // hide sudo’s password prompt from logs/UI
+        if (text.startsWith("[sudo] password for")) return;
+
+        // just in case some crazy sudo config echos the password to stderr:
+        if (text === password) return;
+
+        console.warn(`[bootstrap stderr ${host}] ${text}`);
+        onLine?.(text, "stderr");
       },
     },
   );
 
   ssh.dispose();
+
+  if (typeof result.code === "number" && result.code !== 0) {
+    throw new Error(
+      `Bootstrap script exited with code ${result.code} (host ${host}).`
+    );
+  }
+
   return rebootRequired;
 }
+

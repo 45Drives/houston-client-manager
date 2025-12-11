@@ -67,7 +67,7 @@ export async function installServerDepsRemotely({
         send("key", "Ensuring local SSH keypair exists…");
         await ensureKeyPair(privateKeyPath, publicKeyPath);
 
-        // NEW: probe for missing deps
+        // probe for missing deps
         send("probe", "Checking for required dependencies (Cockpit, ZFS, Samba, cockpit-super-simple-setup)…");
         let missing: string[] = [];
         try {
@@ -85,13 +85,30 @@ export async function installServerDepsRemotely({
         }
 
         send("bootstrap", "Running setup script on the server… this may take several minutes.");
-        const rebootRequired = await runBootstrapScript(host, username, privateKeyPath);
 
-        if (rebootRequired) {
-            send("reboot", "Setup installed. Server will reboot to finish enabling services…");
-        } else {
-            send("done", "Setup completed successfully.");
-        }
+        const rebootRequired = await runBootstrapScript(
+            host,
+            username,
+            privateKeyPath,
+            password,
+            (line, stream) => {
+                if (!line) return;
+
+                // extra safety on the UI side too
+                if (line === password) return;
+
+                if (stream === "stderr") {
+                    // always show stderr – this is where shell errors like "unbound variable" go
+                    send("bootstrap-log", line);
+                    return;
+                }
+
+                // stdout: keep your "tagged" lines, plus errors
+                if (/^\[(INFO|WARN|ERROR|BOOTSTRAP)/.test(line)) {
+                    send("bootstrap-log", line);
+                }
+            },
+        );
 
         return { success: true, reboot: rebootRequired };
     } catch (err: any) {

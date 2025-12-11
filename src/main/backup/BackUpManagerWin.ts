@@ -292,15 +292,15 @@ if (-not $hasBatchLogon -or -not $hasServiceLogon) {
       const credFile = path.join(credDir, `${smbShare}.cred`).replace(/\\/g, '\\\\');
       const batPathEsc = this.scriptPath(t.uuid).replace(/\\/g, '\\\\');
 
-      /* 1️⃣  cred file (idempotent) */
+      /*   cred file (idempotent) */
       psLines.push(`"username=${username}\n` + `" | Out-File -Encoding ascii -NoNewline -Force "${credFile}"`);
       psLines.push(`"password=${password}` + `" | Out-File -Append  -Encoding ascii "${credFile}"`);
 
-      /* 2️⃣  BAT file */
+      /*   BAT file */
       const batTxt = this.buildActionBat(t);
       psLines.push(`[IO.File]::WriteAllText("${batPathEsc}", @'\n${batTxt}\n'@)`);
 
-      /* 3️⃣  ScheduledTask */
+      /*   ScheduledTask */
       psLines.push(this.scheduleToTaskTrigger(t.schedule));
 
       if (t.schedule.repeatFrequency == 'month'){

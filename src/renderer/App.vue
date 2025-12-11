@@ -2,7 +2,7 @@
   <div
     class="w-screen h-screen overflow-hidden flex flex-col items-center justify-center text-default bg-default text-center">
 
-    <!-- 🌀 FULL SCREEN LOADING WHEN SCANNING -->
+    <!-- FULL SCREEN LOADING WHEN SCANNING -->
     <div v-if="scanningNetworkForServers" class="flex flex-col items-center justify-center w-full h-full p-4">
       <p class="text-2xl text-center">Give us a few while we scan for connected servers...</p>
       <div id="spinner" class="spinner"></div>
@@ -26,14 +26,14 @@
         <DashboardView/>
       </div> -->
 
-      <webview v-show="showWebView && !loadingWebview && !waitingForServerReboot" id="myWebview" :src="currentUrl"
-        partition="persist:authSession"
-        webpreferences="contextIsolation=true, nodeIntegration=false, enableRemoteModule=false" ref="webview" allowpopups
-        @did-finish-load="onWebViewLoaded" />
+      <webview v-show="showWebView" id="myWebview" :src="currentUrl" partition="persist:authSession"
+        webpreferences="contextIsolation=true, nodeIntegration=false, enableRemoteModule=false" ref="webview"
+        allowpopups :style="{ visibility: webviewVisible ? 'visible' : 'hidden', height: '100vh', width: '100%' }"
+        @did-finish-load="onWebViewLoaded" @did-fail-load="onWebViewFailed" />
 
       <div v-if="loadingWebview" class="absolute inset-0 z-40 bg-default flex flex-col items-center justify-center">
         <p class="text-2xl text-center">
-          <template v-if="loadingWebview">Give us a few while we login...</template>
+          Give us a few while we login...
         </p>
         <div id="spinner" class="spinner"></div>
       </div>
@@ -54,6 +54,8 @@ import BackUpSetupWizard from './views/backupSetupWizard/Wizard.vue';
 import RestoreBackUpWizard from './views/restoreBackupWizard/Wizard.vue';
 import { divisionCodeInjectionKey, currentServerInjectionKey, currentWizardInjectionKey, thisOsInjectionKey, discoveryStateInjectionKey } from './keys/injection-keys';
 import { IPCMessageRouterRenderer, IPCRouter } from '@45drives/houston-common-lib';
+import { useServerCredentials } from "./composables/useServerCredentials";
+import { useThemeFromAlias } from '../renderer/composables/useThemeFromAlias'
 import DashboardView from './views/DashboardView.vue';
 
 const thisOS = ref<string>('');
@@ -70,6 +72,17 @@ provide(discoveryStateInjectionKey, discoveryState)
 provide(thisOsInjectionKey, thisOS);
 
 IPCRouter.initRenderer();
+
+const { setCredentials, getCredentials } = useServerCredentials();
+
+const divisionCode = ref<DivisionType>('default')
+provide(divisionCodeInjectionKey, divisionCode)
+
+const { currentTheme, currentDivision, applyThemeFromAlias, setTheme } = useThemeFromAlias()
+
+watch(currentDivision, (d) => {
+  divisionCode.value = d as DivisionType
+}, { immediate: true })
 
 const isRebootWatcherRunning = ref(false);
 
@@ -314,28 +327,6 @@ async function waitForServerReboot() {
 
 provide('reboot-function', waitForServerReboot);
 
-const currentTheme = ref("theme-homelab");
-
-const aliasStyleToTheme: Record<string, string> = {
-  homelab: 'theme-homelab',
-  professional: 'theme-professional'
-};
-
-function applyThemeFromAliasStyle(aliasStyle?: string) {
-  // console.debug('detected alias style:', aliasStyle);
-  const normalized = aliasStyle?.toLowerCase() || '';
-  const themeClass = aliasStyleToTheme[normalized] || 'theme-homelab';
-
-  document.documentElement.classList.remove(
-    'theme-default',
-    'theme-homelab',
-    'theme-professional'
-  );
-
-  document.documentElement.classList.add(themeClass);
-  currentTheme.value = themeClass;
-}
-
 const isDev = ref(false);
 
 // window.electron.ipcRenderer.invoke('is-dev').then(value => isDev.value = value);
@@ -346,17 +337,36 @@ const darkModeState = useDarkModeState();
 const advancedState = useAdvancedModeState();
 
 const currentServer = ref<Server | null>(null);
-const divisionCode = ref<DivisionType>('default');
 const showWebView = ref<boolean>(false);
 
-provide(divisionCodeInjectionKey, divisionCode);
 provide(currentServerInjectionKey, currentServer);
 
 const clientip = ref<string>("");
-const webview = ref();
+const webview = ref<any>();
+const webviewVisible = ref(false);
 const loadingWebview = ref(false);
 const scanningNetworkForServers = ref(true);
 const currentUrl = ref<string>('https://45drives.com');
+
+const isAutoLoggingIn = ref(false);
+let lastWebviewUrl = '';
+const MIN_OVERLAY_MS = 500;
+let overlayStart = 0;
+
+function startOverlay() {
+  overlayStart = Date.now();
+  loadingWebview.value = true;
+  webviewVisible.value = false;
+}
+
+function finishOverlay() {
+  const elapsed = Date.now() - overlayStart;
+  const remaining = Math.max(0, MIN_OVERLAY_MS - elapsed);
+  setTimeout(() => {
+    loadingWebview.value = false;
+    webviewVisible.value = true;
+  }, remaining);
+}
 
 window.electron.ipcRenderer.on('client-ip', (_event, ip: string) => {
   clientip.value = ip;
@@ -399,7 +409,7 @@ onMounted(async () => {
     const osString = await window.electron.getOS();
     setOs(osString);
 
-    console.debug("[DEBUG] OS:" + osString);
+    // console.debug("[DEBUG] OS:" + osString);
     
     // IPCRouter.getInstance().send('backend', 'action', 'requestBackUpTasks');
     
@@ -463,33 +473,6 @@ onMounted(async () => {
     }
   }, 1200)
 
-  const updateTheme = () => {
-    const found = Array.from(document.documentElement.classList).find(cls =>
-      cls.startsWith("theme-")
-    );
-    // console.debug('found:', found);
-    currentTheme.value = found || "theme-default";
-    switch (currentTheme.value) {
-      case 'theme-homelab':
-        divisionCode.value = 'homelab';
-        break;
-      case 'theme-professional':
-        divisionCode.value = 'professional';
-        break;
-      default:
-        divisionCode.value = 'default';
-        break;
-    }
-  };
-
-  updateTheme(); // check initially
-
-  const observer = new MutationObserver(() => updateTheme());
-  observer.observe(document.documentElement, {
-    attributes: true,
-    attributeFilter: ['class']
-  });
-
   window.electron.ipcRenderer.send("renderer-ready", {});
 
   const router = IPCRouter.getInstance();
@@ -550,20 +533,6 @@ onBeforeUnmount(() => {
 });
 
 
-watch(currentTheme, (theme) => {
-  switch (theme) {
-    case 'theme-homelab':
-      divisionCode.value = 'homelab';
-      break;
-    case 'theme-professional':
-      divisionCode.value = 'professional';
-      break;
-    default:
-      divisionCode.value = 'default';
-      break;
-  }
-}, { deep: true, immediate: true});
-
 // Receive the discovered servers from the main process
 let discoveredServersChecked = false;
 window.electron.ipcRenderer.on('discovered-servers', (_event, discoveredServers: Server[]) => {
@@ -577,10 +546,8 @@ window.electron.ipcRenderer.on('discovered-servers', (_event, discoveredServers:
 
 });
 
-const manualCreds = ref<{ ip: string; username: string; password: string } | null>(null);
-
-window.electron.ipcRenderer.on('store-manual-creds', (_event, data) => {
-  manualCreds.value = data;
+window.electron.ipcRenderer.on("store-manual-creds", (_event, data: { ip: string; username: string; password: string }) => {
+  setCredentials(data.ip, data.username, data.password);
 });
 
 // Handle server click to open the website
@@ -601,112 +568,218 @@ const openStorageSetup = (server: Server | null) => {
   }
 
   if (newUrl !== currentUrl.value) {
-    loadingWebview.value = true;
+    // loadingWebview.value = true;
+    isAutoLoggingIn.value = false;
+    lastWebviewUrl = "";
+    startOverlay();
+    showWebView.value = true;
     currentUrl.value = newUrl;
   }
 
 };
+
 const onWebViewLoaded = async () => {
-  const user = manualCreds.value?.username ?? "root";
-  const pass = manualCreds.value?.password ?? "45Dr!ves";
+  const url = webview.value?.getURL?.() ?? currentUrl.value;
+
+  const ip = currentServer.value?.ip ?? "";
+  const credsForServer = getCredentials(ip);
+
+  const user = credsForServer?.username ?? "root";
+  const pass = credsForServer?.password ?? "45Dr!ves";
 
   const routerRenderer = IPCRouter.getInstance() as IPCMessageRouterRenderer;
   routerRenderer.setCockpitWebView(webview.value);
 
-  if (currentUrl.value.endsWith(":9090")) {
-    loadingWebview.value = false;
-    webview.value.className = "h-[100vh] w-full";
-    webview.value.style.visibility = "visible";
-    return;
-  }
+  const loginAndSimplifyScript = `
+  (function() {
+    return new Promise((resolve) => {
+      const LOGIN_SELECTOR  = "#login";
+      const ERROR_SELECTOR  = "#login-error-message";
+      const USER_SELECTOR   = "#login-user-input";
+      const PASS_SELECTOR   = "#login-password-input";
+      const BUTTON_SELECTOR = "#login-button";
 
-  const loginScript = `
-    new Promise((resolve, reject) => {
-      if (!document.querySelector("#login")) {
-        setTimeout(() => {
-          [...document.querySelectorAll('#main > div')].forEach((e) => {
-            if (e.id !== 'content') e.style.display = 'none';
-          });
+      let observer = null;
 
-          [...document.querySelectorAll('#main > nav')].forEach((e) => {
-            if (e.id !== 'content') e.style.display = 'none';
-          });
+      function simplifyLayoutForModule() {
+        // Only touch layout on the super-simple-setup module
+        if (!window.location.pathname.includes("/super-simple-setup")) {
+          return;
+        }
 
-          document.querySelector('#main').style.gridTemplateAreas = '"header" "main"';
-          document.querySelector('#main').style.gridTemplateColumns = '1fr';
+        function applyOnce() {
+          const main = document.querySelector("#main");
+          if (!main) return false;
 
-          resolve("View modified and visible.");
-        }, 500);
-      } else {
-        console.debug("Login UI showing");
-        const usernameField = document.querySelector("#login-user-input");
-        const passwordField = document.querySelector("#login-password-input");
-        const loginButton = document.querySelector("#login-button");
-        const loginForm  = document.querySelector("form");
+          try {
+            // Hide Cockpit chrome
+            [...document.querySelectorAll("#main > div")].forEach((e) => {
+              if (e.id !== "content") e.style.display = "none";
+            });
+            [...document.querySelectorAll("#main > nav")].forEach((e) => {
+              if (e.id !== "content") e.style.display = "none";
+            });
 
-        if (usernameField && passwordField && loginButton) {
-          usernameField.value = "${user}";
-          passwordField.value = "${pass}";
+            main.style.gridTemplateAreas = '"header" "main"';
+            main.style.gridTemplateColumns = "1fr";
+          } catch (e) {
+            console.error("Error simplifying Cockpit layout:", e);
+          }
+          return true;
+        }
 
-          usernameField.dispatchEvent(new Event("input", { bubbles: true }));
-          passwordField.dispatchEvent(new Event("input", { bubbles: true }));
+        // Try once immediately; if #main isn't ready yet, keep trying briefly.
+        if (!applyOnce()) {
+          let tries = 0;
+          const maxTries = 20; // ~5s at 250ms
 
-          const observer = new MutationObserver(() => {
-            const loginError = document.querySelector("#login-error-message");
-            if (loginError && loginError.textContent.includes("Wrong user name")) {
-              observer.disconnect();
-              [...document.querySelectorAll('#main > div')].forEach((e) => {
-                if (e.id !== 'content') e.style.display = 'block';
-              });
-              reject("Login failed: Wrong user name or password.");
-            } else if (!document.querySelector("#login")) {
-              observer.disconnect();
-              resolve("Login successful: login form disappeared.");
+          const interval = setInterval(() => {
+            tries += 1;
+            if (applyOnce() || tries >= maxTries) {
+              clearInterval(interval);
             }
-          });
-
-          observer.observe(document.body, { childList: true, subtree: true });
-          setTimeout(() => {
-            loginButton.click();
-            loginForm.submit();
-          }, 500);
-        } else {
-          console.error("Login fields or button not found.");
+          }, 250);
         }
       }
-    });
-  `;
 
-  await webview.value.executeJavaScript(loginScript)
-    .then((result: any) => {
-      loadingWebview.value = false;
-      webview.value.className = "h-[100vh] w-full";
-      webview.value.style.visibility = "visible";
-    })
-    .catch((error: any) => {
-      console.error("Webview login error:", error);
-      loadingWebview.value = false;
-      webview.value.className = "h-[100vh] w-full";
-      webview.value.style.visibility = "visible";
-    });
+      function done(status, extra) {
+        if (observer) {
+          observer.disconnect();
+          observer = null;
+        }
+        resolve(Object.assign({ status }, extra || {}));
+      }
 
-  if (isDev.value) {
-    webview.value.openDevTools();
+      const globalTimeout = setTimeout(() => {
+        done("timeout");
+      }, 15000);
+
+      function clearGlobalTimeout() {
+        clearTimeout(globalTimeout);
+      }
+
+      const loginEl = document.querySelector(LOGIN_SELECTOR);
+
+      // Case 1: already logged in – wait a tick, then simplify module view
+      if (!loginEl) {
+        setTimeout(() => {
+          clearGlobalTimeout();
+          simplifyLayoutForModule();
+          done("no-login");
+        }, 500);
+        return;
+      }
+
+      // Case 2: login form present – auto-fill and watch for success/failure
+      const usernameField = document.querySelector(USER_SELECTOR);
+      const passwordField = document.querySelector(PASS_SELECTOR);
+      const loginButton   = document.querySelector(BUTTON_SELECTOR);
+      const loginForm     = document.querySelector("form");
+
+      if (!usernameField || !passwordField || !loginButton || !loginForm) {
+        clearGlobalTimeout();
+        done("no-fields");
+        return;
+      }
+
+      usernameField.value = "${user}";
+      passwordField.value = "${pass}";
+      usernameField.dispatchEvent(new Event("input", { bubbles: true }));
+      passwordField.dispatchEvent(new Event("input", { bubbles: true }));
+
+      observer = new MutationObserver(() => {
+        const loginError = document.querySelector(ERROR_SELECTOR);
+        const loginStillVisible = document.querySelector(LOGIN_SELECTOR);
+
+        if (loginError) {
+          const text = (loginError.textContent || "").trim();
+
+          // Ignore Cockpit's initial JS warning
+          const isJsWarning = /enable\\s+javascript/i.test(text);
+          const isAuthError = /wrong user name|authentication failed|incorrect|invalid/i.test(text);
+
+          if (isAuthError) {
+            clearGlobalTimeout();
+            done("login-failed", { message: text });
+            return;
+          }
+
+          if (isJsWarning) {
+            return;
+          }
+        }
+
+        // Login form disappeared -> login succeeded
+        if (!loginStillVisible) {
+          setTimeout(() => {
+            clearGlobalTimeout();
+            simplifyLayoutForModule();
+            done("login-success");
+          }, 800);
+        }
+      });
+
+      observer.observe(document.body, { childList: true, subtree: true });
+
+      setTimeout(() => {
+        try {
+          loginButton.click();
+          loginForm.submit();
+        } catch (e) {
+          console.error("Error triggering login:", e);
+          clearGlobalTimeout();
+          done("submit-error");
+        }
+      }, 500);
+    });
+  })();
+`;
+
+
+  try {
+    const result = await webview.value.executeJavaScript(loginAndSimplifyScript);
+    console.debug("auto-login / simplify result:", result);
+    // result.status can be: "no-login", "login-success", "login-failed", "no-fields", "submit-error", "timeout"
+    // We always stop the overlay below; on login-failed the user will see the login screen.
+  } catch (error: any) {
+    console.error("Webview login error:", error);
+  } finally {
+    finishOverlay();
+    if (isDev.value && webview.value?.openDevTools) {
+      webview.value.openDevTools();
+    }
   }
+};
+
+const onWebViewFailed = (event: any) => {
+  console.error(
+    "Webview failed to load Cockpit:",
+    event.errorCode,
+    event.errorDescription,
+    event.validatedURL,
+  );
+
+  loadingWebview.value = false;
+  showWebView.value = false;
+  currentWizard.value = 'storage';
+
+  reportError(
+    new Error(
+      `Could not load Cockpit Web UI (${event.errorDescription || event.errorCode})`
+    )
+  );
 };
 
 const onWizardComplete = (server: Server) => {
   const realServer = unref(server);
-  const aliasStyle = realServer.serverInfo?.aliasStyle?.toLowerCase();
+  const aliasStyle = realServer.serverInfo?.aliasStyle;
 
-  applyThemeFromAliasStyle(aliasStyle);
+  applyThemeFromAlias(aliasStyle);
 
-  // Open Cockpit view
   loginRequest(realServer);
   currentWizard.value = null;
   showWebView.value = true;
 };
-
 
 
 const loginRequest = async (server: Server) => {

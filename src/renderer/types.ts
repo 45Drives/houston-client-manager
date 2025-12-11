@@ -18,7 +18,7 @@ export interface Server {
   fallbackAdded?: boolean;
 }
 
-export type DivisionType = 'default' | 'enterprise' | 'homelab' | 'professional';
+export type DivisionType = 'default' | 'enterprise' | 'homelab' | 'professional' | 'studio';
 
 export interface DiscoveryState {
   servers: Server[]

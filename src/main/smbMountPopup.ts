@@ -36,10 +36,10 @@ async function mountSambaClientWin(
 ): Promise<string> {
   return new Promise((resolve, reject) => {
     getAsset("static", "mount_smb.bat").then(batpath => {
-      // 1️⃣ Path to .cred file
+      //  Path to .cred file
       const credFile = `C:\\ProgramData\\houston-backups\\credentials\\${smb_share}.cred`;
       console.debug("[DEBUG - mountSMBWin] script path being used:", batpath);
-      // 2️⃣ Construct argument list
+      //  Construct argument list
       const args = [
         quoteShellSafe(smb_host),
         quoteShellSafe(smb_share),
@@ -50,7 +50,7 @@ async function mountSambaClientWin(
         args.push("popup");
       }
 
-      // 3️⃣ Full command
+      //  Full command
       const cmd = `cmd /C "${quoteShellSafe(batpath)} ${args.join(" ")}"`;
       console.debug("[DEBUG] mountSambaClientWin CMD:", cmd);
 
@@ -59,7 +59,7 @@ async function mountSambaClientWin(
         console.debug("[DEBUG] mount stderr:", stderr);
         console.debug("[DEBUG] mount error:", error);
 
-        handleExecOutput(error, stdout, stderr, smb_host, smb_share, mainWindow);
+        handleExecOutput(error, stdout, stderr, smb_host, smb_share, mainWindow, uiMode);
 
         if (error) {
           reject({ message: error.message, stdout, stderr });
@@ -76,14 +76,14 @@ function mountSambaClientScriptLin(smb_host: string, smb_share: string, smb_user
   return new Promise((resolve, reject) => {
     // installDepPopup();
     console.debug("[DEBUG - mountSMBLin] script path being used:", script);
-    exec(`bash "${script}" "${smb_host}" "${smb_share}" "${smb_user}" "${smb_pass}"`, (error, stdout, stderr) => {
-      handleExecOutput(error, stdout, stderr, smb_host, smb_share, mainWindow);
-
-      if (error) {
-        reject(stderr || error.message);
-      } else {
-        resolve(stdout.trim());
-      }
+    exec(`bash "${script}" "${smb_host}" "${smb_share}" "${smb_user}" "${smb_pass}"`,
+      (error, stdout, stderr) => {
+        handleExecOutput(error, stdout, stderr, smb_host, smb_share, mainWindow, "silent"); // or uiMode if you want
+        if (error) {
+          reject(stderr || error.message);
+        } else {
+          resolve(stdout.trim());
+        }
     });
   });
 }
@@ -99,14 +99,14 @@ function mountSambaClientScriptMac(
   return new Promise((resolve, reject) => {
     // installDepPopup();
     console.debug("[DEBUG - mountSMBMac] script path being used:", script);
-    exec(`bash "${script}" "${smb_host}" "${smb_share}" "${smb_user}" "${uiMode}"`, (error, stdout, stderr) => {
-      handleExecOutput(error, stdout, stderr, smb_host, smb_share, mainWindow);
-
-      if (error) {
-        reject(stderr || error.message);
-      } else {
-        resolve(stdout.trim());
-      }
+    exec(`bash "${script}" "${smb_host}" "${smb_share}" "${smb_user}" "${uiMode}"`,
+      (error, stdout, stderr) => {
+        handleExecOutput(error, stdout, stderr, smb_host, smb_share, mainWindow, uiMode);
+        if (error) {
+          reject(stderr || error.message);
+        } else {
+          resolve(stdout.trim());
+        }
     });
   });
 }
@@ -118,9 +118,23 @@ function handleExecOutput(
   stderr: string | any | undefined,
   smb_host: string,
   smb_share: string,
-  mainWindow: BrowserWindow
+  mainWindow: BrowserWindow,
+  uiMode: "popup" | "silent"
 ) {
   console.debug(`Stdout: ${stdout}`);
+
+  // In silent mode, just log and bail – no toasts
+  if (uiMode === "silent") {
+    if (error) {
+      console.error(`Error: ${error.message}`);
+    }
+    if (stderr) {
+      console.error(`Stderr: ${stderr}`);
+    }
+    return !error && !stderr;
+  }
+
+  // existing behaviour for "popup" mode:
   if (error) {
     console.error(`Error: ${error.message}`);
     mainWindow.webContents.send('notification', `Error: failed to connect to host=${smb_host}, share=${smb_share}.`);
@@ -136,18 +150,17 @@ function handleExecOutput(
     const result = extractJsonFromOutput(stdout.toString());
 
     if (result.message) {
-      mainWindow.webContents.send('notification', `S${result.message}.`);
+      // that 'S' prefix looks accidental; you might want to drop it
+      mainWindow.webContents.send('notification', `${result.message}.`);
       return false;
     }
 
-    console.debug('result:', result);
     if (result.error) {
-      mainWindow.webContents.send('notification', `Error: failed to connect to host=${smb_host}, share=${smb_share}.`)
+      mainWindow.webContents.send('notification', `Error: failed to connect to host=${smb_host}, share=${smb_share}.`);
     } else {
       mainWindow.webContents.send('notification', `Successfully connected to host=${smb_host}, share=${smb_share}.`);
     }
   } else {
-
     mainWindow.webContents.send('notification', `Error: failed to connect to host=${smb_host}, share=${smb_share}.`);
   }
   return true;

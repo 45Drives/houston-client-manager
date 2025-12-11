@@ -31,6 +31,8 @@
                         @click="setTheme('theme-homelab')">45Homelab</button>
                     <button class="btn theme-btn theme-btn-professional w-full mb-1"
                         @click="setTheme('theme-professional')">45Pro</button>
+                    <button class="btn theme-btn theme-btn-studio w-full mb-1"
+                        @click="setTheme('theme-studio')">45Studio</button>
                 </div>
 
                 <div class="mb-2 items-center">
@@ -55,6 +57,7 @@ import { IPCRouter } from '@45drives/houston-common-lib'
 import { Bars3Icon, MoonIcon, SunIcon } from '@heroicons/vue/24/outline'
 import { toggleDarkMode, useDarkModeState } from '@45drives/houston-common-ui'
 import { currentWizardInjectionKey } from '../keys/injection-keys';
+import { useThemeFromAlias } from '../composables/useThemeFromAlias'
 
 interface GlobalSetupWizardMenuProps {
     server?: boolean;
@@ -129,11 +132,7 @@ const darkMode = useDarkModeState()
 const darkModeLabel = computed(() => (darkMode.value ? "Light Mode" : "Dark Mode"))
 const darkModeButtonClass = computed(() => (darkMode.value ? "btn-sun" : "btn-moon"))
 
-function setTheme(theme: 'theme-default' | 'theme-homelab' | 'theme-professional') {
-    const root = document.documentElement
-    root.classList.remove('theme-default', 'theme-homelab', 'theme-professional')
-    root.classList.add(theme)
-}
+const { setTheme, currentTheme } = useThemeFromAlias()
 
 function showWizard(type: 'storage' | 'backup' | 'restore-backup') {
     if (currentWizard.value === type) {
@@ -233,6 +232,18 @@ function showWizard(type: 'storage' | 'backup' | 'restore-backup') {
 .theme-btn-professional:hover {
     background-color: #4F8F37;
     border-color: #4F8F37;
+}
+
+.theme-btn-studio {
+    background-color: #6557A5;
+    border: 1px solid #6557A5;
+    color: white;
+    transition: all 0.2s ease-in-out;
+}
+
+.theme-btn-studio:hover {
+    background-color: #504584;
+    border-color: #504584;
 }
 
 .theme-btn {

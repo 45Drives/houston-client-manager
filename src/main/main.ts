@@ -1,17 +1,107 @@
+import { createLogger, format } from 'winston';
+
+const SENSITIVE_KEYS = [
+  'password',
+  'passwd',
+  'pass',
+  'pwd',
+  'secret',
+  'token',
+  'authorization',
+  'auth',
+];
+
+function scrubString(str: string): string {
+  if (!str) return str;
+
+  let out = str;
+
+  // password=..., password: ...
+  out = out.replace(
+    /(password\s*[:=]\s*)([^,\s"'}]+)/gi,
+    '$1***REDACTED***'
+  );
+
+  // "password": "something"
+  out = out.replace(
+    /("password"\s*:\s*)"([^"]*)"/gi,
+    '$1***REDACTED***"'
+  );
+
+  // 'password': 'something'
+  out = out.replace(
+    /('password'\s*:\s*)'([^']*)'/gi,
+    "$1'***REDACTED***'"
+  );
+
+  // Basic token/secret style: token=abc123, secret=xyz
+  out = out.replace(
+    /(token|secret)\s*[:=]\s*([^,\s"'}]+)/gi,
+    '$1=***REDACTED***'
+  );
+
+  return out;
+}
+
+function scrubValue(value: any): any {
+  if (typeof value === 'string') {
+    return scrubString(value);
+  }
+
+  if (Array.isArray(value)) {
+    return value.map((v) => scrubValue(v));
+  }
+
+  if (value && typeof value === 'object') {
+    // Avoid mutating original objects that callers might still hold
+    const clone: any = Array.isArray(value) ? [] : { ...value };
+
+    for (const key of Object.keys(clone)) {
+      const lower = key.toLowerCase();
+      if (SENSITIVE_KEYS.includes(lower)) {
+        clone[key] = '***REDACTED***';
+      } else {
+        clone[key] = scrubValue(clone[key]);
+      }
+    }
+    return clone;
+  }
+
+  return value;
+}
+
+function sanitizeConsoleArgs(args: any[]): any[] {
+  return args.map((a) => scrubValue(a));
+}
+
+// Winston format that redacts and also drops the TLS warning
+const redactAndFilterFormat = format((info) => {
+  const redacted = scrubValue(info);
+
+  if (
+    typeof redacted.message === 'string' &&
+    redacted.message.includes(
+      'Warning: Setting the NODE_TLS_REJECT_UNAUTHORIZED'
+    )
+  ) {
+    return false;
+  }
+
+  return redacted;
+});
+
+
 function initLogging(resolvedLogDir: string) {
   const isDev = process.env.NODE_ENV === 'development';
+  const logLevel =
+    (process.env.LOG_LEVEL as 'error' | 'warn' | 'info' | 'debug') ||
+    'debug';
 
   jsonLogger = createLogger({
-    level: isDev ? 'debug' : 'info',
+    level: logLevel,
     format: format.combine(
       format.timestamp(),
-      format((info) => {
-        if (
-          typeof info.message === 'string' &&
-          info.message.includes('Warning: Setting the NODE_TLS_REJECT_UNAUTHORIZED')
-        ) return false;
-        return info;
-      })(),
+      redactAndFilterFormat(), // <- redacts ALL fields, drops TLS warning
       format.json()
     ),
     transports: [
@@ -21,8 +111,9 @@ function initLogging(resolvedLogDir: string) {
         datePattern: 'YYYY-MM-DD',
         maxFiles: '14d',
         zippedArchive: true,
-        level: isDev ? 'debug' : 'info',
-        format: format.combine(format.json()),
+        level: logLevel,
+        // transport can just do JSON; redaction already happened
+        format: format.json(),
       }),
     ],
   });
@@ -37,87 +128,102 @@ function initLogging(resolvedLogDir: string) {
 
   console.log = (...args: any[]) => {
     try {
-      const msg = util.format(...args);
+      const safeArgs = sanitizeConsoleArgs(args);
+      const msg = util.format(...safeArgs);
       jsonLogger.info({ message: msg });
-    } catch { }
-    if (isDev) originalConsole.log(...args);
+      if (isDev) originalConsole.log(...safeArgs);
+    } catch {
+      // last-ditch: don't blow up on logging errors
+      if (isDev) originalConsole.log(...args);
+    }
   };
 
   console.info = (...args: any[]) => {
     try {
-      const msg = util.format(...args);
+      const safeArgs = sanitizeConsoleArgs(args);
+      const msg = util.format(...safeArgs);
       jsonLogger.info({ message: msg });
-    } catch { }
-    if (isDev) originalConsole.info(...args);
+      if (isDev) originalConsole.info(...safeArgs);
+    } catch {
+      if (isDev) originalConsole.info(...args);
+    }
   };
 
   console.warn = (...args: any[]) => {
     try {
-      const msg = util.format(...args);
+      const safeArgs = sanitizeConsoleArgs(args);
+      const msg = util.format(...safeArgs);
       jsonLogger.warn({ message: msg });
-    } catch { }
-    if (isDev) originalConsole.warn(...args);
+      if (isDev) originalConsole.warn(...safeArgs);
+    } catch {
+      if (isDev) originalConsole.warn(...args);
+    }
   };
 
   console.error = (...args: any[]) => {
     try {
-      const msg = util.format(...args);
+      const safeArgs = sanitizeConsoleArgs(args);
+      const msg = util.format(...safeArgs);
       const meta: any = {};
 
+      // Preserve error details but let the Winston redactor scrub them
       if (args.length === 1 && args[0] instanceof Error) {
+        const err = args[0] as Error;
         meta.error = {
-          message: args[0].message,
-          stack: args[0].stack,
-          name: args[0].name,
+          message: scrubString(err.message),
+          stack: scrubString(err.stack || ''),
+          name: err.name,
         };
       }
 
-      jsonLogger.error(meta.error ? { message: msg, ...meta } : { message: msg });
-    } catch { }
-    if (isDev) originalConsole.error(...args);
+      jsonLogger.error(
+        meta.error ? { message: msg, ...meta } : { message: msg }
+      );
+
+      if (isDev) originalConsole.error(...safeArgs);
+    } catch {
+      if (isDev) originalConsole.error(...args);
+    }
   };
 
   console.debug = (...args: any[]) => {
     try {
-      const msg = util.format(...args);
+      const safeArgs = sanitizeConsoleArgs(args);
+      const msg = util.format(...safeArgs);
       jsonLogger.debug({ message: msg });
-    } catch { }
-    if (isDev) originalConsole.debug(...args);
+      if (isDev) originalConsole.debug(...safeArgs);
+    } catch {
+      if (isDev) originalConsole.debug(...args);
+    }
   };
 }
 
-
-import log from 'electron-log';
-log.transports.console.level = false;
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
-// process.env.NODE_ENV = 'development';
 
-  process.on('uncaughtException', (err: any) => {
-    jsonLogger.error({
-      event: 'uncaughtException',
-      error: {
-        name: err?.name,
-        message: err?.message,
-        stack: err?.stack,
-      },
-    });
+process.on('uncaughtException', (err: any) => {
+  jsonLogger.error({
+    event: 'uncaughtException',
+    error: {
+      name: err?.name,
+      message: err?.message,
+      stack: err?.stack,
+    },
   });
+});
 
-  process.on('unhandledRejection', (reason: any, promise) => {
-    jsonLogger.error({
-      event: 'unhandledRejection',
-      reason:
-        reason instanceof Error
-          ? { name: reason.name, message: reason.message, stack: reason.stack }
-          : reason,
-    });
+process.on('unhandledRejection', (reason: any, promise) => {
+  jsonLogger.error({
+    event: 'unhandledRejection',
+    reason:
+      reason instanceof Error
+        ? { name: reason.name, message: reason.message, stack: reason.stack }
+        : reason,
   });
-// }
+});
 
 import util from 'util';
-import { app, BrowserWindow, ipcMain, dialog, shell } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, shell, session } from 'electron';
 // import { autoUpdater } from 'electron-updater';
-import { createLogger, format } from 'winston';
 import DailyRotateFile from 'winston-daily-rotate-file';
 import path, { join } from 'path';
 import mdns from 'multicast-dns';
@@ -127,7 +233,7 @@ import net from 'net';
 import { Server } from './types';
 import mountSmbPopup from './smbMountPopup';
 import { IPCRouter } from '../../houston-common/houston-common-lib/lib/electronIPC/IPCRouter';
-import { getOS } from './utils';
+import { getOS, extractJsonFromOutput } from './utils';
 import { BackUpManager, BackUpManagerLin, BackUpManagerMac, BackUpManagerWin, BackUpSetupConfigurator } from './backup';
 import { BackUpSetupConfig, BackUpTask, server, unwrap } from '@45drives/houston-common-lib';
 import fetchBackups from './backup/FetchBackups';
@@ -637,49 +743,82 @@ function createWindow() {
           const task: BackUpTask = message.task;
 
           if (!backupManager || typeof (backupManager as any).runNow !== 'function') {
-           notify(`Error: Run Now not supported for this OS`);
+            notify(`Error: Run Now not supported for this OS`);
             return;
           }
 
-          try {
-            console.debug(" Attempting to run backup:", task.description);
-            const result = await (backupManager as any).runNow(task);
+          // Immediately tell the user it has started
+          notify(`Backup task "${task.description}" started.`);
+          IPCRouter.getInstance().send('renderer', 'action', JSON.stringify({
+            type: 'backupRunStarted',
+            taskUuid: task.uuid,
+          }));
 
-            if (result.stderr && result.stderr.trim() !== "") {
-              console.warn(" Backup completed with warnings/errors in stderr:", result.stderr);
-            }
+          // Run backup in the background (do not block this IPC handler)
+          (async () => {
+            try {
+              console.debug("Attempting to run backup:", task.description);
+              const result = await (backupManager as any).runNow(task);
 
-            console.debug(" runNow completed:", result);
-            jsonLogger.info({
-              event: 'runBackUpTaskNow_success',
-              taskUuid: task.uuid,
-              stderr: result.stderr || null,
-            });
-            notify(` Backup task "${task.description}" started successfully.`);
-
-            setTimeout(async () => {
-              try {
-                task.status = await checkBackupTaskStatus(task);
-                IPCRouter.getInstance().send('renderer', 'action', JSON.stringify({
-                  type: 'backUpStatusesUpdated',
-                  tasks: [task]
-                }));
-              } catch (err) {
-                console.warn(`Post-runNow status update failed for ${task.description}`, err);
+              if (result.stderr && result.stderr.trim() !== "") {
+                console.warn(
+                  "Backup completed with warnings/errors in stderr:",
+                  result.stderr
+                );
               }
-            }, 5000);
-          } catch (err: any) {
-            console.error(" runNow failed:", err);
-            jsonLogger.error({
-              event: 'runBackUpTaskNow_error',
-              taskUuid: task.uuid,
-              error: err.stderr?.trim() || err.message,
-            });
-            const errorMsg = err?.stderr || err?.message || JSON.stringify(err);
-            notify(` Backup task "${task.description}" failed to run: ${errorMsg}`);
-          }
 
-        } else if (message.type === 'addManualIP') {
+              console.debug("runNow completed:", result);
+              jsonLogger.info({
+                event: 'runBackUpTaskNow_success',
+                taskUuid: task.uuid,
+                stderr: result.stderr || null,
+              });
+
+              notify(`Backup task "${task.description}" completed successfully.`);
+              IPCRouter.getInstance().send('renderer', 'action', JSON.stringify({
+                type: 'backupRunFinished',
+                taskUuid: task.uuid,
+                success: true,
+              }));
+
+              // optional: refresh status once after completion
+              setTimeout(async () => {
+                try {
+                  task.status = await checkBackupTaskStatus(task);
+                  IPCRouter.getInstance().send('renderer', 'action', JSON.stringify({
+                    type: 'backUpStatusesUpdated',
+                    tasks: [task],
+                  }));
+                } catch (err) {
+                  console.warn(
+                    `Post-runNow status update failed for ${task.description}`,
+                    err
+                  );
+                }
+              }, 5000);
+            } catch (err: any) {
+              console.error("runNow failed:", err);
+              const errorMsg = err?.stderr || err?.message || JSON.stringify(err);
+
+              jsonLogger.error({
+                event: 'runBackUpTaskNow_error',
+                taskUuid: task.uuid,
+                error: errorMsg,
+              });
+
+              notify(`Backup task "${task.description}" failed: ${errorMsg}`);
+              IPCRouter.getInstance().send('renderer', 'action', JSON.stringify({
+                type: 'backupRunFinished',
+                taskUuid: task.uuid,
+                success: false,
+                error: errorMsg,
+              }));
+            }
+          })();
+
+          // important: do not await runNow here
+          return;
+        }  else if (message.type === 'addManualIP') {
           const { ip, manuallyAdded } = message as { ip: string; manuallyAdded?: boolean };
 
           // 1) Try Cockpit’s HTTPS on 9090, but DON’T let a throw skip the SSH probe
@@ -862,7 +1001,7 @@ function createWindow() {
 
         if (ipAnswer && ipAnswer.data) {
           const serverIp = ipAnswer.data as string;
-          const instance = answer1.name;    // e.g. "hl4-test.houstonserver_legacy._tcp.local"
+          const instance = answer1.name;    // e.g. "hl4-test._houstonserver_legacy._tcp.local"
 
           // Parse TXT into a map
           const txtRecord: Record<string, string> = {};
@@ -872,19 +1011,20 @@ function createWindow() {
               txtRecord[k] = v;
             });
           }
-          // console.debug("mDNS TXT record for", answer1.name, ":", txtRecord);
-          
-          // Derive a friendly name (strip off the ".houstonserver_legacy._tcp.local" suffix)
+
+          // Derive a friendly name (strip off the service suffix)
           const [bare] = instance.split('._');
           const displayName = `${bare}.local`;
 
-          // Build your Server exactly as before, using displayName
+          // Use TXT as the initial source of truth
+          const txtSetupComplete = txtRecord.setupComplete === 'true';
+
           const server: Server = {
             ip: serverIp,
             name: displayName,
-            status: 'unknown',  // overwritten below
+            status: txtSetupComplete ? 'complete' : 'not complete',  // default from TXT
             lastSeen: Date.now(),
-            setupComplete: txtRecord.setupComplete === 'true',
+            setupComplete: txtSetupComplete,
             serverName: txtRecord.serverName || displayName,
             shareName: txtRecord.shareName,
             setupTime: txtRecord.setupTime,
@@ -898,24 +1038,45 @@ function createWindow() {
             manuallyAdded: false,
             fallbackAdded: false,
           };
-          // console.debug("Upserting Server:", server);
 
+          // Optionally refine using HTTP status if reachable
           if (!server.manuallyAdded && !server.fallbackAdded) {
             try {
               const fetchResponse = await fetch(`http://${server.ip}:9099/setup-status`);
               if (fetchResponse.ok) {
                 const setupStatusResponse = await fetchResponse.json();
-                server.status = setupStatusResponse.status ?? 'unknown';
+
+                // Prefer explicit boolean if provided
+                if (typeof setupStatusResponse.setupComplete === 'boolean') {
+                  server.setupComplete = setupStatusResponse.setupComplete;
+                  server.status = setupStatusResponse.setupComplete ? 'complete' : 'not complete';
+                } else if (typeof setupStatusResponse.status === 'string') {
+                  server.status = setupStatusResponse.status;
+                  if (server.status === 'complete') {
+                    server.setupComplete = true;
+                  }
+                }
+
+                // Optionally refresh metadata from HTTP if present
+                server.shareName = setupStatusResponse.shareName || server.shareName;
+                server.serverName = setupStatusResponse.serverName || server.serverName;
+                server.setupTime = setupStatusResponse.setupTime || server.setupTime;
+                server.serverInfo = {
+                  moboMake: setupStatusResponse.moboMake || server.serverInfo!.moboMake,
+                  moboModel: setupStatusResponse.moboModel || server.serverInfo!.moboModel,
+                  serverModel: setupStatusResponse.serverModel || server.serverInfo!.serverModel,
+                  aliasStyle: setupStatusResponse.aliasStyle || server.serverInfo!.aliasStyle,
+                  chassisSize: setupStatusResponse.chassisSize || server.serverInfo!.chassisSize,
+                };
               } else {
                 console.warn(`HTTP error! server: ${server.name} status: ${fetchResponse.status}`);
               }
             } catch (error) {
-              // console.error('Server Search -> Fetch error:', error);
+              console.warn(`setup-status fetch failed for ${server.ip}:9099; using TXT only`, error);
             }
           }
 
           // upsert into discoveredServers
-          // const existing = discoveredServers.find(s => s.ip === server.ip && s.name === server.name);
           const existing = discoveredServers.find(s => s.ip === server.ip);
 
           if (!existing) {
@@ -943,7 +1104,6 @@ function createWindow() {
     mainWindow.webContents.send('client-ip', getLocalIP());
 
   }
-// );
 
   const mdnsInterval = setInterval(() => {
     mDNSClient.query({
@@ -981,22 +1141,47 @@ function createWindow() {
         }
       }
     } catch (error) {
-      // console.error(` [pollActions] fetch failed for ${server.ip}`, error);
+      console.error(` [pollActions] fetch failed for ${server.ip}`, error);
     }
   }
 
   IPCRouter.getInstance().addEventListener('mountSambaClient', async (data) => {
-    let result
-    try {
-     result = await mountSmbPopup(data.smb_host, data.smb_share, data.smb_user, data.smb_pass, mainWindow, "silent");
+    let payload: any;
 
+    try {
+      const raw = await mountSmbPopup(
+        data.smb_host,
+        data.smb_share,
+        data.smb_user,
+        data.smb_pass,
+        mainWindow,
+        "silent"
+      );
+
+      // raw is typically a string with JSON somewhere inside
+      let parsed: any | null = null;
+      try {
+        parsed = extractJsonFromOutput(raw);
+      } catch {
+        parsed = null;
+      }
+
+      if (parsed && parsed.error) {
+        payload = { success: false, error: parsed.error };
+      } else {
+        payload = { success: true, mount: parsed ?? null };
+      }
     } catch (e: any) {
-      result = { error: e && e.message ? e.message : "Failed to mount" };
+      payload = {
+        success: false,
+        error: e && e.message ? e.message : "Failed to mount"
+      };
     }
+
     IPCRouter.getInstance().send("renderer", "action", JSON.stringify({
       action: "mountSmbResult",
-      result: result
-    }))
+      result: payload
+    }));
   });
 
   const pollActionInterval = setInterval(async () => {
@@ -1026,6 +1211,7 @@ app.on('web-contents-created', (_event, contents) => {
 });
 
 
+
 app.whenReady().then(() => {
   const resolvedLogDir = checkLogDir();
   initLogging(resolvedLogDir);
@@ -1037,91 +1223,6 @@ app.whenReady().then(() => {
 
   console.debug('userData is here:', app.getPath('userData'))
   console.debug('log dir:', resolvedLogDir);
-/*   log.transports.file.resolvePathFn = () =>
-    path.join(resolvedLogDir, 'main.log');
-  log.info(" Logging initialized.");
-  log.info("Log file path:", log.transports.file.getFile().path);
-
-  // console.debug('userData is here:', app.getPath('userData'))
-  // console.debug('log dir:', resolvedLogDir);
-
-  const { combine, timestamp, json } = format;
-
-
-  // only let through events (which all have an "event" field)
-  const preserveEventsOrErrors = format((info) => {
-    // keep if it's an error or warning,
-    // or if we've attached an "event" property
-    if (['error', 'warn'].includes(info.level) || info.event) {
-      return info;
-    }
-    return false;
-  });
-
-  jsonLogger = createLogger({
-    level: 'info',
-    format: format.combine(
-      format.timestamp(),
-      // <-- this filter will DROP any record whose message includes your TLS warning
-      format((info) => {
-        if (
-          typeof info.message === 'string' &&
-          info.message.includes(
-            'Warning: Setting the NODE_TLS_REJECT_UNAUTHORIZED'
-          )
-        ) {
-          return false;
-        }
-        return info;
-      })(),
-      format.json()
-    ),
-    transports: [
-      new DailyRotateFile({
-        dirname: resolvedLogDir,
-        filename: '45drives-setup-wizard-%DATE%.json',
-        datePattern: 'YYYY-MM-DD',
-        maxFiles: '14d',
-        zippedArchive: true,
-      })
-    ]
-  });
-
-
-  // const origConsole = {
-  //   log: console.debug,
-  //   warn: console.warn,
-  //   error: console.error,
-  //   debug: console.debug,
-  // };
-
-  // Monkey‐patch so calls go to both electron-log + jsonLogger
-  console.debug = (...args: any[]) => {
-    log.info(...args);
-    jsonLogger.info({ message: args.map(String).join(' ') });
-  };
-  console.warn = (...args: any[]) => {
-    log.warn(...args);
-    jsonLogger.warn({ message: args.map(String).join(' ') });
-  };
-  console.error = (...args: any[]) => {
-    log.error(...args);
-    jsonLogger.error({ message: args.map(String).join(' ') });
-  };
-  console.debug = (...args: any[]) => {
-    log.debug(...args);
-    jsonLogger.debug({ message: args.map(String).join(' ') });
-  };
-
-  process.on('uncaughtException', (err) => {
-    log.error('Uncaught Exception:', err);
-    jsonLogger.error({ event: 'uncaughtException', error: err.stack || err.message });
-  });
-
-  process.on('unhandledRejection', (reason, promise) => {
-    log.error('Unhandled Rejection at:', promise, 'reason:', reason);
-    jsonLogger.error({ event: 'unhandledRejection', reason, promise: String(promise) });
-  }); */
 
   // autoUpdater.logger = log;
   // (autoUpdater.logger as typeof log).transports.file.level = 'info';
@@ -1169,6 +1270,39 @@ app.whenReady().then(() => {
 
   // // Automatically check for updates and notify user if one is downloaded
   // autoUpdater.checkForUpdatesAndNotify();
+
+
+  // Allow self-signed Cockpit/Houston certs on port 9090 only
+  const cockpitCertVerifier = (request: any, callback: (result: number) => void) => {
+    const hostname = request.hostname as string;
+    // port & errorCode are not in the TS type, so cast
+    const port = (request as any).port as number | undefined;
+    const errorCode = (request as any).errorCode as number | undefined;
+
+    const isPrivateIp =
+      /^192\.168\./.test(hostname) ||
+      /^10\./.test(hostname) ||
+      /^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(hostname);
+
+    const isCockpit = port === 9090 && isPrivateIp;
+
+    if (isCockpit) {
+      // most self-signed / unknown-CA errors are -202, but when Chromium
+      // calls us for the first time errorCode can be undefined
+      if (errorCode === -202 || errorCode === undefined) {
+        return callback(0); // accept the cert
+      }
+    }
+
+    // Let Chromium do its default checks for everything else
+    callback(-3);
+  };
+
+  // IMPORTANT: apply to BOTH the default session and your webview partition
+  session.defaultSession.setCertificateVerifyProc(cockpitCertVerifier);
+  session
+    .fromPartition('persist:authSession')
+    .setCertificateVerifyProc(cockpitCertVerifier);
 
   ipcMain.handle("is-dev", async () => process.env.NODE_ENV === 'development');
 
