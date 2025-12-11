@@ -642,56 +642,49 @@ const onWebViewLoaded = async () => {
         }
       }
 
+      function autoElevate(password) {
+        const obs = new MutationObserver(() => {
+          const modal = document.querySelector('div.pf-c-modal-box[id^="pf-modal-part"]');
+          if (!modal) return;
+
+          const passInput = modal.querySelector('input[type="password"]');
+          const authButton = Array.from(modal.querySelectorAll('button'))
+            .find(btn => /authenticate/i.test((btn.textContent || "").trim()));
+
+          if (!passInput || !authButton) return;
+
+          passInput.value = password;
+          passInput.dispatchEvent(new Event("input", { bubbles: true }));
+          passInput.dispatchEvent(new Event("change", { bubbles: true }));
+
+          setTimeout(() => {
+            authButton.click();
+          }, 50);
+
+          obs.disconnect();
+          clearTimeout(timeoutId);
+        });
+
+        obs.observe(document.body, { childList: true, subtree: true });
+
+        const timeoutId = setTimeout(() => {
+          obs.disconnect();
+        }, 15000);
+      }
+
       function requestAdmin(user, pass) {
         if (!window.cockpit) {
           console.warn("cockpit.js not loaded yet, skipping admin request");
           return;
         }
 
-        // 1. Ask Cockpit to require admin, which opens the dialog
+        // Start watching for the modal, then trigger admin request
+        autoElevate(pass);
+
         cockpit.spawn(["id", "-u"], { superuser: "require" })
           .done(out => console.log("Admin access obtained:", out.trim()))
           .fail(err => console.error("Failed to obtain admin:", err));
       }
-
-      // function autoAdmin(user, pass) {
-      //   if (!window.cockpit) return;
-
-      //   const obs = new MutationObserver(() => {
-      //     // The exact selectors may differ by Cockpit version; may need to tweak
-      //     const dialog = document.querySelector('.pf-c-modal-box'); // admin modal is a PatternFly modal
-      //     if (!dialog) return;
-
-      //     const title = (dialog.querySelector('h1, h2, .pf-c-modal-box__title')?.textContent || "").toLowerCase();
-      //     if (!title.includes("administrative access") && !title.includes("limited access")) return;
-
-      //     const userField = dialog.querySelector('input[type="text"], input[autocomplete="username"]');
-      //     const passField = dialog.querySelector('input[type="password"]');
-      //     const okButton  = dialog.querySelector('button[type="submit"], button.pf-m-primary');
-
-      //     if (!passField || !okButton) return;
-
-      //     if (userField) {
-      //       userField.value = user;
-      //       userField.dispatchEvent(new Event("input", { bubbles: true }));
-      //     }
-      //     passField.value = pass;
-      //     passField.dispatchEvent(new Event("input", { bubbles: true }));
-
-      //     okButton.click();
-      //     obs.disconnect();
-      //   });
-
-      //   obs.observe(document.body, { childList: true, subtree: true });
-
-      //   // This will open the "Switch to administrative access" dialog
-      //   cockpit.spawn(["id", "-u"], { superuser: "require" })
-      //     .fail(err => {
-      //       console.error("superuser spawn failed:", err);
-      //       obs.disconnect();
-      //     });
-      // }
-
 
       function done(status, extra) {
         if (observer) {
@@ -716,6 +709,7 @@ const onWebViewLoaded = async () => {
         setTimeout(() => {
           clearGlobalTimeout();
           simplifyLayoutForModule();
+          requestAdmin("${user}", "${pass}");
           done("no-login");
         }, 500);
         return;
@@ -745,7 +739,6 @@ const onWebViewLoaded = async () => {
         if (loginError) {
           const text = (loginError.textContent || "").trim();
 
-          // Ignore Cockpit's initial JS warning
           const isJsWarning = /enable\\s+javascript/i.test(text);
           const isAuthError = /wrong user name|authentication failed|incorrect|invalid/i.test(text);
 
@@ -767,7 +760,6 @@ const onWebViewLoaded = async () => {
             simplifyLayoutForModule();
             requestAdmin("${user}", "${pass}");
             done("login-success");
-            // autoAdmin("${user}", "${pass}")
           }, 800);
         }
       });
@@ -787,6 +779,7 @@ const onWebViewLoaded = async () => {
     });
   })();
 `;
+
 
 
   try {
