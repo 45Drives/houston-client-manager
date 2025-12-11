@@ -642,6 +642,57 @@ const onWebViewLoaded = async () => {
         }
       }
 
+      function requestAdmin(user, pass) {
+        if (!window.cockpit) {
+          console.warn("cockpit.js not loaded yet, skipping admin request");
+          return;
+        }
+
+        // 1. Ask Cockpit to require admin, which opens the dialog
+        cockpit.spawn(["id", "-u"], { superuser: "require" })
+          .done(out => console.log("Admin access obtained:", out.trim()))
+          .fail(err => console.error("Failed to obtain admin:", err));
+      }
+
+      // function autoAdmin(user, pass) {
+      //   if (!window.cockpit) return;
+
+      //   const obs = new MutationObserver(() => {
+      //     // The exact selectors may differ by Cockpit version; may need to tweak
+      //     const dialog = document.querySelector('.pf-c-modal-box'); // admin modal is a PatternFly modal
+      //     if (!dialog) return;
+
+      //     const title = (dialog.querySelector('h1, h2, .pf-c-modal-box__title')?.textContent || "").toLowerCase();
+      //     if (!title.includes("administrative access") && !title.includes("limited access")) return;
+
+      //     const userField = dialog.querySelector('input[type="text"], input[autocomplete="username"]');
+      //     const passField = dialog.querySelector('input[type="password"]');
+      //     const okButton  = dialog.querySelector('button[type="submit"], button.pf-m-primary');
+
+      //     if (!passField || !okButton) return;
+
+      //     if (userField) {
+      //       userField.value = user;
+      //       userField.dispatchEvent(new Event("input", { bubbles: true }));
+      //     }
+      //     passField.value = pass;
+      //     passField.dispatchEvent(new Event("input", { bubbles: true }));
+
+      //     okButton.click();
+      //     obs.disconnect();
+      //   });
+
+      //   obs.observe(document.body, { childList: true, subtree: true });
+
+      //   // This will open the "Switch to administrative access" dialog
+      //   cockpit.spawn(["id", "-u"], { superuser: "require" })
+      //     .fail(err => {
+      //       console.error("superuser spawn failed:", err);
+      //       obs.disconnect();
+      //     });
+      // }
+
+
       function done(status, extra) {
         if (observer) {
           observer.disconnect();
@@ -714,7 +765,9 @@ const onWebViewLoaded = async () => {
           setTimeout(() => {
             clearGlobalTimeout();
             simplifyLayoutForModule();
+            requestAdmin("${user}", "${pass}");
             done("login-success");
+            // autoAdmin("${user}", "${pass}")
           }, 800);
         }
       });

@@ -452,25 +452,6 @@ const handleServerSelected = (server: Server | null) => {
   }
 };
 
-// function needsInstallForServer(
-//   srv: Server & { manuallyAdded?: boolean; fallbackAdded?: boolean },
-// ): boolean {
-//   // Always run install path for manual / fallback servers
-//   if (srv.manuallyAdded || srv.fallbackAdded) return true;
-
-//   // For mDNS-discovered servers, you can gate on status:
-//   //   - if setup is already complete, don't bother
-//   //   - if not complete (or unknown), run the install path
-//   return srv.status !== 'complete';
-// }
-function needsInstallForServer(
-  srv: Server & { manuallyAdded?: boolean; fallbackAdded?: boolean },
-): boolean {
-  // Only force the install/SSH path for manual / fallback servers
-  return !!(srv.manuallyAdded || srv.fallbackAdded);
-}
-
-
 useEnterToAdvance(
   () => {
     if (selectedServer.value !== null) {
