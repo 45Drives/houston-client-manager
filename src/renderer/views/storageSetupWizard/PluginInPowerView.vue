@@ -3,7 +3,8 @@
     <template #header>
       <div class="relative flex items-center justify-center h-18  w-full">
         <div class="absolute left-0 p-1 px-4 rounded-lg">
-          <DynamicBrandingLogo :division="division" />
+         <DynamicBrandingLogo :division="division" :height="(division === 'studio' ? 16 : 12)"/>
+
         </div>
         <p class="text-3xl font-semibold text-center">
           Plugin Power

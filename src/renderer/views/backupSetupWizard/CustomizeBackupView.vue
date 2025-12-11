@@ -152,9 +152,9 @@ const discoveryState = inject<DiscoveryState>(discoveryStateInjectionKey)!
 
 const servers = computed(() =>
 	discoveryState.servers.filter(server =>
-		server.status === 'complete'
+		server.setupComplete || server.status === 'complete'
 	)
-)
+);
 
 const selectedTaskSchedule = ref<any>();
 

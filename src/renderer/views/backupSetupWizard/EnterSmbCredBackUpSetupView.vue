@@ -3,7 +3,8 @@
     <template #header>
       <div class="relative flex items-center justify-center h-24">
         <div class="absolute left-0  p-1 px-4 rounded-lg">
-          <DynamicBrandingLogo :division="division" />
+         <DynamicBrandingLogo :division="division" :height="(division === 'studio' ? 16 : 12)"/>
+
         </div>
         <p class="text-3xl font-semibold text-center">
           Server Credentials
@@ -84,22 +85,8 @@ const isButtonDisabled = computed(() => !backUpSetupConfig?.username || !backUpS
 // Method to handle the "Open" button action
 const proceedToNextStep = () => {
   if (backUpSetupConfig.username && backUpSetupConfig.password) {
-    // Trigger your backend logic for opening the server (you will handle the action)
-    // Pass username, password, and backupTask.target (URL) to your backend code
-    // For example: openBackupServer(username.value, password.value, props.backupTask.target);
-    // console.debug('Attempting to open server with:', {
-    //   username: backUpSetupConfig.username,
-    //   password: backUpSetupConfig.password,
-    //   target: backUpSetupConfig.backUpTasks[0].target,
-    // });
-
-    // console.debug("Target:", backUpSetupConfig.backUpTasks[0].target);
-
     let [host, share] = backUpSetupConfig.backUpTasks[0].target.split(":");
     share = share.split("/")[0]
-
-    // console.debug("Host:", host);  // Output: "hl4-test.local"
-    // console.debug("Share:", share); // Output: "backups"
 
     nextStep();
   }

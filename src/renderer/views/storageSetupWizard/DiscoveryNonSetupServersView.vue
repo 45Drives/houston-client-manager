@@ -3,7 +3,8 @@
     <template #header>
       <div class="relative flex items-center justify-center h-18  w-full">
         <div class="absolute left-0 p-1 px-4 rounded-lg">
-          <DynamicBrandingLogo :division="division" />
+         <DynamicBrandingLogo :division="division" :height="(division === 'studio' ? 16 : 12)"/>
+
         </div>
         <p class="text-3xl font-semibold text-center">
           Discovered 45Drives Storage Server
@@ -29,7 +30,7 @@
 
       <div class="overflow-hidden w-full -mt-2">
         <div class="max-h-[50vh] overflow-y-auto">
-          <HoustonServerListView class="w-1/3 px-5 justify-center text-xl" :filterOutStorageSetupComplete="false" :filterOutNonSetupServers="false"
+          <HoustonServerListView class="w-1/3 px-5 justify-center text-xl" :filterMode="'all'"
             :key="serverListKey" :selectedServer="selectedServer" @serverSelected="handleServerSelected" />
         </div>
       </div>
@@ -159,6 +160,7 @@ import GlobalSetupWizardMenu from '../../components/GlobalSetupWizardMenu.vue';
 import { divisionCodeInjectionKey } from '../../keys/injection-keys';
 import { inject } from 'vue';
 import { CommanderToolTip } from '../../components/commander';
+import { useServerCredentials } from "../../composables/useServerCredentials";
 
 const division = inject(divisionCodeInjectionKey);
 const showPassword = ref(false);
@@ -170,6 +172,7 @@ const isInstalling = ref(false);
 const isManualOpen = ref(false);
 
 const { completeCurrentStep, unCompleteCurrentStep, prevStep, reset } = useWizardSteps("setup");
+const { credsByIp, setCredentials, getCredentials } = useServerCredentials();
 
 const selectedServer = ref<(Server & {
   username?: string;
@@ -182,7 +185,7 @@ const manualIp = ref('');
 const manuallyAddedIp = ref('');
 const manualUsername = ref('root');
 const manualPassword = ref('');
-const manualCredentials = ref<Record<string, { username: string; password: string }>>({});
+const manualCredentials = credsByIp; 
 
 const canAddServer = computed(() => {
   const ip = manualIp.value.trim();
@@ -207,12 +210,13 @@ const credsRequired = computed(() => {
   const srv = selectedServer.value;
   if (!srv) return false;
 
-  // Only show highlight if it's a fallback server OR a manually added one without saved creds
-  const needsCreds = srv.fallbackAdded || srv.manuallyAdded;
-  const hasCachedCreds = manualCredentials.value[srv.ip];
+  // Only require credentials if this is a manual or fallback server
+  if (!(srv.manuallyAdded || srv.fallbackAdded)) return false;
 
-  return needsCreds && !hasCachedCreds;
+  const hasCachedCreds = manualCredentials.value[srv.ip];
+  return !hasCachedCreds;
 });
+
 
 watch(selectedServer, (newVal) => {
   if (newVal?.fallbackAdded) {
@@ -221,15 +225,16 @@ watch(selectedServer, (newVal) => {
 });
 
 function saveServerCredentials(ip: string, username: string, password: string) {
-  manualCredentials.value[ip] = { username, password };
-  // mark it so that proceedToNextStep() knows it needs an install
+  setCredentials(ip, username, password);
+
   if (selectedServer.value && selectedServer.value.ip === ip) {
     selectedServer.value.fallbackAdded = selectedServer.value.fallbackAdded ?? false;
     selectedServer.value.manuallyAdded = !selectedServer.value.fallbackAdded ? true : false;
   }
-  manualIp.value = '';
-  manualUsername.value = '';
-  manualPassword.value = '';
+
+  manualIp.value = "";
+  manualUsername.value = "";
+  manualPassword.value = "";
 }
 
 const serverListKey = ref(0);
@@ -364,26 +369,45 @@ const goBackStep = () => prevStep();
 
 const proceedToNextStep = async () => {
   const srv = selectedServer.value!;
-  // if this host needs installing, make sure we have creds
-  if (srv.manuallyAdded || srv.fallbackAdded) {
-    if (!manualCredentials.value[srv.ip] && (!manualPassword.value || !manualUsername.value)) {
-      reportError(new Error("For IP-detected servers, username and password are required."));
-      return;
-    } else if (!manualCredentials.value[srv.ip] && (manualPassword.value || manualUsername.value)) {
-      reportError(new Error("Click Use Credentials to associate them with the selected server IP."));
+  const isManualish = !!srv.manuallyAdded || !!srv.fallbackAdded;
+
+  // Always let backend decide if deps are missing
+  let cached = manualCredentials.value[srv.ip];
+
+  if (!cached && manualUsername.value.trim() && manualPassword.value.trim()) {
+    saveServerCredentials(
+      srv.ip,
+      manualUsername.value.trim(),
+      manualPassword.value.trim(),
+    );
+    cached = manualCredentials.value[srv.ip];
+  }
+
+  if (!cached && isManualish) {
+    // For manually added/fallback servers, we insist on creds
+    reportError(new Error("Username and password are required to install modules on this server."));
+    return;
+  }
+
+  if (cached) {
+    const { username, password } = cached;
+    const result = await installModule(srv.ip, username, password);
+    console.debug("installModule finished:", result);
+
+    if (!result.success) {
+      // install/dependency check failed → stay on this step
       return;
     }
-  } 
-
-  if (srv.manuallyAdded || srv.fallbackAdded) {
-    const { username, password } = manualCredentials.value[srv.ip];
-    const result = await installModule(srv.ip, username, password);
+  } else {
+    // mDNS server, no cached creds:
+    const result = await installModule(srv.ip, "root", "45Dr!ves");
     if (!result.success) return;
   }
 
   unCompleteCurrentStep();
   completeCurrentStep(true, srv as Record<string, any>);
 };
+
 
 const onRestartSetup = () => reset();
 
@@ -427,6 +451,25 @@ const handleServerSelected = (server: Server | null) => {
     manualPassword.value = '';
   }
 };
+
+// function needsInstallForServer(
+//   srv: Server & { manuallyAdded?: boolean; fallbackAdded?: boolean },
+// ): boolean {
+//   // Always run install path for manual / fallback servers
+//   if (srv.manuallyAdded || srv.fallbackAdded) return true;
+
+//   // For mDNS-discovered servers, you can gate on status:
+//   //   - if setup is already complete, don't bother
+//   //   - if not complete (or unknown), run the install path
+//   return srv.status !== 'complete';
+// }
+function needsInstallForServer(
+  srv: Server & { manuallyAdded?: boolean; fallbackAdded?: boolean },
+): boolean {
+  // Only force the install/SSH path for manual / fallback servers
+  return !!(srv.manuallyAdded || srv.fallbackAdded);
+}
+
 
 useEnterToAdvance(
   () => {
