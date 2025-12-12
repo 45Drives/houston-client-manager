@@ -105,10 +105,9 @@
 
 <script setup lang="ts">
 import { inject, ref } from 'vue';
-import CardContainer from '../../components/CardContainer.vue';
 import GlobalSetupWizardMenu from '../../components/GlobalSetupWizardMenu.vue';
 import { CommanderToolTip } from '../../components/commander';
-import { useWizardSteps, DynamicBrandingLogo } from '@45drives/houston-common-ui';
+import { CardContainer, useWizardSteps, DynamicBrandingLogo } from '@45drives/houston-common-ui';
 import { Server } from '../../types';
 import MessageDialog from '../../components/MessageDialog.vue';
 import { divisionCodeInjectionKey } from '../../keys/injection-keys';

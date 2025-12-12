@@ -7,7 +7,7 @@
 set -eo pipefail
 
 # ----- stdout/stderr go to both console and log, line-buffered -----
-LOG=/var/log/setup-super-simple-$(date +%F_%H%M).log
+LOG=/var/log/45drives/bootstrap-super-simple-$(date +%F_%H%M).log
 exec > >(stdbuf -oL -eL tee -a "$LOG") 2>&1
 
 echo "[BOOTSTRAP_STARTED] $(date)"
