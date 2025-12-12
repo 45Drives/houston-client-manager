@@ -24,107 +24,119 @@
         setup first.
       </p>
       <p class="w-9/12 text-xl mt-2">
-        When you are finished setting the selected server up, simply re-run this program to start setting
+        When you are finished setting the selected server up, click "Setup More Servers" to restart this wizard and setup
         up the remaining server(s).
       </p>
 
-      <div class="overflow-hidden w-full -mt-2">
-        <div class="max-h-[50vh] overflow-y-auto">
-          <HoustonServerListView class="w-1/3 px-5 justify-center text-xl" :filterMode="'all'"
-            :key="serverListKey" :selectedServer="selectedServer" @serverSelected="handleServerSelected" />
-        </div>
-      </div>
-      <br />
-      <p class="w-9/12 text-xl text-center">
-        If your storage server is not appearing in the list above, please return to the Hardware Setup and ensure
-        all steps were completed correctly.
-        <br />
-        <a href="#" @click.prevent="onRestartSetup" class="text-blue-600 hover:underline">Start Over</a>
-        <br>
-        <b>Otherwise you can manually add a server by clicking below.</b>
-      </p>
-      <p class="text-center text-xl mt-1">
-        Once you have one of the boxes checked, click <b>NEXT</b>.
-      </p>
+      <div class="grid grid-cols-2 gap-6 text-xl w-9/12 mx-auto mt-6">
+        <!-- LEFT: server selection + manual -->
+        <CardContainer class="col-span-1 bg-accent border-default rounded-md text-left shadow-sm">
+          <div class="flex flex-col gap-3">
+            <span class="font-semibold text-2xl text-center">
+              Select or Add a Server
+            </span>
 
-      <details class="w-9/12 mt-4 bg-well rounded-md p-2 shadow-sm group" v-bind:open="isManualOpen">
-        <summary
-          class="text-xl text-left bg-default rounded-md p-1 font-semibold cursor-pointer outline-none focus:ring-2 focus:ring-yellow-500">
-          Add a Server Manually
-        </summary>
+            <p class="text-base mb-0.5 -mt-1">
+              Select a discovered 45Drives server, or enter its IP address manually if it does not appear in the list.
+            </p>
 
-        <div class="mt-4">
-          <p class="w-full text-xl mb-1">
-            If you have an existing server you wish to connect to and re-initialize, enter it here along
-            with <b>root</b> login password.
-          </p>
-          <p class="w-full text-md italic text-center">
-            Your credentials will only be used once to copy a secure SSH key and install required tools on the server if
-            needed. This may take a few minutes or several (depending on what is already installed).
-            <br />
-            This will setup <b>ZFS</b>, <b>Samba</b>, <b>Cockpit</b>, and the <b>45Drives Setup Module</b>.
-          </p>
-
-          <div class="w-full flex flex-row items-center justify-center gap-6 mt-4">
-            <div class="w-64">
-              <input v-model="manualIp" type="text" placeholder="192.168.1.123" tabindex="1"
-                class="input-textlike border px-4 py-1 rounded text-xl w-full" />
+            <div class="max-h-[32vh] overflow-y-auto -mt-2 -pt-2 pb-2 bg-well rounded-md">
+              <HoustonServerListView class="w-full justify-center text-xl" :filterMode="'all'" :key="serverListKey"
+                :selectedServer="selectedServer" @serverSelected="handleServerSelected" />
             </div>
 
-            <div class="w-64">
+            <div class="mt-2">
+              <span class="block text-base mb-1 -mt-1 font-semibold">Add a Server Manually:</span>
+
+              <div class="flex flex-row md:flex-row md:items-center gap-2 mt-2">
+                <input v-model="manualIp" type="text" placeholder="192.168.1.123" tabindex="1"
+                  class="input-textlike border px-4 py-1 rounded text-xl w-full md:w-64" />
+                <div class="button-group-row">
+                  <button @click="addManualIp"
+                    class="btn btn-secondary px-6 py-1 text-xl whitespace-nowrap w-full md:w-auto">
+                    Add IP
+                  </button>
+                  <button @click="onRescanServers"
+                    class="btn btn-secondary px-6 py-1 text-xl whitespace-nowrap w-full md:w-auto">
+                    Rescan Servers
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </CardContainer>
+
+        <!-- RIGHT: credentials -->
+        <CardContainer class="col-span-1 bg-secondary border-default rounded-md text-left shadow-sm">
+          <div class="flex flex-col gap-3">
+            <span class="font-semibold text-2xl text-center mb-2">
+              Enter Server Credentials
+            </span>
+
+            <p class="text-base">
+              Use a <b>root</b> or <b>sudo-capable</b> account. These credentials are used once to install required
+              tools
+              and upload a secure SSH key to the server.
+            </p>
+
+            <div class="flex flex-col">
+              <span>Username:</span>
               <input v-model="manualUsername" type="text" placeholder="root" tabindex="2" :class="[
                 'input-textlike px-4 py-1 rounded text-xl w-full border',
                 credsRequired && 'focus:ring-2 focus:ring-yellow-400 outline outline-2 outline-yellow-400'
               ]" />
             </div>
 
-            <div class="w-64 relative">
-              <input v-model="manualPassword" v-enter-next :type="showPassword ? 'text' : 'password'" id="password"
-                tabindex="3" :class="[
-                  'input-textlike px-4 py-1 rounded text-xl w-full border',
-                  credsRequired && 'focus:ring-2 focus:ring-yellow-400 outline outline-2 outline-yellow-400'
-                ]" placeholder="••••••••" />
-              <button type="button" @click="togglePassword"
-                class="absolute right-3 top-1/2 transform -translate-y-1/2 text-muted">
-                <EyeIcon v-if="!showPassword" class="w-5 h-5" />
-                <EyeSlashIcon v-if="showPassword" class="w-5 h-5" />
-              </button>
+            <div class="flex flex-col mt-1">
+              <span>Password:</span>
+              <div class="w-full relative">
+                <input v-model="manualPassword" v-enter-next :type="showPassword ? 'text' : 'password'" id="password"
+                  tabindex="3" :class="[
+                    'input-textlike px-4 py-1 rounded text-xl w-full border',
+                    credsRequired && 'focus:ring-2 focus:ring-yellow-400 outline outline-2 outline-yellow-400'
+                  ]" placeholder="••••••••" />
+                <button type="button" @click="togglePassword"
+                  class="absolute right-3 top-1/2 transform -translate-y-1/2 text-muted">
+                  <EyeIcon v-if="!showPassword" class="w-5 h-5" />
+                  <EyeSlashIcon v-else class="w-5 h-5" />
+                </button>
+              </div>
             </div>
 
-            <div class="button-group-row">
-              <button v-if="!selectedServer?.fallbackAdded" @click="addManualIp" :disabled="!canAddServer"
-                class="btn btn-primary px-6 py-1 text-xl whitespace-nowrap">
-                Add Server
-              </button>
-              <button v-else @click="saveServerCredentials(manualIp, manualUsername, manualPassword)"
-                :disabled="!canUseCredentials" class="btn btn-primary px-2 py-1 text-xl whitespace-nowrap">
+            <div class="mt-2 text-sm italic flex flex-row items-center text-center justify-center justify-self-center">
+               Steps to Troubleshoot
+              <div class="mt-1 ml-2"><CommanderToolTip :width="1450" :message="`Troubleshooting Steps!
+        1.) Plugin monitor and keyboard into your server.
+        2.) Login to the user you want to use. On fresh machines the user is <b>root</b> and password is <b>45Dr!ves</b>.
+        3.) If using root make sure root login over SSH is enabled.<br/> nano /etc/ssh/sshd_config and look for PermitRootLogin yes
+        4.) Check if the server has internet access. ping google.ca
+        `" />
+              </div>
+            </div>
+
+            <div class="button-group-row mt-2">
+              <button @click="useCredentialsForCurrentServer" :disabled="!canAddServer"
+                class="btn btn-primary px-6 py-1 text-xl whitespace-nowrap w-full md:w-auto">
                 Use Credentials
-              </button>
-              <button @click="onRescanServers" class="btn btn-secondary px-6 py-1 text-xl whitespace-nowrap">
-                Rescan Servers
               </button>
             </div>
           </div>
-        </div>
+        </CardContainer>
+      </div>
 
-        <p v-if="statusMessage" class="text-lg text-center mt-2">
+      <!-- Troubleshooting + “Start Over” text -->
+      <div class="w-9/12 text-xl text-center mt-2">
+        If your storage server is not appearing in the list above, please return to the Hardware Setup and ensure
+        all steps were completed correctly, or try adding it by IP.
+        <br />
+        <a href="#" @click.prevent="onRestartSetup" class="text-blue-600 hover:underline">Start Over</a>
+        <div v-if="statusMessage" class="mt-3 text-base text-center">
           {{ statusMessage }}
-          <br />
-          Troubleshooting steps:
-          <CommanderToolTip :width="1450" :message="`Troubleshoot Steps!
-        1.) Plugin monitor and keyboard into your server.
-        2.) Login to the user you want to use. On fresh machines the user is <b>root</b> and password is <b>45Dr!ves</b>.
-        3.) If using root make sure root login over SSH is enabled. nano /etc/ssh/sshd_config and look for PermitRootLogin yes
-        4.) Check if the server has internet access. ping google.ca
-        `" />
-        </p>
+        </div>
         <div v-if="isInstalling" class="w-full flex justify-center mt-2">
           <div class="spinner"></div>
         </div>
-
-      </details>
-
-
+      </div>
     </div>
 
     <!-- Buttons -->
@@ -149,8 +161,7 @@
 </template>
 
 <script setup lang="ts">
-import CardContainer from '../../components/CardContainer.vue';
-import { useWizardSteps, DynamicBrandingLogo, useEnterToAdvance } from '@45drives/houston-common-ui';
+import { useWizardSteps, DynamicBrandingLogo, useEnterToAdvance, CardContainer, Notification, pushNotification, reportError } from '@45drives/houston-common-ui';
 import { IPCRouter } from '@45drives/houston-common-lib';
 import HoustonServerListView from '../../components/HoustonServerListView.vue'
 import { EyeIcon, EyeSlashIcon } from "@heroicons/vue/20/solid";
@@ -169,7 +180,6 @@ const togglePassword = () => {
 };
 const statusMessage = ref('');
 const isInstalling = ref(false);
-const isManualOpen = ref(false);
 
 const { completeCurrentStep, unCompleteCurrentStep, prevStep, reset } = useWizardSteps("setup");
 const { credsByIp, setCredentials, getCredentials } = useServerCredentials();
@@ -186,43 +196,31 @@ const manuallyAddedIp = ref('');
 const manualUsername = ref('root');
 const manualPassword = ref('');
 const manualCredentials = credsByIp; 
+const ipv4Regex =
+  /^((25[0-5]|2[0-4]\d|1\d{2}|[1-9]?\d)\.){3}(25[0-5]|2[0-4]\d|1\d{2}|[1-9]?\d)$/;
 
 const canAddServer = computed(() => {
   const ip = manualIp.value.trim();
-  const username = manualUsername.value.trim();
-  const password = manualPassword.value.trim();
-
-  const ipValid = /^((25[0-5]|2[0-4]\d|1\d{2}|[1-9]?\d)\.){3}(25[0-5]|2[0-4]\d|1\d{2}|[1-9]?\d)$/.test(ip);
-
-  if (!ipValid) return false;
-
-  // If IP is present and valid, username and password must also be present
-  return !!username && !!password;
-});
-
-const canUseCredentials = computed(() => {
-  return credsRequired.value &&
-    !!manualUsername.value.trim() &&
-    !!manualPassword.value.trim();
+  return ipv4Regex.test(ip);
 });
 
 const credsRequired = computed(() => {
   const srv = selectedServer.value;
   if (!srv) return false;
 
-  // Only require credentials if this is a manual or fallback server
-  if (!(srv.manuallyAdded || srv.fallbackAdded)) return false;
+  const cached = manualCredentials.value[srv.ip];
+  if (cached) return false;
 
-  const hasCachedCreds = manualCredentials.value[srv.ip];
-  return !hasCachedCreds;
+  return !manualUsername.value.trim() || !manualPassword.value.trim();
 });
 
 
-watch(selectedServer, (newVal) => {
-  if (newVal?.fallbackAdded) {
-    isManualOpen.value = true;
+function clearServerCredentials(ip: string) {
+  const map = manualCredentials.value;
+  if (map[ip]) {
+    delete map[ip];
   }
-});
+}
 
 function saveServerCredentials(ip: string, username: string, password: string) {
   setCredentials(ip, username, password);
@@ -231,29 +229,96 @@ function saveServerCredentials(ip: string, username: string, password: string) {
     selectedServer.value.fallbackAdded = selectedServer.value.fallbackAdded ?? false;
     selectedServer.value.manuallyAdded = !selectedServer.value.fallbackAdded ? true : false;
   }
-
-  manualIp.value = "";
-  manualUsername.value = "";
-  manualPassword.value = "";
 }
+
+async function useCredentialsForCurrentServer() {
+  const username = manualUsername.value.trim();
+  const password = manualPassword.value.trim();
+
+  if (!username || !password) {
+    const msg = "Please enter a username and password first.";
+    reportError(new Error(msg));
+    pushNotification(new Notification('Missing Credentials', msg, 'error', 8000));
+    return;
+  }
+
+  let srv = selectedServer.value;
+  let ip = srv?.ip ?? manualIp.value.trim();
+
+  if (!ip) {
+    const msg = "Please select a server or enter an IP address.";
+    reportError(new Error(msg));
+    pushNotification(new Notification('No Server Selected', msg, 'error', 8000));
+    return;
+  }
+
+  if (!srv) {
+    if (!ipv4Regex.test(ip)) {
+      const msg = "Please enter a valid IPv4 address.";
+      reportError(new Error(msg));
+      pushNotification(new Notification('Invalid IP Address', msg, 'error', 8000));
+      return;
+    }
+
+    IPCRouter.getInstance().send(
+      "backend",
+      "action",
+      JSON.stringify({ type: "addManualIP", ip, manuallyAdded: true })
+    );
+
+    const newSrv: Server & { manuallyAdded: true; fallbackAdded: false } = {
+      ip,
+      name: ip,
+      lastSeen: Date.now(),
+      status: "unknown",
+      manuallyAdded: true,
+      fallbackAdded: false,
+    };
+
+    selectedServer.value = newSrv;
+    srv = newSrv;
+
+    pushNotification(new Notification(
+      'Manual Server Added',
+      `Server ${ip} has been added to the list.`,
+      'success',
+      6000
+    ));
+  }
+
+  saveServerCredentials(ip, username, password);
+
+  pushNotification(new Notification(
+    'Credentials Saved',
+    `Credentials saved for server ${ip} (user: ${username}).`,
+    'success',
+    6000
+  ));
+}
+
 
 const serverListKey = ref(0);
 
 function onRescanServers() {
-  // clear manual entries
   manuallyAddedIp.value = '';
   manualCredentials.value = {};
-  // clear selection
   selectedServer.value = null;
-  // bump key → remount HoustonServerListView
   serverListKey.value += 1;
-  // tell backend to re-discover
+
   IPCRouter.getInstance().send(
     'backend',
     'action',
     JSON.stringify({ type: 'rescanServers' })
   );
+
+  pushNotification(new Notification(
+    'Rescanning Network',
+    'Looking for 45Drives servers on your network…',
+    'info',
+    6000
+  ));
 }
+
 
 interface InstallResult {
   success: boolean;
@@ -329,20 +394,20 @@ function listenSetupProgress(id: string) {
 
 async function addManualIp() {
   const ip = manualIp.value.trim();
-  
-  if (!/^((25[0-5]|2[0-4]\d|1\d{2}|[1-9]?\d)\.){3}(25[0-5]|2[0-4]\d|1\d{2}|[1-9]?\d)$/.test(ip)) {
-      reportError(new Error("Please enter a valid IPv4 address."));
-      return;
+
+  if (!ipv4Regex.test(ip)) {
+    const msg = "Please enter a valid IPv4 address.";
+    reportError(new Error(msg));
+    pushNotification(new Notification('Invalid IP Address', msg, 'error', 8000));
+    return;
   }
 
-  // fire off backend discovery for this IP
   IPCRouter.getInstance().send(
     'backend',
     'action',
     JSON.stringify({ type: 'addManualIP', ip, manuallyAdded: true })
   );
 
-  // create a minimal Server object locally
   const srv: Server & { manuallyAdded: true; fallbackAdded: false } = {
     ip,
     name: ip,
@@ -352,57 +417,80 @@ async function addManualIp() {
     fallbackAdded: false,
   };
 
-  // select it
   selectedServer.value = srv;
 
-  // cache its creds immediately
-  saveServerCredentials(ip, manualUsername.value, manualPassword.value);
+  if (manualUsername.value.trim() && manualPassword.value.trim()) {
+    saveServerCredentials(ip, manualUsername.value, manualPassword.value);
+  } else {
+    manualUsername.value = manualUsername.value || 'root';
+    manualPassword.value = manualPassword.value || '';
+  }
 
-  // clear the form
-  manualIp.value = '';
-  manualUsername.value = '';
-  manualPassword.value = '';
+  pushNotification(new Notification(
+    'Manual Server Added',
+    `Server ${ip} has been added to the list.`,
+    'success',
+    6000
+  ));
 }
 
 
 const goBackStep = () => prevStep();
 
 const proceedToNextStep = async () => {
-  const srv = selectedServer.value!;
-  const isManualish = !!srv.manuallyAdded || !!srv.fallbackAdded;
-
-  // Always let backend decide if deps are missing
-  let cached = manualCredentials.value[srv.ip];
-
-  if (!cached && manualUsername.value.trim() && manualPassword.value.trim()) {
-    saveServerCredentials(
-      srv.ip,
-      manualUsername.value.trim(),
-      manualPassword.value.trim(),
-    );
-    cached = manualCredentials.value[srv.ip];
-  }
-
-  if (!cached && isManualish) {
-    // For manually added/fallback servers, we insist on creds
-    reportError(new Error("Username and password are required to install modules on this server."));
+  const srv = selectedServer.value;
+  if (!srv) {
+    const msg = "Please select a server first.";
+    reportError(new Error(msg));
+    pushNotification(new Notification('No Server Selected', msg, 'error', 8000));
     return;
   }
 
-  if (cached) {
-    const { username, password } = cached;
-    const result = await installModule(srv.ip, username, password);
-    console.debug("installModule finished:", result);
+  let cached = manualCredentials.value[srv.ip];
 
-    if (!result.success) {
-      // install/dependency check failed → stay on this step
-      return;
-    }
-  } else {
-    // mDNS server, no cached creds:
-    const result = await installModule(srv.ip, "root", "45Dr!ves");
-    if (!result.success) return;
+  const typedUser = manualUsername.value.trim();
+  const typedPass = manualPassword.value.trim();
+
+  if (typedUser && typedPass) {
+    saveServerCredentials(srv.ip, typedUser, typedPass);
+    cached = manualCredentials.value[srv.ip];
   }
+
+  if (!cached) {
+    const msg = "Username and password are required to install modules on this server.";
+    reportError(new Error(msg));
+    pushNotification(new Notification('Credentials Required', msg, 'error', 8000));
+    return;
+  }
+
+  const { username, password } = cached;
+
+  pushNotification(new Notification(
+    'Starting Setup',
+    `Beginning setup on ${srv.ip} as ${username}…`,
+    'info',
+    6000
+  ));
+
+  const result = await installModule(srv.ip, username, password);
+  console.debug("installModule finished:", result);
+
+  if (!result.success) {
+    pushNotification(new Notification(
+      'Setup Failed',
+      result.error || `Setup failed on ${srv.ip}.`,
+      'error',
+      8000
+    ));
+    return;
+  }
+
+  pushNotification(new Notification(
+    'Setup Complete',
+    `Initial setup completed on ${srv.ip}.`,
+    'success',
+    6000
+  ));
 
   unCompleteCurrentStep();
   completeCurrentStep(true, srv as Record<string, any>);
@@ -412,17 +500,11 @@ const proceedToNextStep = async () => {
 const onRestartSetup = () => reset();
 
 const handleServerSelected = (server: Server | null) => {
-  if (server && (server.manuallyAdded || server.fallbackAdded)) {
-    // 1) Re-selecting a manual or fallback node:
-    //    – keep its flags on selectedServer
-    //    – show its IP in the box
-    //    – restore creds if we have them, else clear username/password
+  if (server) {
     selectedServer.value = {
       ...server,
-      manuallyAdded: server.manuallyAdded,
-      fallbackAdded: server.fallbackAdded,
-      username: manualUsername.value,
-      password: manualPassword.value,
+      manuallyAdded: (server as any).manuallyAdded ?? false,
+      fallbackAdded: (server as any).fallbackAdded ?? false,
     };
 
     manualIp.value = server.ip;
@@ -432,25 +514,17 @@ const handleServerSelected = (server: Server | null) => {
       manualUsername.value = cached.username;
       manualPassword.value = cached.password;
     } else {
-      manualUsername.value = '';
+      manualUsername.value = 'root';
       manualPassword.value = '';
     }
-
-  } else if (server) {
-    // 2) Picking a plain discovered node:
-    //    – just select it and wipe the form
-    selectedServer.value = server;
-    manualIp.value = '';
-    manualUsername.value = '';
-    manualPassword.value = '';
   } else {
-    // 3) Deselecting
     selectedServer.value = null;
     manualIp.value = '';
-    manualUsername.value = '';
+    manualUsername.value = 'root';
     manualPassword.value = '';
   }
 };
+
 
 useEnterToAdvance(
   () => {
