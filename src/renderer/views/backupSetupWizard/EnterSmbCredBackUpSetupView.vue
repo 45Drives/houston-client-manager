@@ -61,11 +61,9 @@
 </template>
 
 <script setup lang="ts">
-
-import CardContainer from '../../components/CardContainer.vue';
 import { ref, computed, inject } from 'vue';
 import { EyeIcon, EyeSlashIcon } from "@heroicons/vue/20/solid";
-import { useWizardSteps, DynamicBrandingLogo, useAutoFocus, useEnterToAdvance } from '@45drives/houston-common-ui';
+import { CardContainer, useWizardSteps, DynamicBrandingLogo, useAutoFocus, useEnterToAdvance } from '@45drives/houston-common-ui';
 import { backUpSetupConfigKey, divisionCodeInjectionKey } from '../../keys/injection-keys';
 import GlobalSetupWizardMenu from '../../components/GlobalSetupWizardMenu.vue';
 useAutoFocus();

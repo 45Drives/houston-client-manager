@@ -72,8 +72,7 @@
 
 <script setup lang="ts">
 import { BackUpTask } from '@45drives/houston-common-lib';
-import CardContainer from '../../components/CardContainer.vue';
-import { useWizardSteps, DynamicBrandingLogo, useEnterToAdvance } from '@45drives/houston-common-ui';
+import { CardContainer, useWizardSteps, DynamicBrandingLogo, useEnterToAdvance } from '@45drives/houston-common-ui';
 import BackUpListView from './BackUpListView.vue';
 import GlobalSetupWizardMenu from '../../components/GlobalSetupWizardMenu.vue';
 import { TrashIcon } from '@heroicons/vue/24/outline';

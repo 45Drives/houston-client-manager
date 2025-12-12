@@ -50,8 +50,7 @@
 </template>
 
 <script setup lang="ts">
-import CardContainer from '../../components/CardContainer.vue';
-import { useWizardSteps, DynamicBrandingLogo, useEnterToAdvance } from '@45drives/houston-common-ui';
+import { CardContainer, useWizardSteps, DynamicBrandingLogo, useEnterToAdvance } from '@45drives/houston-common-ui';
 import { CommanderToolTip } from '../../components/commander';
 import GlobalSetupWizardMenu from '../../components/GlobalSetupWizardMenu.vue';
 import { divisionCodeInjectionKey } from '../../keys/injection-keys';

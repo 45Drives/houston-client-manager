@@ -91,10 +91,9 @@
 
 
 <script setup lang="ts">
-import CardContainer from '../../components/CardContainer.vue';
 import { ref, computed, inject, onMounted, onBeforeUnmount } from 'vue';
 import { EyeIcon, EyeSlashIcon } from "@heroicons/vue/20/solid";
-import { useWizardSteps, DynamicBrandingLogo, useAutoFocus, useEnterToAdvance } from '@45drives/houston-common-ui';
+import { CardContainer, useWizardSteps, DynamicBrandingLogo, useAutoFocus, useEnterToAdvance } from '@45drives/houston-common-ui';
 import { divisionCodeInjectionKey, restoreBackUpSetupDataKey } from '../../keys/injection-keys';
 import HoustonServerListView from '../../components/HoustonServerListView.vue';
 import { Server } from '../../types';
