@@ -81,20 +81,22 @@
 
             <div class="flex flex-col">
               <span>Username:</span>
-              <input v-model="manualUsername" type="text" placeholder="root" tabindex="2" :class="[
-                'input-textlike px-4 py-1 rounded text-xl w-full border',
-                credsRequired && 'focus:ring-2 focus:ring-yellow-400 outline outline-2 outline-yellow-400'
-              ]" />
+              <input v-model="manualUsername" type="text" placeholder="root" tabindex="2"
+               @keydown.enter.prevent.stop="canAddServer && useCredentialsForCurrentServer()" :class="[
+                  'input-textlike px-4 py-1 rounded text-xl w-full border',
+                  credsRequired && 'focus:ring-2 focus:ring-yellow-400 outline outline-2 outline-yellow-400'
+                ]" />
             </div>
 
             <div class="flex flex-col mt-1">
               <span>Password:</span>
               <div class="w-full relative">
                 <input v-model="manualPassword" v-enter-next :type="showPassword ? 'text' : 'password'" id="password"
-                  tabindex="3" :class="[
+                  tabindex="3" placeholder="••••••••"@keydown.enter.prevent.stop="canAddServer && useCredentialsForCurrentServer()"
+                  :class="[
                     'input-textlike px-4 py-1 rounded text-xl w-full border',
                     credsRequired && 'focus:ring-2 focus:ring-yellow-400 outline outline-2 outline-yellow-400'
-                  ]" placeholder="••••••••" />
+                  ]" />
                 <button type="button" @click="togglePassword"
                   class="absolute right-3 top-1/2 transform -translate-y-1/2 text-muted">
                   <EyeIcon v-if="!showPassword" class="w-5 h-5" />
