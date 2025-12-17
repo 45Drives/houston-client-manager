@@ -29,7 +29,7 @@
       <webview v-show="showWebView" id="myWebview" :src="currentUrl" partition="persist:authSession"
         webpreferences="contextIsolation=true, nodeIntegration=false, enableRemoteModule=false" ref="webview"
         allowpopups :style="{ visibility: webviewVisible ? 'visible' : 'hidden', height: '100vh', width: '100%' }"
-        @did-finish-load="onWebViewLoaded" @did-fail-load="onWebViewFailed" />
+        @dom-ready="onWebViewDomReady" @did-finish-load="onWebViewLoaded" @did-fail-load="onWebViewFailed" />
 
       <div v-if="loadingWebview" class="absolute inset-0 z-40 bg-default flex flex-col items-center justify-center">
         <p class="text-2xl text-center">
@@ -93,7 +93,7 @@ const waitingForServerReboot = ref(false);
 let rebootNotification: Notification | null = null;
 
 watch(waitingForServerReboot, () => {
-  
+
   if (waitingForServerReboot.value) {
     if (!rebootNotification) {
       rebootNotification = new Notification(
@@ -410,11 +410,11 @@ onMounted(async () => {
     setOs(osString);
 
     // console.debug("[DEBUG] OS:" + osString);
-    
+
     // IPCRouter.getInstance().send('backend', 'action', 'requestBackUpTasks');
-    
+
   }
-  
+
   setTimeout(() => {
     scanningNetworkForServers.value = false;
   }, 7000);
@@ -560,8 +560,8 @@ const openStorageSetup = (server: Server | null) => {
     // const devURL = 'super-simple-setup-test';
     // newUrl = `https://${server.ip}:9090/${(isDev.value ? devURL : prodURL)}#dark=${darkModeState.value}&advanced=${advancedState.value}&client_ip=${clientip.value}&server_ip=${server.ip}`;
 
-    newUrl = `https://${server.ip}:9090/super-simple-setup#dark=${darkModeState.value}&advanced=${advancedState.value}&client_ip=${clientip.value}&server_ip=${server.ip}`;
-    // newUrl = `https://${server.ip}:9090/super-simple-setup-test#dark=${darkModeState.value}&advanced=${advancedState.value}&client_ip=${clientip.value}&server_ip=${server.ip}`;
+    // newUrl = `https://${server.ip}:9090/super-simple-setup#dark=${darkModeState.value}&advanced=${advancedState.value}&client_ip=${clientip.value}&server_ip=${server.ip}`;
+    newUrl = `https://${server.ip}:9090/super-simple-setup-test#dark=${darkModeState.value}&advanced=${advancedState.value}&client_ip=${clientip.value}&server_ip=${server.ip}`;
 
   } else {
     currentUrl.value = "";
@@ -575,8 +575,105 @@ const openStorageSetup = (server: Server | null) => {
     showWebView.value = true;
     currentUrl.value = newUrl;
   }
-
 };
+
+const COCKPIT_CHROME_CSS = `
+/* Master switch for "wizard mode" */
+html.houston-wizard-mode,
+html.houston-wizard-mode body {
+  height: 100% !important;
+  width: 100% !important;
+  margin: 0 !important;
+}
+
+/* Hide sidebar + anything that renders the left column contents */
+html.houston-wizard-mode #nav-system,
+html.houston-wizard-mode .area-ct-subnav,
+html.houston-wizard-mode .nav-system-menu.sidebar,
+html.houston-wizard-mode .pf-v5-c-page__sidebar,
+html.houston-wizard-mode .pf-v5-c-page__sidebar-body,
+html.houston-wizard-mode .pf-v5-c-page__sidebar-panel,
+html.houston-wizard-mode aside[role="navigation"] {
+  display: none !important;
+}
+
+/* Hide top/header/masthead */
+html.houston-wizard-mode .pf-v5-c-masthead,
+html.houston-wizard-mode .pf-v5-c-page__header,
+html.houston-wizard-mode header[role="banner"],
+html.houston-wizard-mode #topnav,
+html.houston-wizard-mode #main > header {
+  display: none !important;
+  height: 0 !important;
+  min-height: 0 !important;
+}
+
+/* PatternFly: kill reserved header/side sizing variables */
+html.houston-wizard-mode .pf-v5-c-page {
+  --pf-v5-c-page__sidebar--Width: 0px !important;
+  --pf-v5-c-page__sidebar--WidthOnXl: 0px !important;
+  --pf-v5-c-page__sidebar--WidthOn2xl: 0px !important;
+  --pf-v5-c-page__header--MinHeight: 0px !important;
+}
+
+/* PatternFly layout: collapse the grid so there is no left column / top row */
+html.houston-wizard-mode .pf-v5-c-page {
+  grid-template-areas: "main" !important;
+  grid-template-columns: 1fr !important;
+  grid-template-rows: 1fr !important;
+}
+
+/* Ensure main actually fills everything with no offsets */
+html.houston-wizard-mode .pf-v5-c-page__main,
+html.houston-wizard-mode #main,
+html.houston-wizard-mode #content {
+  grid-area: main !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  inset: auto !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+}
+
+/* If Cockpit uses an internal grid on #main, collapse it too */
+html.houston-wizard-mode #main {
+  grid-template-areas: "main" !important;
+  grid-template-columns: 1fr !important;
+  grid-template-rows: 1fr !important;
+}
+
+/* Bottom-left host/user dropdown */
+html.houston-wizard-mode nav#hosts-sel,
+html.houston-wizard-mode #hosts-sel,
+html.houston-wizard-mode #host-toggle {
+  display: none !important;
+}
+
+`;
+
+
+let cssInstalledForNav = false;
+
+const onWebViewDomReady = async () => {
+  try {
+    // Re-inject on each navigation; Electron keeps it per-page.
+    cssInstalledForNav = false;
+    await webview.value.insertCSS(COCKPIT_CHROME_CSS);
+    await webview.value.executeJavaScript(`
+  (function() {
+    const p = window.location.pathname || "";
+    if (p.includes("/super-simple-setup") || p.includes("/super-simple-setup-test")) {
+      document.documentElement.classList.add("houston-wizard-mode");
+    }
+  })();
+`);
+    cssInstalledForNav = true;
+  } catch (e) {
+    console.error("insertCSS failed:", e);
+  }
+};
+
 
 const onWebViewLoaded = async () => {
   const url = webview.value?.getURL?.() ?? currentUrl.value;
@@ -591,196 +688,250 @@ const onWebViewLoaded = async () => {
   routerRenderer.setCockpitWebView(webview.value);
 
   const loginAndSimplifyScript = `
-  (function() {
-    return new Promise((resolve) => {
-      const LOGIN_SELECTOR  = "#login";
-      const ERROR_SELECTOR  = "#login-error-message";
-      const USER_SELECTOR   = "#login-user-input";
-      const PASS_SELECTOR   = "#login-password-input";
-      const BUTTON_SELECTOR = "#login-button";
+(function() {
+  return new Promise((resolve) => {
+    const LOGIN_SELECTOR  = "#login";
+    const ERROR_SELECTOR  = "#login-error-message";
+    const USER_SELECTOR   = "#login-user-input";
+    const PASS_SELECTOR   = "#login-password-input";
+    const BUTTON_SELECTOR = "#login-button";
 
-      let observer = null;
+    let observer = null;
+    let finished = false;
 
-      function simplifyLayoutForModule() {
-        // Only touch layout on the super-simple-setup module
-        if (!window.location.pathname.includes("/super-simple-setup")) {
-          return;
-        }
+    function done(status, extra) {
+      if (finished) return;
+      finished = true;
+      try { if (observer) observer.disconnect(); } catch {}
+      observer = null;
+      resolve(Object.assign({ status }, extra || {}));
+    }
 
-        function applyOnce() {
-          const main = document.querySelector("#main");
-          if (!main) return false;
+    function onModulePage() {
+      return window.location.pathname.includes("/super-simple-setup-test");
+    }
 
-          try {
-            // Hide Cockpit chrome
-            [...document.querySelectorAll("#main > div")].forEach((e) => {
-              if (e.id !== "content") e.style.display = "none";
-            });
-            [...document.querySelectorAll("#main > nav")].forEach((e) => {
-              if (e.id !== "content") e.style.display = "none";
-            });
+    function setChromeMode(enabled) {
+      if (!onModulePage()) return;
+      const root = document.documentElement;
+      root.classList.toggle("houston-wizard-mode", !!enabled);
+    }
 
-            main.style.gridTemplateAreas = '"header" "main"';
-            main.style.gridTemplateColumns = "1fr";
-          } catch (e) {
-            console.error("Error simplifying Cockpit layout:", e);
+    function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+    function waitForCockpit(timeoutMs = 20000) {
+      return new Promise((resolveWait, rejectWait) => {
+        const start = Date.now();
+        const t = setInterval(() => {
+          if (window.cockpit && typeof window.cockpit.spawn === "function") {
+            clearInterval(t);
+            resolveWait(true);
+          } else if (Date.now() - start > timeoutMs) {
+            clearInterval(t);
+            rejectWait(new Error("cockpit.js not available"));
           }
-          return true;
-        }
+        }, 50);
+      });
+    }
 
-        // Try once immediately; if #main isn't ready yet, keep trying briefly.
-        if (!applyOnce()) {
-          let tries = 0;
-          const maxTries = 20; // ~5s at 250ms
+    function findLimitedAccessControl() {
+      const nodes = Array.from(document.querySelectorAll("button,a,[role=button]"));
+      return nodes.find(n => /limited access/i.test((n.textContent || "").trim())) || null;
+    }
 
-          const interval = setInterval(() => {
-            tries += 1;
-            if (applyOnce() || tries >= maxTries) {
-              clearInterval(interval);
-            }
-          }, 250);
-        }
+    function findAdminModal() {
+      return (
+        document.querySelector(".pf-v5-c-modal-box") ||
+        document.querySelector('[role="dialog"]')
+      );
+    }
+
+    function findAdminPasswordInput(modal) {
+      return (
+        modal.querySelector('input#switch-to-admin-access-password[type="password"]') ||
+        modal.querySelector('input[type="password"]')
+      );
+    }
+
+    function setNativeValue(el, value) {
+      const proto = el instanceof HTMLInputElement ? HTMLInputElement.prototype : el.__proto__;
+      const desc =
+        Object.getOwnPropertyDescriptor(proto, "value") ||
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value");
+      if (desc && desc.set) desc.set.call(el, value);
+      else el.value = value;
+
+      el.dispatchEvent(new Event("input", { bubbles: true }));
+      el.dispatchEvent(new Event("change", { bubbles: true }));
+    }
+
+    function clickLimitedAccessThrottled() {
+      const now = Date.now();
+      if (clickLimitedAccessThrottled._next && now < clickLimitedAccessThrottled._next) return false;
+      clickLimitedAccessThrottled._next = now + 1200;
+
+      const btn = findLimitedAccessControl();
+      if (!btn) return false;
+
+      btn.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+      btn.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+      btn.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      return true;
+    }
+    clickLimitedAccessThrottled._next = 0;
+
+    const submittedForModal = new WeakSet();
+
+    function trySubmitModalOnce(password) {
+      const modal = findAdminModal();
+      if (!modal) return false;
+      if (submittedForModal.has(modal)) return false;
+
+      const passInput = findAdminPasswordInput(modal);
+      if (!passInput) return false;
+
+      const buttons = Array.from(modal.querySelectorAll("button"));
+      const authButton =
+        modal.querySelector("button.pf-v5-c-button.pf-m-primary") ||
+        buttons.find(b => /authenticate/i.test((b.textContent || "").trim())) ||
+        null;
+
+      passInput.focus();
+      setNativeValue(passInput, password);
+
+      if (authButton) {
+        try { authButton.disabled = false; authButton.removeAttribute("disabled"); } catch {}
+        authButton.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+        authButton.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+        authButton.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        submittedForModal.add(modal);
+        return true;
       }
 
-      function autoElevate(password) {
-        const obs = new MutationObserver(() => {
-          const modal = document.querySelector('div.pf-c-modal-box[id^="pf-modal-part"]');
-          if (!modal) return;
-
-          const passInput = modal.querySelector('input[type="password"]');
-          const authButton = Array.from(modal.querySelectorAll('button'))
-            .find(btn => /authenticate/i.test((btn.textContent || "").trim()));
-
-          if (!passInput || !authButton) return;
-
-          passInput.value = password;
-          passInput.dispatchEvent(new Event("input", { bubbles: true }));
-          passInput.dispatchEvent(new Event("change", { bubbles: true }));
-
-          setTimeout(() => {
-            authButton.click();
-          }, 50);
-
-          obs.disconnect();
-          clearTimeout(timeoutId);
-        });
-
-        obs.observe(document.body, { childList: true, subtree: true });
-
-        const timeoutId = setTimeout(() => {
-          obs.disconnect();
-        }, 15000);
+      const form = passInput.closest("form");
+      if (form) {
+        if (typeof form.requestSubmit === "function") form.requestSubmit();
+        else form.submit();
+        submittedForModal.add(modal);
+        return true;
       }
 
-      function requestAdmin(user, pass) {
-        if (!window.cockpit) {
-          console.warn("cockpit.js not loaded yet, skipping admin request");
+      return false;
+    }
+
+    async function requireAdminOnce() {
+      return await new Promise((resolveSpawn, rejectSpawn) => {
+        cockpit.spawn(["id", "-u"], { superuser: "require" })
+          .done(resolveSpawn)
+          .fail(rejectSpawn);
+      });
+    }
+
+    async function elevateToAdmin(password, timeoutMs = 60000) {
+      if (!onModulePage()) return { ok: true, skipped: true };
+
+      setChromeMode(true);
+      await waitForCockpit();
+
+      const start = Date.now();
+      while (Date.now() - start < timeoutMs) {
+        clickLimitedAccessThrottled();
+        trySubmitModalOnce(password);
+
+        try {
+          await requireAdminOnce();
+          setChromeMode(true);
+          return { ok: true };
+        } catch {
+          setChromeMode(false);
+        }
+
+        await sleep(600);
+      }
+
+      setChromeMode(false);
+      return { ok: false, error: "Timed out waiting for admin access" };
+    }
+
+    const globalTimeout = setTimeout(() => done("timeout"), 15000);
+    function clearGlobalTimeout() { clearTimeout(globalTimeout); }
+
+    const loginEl = document.querySelector(LOGIN_SELECTOR);
+
+    // Already logged in
+    if (!loginEl) {
+      setTimeout(() => {
+        clearGlobalTimeout();
+        setChromeMode(true);
+        elevateToAdmin("${pass}", 60000)
+          .then(r => done("no-login", { admin: !!r.ok, adminError: r.error || null }))
+          .catch(e => done("no-login", { admin: false, adminError: String(e && (e.message || e)) }));
+      }, 300);
+      return;
+    }
+
+    // Login form present
+    const usernameField = document.querySelector(USER_SELECTOR);
+    const passwordField = document.querySelector(PASS_SELECTOR);
+    const loginButton   = document.querySelector(BUTTON_SELECTOR);
+    const loginForm     = document.querySelector("form");
+
+    if (!usernameField || !passwordField || !loginButton || !loginForm) {
+      clearGlobalTimeout();
+      done("no-fields");
+      return;
+    }
+
+    if (onModulePage()) setChromeMode(true);
+
+    usernameField.value = "${user}";
+    passwordField.value = "${pass}";
+    usernameField.dispatchEvent(new Event("input", { bubbles: true }));
+    passwordField.dispatchEvent(new Event("input", { bubbles: true }));
+
+    observer = new MutationObserver(() => {
+      const loginError = document.querySelector(ERROR_SELECTOR);
+      const loginStillVisible = document.querySelector(LOGIN_SELECTOR);
+
+      if (loginError) {
+        const text = (loginError.textContent || "").trim();
+        const isJsWarning = /enable\\s+javascript/i.test(text);
+        const isAuthError = /wrong user name|authentication failed|incorrect|invalid/i.test(text);
+
+        if (isAuthError) {
+          clearGlobalTimeout();
+          done("login-failed", { message: text });
           return;
         }
-
-        // Start watching for the modal, then trigger admin request
-        autoElevate(pass);
-
-        cockpit.spawn(["id", "-u"], { superuser: "require" })
-          .done(out => console.log("Admin access obtained:", out.trim()))
-          .fail(err => console.error("Failed to obtain admin:", err));
+        if (isJsWarning) return;
       }
 
-      function done(status, extra) {
-        if (observer) {
-          observer.disconnect();
-          observer = null;
-        }
-        resolve(Object.assign({ status }, extra || {}));
-      }
-
-      const globalTimeout = setTimeout(() => {
-        done("timeout");
-      }, 15000);
-
-      function clearGlobalTimeout() {
-        clearTimeout(globalTimeout);
-      }
-
-      const loginEl = document.querySelector(LOGIN_SELECTOR);
-
-      // Case 1: already logged in – wait a tick, then simplify module view
-      if (!loginEl) {
+      // Login form disappeared -> login succeeded
+      if (!loginStillVisible) {
         setTimeout(() => {
           clearGlobalTimeout();
-          simplifyLayoutForModule();
-          requestAdmin("${user}", "${pass}");
-          done("no-login");
+          setChromeMode(true);
+          elevateToAdmin("${pass}", 60000)
+            .then(r => done("login-success", { admin: !!r.ok, adminError: r.error || null }))
+            .catch(e => done("login-success", { admin: false, adminError: String(e && (e.message || e)) }));
         }, 500);
-        return;
       }
-
-      // Case 2: login form present – auto-fill and watch for success/failure
-      const usernameField = document.querySelector(USER_SELECTOR);
-      const passwordField = document.querySelector(PASS_SELECTOR);
-      const loginButton   = document.querySelector(BUTTON_SELECTOR);
-      const loginForm     = document.querySelector("form");
-
-      if (!usernameField || !passwordField || !loginButton || !loginForm) {
-        clearGlobalTimeout();
-        done("no-fields");
-        return;
-      }
-
-      usernameField.value = "${user}";
-      passwordField.value = "${pass}";
-      usernameField.dispatchEvent(new Event("input", { bubbles: true }));
-      passwordField.dispatchEvent(new Event("input", { bubbles: true }));
-
-      observer = new MutationObserver(() => {
-        const loginError = document.querySelector(ERROR_SELECTOR);
-        const loginStillVisible = document.querySelector(LOGIN_SELECTOR);
-
-        if (loginError) {
-          const text = (loginError.textContent || "").trim();
-
-          const isJsWarning = /enable\\s+javascript/i.test(text);
-          const isAuthError = /wrong user name|authentication failed|incorrect|invalid/i.test(text);
-
-          if (isAuthError) {
-            clearGlobalTimeout();
-            done("login-failed", { message: text });
-            return;
-          }
-
-          if (isJsWarning) {
-            return;
-          }
-        }
-
-        // Login form disappeared -> login succeeded
-        if (!loginStillVisible) {
-          setTimeout(() => {
-            clearGlobalTimeout();
-            simplifyLayoutForModule();
-            requestAdmin("${user}", "${pass}");
-            done("login-success");
-          }, 800);
-        }
-      });
-
-      observer.observe(document.body, { childList: true, subtree: true });
-
-      setTimeout(() => {
-        try {
-          loginButton.click();
-          loginForm.submit();
-        } catch (e) {
-          console.error("Error triggering login:", e);
-          clearGlobalTimeout();
-          done("submit-error");
-        }
-      }, 500);
     });
-  })();
+
+    observer.observe(document.body, { childList: true, subtree: true });
+
+    setTimeout(() => {
+      try {
+        loginButton.click();
+        loginForm.submit();
+      } catch (e) {
+        clearGlobalTimeout();
+        done("submit-error", { message: String(e && (e.message || e)) });
+      }
+    }, 300);
+  });
+})();
 `;
-
-
 
   try {
     const result = await webview.value.executeJavaScript(loginAndSimplifyScript);
@@ -791,9 +942,9 @@ const onWebViewLoaded = async () => {
     console.error("Webview login error:", error);
   } finally {
     finishOverlay();
-    if (isDev.value && webview.value?.openDevTools) {
+    // if (isDev.value && webview.value?.openDevTools) {
       webview.value.openDevTools();
-    }
+    // }
   }
 };
 

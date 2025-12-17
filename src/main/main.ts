@@ -292,7 +292,7 @@ function isPortOpen(ip: string, port: number, timeout = 2000): Promise<boolean> 
 }
 
 // Timeout duration in milliseconds (e.g., 30 seconds)
-const TIMEOUT_DURATION = 10000;
+const TIMEOUT_DURATION = 60_000;
 const serviceType = '_houstonserver_legacy._tcp.local';
 
 const getLocalIP = () => {
@@ -334,6 +334,7 @@ function createWindow() {
       partition: 'persist:your-cookie-partition',
       webSecurity: true,                  // Enforces origin security
       allowRunningInsecureContent: false, // Prevents HTTP inside HTTPS
+      devTools: true,
     }
   });
 
@@ -418,10 +419,14 @@ function createWindow() {
 
   ipcMain.on("renderer-ready", (event) => {
     rendererIsReady = true;
-    bufferedNotifications.forEach(msg => {
-      event.sender.send("notification", msg);
-    });
+
+    bufferedNotifications.forEach((msg) => event.sender.send("notification", msg));
     bufferedNotifications = [];
+
+    try {
+      event.sender.send("discovered-servers", discoveredServers);
+      event.sender.send("client-ip", getLocalIP());
+    } catch { }
   });
 
   ipcMain.on('renderer-log', (_event, payload: { level: string; args: any[] }) => {
@@ -818,7 +823,7 @@ function createWindow() {
 
           // important: do not await runNow here
           return;
-        }  else if (message.type === 'addManualIP') {
+        } else if (message.type === 'addManualIP') {
           const { ip, manuallyAdded } = message as { ip: string; manuallyAdded?: boolean };
 
           // 1) Try Cockpit’s HTTPS on 9090, but DON’T let a throw skip the SSH probe
@@ -897,7 +902,13 @@ function createWindow() {
           mainWindow.webContents.send('discovered-servers', discoveredServers);
 
           // kick mDNS
-          mDNSClient.query({ questions: [{ name: serviceType, type: 'PTR' }] });
+          const mDNSClient = mdns();
+
+          mDNSClient.on("response", async (response) => {
+            try { await handleMdnsResponse(response); } catch (err) { try { console.error(err); } catch { } }
+          });
+
+          mDNSClient.query({ questions: [{ name: serviceType, type: "PTR" }] });
 
           // after timeout: if still empty, call the same fallback fn
           setTimeout(async () => {
@@ -986,123 +997,145 @@ function createWindow() {
     ) {
       return;
     }
+
     // Combine answers + additionals into one array
     const records = [
-      ...response.answers,
-      ...(response.additionals ?? []),
+      ...(response?.answers ?? []),
+      ...((response?.additionals ?? []) as any[]),
     ];
 
-    server_search:
-    for (const answer1 of records) {
-      if (answer1.type === 'SRV' && answer1.name.includes(serviceType)) {
-        // Find related 'A' and 'TXT' records in the combined list
-        const ipAnswer = records.find(a => a.type === 'A' && a.name === (answer1.data as any).target);
-        const txtAnswer = records.find(a => a.type === 'TXT' && a.name === answer1.name);
+    let changed = false;
 
-        if (ipAnswer && ipAnswer.data) {
-          const serverIp = ipAnswer.data as string;
-          const instance = answer1.name;    // e.g. "hl4-test._houstonserver_legacy._tcp.local"
+    for (const rec of records) {
+      if (rec?.type !== "SRV") continue;
+      if (typeof rec?.name !== "string" || !rec.name.includes(serviceType)) continue;
 
-          // Parse TXT into a map
-          const txtRecord: Record<string, string> = {};
-          if (txtAnswer && Array.isArray(txtAnswer.data)) {
-            txtAnswer.data.forEach((buf: Buffer) => {
-              const [k, v] = buf.toString().split('=');
-              txtRecord[k] = v;
-            });
-          }
+      const instance = rec.name as string; // e.g. "hl4-test._houstonserver_legacy._tcp.local"
+      const target = rec?.data?.target as string | undefined;
 
-          // Derive a friendly name (strip off the service suffix)
-          const [bare] = instance.split('._');
-          const displayName = `${bare}.local`;
+      // TXT is associated to the SRV "name" (instance)
+      const txtAnswer = records.find((a) => a?.type === "TXT" && a?.name === instance);
 
-          // Use TXT as the initial source of truth
-          const txtSetupComplete = txtRecord.setupComplete === 'true';
+      // Parse TXT into a map
+      const txtRecord: Record<string, string> = {};
+      if (txtAnswer && Array.isArray(txtAnswer.data)) {
+        txtAnswer.data.forEach((buf: Buffer) => {
+          const s = buf?.toString?.() ?? "";
+          const eq = s.indexOf("=");
+          if (eq === -1) return;
+          const k = s.slice(0, eq).trim();
+          const v = s.slice(eq + 1).trim();
+          if (k) txtRecord[k] = v;
+        });
+      }
 
-          const server: Server = {
-            ip: serverIp,
-            name: displayName,
-            status: txtSetupComplete ? 'complete' : 'not complete',  // default from TXT
-            lastSeen: Date.now(),
-            setupComplete: txtSetupComplete,
-            serverName: txtRecord.serverName || displayName,
-            shareName: txtRecord.shareName,
-            setupTime: txtRecord.setupTime,
-            serverInfo: {
-              moboMake: txtRecord.moboMake,
-              moboModel: txtRecord.moboModel,
-              serverModel: txtRecord.serverModel,
-              aliasStyle: txtRecord.aliasStyle,
-              chassisSize: txtRecord.chassisSize,
-            },
-            manuallyAdded: false,
-            fallbackAdded: false,
-          };
+      // Normal path: A record for the SRV target
+      const ipAnswer =
+        target ? records.find((a) => a?.type === "A" && a?.name === target) : undefined;
 
-          // Optionally refine using HTTP status if reachable
-          if (!server.manuallyAdded && !server.fallbackAdded) {
-            try {
-              const fetchResponse = await fetch(`http://${server.ip}:9099/setup-status`);
-              if (fetchResponse.ok) {
-                const setupStatusResponse = await fetchResponse.json();
+      // Fallback path: TXT contains ip=...
+      const serverIp: string | null =
+        (ipAnswer && ipAnswer.data ? (ipAnswer.data as string) : null) ||
+        (txtRecord.ip ? String(txtRecord.ip) : null);
 
-                // Prefer explicit boolean if provided
-                if (typeof setupStatusResponse.setupComplete === 'boolean') {
-                  server.setupComplete = setupStatusResponse.setupComplete;
-                  server.status = setupStatusResponse.setupComplete ? 'complete' : 'not complete';
-                } else if (typeof setupStatusResponse.status === 'string') {
-                  server.status = setupStatusResponse.status;
-                  if (server.status === 'complete') {
-                    server.setupComplete = true;
-                  }
-                }
+      if (!serverIp) {
+        // Without an IP we cannot upsert or refresh lastSeen; skip this SRV
+        continue;
+      }
 
-                // Optionally refresh metadata from HTTP if present
-                server.shareName = setupStatusResponse.shareName || server.shareName;
-                server.serverName = setupStatusResponse.serverName || server.serverName;
-                server.setupTime = setupStatusResponse.setupTime || server.setupTime;
-                server.serverInfo = {
-                  moboMake: setupStatusResponse.moboMake || server.serverInfo!.moboMake,
-                  moboModel: setupStatusResponse.moboModel || server.serverInfo!.moboModel,
-                  serverModel: setupStatusResponse.serverModel || server.serverInfo!.serverModel,
-                  aliasStyle: setupStatusResponse.aliasStyle || server.serverInfo!.aliasStyle,
-                  chassisSize: setupStatusResponse.chassisSize || server.serverInfo!.chassisSize,
-                };
-              } else {
-                console.warn(`HTTP error! server: ${server.name} status: ${fetchResponse.status}`);
-              }
-            } catch (error) {
-              console.warn(`setup-status fetch failed for ${server.ip}:9099; using TXT only`, error);
+      // Derive a friendly name (strip off the service suffix)
+      const [bare] = instance.split("._");
+      const displayName = `${bare}.local`;
+
+      // Use TXT as the initial source of truth
+      const txtSetupComplete = txtRecord.setupComplete === "true";
+
+      const server: Server = {
+        ip: serverIp,
+        name: displayName,
+        status: txtSetupComplete ? "complete" : "not complete",
+        lastSeen: Date.now(),
+        setupComplete: txtSetupComplete,
+        serverName: txtRecord.serverName || displayName,
+        shareName: txtRecord.shareName,
+        setupTime: txtRecord.setupTime,
+        serverInfo: {
+          moboMake: txtRecord.moboMake,
+          moboModel: txtRecord.moboModel,
+          serverModel: txtRecord.serverModel,
+          aliasStyle: txtRecord.aliasStyle,
+          chassisSize: txtRecord.chassisSize,
+        },
+        manuallyAdded: false,
+        fallbackAdded: false,
+      };
+
+      // Optionally refine using HTTP status if reachable
+      if (!server.manuallyAdded && !server.fallbackAdded) {
+        try {
+          const fetchResponse = await fetch(`http://${server.ip}:9099/setup-status`);
+          if (fetchResponse.ok) {
+            const setupStatusResponse = await fetchResponse.json();
+
+            if (typeof setupStatusResponse.setupComplete === "boolean") {
+              server.setupComplete = setupStatusResponse.setupComplete;
+              server.status = setupStatusResponse.setupComplete ? "complete" : "not complete";
+            } else if (typeof setupStatusResponse.status === "string") {
+              server.status = setupStatusResponse.status;
+              if (server.status === "complete") server.setupComplete = true;
             }
-          }
 
-          // upsert into discoveredServers
-          const existing = discoveredServers.find(s => s.ip === server.ip);
-
-          if (!existing) {
-            discoveredServers.push(server);
+            server.shareName = setupStatusResponse.shareName || server.shareName;
+            server.serverName = setupStatusResponse.serverName || server.serverName;
+            server.setupTime = setupStatusResponse.setupTime || server.setupTime;
+            server.serverInfo = {
+              moboMake: setupStatusResponse.moboMake || server.serverInfo!.moboMake,
+              moboModel: setupStatusResponse.moboModel || server.serverInfo!.moboModel,
+              serverModel: setupStatusResponse.serverModel || server.serverInfo!.serverModel,
+              aliasStyle: setupStatusResponse.aliasStyle || server.serverInfo!.aliasStyle,
+              chassisSize: setupStatusResponse.chassisSize || server.serverInfo!.chassisSize,
+            };
           } else {
-            Object.assign(existing, {
-              name: displayName,
-              lastSeen: server.lastSeen,
-              status: server.status,
-              setupComplete: server.setupComplete,
-              serverName: server.serverName,
-              shareName: server.shareName,
-              setupTime: server.setupTime,
-              serverInfo: server.serverInfo,
-              fallbackAdded: false
-            });
+            console.warn(
+              `HTTP error! server: ${server.name} status: ${fetchResponse.status}`
+            );
           }
-
-          break server_search;
+        } catch (error) {
+          console.warn(
+            `setup-status fetch failed for ${server.ip}:9099; using mDNS TXT only`,
+            error
+          );
         }
+      }
+
+      // Upsert into discoveredServers by IP
+      const existing = discoveredServers.find((s) => s.ip === server.ip);
+
+      if (!existing) {
+        discoveredServers.push(server);
+        changed = true;
+      } else {
+        Object.assign(existing, {
+          name: displayName,
+          lastSeen: server.lastSeen,
+          status: server.status,
+          setupComplete: server.setupComplete,
+          serverName: server.serverName,
+          shareName: server.shareName,
+          setupTime: server.setupTime,
+          serverInfo: server.serverInfo,
+          fallbackAdded: false,
+        });
+        changed = true;
       }
     }
 
-    mainWindow.webContents.send('discovered-servers', discoveredServers);
-    mainWindow.webContents.send('client-ip', getLocalIP());
+    // Only send if we actually changed something (optional, but reduces spam)
+    if (changed) {
+      mainWindow.webContents.send("discovered-servers", discoveredServers);
+    }
 
+    mainWindow.webContents.send("client-ip", getLocalIP());
   }
 
   const mdnsInterval = setInterval(() => {

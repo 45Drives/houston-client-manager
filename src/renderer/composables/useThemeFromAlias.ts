@@ -33,7 +33,7 @@ watchEffect(() => {
 /** Apply a theme using the 45Drives alias coming from the server (e.g. "homelab"|"professional") */
 function applyThemeFromAlias(aliasStyle?: string) {
   const normalized = (aliasStyle || '').toLowerCase()
-  currentTheme.value = aliasToTheme[normalized] ?? 'theme-studio'
+  currentTheme.value = aliasToTheme[normalized] ?? 'theme-homelab'
 }
 
 /** Directly set a theme */
