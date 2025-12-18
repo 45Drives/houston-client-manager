@@ -337,7 +337,7 @@ function createWindow() {
       partition: 'persist:your-cookie-partition',
       webSecurity: true,                  // Enforces origin security
       allowRunningInsecureContent: false, // Prevents HTTP inside HTTPS
-      // devTools: true,
+      devTools: true,
     }
   });
 
@@ -867,7 +867,7 @@ function createWindow() {
                 error: errorMsg,
               });
 
-              notify(`Backup task "${task.description}" failed: ${errorMsg}`);
+              notify(`Error: Backup task "${task.description}" failed: ${errorMsg}`);
               IPCRouter.getInstance().send('renderer', 'action', JSON.stringify({
                 type: 'backupRunFinished',
                 taskUuid: task.uuid,

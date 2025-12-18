@@ -71,6 +71,13 @@
               placeholder="Select a backup to see files">
             </input>
           </div>
+          <div v-if="selectedBackup" class="flex items-center justify-end gap-2 mb-2">
+            <label class="flex items-center gap-2 select-none">
+              <input type="checkbox" v-model="showHiddenFiles" :disabled="isRestoring" />
+              <span>Show hidden files</span>
+            </label>
+          </div>
+
           <div class="max-h-96 overflow-y-auto text-default" v-if="selectedBackup">
 
             <table v-if="!loading" class="w-full border text-left">
@@ -158,7 +165,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, inject, onActivated, onDeactivated } from 'vue'
+import { ref, computed, inject, onActivated, onDeactivated, watch } from 'vue'
 import { useWizardSteps, DynamicBrandingLogo, confirm, CardContainer, useEnterToAdvance } from '@45drives/houston-common-ui';
 import { divisionCodeInjectionKey, restoreBackUpSetupDataKey } from '../../keys/injection-keys';
 import { IPCRouter, type BackupEntry, type FileEntry } from '@45drives/houston-common-lib';
@@ -197,6 +204,7 @@ const allFilesSelected = computed(() => {
   }
   return selectedBackup.value.files.every(f => f.selected);
 });
+const showHiddenFiles = ref(false);
 
 function toggleHeaderSelect() {
   if (!selectedBackup.value) return;
@@ -323,19 +331,25 @@ async function selectBackup(backup: BackupEntry) {
 }
 
 async function fetchBackupFiles(backup: BackupEntry) {
-  // console.debug("fetchFilesFromBackup")
-  IPCRouter.getInstance().send("backend", 'action', JSON.stringify(
-    {
-      type: "fetchFilesFromBackup",
-      data: {
-        smb_host: (restoreBackupsData.server?.serverName ?? "") + ".local",
-        smb_share: restoreBackupsData.server?.shareName ?? "",
-        smb_user: restoreBackupsData.username,
-        smb_pass: restoreBackupsData.password,
-        uuid: backup.uuid
-      }
-    }))
+  IPCRouter.getInstance().send("backend", "action", JSON.stringify({
+    type: "fetchFilesFromBackup",
+    data: {
+      smb_host: (restoreBackupsData.server?.serverName ?? "") + ".local",
+      smb_share: restoreBackupsData.server?.shareName ?? "",
+      smb_user: restoreBackupsData.username,
+      smb_pass: restoreBackupsData.password,
+      uuid: backup.uuid,
+      includeHidden: showHiddenFiles.value,
+    }
+  }));
 }
+
+watch(showHiddenFiles, async () => {
+  if (selectedBackup.value) {
+    loading.value = true;
+    await fetchBackupFiles(selectedBackup.value);
+  }
+});
 
 function selectAll() {
   selectedBackup.value?.files.forEach(file => file.selected = true)
