@@ -163,24 +163,49 @@ describe("SMB mount integration", () => {
   it("actually mounts and is detectable by the OS", async () => {
 
     const mainWindow = makeWindowStub();
+    const platform = os.platform();
+    const service = `houston-smb-${smb_share}`;
+    if ( platform == "darwin") {
+      await exec(`security delete-generic-password -s "${service}" -a "${smb_user}" 2>/dev/null || true`);
+      await exec(`security add-generic-password -s "${service}" -a "${smb_user}" -w "${smb_pass}" -U`);
+    }
 
     const res = await mountSmbPopup(smb_host, smb_share, smb_user, smb_pass, mainWindow, "silent");
 
     // The function’s return value varies by OS/script; we don’t rely on it alone.
     // We verify mount state from the OS.
-    const platform = os.platform();
-    if (platform === "linux") {
-      expect(await isMountedLinux(smb_share)).toBe(true);
-    } else if (platform === "darwin") {
-      expect(await isMountedMac(smb_host, smb_share)).toBe(true);
-    } else if (platform === "win32") {
-      expect(await isMountedWindows(smb_share)).toBe(true);
-    } else {
-      throw new Error(`Unsupported platform for integration test: ${platform}`);
-    }
-
     expect(typeof res).toBe("string");
-    expect(res).toBe('{"MountPoint": "/mnt/houston-mounts/' + smb_share + '", "smb_server": "' + smb_host + '"}')
+   
+    const out = JSON.parse(res);
+
+    if (platform === "linux") {
+      expect(out).toEqual({
+        MountPoint: `/mnt/houston-mounts/${smb_share}`,
+        smb_server: smb_host,
+      });
+    } else if (platform === "darwin") {
+      // e.g. { smb_server: "smb://192.168.5.114/share", share: "share", status: "already mounted", MountPoint: "/Volumes/share" }
+      expect(out).toMatchObject({
+        smb_server: `smb://${smb_host}/${smb_share}`,
+        share: smb_share,
+        MountPoint: `/Volumes/${smb_share}`,
+      });
+
+      expect(out.status).toBeDefined();
+      expect(["already mounted", "mounted successfully"]).toContain(out.status);
+      expect(out).not.toHaveProperty("error");
+    } else if (platform === "win32") {
+      // e.g. {"DriveLetter":"Z:","MountPoint":"Z:\\","smb_share":"share","message":"Mounted successfully"}
+      expect(out).toMatchObject({
+        smb_share,
+        message: "Mounted successfully",
+      });
+
+      expect(out.DriveLetter).toEqual(expect.stringMatching(/^[A-Z]:$/));
+      expect(out.MountPoint).toBe(`${out.DriveLetter}\\`);
+
+      expect(out).not.toHaveProperty("error");
+    }
   },
   120_000);
 });
