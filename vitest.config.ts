@@ -6,7 +6,7 @@ export default defineConfig({
   root: Path.join(__dirname, "src"),
   test: {
     environment: "jsdom",
-    exclude: [...configDefaults.exclude, "e2e/**", "houston-common/**"],
+    exclude: [...configDefaults.exclude, "e2e/**", "houston-common/**", "**/build/**",],
     root: fileURLToPath(new URL("./", import.meta.url)),
   },
 });
