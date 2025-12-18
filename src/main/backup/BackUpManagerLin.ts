@@ -361,9 +361,6 @@ echo "${fstabEntry}" >> /etc/fstab
     const [smbHost, smbSharePart] = task.target.split(":");
     const smbShare = smbSharePart.split("/")[0];
 
-    // Ensure /etc/fstab and cred file are set up once during schedule
-    this.ensureFstabEntry(smbHost, smbShare, username, password);
-
     const logPath = path.join(LOG_DIR, `Houston_Backup_Task_${task.uuid}.log`);
     const mountDir = `/mnt/houston-mounts/${smbShare}`;
     const target = getSmbTargetFromSmbTarget(task.target);

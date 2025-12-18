@@ -118,7 +118,7 @@
 
 <script setup lang="ts">
 import { CardContainer, CommanderToolTip, confirm, useEnterToAdvance } from "@45drives/houston-common-ui";
-import { computed, inject, onMounted, ref, watch } from "vue";
+import { computed, inject, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { PlusIcon, MinusIcon } from "@heroicons/vue/20/solid";
 import { useWizardSteps, DynamicBrandingLogo } from '@45drives/houston-common-ui';
 import { Server, DiscoveryState } from '../../types'
@@ -202,6 +202,16 @@ const loadExistingFolders = () => {
 	}));
 };
 onMounted(loadExistingFolders);
+
+
+onMounted(() => {
+	window.electron?.ipcRenderer.invoke('discovery:setEnabled', true);
+});
+
+onBeforeUnmount(() => {
+	window.electron?.ipcRenderer.invoke('discovery:setEnabled', false);
+});
+
 
 // Normalize path function for cross-platform compatibility
 const normalizePath = (path: string) =>

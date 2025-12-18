@@ -122,7 +122,7 @@
 <script setup lang="ts">
 import { CardContainer, CommanderToolTip, Modal, useEnterToAdvance } from "@45drives/houston-common-ui";
 import { useWizardSteps, DynamicBrandingLogo } from '@45drives/houston-common-ui';
-import { inject, ref, reactive, watch, nextTick, computed } from "vue";
+import { inject, ref, reactive, watch, nextTick, computed, onMounted, onBeforeUnmount } from "vue";
 import { PlusIcon, MinusIcon } from "@heroicons/vue/20/solid";
 import { backUpSetupConfigKey } from "../../keys/injection-keys";
 import MessageDialog from '../../components/MessageDialog.vue';
@@ -227,6 +227,16 @@ watch(
   },
   { immediate: true } // triggers on mount too
 )
+
+
+onMounted(() => {
+	window.electron?.ipcRenderer.invoke('discovery:setEnabled', true);
+});
+
+onBeforeUnmount(() => {
+	window.electron?.ipcRenderer.invoke('discovery:setEnabled', false);
+});
+
 
 
 // Folder Selection
