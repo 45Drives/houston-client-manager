@@ -168,7 +168,7 @@ import { IPCRouter } from '@45drives/houston-common-lib';
 import HoustonServerListView from '../../components/HoustonServerListView.vue'
 import { EyeIcon, EyeSlashIcon } from "@heroicons/vue/20/solid";
 import { Server } from '../../types';
-import { computed, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import GlobalSetupWizardMenu from '../../components/GlobalSetupWizardMenu.vue';
 import { divisionCodeInjectionKey } from '../../keys/injection-keys';
 import { inject } from 'vue';
@@ -544,6 +544,15 @@ useEnterToAdvance(
     goBackStep(); // left arrow key ← acts like "Back"
   }
 );
+
+
+onMounted(() => {
+  window.electron?.ipcRenderer.invoke('discovery:setEnabled', true);
+});
+
+onBeforeUnmount(() => {
+  window.electron?.ipcRenderer.invoke('discovery:setEnabled', false);
+});
 
 
 </script>

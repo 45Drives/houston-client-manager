@@ -942,9 +942,9 @@ const onWebViewLoaded = async () => {
     console.error("Webview login error:", error);
   } finally {
     finishOverlay();
-    // if (isDev.value && webview.value?.openDevTools) {
+    if (isDev.value && webview.value?.openDevTools) {
       webview.value.openDevTools();
-    // }
+    }
   }
 };
 

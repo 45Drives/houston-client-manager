@@ -168,6 +168,17 @@ onBeforeUnmount(() => {
   }
 });
 
+
+
+onMounted(() => {
+  window.electron?.ipcRenderer.invoke('discovery:setEnabled', true);
+});
+
+onBeforeUnmount(() => {
+  window.electron?.ipcRenderer.invoke('discovery:setEnabled', false);
+});
+
+
 // When user clicks Next or presses Enter:
 // 1) validate locally
 // 2) ask backend to try mounting (with these credentials)

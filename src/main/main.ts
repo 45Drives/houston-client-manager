@@ -295,21 +295,24 @@ function isPortOpen(ip: string, port: number, timeout = 2000): Promise<boolean> 
 const TIMEOUT_DURATION = 60_000;
 const serviceType = '_houstonserver_legacy._tcp.local';
 
+const isPrivateV4 = (ip: string) =>
+  /^10\./.test(ip) ||
+  /^192\.168\./.test(ip) ||
+  /^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(ip);
+
 const getLocalIP = () => {
   const nets = os.networkInterfaces();
   for (const name of Object.keys(nets)) {
-    const something = nets[name];
-    if (something) {
-      for (const net of something) {
-        // Only return the IPv4 address (ignoring internal/loopback addresses)
-        if (net.family === "IPv4" && !net.internal && net.address.startsWith("192")) {
-          return net.address;
-        }
+    const items = nets[name];
+    if (!items) continue;
+
+    for (const net of items) {
+      if (net.family === 'IPv4' && !net.internal && isPrivateV4(net.address)) {
+        return net.address;
       }
     }
   }
-  
-  return "127.0.0.1"; // Fallback
+  return '127.0.0.1';
 };
 
 
@@ -334,7 +337,7 @@ function createWindow() {
       partition: 'persist:your-cookie-partition',
       webSecurity: true,                  // Enforces origin security
       allowRunningInsecureContent: false, // Prevents HTTP inside HTTPS
-      devTools: true,
+      // devTools: true,
     }
   });
 
@@ -511,6 +514,59 @@ function createWindow() {
   
   ipcMain.handle('scan-network-fallback', async () => {
     return await doFallbackScan();
+  });
+
+  let discoveryEnabled = false;
+  let mdnsInterval: NodeJS.Timeout | null = null;
+  let pollActionInterval: NodeJS.Timeout | null = null;
+  let clearInactiveServerInterval: NodeJS.Timeout | null = null;
+
+  function startDiscoveryLoops() {
+    if (discoveryEnabled) return;
+    discoveryEnabled = true;
+
+    mdnsInterval = setInterval(() => {
+      mDNSClient.query({ questions: [{ name: serviceType, type: 'PTR' }] });
+    }, 5000);
+
+    clearInactiveServerInterval = setInterval(() => {
+      const now = Date.now();
+      const before = discoveredServers.length;
+
+      discoveredServers = discoveredServers.filter(srv =>
+        now - srv.lastSeen <= TIMEOUT_DURATION || (srv as any).manuallyAdded === true
+      );
+
+      if (discoveredServers.length !== before) {
+        mainWindow.webContents.send('discovered-servers', discoveredServers);
+      }
+    }, 5000);
+
+    pollActionInterval = setInterval(() => {
+      const servers = discoveredServers.filter(s =>
+        !(s as any).manuallyAdded &&
+        !(s as any).fallbackAdded &&
+        s.ip !== '127.0.0.1'
+      );
+
+      // run in parallel so one slow/offline host doesn’t stall the whole loop
+      void Promise.allSettled(servers.map(s => pollActions(s)));
+    }, 5000);
+  }
+
+  function stopDiscoveryLoops() {
+    discoveryEnabled = false;
+
+    if (mdnsInterval) clearInterval(mdnsInterval);
+    if (pollActionInterval) clearInterval(pollActionInterval);
+    if (clearInactiveServerInterval) clearInterval(clearInactiveServerInterval);
+
+    mdnsInterval = pollActionInterval = clearInactiveServerInterval = null;
+  }
+
+  ipcMain.handle('discovery:setEnabled', (_e, enabled: boolean) => {
+    if (enabled) startDiscoveryLoops();
+    else stopDiscoveryLoops();
   });
 
   function notify(message: string) {
@@ -1038,10 +1094,11 @@ function createWindow() {
         (ipAnswer && ipAnswer.data ? (ipAnswer.data as string) : null) ||
         (txtRecord.ip ? String(txtRecord.ip) : null);
 
-      if (!serverIp) {
-        // Without an IP we cannot upsert or refresh lastSeen; skip this SRV
-        continue;
-      }
+      if (!serverIp) continue;
+
+      // Never accept loopback as a discovered server
+      if (serverIp === '127.0.0.1') continue;
+      if (serverIp === '0.0.0.0') continue;
 
       // Derive a friendly name (strip off the service suffix)
       const [bare] = instance.split("._");
@@ -1071,9 +1128,17 @@ function createWindow() {
       };
 
       // Optionally refine using HTTP status if reachable
-      if (!server.manuallyAdded && !server.fallbackAdded) {
+      if (
+        discoveryEnabled &&
+        !server.manuallyAdded &&
+        !server.fallbackAdded
+      ) {
         try {
-          const fetchResponse = await fetch(`http://${server.ip}:9099/setup-status`);
+          const fetchResponse = await fetch(`http://${server.ip}:9099/setup-status`, {
+            cache: 'no-store',
+            signal: AbortSignal.timeout(2000),
+          });
+
           if (fetchResponse.ok) {
             const setupStatusResponse = await fetchResponse.json();
 
@@ -1095,13 +1160,10 @@ function createWindow() {
               aliasStyle: setupStatusResponse.aliasStyle || server.serverInfo!.aliasStyle,
               chassisSize: setupStatusResponse.chassisSize || server.serverInfo!.chassisSize,
             };
-          } else {
-            console.warn(
-              `HTTP error! server: ${server.name} status: ${fetchResponse.status}`
-            );
           }
         } catch (error) {
-          console.warn(
+          // This is expected when 9099 isn't up; consider debug instead of warn
+          console.debug(
             `setup-status fetch failed for ${server.ip}:9099; using mDNS TXT only`,
             error
           );
@@ -1137,27 +1199,6 @@ function createWindow() {
 
     mainWindow.webContents.send("client-ip", getLocalIP());
   }
-
-  const mdnsInterval = setInterval(() => {
-    mDNSClient.query({
-      questions: [{ name: '_houstonserver_legacy._tcp.local', type: 'PTR' }],
-    })
-  }, 5000);
-
-
-  const clearInactiveServerInterval = setInterval(() => {
-    const now = Date.now()
-
-    // only keep servers that are still “fresh” OR that have manuallyAdded === true
-    discoveredServers = discoveredServers.filter(srv =>
-      now - srv.lastSeen <= TIMEOUT_DURATION
-      || (srv as any).manuallyAdded === true
-    )
-
-    // push the updated list back to the renderer
-    mainWindow.webContents.send('discovered-servers', discoveredServers)
-  }, 5000)
-  
 
   async function pollActions(server: Server) {
     try {
@@ -1217,19 +1258,9 @@ function createWindow() {
     }));
   });
 
-  const pollActionInterval = setInterval(async () => {
-    for (let server of discoveredServers) {
-      if ((server as any).manuallyAdded || (server as any).fallbackAdded) continue
-      await pollActions(server)
-    }
-  }, 5000);
-
-
   app.on('window-all-closed', function () {
     ipcMain.removeAllListeners('message')
-    clearInterval(pollActionInterval);
-    clearInterval(clearInactiveServerInterval);
-    clearInterval(mdnsInterval);
+    stopDiscoveryLoops();
     mDNSClient.destroy();
     if (process.platform !== 'darwin') {
       app.quit();
