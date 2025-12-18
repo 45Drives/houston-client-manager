@@ -60,8 +60,6 @@ async function isMountedWindows(share: string): Promise<boolean> {
   return stdout.toLowerCase().includes(`\\\\`.toLowerCase()) && stdout.toLowerCase().includes(share.toLowerCase());
 }
 
-
-
 function escRe(s: string) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
@@ -164,7 +162,6 @@ afterEach(async () => {
 describe("SMB mount integration", () => {
   it("actually mounts and is detectable by the OS", async () => {
 
-
     const mainWindow = makeWindowStub();
 
     const res = await mountSmbPopup(smb_host, smb_share, smb_user, smb_pass, mainWindow, "silent");
@@ -183,6 +180,7 @@ describe("SMB mount integration", () => {
     }
 
     expect(typeof res).toBe("string");
+    expect(res).toBe('{"MountPoint": "/mnt/houston-mounts/' + smb_share + '", "smb_server": "' + smb_host + '"}')
   },
   120_000);
 });
