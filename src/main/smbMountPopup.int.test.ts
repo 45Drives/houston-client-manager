@@ -24,9 +24,9 @@ vi.mock("./utils", async () => {
 // Update import to your module:
 import mountSmbPopup from "./smbMountPopup";
 
-const smb_host = "192.168.5.114";
-const smb_share = "share";
-const smb_user = "root";
+const smb_host = "192.168.207.75";
+const smb_share = "newbackup";
+const smb_user = "mactest";
 const smb_pass = "password";
 
 const exec = promisify(execCb);
@@ -165,7 +165,7 @@ describe("SMB mount integration", () => {
     const mainWindow = makeWindowStub();
     const platform = os.platform();
     const service = `houston-smb-${smb_share}`;
-    if ( platform == "darwin") {
+    if (platform == "darwin") {
       await exec(`security delete-generic-password -s "${service}" -a "${smb_user}" 2>/dev/null || true`);
       await exec(`security add-generic-password -s "${service}" -a "${smb_user}" -w "${smb_pass}" -U`);
     }
