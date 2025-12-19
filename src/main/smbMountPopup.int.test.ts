@@ -13,7 +13,6 @@ vi.mock("./utils", async () => {
   return {
     ...actual,
     getAsset: vi.fn(async (dir: string, filename: string) => {
-      // Adjust this to match your repo layout.
       // If the test file is in src/main/, this resolves src/main/static/<file>
       return path.resolve(__dirname, "static", filename);
     }),
@@ -21,12 +20,11 @@ vi.mock("./utils", async () => {
 });
 
 
-// Update import to your module:
 import mountSmbPopup from "./smbMountPopup";
 
 const smb_host = "192.168.207.75";
-const smb_share = "winback2";
-const smb_user = "testuserwin";
+const smb_share = "testshare";
+const smb_user = "testuser";
 const smb_pass = "password";
 
 const exec = promisify(execCb);
