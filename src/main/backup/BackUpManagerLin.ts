@@ -338,7 +338,10 @@ export class BackUpManagerLin implements BackUpManager {
     const fstabEntry = `//${smbHost}/${smbShare} ${mountDir} cifs credentials=${credFile},iocharset=utf8,rw,uid=${uid},gid=${gid},vers=3.0,user,noauto 0 0`;
 
     const fstab = fs.readFileSync("/etc/fstab", "utf-8");
-    if (!fstab.includes(`//${smbHost}/${smbShare}`)) {
+    const hasFstab = fstab.includes(`//${smbHost}/${smbShare}`);
+    const hasCred = fs.existsSync(credFile);
+    const hasMountDir = fs.existsSync(mountDir);
+    if (!hasFstab || !hasCred || !hasMountDir) {
       const tempScript = `/tmp/add_fstab_entry_${smbShare}.sh`;
       const scriptContent = `#!/bin/bash
 mkdir -p "${credDir}"
@@ -366,59 +369,66 @@ echo "${fstabEntry}" >> /etc/fstab
     const target = getSmbTargetFromSmbTarget(task.target);
 
     const scriptContent = `#!/bin/bash
-  EVENT_LOG='${LOG_DIR}/45drives_backup_events.json'
-  SMB_HOST='${smbHost}'
-  SMB_SHARE='${smbShare}'
-  SOURCE='${task.source}/'
-  TARGET='${target}'
-  LOG_FILE='${logPath}'
-  MOUNT_DIR='${mountDir}'
-  START_DATE='${task.schedule.startDate}'
+set -euo pipefail
 
-  echo '{"event":"backup_start","timestamp":"'$(date -Iseconds)'","uuid":"'"${task.uuid}"'","host":"'"${smbHost}"'","share":"'"${smbShare}"'","source":"'"${task.source}"'","target":"'"${target}"'"}' >> "$EVENT_LOG"
-  mkdir -p "$(dirname "$LOG_FILE")"
+EVENT_LOG='${LOG_DIR}/45drives_backup_events.json'
+SMB_HOST='${smbHost}'
+SMB_SHARE='${smbShare}'
+SOURCE='${task.source}/'
+TARGET='${target}'
+LOG_FILE='${logPath}'
+MOUNT_DIR='${mountDir}'
+START_DATE='${task.schedule.startDate}'
 
-  cleanup() {
-    if [ -d "$MOUNT_DIR" ]; then
-      echo "[CLEANUP] Unmounting $MOUNT_DIR" >> "$LOG_FILE"
-      umount "$MOUNT_DIR" >> "$LOG_FILE" 2>&1
-    fi
-  }
-  trap cleanup EXIT
+mkdir -p "$(dirname "$LOG_FILE")"
 
-  {
-    echo "===== [$(date -Iseconds)] Starting backup task: '${task.description}' ====="
-    echo "[INFO] Source: $SOURCE"
-    echo "[INFO] Target: $TARGET"
-    echo "[INFO] Mount directory: $MOUNT_DIR"
+# Send ALL stdout/stderr to both console and the log file, without a pipeline
+exec > >(tee -a "$LOG_FILE") 2>&1
 
-    mkdir -p "$MOUNT_DIR"
+echo '{"event":"backup_start","timestamp":"'$(date -Iseconds)'","uuid":"'"${task.uuid}"'","host":"'"${smbHost}"'","share":"'"${smbShare}"'","source":"'"${task.source}"'","target":"'"${target}"'"}' >> "$EVENT_LOG"
 
-    mount "$MOUNT_DIR" >> "$LOG_FILE" 2>&1
-    if ! mountpoint -q "$MOUNT_DIR"; then
-      echo "[ERROR] Failed to mount $MOUNT_DIR" >> "$LOG_FILE"
-      exit 1
-    fi
-    echo "[SUCCESS] SMB share mounted at $MOUNT_DIR"
+cleanup() {
+  # Only attempt unmount if it's actually mounted
+  if mountpoint -q "$MOUNT_DIR"; then
+    echo "[CLEANUP] Unmounting $MOUNT_DIR"
+    umount "$MOUNT_DIR" || true
+  fi
+}
+trap cleanup EXIT
 
-    mkdir -p "$MOUNT_DIR/$TARGET"
-    echo "[INFO] Running rsync..."
-    rsync -a${task.mirror ? ' --delete' : ''} "$SOURCE" "$MOUNT_DIR/$TARGET" >> "$LOG_FILE" 2>&1
-    RSYNC_STATUS=$?
+echo "===== [$(date -Iseconds)] Starting backup task: '${task.description}' ====="
+echo "[INFO] Source: $SOURCE"
+echo "[INFO] Target: $TARGET"
+echo "[INFO] Mount directory: $MOUNT_DIR"
 
-    if [ $RSYNC_STATUS -ne 0 ]; then
-      echo "[ERROR] rsync failed with exit code $RSYNC_STATUS" >> "$LOG_FILE"
-      exit $RSYNC_STATUS
-    else
-      echo "[SUCCESS] rsync completed successfully" >> "$LOG_FILE"
-    fi
+mkdir -p "$MOUNT_DIR"
 
-    STATUS=$([ $RSYNC_STATUS -eq 0 ] && echo "success" || echo "failure")
-    echo '{"event":"backup_end","timestamp":"'"$(date -Iseconds)"'","uuid":"'"${task.uuid}"'","host":"'"${smbHost}"'","share":"'"${smbShare}"'","source":"'"${task.source}"'","target":"'"${target}"'","status":"'"$STATUS"'"}' >> "$EVENT_LOG"
+# This relies on /etc/fstab having a matching entry for $MOUNT_DIR
+mount "$MOUNT_DIR"
 
-    echo "===== [$(date -Iseconds)] Backup task completed ====="
-  } 2>&1 | tee -a "$LOG_FILE"
-  `;
+# With -e, this will exit non-zero if not mounted
+mountpoint -q "$MOUNT_DIR"
+
+echo "[SUCCESS] SMB share mounted at $MOUNT_DIR"
+
+mkdir -p "$MOUNT_DIR/$TARGET"
+echo "[INFO] Running rsync..."
+rsync -a${task.mirror ? ' --delete' : ''} "$SOURCE" "$MOUNT_DIR/$TARGET"
+RSYNC_STATUS=$?
+
+if [ $RSYNC_STATUS -ne 0 ]; then
+  echo "[ERROR] rsync failed with exit code $RSYNC_STATUS"
+  exit $RSYNC_STATUS
+else
+  echo "[SUCCESS] rsync completed successfully"
+fi
+
+STATUS=$([ $RSYNC_STATUS -eq 0 ] && echo "success" || echo "failure")
+echo '{"event":"backup_end","timestamp":"'"$(date -Iseconds)"'","uuid":"'"${task.uuid}"'","host":"'"${smbHost}"'","share":"'"${smbShare}"'","source":"'"${task.source}"'","target":"'"${target}"'","status":"'"$STATUS"'"}' >> "$EVENT_LOG"
+
+echo "===== [$(date -Iseconds)] Backup task completed ====="
+`;
+
 
     fs.writeFileSync(scriptPath, scriptContent, { mode: 0o700 });
   }  

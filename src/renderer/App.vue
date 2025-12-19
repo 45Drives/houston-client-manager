@@ -560,8 +560,8 @@ const openStorageSetup = (server: Server | null) => {
     // const devURL = 'super-simple-setup-test';
     // newUrl = `https://${server.ip}:9090/${(isDev.value ? devURL : prodURL)}#dark=${darkModeState.value}&advanced=${advancedState.value}&client_ip=${clientip.value}&server_ip=${server.ip}`;
 
-    // newUrl = `https://${server.ip}:9090/super-simple-setup#dark=${darkModeState.value}&advanced=${advancedState.value}&client_ip=${clientip.value}&server_ip=${server.ip}`;
-    newUrl = `https://${server.ip}:9090/super-simple-setup-test#dark=${darkModeState.value}&advanced=${advancedState.value}&client_ip=${clientip.value}&server_ip=${server.ip}`;
+    newUrl = `https://${server.ip}:9090/super-simple-setup#dark=${darkModeState.value}&advanced=${advancedState.value}&client_ip=${clientip.value}&server_ip=${server.ip}`;
+    // newUrl = `https://${server.ip}:9090/super-simple-setup-test#dark=${darkModeState.value}&advanced=${advancedState.value}&client_ip=${clientip.value}&server_ip=${server.ip}`;
 
   } else {
     currentUrl.value = "";
@@ -708,7 +708,8 @@ const onWebViewLoaded = async () => {
     }
 
     function onModulePage() {
-      return window.location.pathname.includes("/super-simple-setup-test");
+      return window.location.pathname.includes("/super-simple-setup");
+      // return window.location.pathname.includes("/super-simple-setup-test");
     }
 
     function setChromeMode(enabled) {
@@ -942,9 +943,9 @@ const onWebViewLoaded = async () => {
     console.error("Webview login error:", error);
   } finally {
     finishOverlay();
-    // if (isDev.value && webview.value?.openDevTools) {
+    if (isDev.value && webview.value?.openDevTools) {
       webview.value.openDevTools();
-    // }
+    }
   }
 };
 

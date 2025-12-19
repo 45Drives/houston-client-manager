@@ -337,7 +337,7 @@ function createWindow() {
       partition: 'persist:your-cookie-partition',
       webSecurity: true,                  // Enforces origin security
       allowRunningInsecureContent: false, // Prevents HTTP inside HTTPS
-      devTools: true,
+      // devTools: true,
     }
   });
 
