@@ -62,10 +62,10 @@ for /f "tokens=2 delims=\\" %%A in ("%NETWORK_PATH%") do set "SMB_SERVER=%%A"
 >>"%LOG%" echo Extracted SMB_SERVER: %SMB_SERVER%
 
 :: Check if the SMB server is already mounted
-for /f "tokens=2" %%D in ('net use ^| findstr /I "%SMB_SERVER%"') do (
-    >>"%LOG%" echo Found existing mount %%D, deleting...
-    net use %%D /delete /y >nul 2>&1
-)
+>>"%LOG%" echo Deleting any existing connections to %NETWORK_PATH% / \\%SMB_HOST%\*
+net use "%NETWORK_PATH%" /delete /y >nul 2>&1
+net use "\\%SMB_HOST%\*" /delete /y >nul 2>&1
+
 :: Find an available drive letter (Z: downward)
 set "DRIVE_LETTER="
 
@@ -85,17 +85,22 @@ for %%L in (Z Y X W V U T S R Q P O N M L K J I H G F E D) do (
 )
 
 >>"%LOG%" echo No available drive letter found.
-goto :EOF
-
-
-echo {"error": "No available drive letters found"}
->>"%LOG%" echo ERROR: No available drive letters
+echo {"error":"No available drive letters found"}
 exit /b 1
 
 :MOUNT_SMB
 :: Map the network drive with credentials
 >>"%LOG%" echo Attempting to mount %NETWORK_PATH% to %DRIVE_LETTER%: using %USERNAME%
-net use %DRIVE_LETTER%: %NETWORK_PATH% /user:%USERNAME% "%PASSWORD%" /persistent:no >nul 2>&1
+net use %DRIVE_LETTER%: "%NETWORK_PATH%" /user:"%USERNAME%" "%PASSWORD%" /persistent:no >nul 2>&1
+set RC=%ERRORLEVEL%
+
+if not "%RC%"=="0" (
+  set "MSG="
+  for /f "delims=" %%m in ('net helpmsg %RC% 2^>nul') do set "MSG=%%m"
+  echo {"error":"Failed to map network drive","code":%RC%,"message":"%MSG%","drive":"%DRIVE_LETTER%","smb_host":"%SMB_HOST%","smb_share":"%SMB_SHARE%","network_path":"%NETWORK_PATH%"}
+  exit /b %RC%
+)
+
 >>"%LOG%" echo NET USE result: %ERRORLEVEL%
 
 :: Check if the mapping was successful
