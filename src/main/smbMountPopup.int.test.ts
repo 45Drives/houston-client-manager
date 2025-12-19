@@ -25,8 +25,8 @@ vi.mock("./utils", async () => {
 import mountSmbPopup from "./smbMountPopup";
 
 const smb_host = "192.168.207.75";
-const smb_share = "newbackup";
-const smb_user = "mactest";
+const smb_share = "winback2";
+const smb_user = "testuserwin";
 const smb_pass = "password";
 
 const exec = promisify(execCb);
@@ -175,7 +175,6 @@ describe("SMB mount integration", () => {
     // The function’s return value varies by OS/script; we don’t rely on it alone.
     // We verify mount state from the OS.
     expect(typeof res).toBe("string");
-   
     const out = JSON.parse(res);
 
     if (platform === "linux") {
@@ -201,8 +200,8 @@ describe("SMB mount integration", () => {
         message: "Mounted successfully",
       });
 
-      expect(out.DriveLetter).toEqual(expect.stringMatching(/^[A-Z]:$/));
-      expect(out.MountPoint).toBe(`${out.DriveLetter}\\`);
+      expect(out.DriveLetter).toEqual(expect.stringMatching(/^[A-Z]$/));
+      expect(out.MountPoint).toBe(`${out.DriveLetter}:\\`);
 
       expect(out).not.toHaveProperty("error");
     }
