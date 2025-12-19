@@ -3,11 +3,15 @@
     "directories": {
         "output": "dist"
     },
+    "productName": "45Drives-Setup-Wizard",
+    "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
     "publish": {
         "provider": "github",
         "owner": "45Drives",
         "repo": "houston-client-manager"
     },
+    "afterSign": "scripts/afterSign-verify.js",
+    "afterPack": "scripts/afterPack-fix-native.js",
     "nsis": {
         "oneClick": false,
         "perMachine": false,
@@ -15,7 +19,9 @@
         "shortcutName": "45Drives Setup Wizard"
     },
     "mac": {
-        "sign": false
+        "hardenedRuntime": true,
+        "entitlements": "entitlements.mac.plist",
+        "entitlementsInherit": "entitlements.mac.plist"
     },
     "win": {
         "target": "nsis",
