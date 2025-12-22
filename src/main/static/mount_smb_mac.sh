@@ -53,15 +53,26 @@ fi
 
 # Ensure mountpoint exists
 if [ ! -d "$MOUNT_POINT" ]; then
-  mkdir -p "$MOUNT_POINT" 2>/dev/null || true
+  if ! mkdir -p "$MOUNT_POINT" 2>/dev/null; then
+    fail "Cannot create mount point ${MOUNT_POINT} (permission denied)."
+  fi
 fi
 
 # ----------- Mount (GUI if available, else headless-safe) -----------
 MOUNT_OK=""
-
-if has_gui_session; then
-  # AppleScript path (works well in an interactive desktop session)
-  MOUNT_RESULT="$(/usr/bin/osascript <<EOF
+if [ "$MODE" = "silent" ]; then
+  # Always headless-safe in silent mode
+  SMB_URL="//${USERNAME}:${PASSWORD}@${HOST}/${SHARE}"
+  ERR="$(/sbin/mount_smbfs "$SMB_URL" "$MOUNT_POINT" 2>&1 >/dev/null || true)"
+  if /sbin/mount | /usr/bin/grep -qi "${HOST}/${SHARE}"; then
+    MOUNT_OK="yes"
+  else
+    fail "mount_smbfs failed: ${ERR}"
+  fi
+else
+  # popup mode: OK to use AppleScript + open
+  if has_gui_session; then
+    MOUNT_RESULT="$(/usr/bin/osascript <<EOF
 try
   mount volume "${SERVER}" as user name "${USERNAME}" with password "${PASSWORD}"
   return "SUCCESS"
@@ -70,23 +81,15 @@ on error errMsg
 end try
 EOF
 )"
-  if [[ "$MOUNT_RESULT" == "SUCCESS" ]]; then
-    MOUNT_OK="yes"
-  elif [[ "$MOUNT_RESULT" == ERROR:* ]]; then
-    ERROR_MSG="${MOUNT_RESULT#"ERROR: "}"
-    echo "{\"smb_server\": \"${SERVER}\", \"share\": \"${SHARE}\", \"error\": \"${ERROR_MSG//\"/\\\"}\"}"
-    exit 1
-  fi
-else
-  # Headless-safe path: mount_smbfs
-  # Note: creds in URL appear in process list briefly; for CI/headless integration tests this is usually acceptable.
-    SMB_URL="//${USERNAME}:${PASSWORD}@${HOST}/${SHARE}"
-    ERR="$((/sbin/mount_smbfs "$SMB_URL" "$MOUNT_POINT") 2>&1 >/dev/null || true)"
-    if /sbin/mount | /usr/bin/grep -qi "${HOST}/${SHARE}"; then
-    MOUNT_OK="yes"
-    else
-    fail "mount_smbfs failed: ${ERR}"
+    if [[ "$MOUNT_RESULT" == "SUCCESS" ]]; then
+      MOUNT_OK="yes"
+    elif [[ "$MOUNT_RESULT" == ERROR:* ]]; then
+      ERROR_MSG="${MOUNT_RESULT#"ERROR: "}"
+      fail "${ERROR_MSG}"
     fi
+  else
+    fail "popup mode requested but no GUI session"
+  fi
 fi
 
 if [ -z "$MOUNT_OK" ]; then

@@ -80,9 +80,7 @@ function mountSambaClientScriptLin(smb_host: string, smb_share: string, smb_user
       (error, stdout, stderr) => {
         handleExecOutput(error, stdout, stderr, smb_host, smb_share, mainWindow, "silent"); // or uiMode if you want
         if (error) {
-          reject(
-            `mount_smb_mac failed: ${error.message}\nstdout:\n${stdout}\nstderr:\n${stderr}`
-          );
+          reject(stderr || error.message);
         } else {
           resolve(stdout.trim());
         }
@@ -107,7 +105,9 @@ function mountSambaClientScriptMac(
       (error, stdout, stderr) => {
         handleExecOutput(error, stdout, stderr, smb_host, smb_share, mainWindow, uiMode);
         if (error) {
-          reject(stderr || error.message);
+          reject(
+            `mount_smb_mac failed: ${error.message}\nstdout:\n${stdout}\nstderr:\n${stderr}`
+          );
         } else {
           resolve(stdout.trim());
         }
