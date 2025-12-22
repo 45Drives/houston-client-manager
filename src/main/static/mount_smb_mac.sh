@@ -2,77 +2,61 @@
 set -euo pipefail
 
 # ----------- Argument validation -----------
-if [ -z "${1:-}" ]; then echo '{"error": "No host provided"}'; exit 1; fi
-if [ -z "${2:-}" ]; then echo '{"error": "No share name provided"}'; exit 1; fi
-if [ -z "${3:-}" ]; then echo '{"error": "No username provided"}'; exit 1; fi
-if [ -z "${4:-}" ]; then echo '{"error": "No mode provided"}'; exit 1; fi
+if [ -z "${1:-}" ]; then echo '{"error":"No host provided"}'; exit 1; fi
+if [ -z "${2:-}" ]; then echo '{"error":"No share name provided"}'; exit 1; fi
+if [ -z "${3:-}" ]; then echo '{"error":"No username provided"}'; exit 1; fi
+if [ -z "${4:-}" ]; then echo '{"error":"No mode provided"}'; exit 1; fi
 
 HOST="$1"
 SHARE="$2"
 USERNAME="$3"
-MODE="$4"          # "popup" or "silent"
+MODE="$4" # "popup" or "silent"
+
 SERVER="smb://${HOST}/${SHARE}"
 MOUNT_POINT="/Volumes/${SHARE}"
 KEYCHAIN_SERVICE="houston-smb-${SHARE}"
 
-fail() {
+json_error() {
   local msg="$1"
   echo "{\"smb_server\":\"${SERVER}\",\"share\":\"${SHARE}\",\"error\":\"${msg//\"/\\\"}\"}"
-  exit 1
 }
 
 has_gui_session() {
-  # If someone is logged into the console (not "root"), GUI is probably available.
+  # Console owner is the currently logged-in GUI user. If it's root, likely no GUI session.
   local console_user
   console_user="$(/usr/bin/stat -f "%Su" /dev/console 2>/dev/null || true)"
-  if [ -n "$console_user" ] && [ "$console_user" != "root" ]; then
-    return 0
-  fi
-  return 1
+  [ -n "$console_user" ] && [ "$console_user" != "root" ]
 }
 
 maybe_open_mountpoint() {
-  if [ "$MODE" = "popup" ] && has_gui_session; then
+  if [ "$MODE" = "popup" ]; then
     /usr/bin/open "$MOUNT_POINT" >/dev/null 2>&1 || true
   fi
 }
 
-# ----------- Retrieve password from Keychain -----------
-PASSWORD="$(/usr/bin/security find-generic-password -s "${KEYCHAIN_SERVICE}" -a "${USERNAME}" -w 2>/dev/null || true)"
-if [ -z "$PASSWORD" ]; then
-  echo "{\"error\": \"No password found in Keychain for service ${KEYCHAIN_SERVICE} and user ${USERNAME}\"}"
+# ----------- Require GUI session -----------
+if ! has_gui_session; then
+  json_error "No active GUI session; cannot mount via AppleScript in headless/SSH context."
   exit 1
 fi
 
-# ----------- Check if already mounted -----------
-if /sbin/mount | /usr/bin/grep -qiE "//[^[:space:]]*@?${HOST}/${SHARE}[[:space:]]+on[[:space:]]+${MOUNT_POINT}\b"; then
+# ----------- Retrieve password from Keychain -----------
+PASSWORD="$(/usr/bin/security find-generic-password -s "${KEYCHAIN_SERVICE}" -a "${USERNAME}" -w 2>/dev/null || true)"
+if [ -z "$PASSWORD" ]; then
+  json_error "No password found in Keychain for service ${KEYCHAIN_SERVICE} and user ${USERNAME}"
+  exit 1
+fi
+
+# ----------- If already mounted, return success -----------
+# Match either //user@host/share or //host/share mounted on /Volumes/<something>
+if /sbin/mount | /usr/bin/grep -qiE "//[^[:space:]]*@?${HOST}/${SHARE}[[:space:]]+on[[:space:]]+"; then
   maybe_open_mountpoint
-  echo "{\"smb_server\": \"${SERVER}\", \"share\": \"${SHARE}\", \"status\": \"already mounted\", \"MountPoint\": \"${MOUNT_POINT}\"}"
+  echo "{\"smb_server\":\"${SERVER}\",\"share\":\"${SHARE}\",\"status\":\"already mounted\",\"MountPoint\":\"${MOUNT_POINT}\"}"
   exit 0
 fi
 
-# Ensure mountpoint exists
-if [ ! -d "$MOUNT_POINT" ]; then
-  if ! mkdir -p "$MOUNT_POINT" 2>/dev/null; then
-    fail "Cannot create mount point ${MOUNT_POINT} (permission denied)."
-  fi
-fi
-
-# ----------- Mount (GUI if available, else headless-safe) -----------
-MOUNT_OK=""
-if [ "$MODE" = "silent" ]; then
-  # Always headless-safe in silent mode
-  SMB_URL="//${USERNAME}:${PASSWORD}@${HOST}/${SHARE}"
-  ERR="$(/sbin/mount_smbfs "$SMB_URL" "$MOUNT_POINT" 2>&1 >/dev/null || true)"
-  if /sbin/mount | /usr/bin/grep -qi "${HOST}/${SHARE}"; then
-    MOUNT_OK="yes"
-  else
-    fail "mount_smbfs failed: ${ERR}"
-  fi
-else
-  # popup mode: OK to use AppleScript + open
-  if has_gui_session; then
-    MOUNT_RESULT="$(/usr/bin/osascript <<EOF
+# ----------- Mount using AppleScript -----------
+MOUNT_RESULT="$(/usr/bin/osascript <<EOF
 try
   mount volume "${SERVER}" as user name "${USERNAME}" with password "${PASSWORD}"
   return "SUCCESS"
@@ -81,35 +65,31 @@ on error errMsg
 end try
 EOF
 )"
-    if [[ "$MOUNT_RESULT" == "SUCCESS" ]]; then
-      MOUNT_OK="yes"
-    elif [[ "$MOUNT_RESULT" == ERROR:* ]]; then
-      ERROR_MSG="${MOUNT_RESULT#"ERROR: "}"
-      fail "${ERROR_MSG}"
-    fi
-  else
-    fail "popup mode requested but no GUI session"
-  fi
-fi
 
-if [ -z "$MOUNT_OK" ]; then
-  echo "{\"smb_server\": \"${SERVER}\", \"share\": \"${SHARE}\", \"error\": \"Mount failed\"}"
+if [[ "$MOUNT_RESULT" == ERROR:* ]]; then
+  json_error "${MOUNT_RESULT#"ERROR: "}"
   exit 1
 fi
 
-# ----------- Validate the mount -----------
+# ----------- Validate mount -----------
 /bin/sleep 1
 
-if /sbin/mount | /usr/bin/grep -qi "${HOST}/${SHARE}"; then
-  if [ -d "${MOUNT_POINT}" ]; then
-    maybe_open_mountpoint
-    echo "{\"smb_server\": \"${SERVER}\", \"share\": \"${SHARE}\", \"status\": \"mounted successfully\", \"MountPoint\": \"${MOUNT_POINT}\"}"
-    exit 0
-  else
-    echo "{\"smb_server\": \"${SERVER}\", \"share\": \"${SHARE}\", \"error\": \"Share was mounted but ${MOUNT_POINT} directory not found\"}"
-    exit 1
-  fi
-else
-  echo "{\"smb_server\": \"${SERVER}\", \"share\": \"${SHARE}\", \"error\": \"Mount command succeeded but share not present in \`mount\` output\"}"
+# Find the actual mountpoint from mount output (could be /Volumes/<share> or /Volumes/<share>-1, etc.)
+ACTUAL_MP="$(/sbin/mount | /usr/bin/awk -v h="${HOST}" -v s="${SHARE}" '
+  BEGIN{IGNORECASE=1}
+  $0 ~ ("//.*@?" h "/" s " on ") {
+    for (i=1;i<=NF;i++) if ($i=="on") { print $(i+1); exit }
+  }
+')"
+
+if [ -z "${ACTUAL_MP}" ]; then
+  json_error "Mount command returned success but share not present in mount output"
   exit 1
 fi
+
+# If mac chose a different mountpoint name, use it
+MOUNT_POINT="$ACTUAL_MP"
+
+maybe_open_mountpoint
+echo "{\"smb_server\":\"${SERVER}\",\"share\":\"${SHARE}\",\"status\":\"mounted successfully\",\"MountPoint\":\"${MOUNT_POINT}\"}"
+exit 0
