@@ -71,7 +71,7 @@ if [[ "$MOUNT_RESULT" == ERROR:* ]]; then
   exit 1
 fi
 
-# ----------- Validate mount -----------
+# ----------- Validate mount -----------x
 /bin/sleep 1
 
 # Find the actual mountpoint from mount output (could be /Volumes/<share> or /Volumes/<share>-1, etc.)
