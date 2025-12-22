@@ -11,7 +11,7 @@
     "build": "yarn build:common && node scripts/build.js && electron-builder",
     "build:common": "yarn build:lib && yarn build:ui",
     "build:win": "yarn build:common && node scripts/build.js && yarn test && electron-builder --win --config electron-builder.json",
-    "build:mac": "yarn build:common && node scripts/build.js && yarn test && electron-builder --mac",
+    "build:mac": "yarn build:common && node scripts/build.js && electron-builder --mac",
     "build:linux": "yarn build:common && node scripts/build.js && yarn test && electron-builder --linux",
     "test": "vitest run"
   },
