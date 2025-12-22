@@ -191,6 +191,13 @@ describe("SMB mount integration", () => {
       expect(out.status).toBeDefined();
       expect(["already mounted", "mounted successfully"]).toContain(out.status);
       expect(out).not.toHaveProperty("error");
+
+      const deadline = Date.now() + 10_000;
+      while (Date.now() < deadline) {
+        if (await isMountedMac(smb_host, smb_share)) break;
+        await new Promise(r => setTimeout(r, 250));
+      }
+      expect(await isMountedMac(smb_host, smb_share)).toBe(true);
     } else if (platform === "win32") {
       // e.g. {"DriveLetter":"Z:","MountPoint":"Z:\\","smb_share":"share","message":"Mounted successfully"}
       expect(out).toMatchObject({
