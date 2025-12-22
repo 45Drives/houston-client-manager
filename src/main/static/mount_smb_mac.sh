@@ -46,7 +46,9 @@ if /sbin/mount | /usr/bin/grep -qiE "//[^[:space:]]*@?${HOST}/${SHARE}[[:space:]
 fi
 
 # Ensure mountpoint exists
-/bin/mkdir -p "$MOUNT_POINT"
+sudo mkdir -p "$MOUNT_POINT"
+sudo chown "$(id -u):$(id -g)" "$MOUNT_POINT"
+
 
 # ----------- Mount (GUI if available, else headless-safe) -----------
 MOUNT_OK=""
