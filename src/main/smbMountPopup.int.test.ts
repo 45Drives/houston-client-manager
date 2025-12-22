@@ -25,7 +25,7 @@ import mountSmbPopup from "./smbMountPopup";
 const smb_host = "192.168.207.75";
 const smb_share = "greenBackup2";
 const smb_user = "greentest";
-const smb_pass = "password";
+const smb_pass = "Pr0t0case!";
 
 const exec = promisify(execCb);
 

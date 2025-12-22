@@ -15,6 +15,12 @@ SERVER="smb://${HOST}/${SHARE}"
 MOUNT_POINT="/Volumes/${SHARE}"
 KEYCHAIN_SERVICE="houston-smb-${SHARE}"
 
+fail() {
+  local msg="$1"
+  echo "{\"smb_server\":\"${SERVER}\",\"share\":\"${SHARE}\",\"error\":\"${msg//\"/\\\"}\"}"
+  exit 1
+}
+
 has_gui_session() {
   # If someone is logged into the console (not "root"), GUI is probably available.
   local console_user
@@ -46,9 +52,9 @@ if /sbin/mount | /usr/bin/grep -qiE "//[^[:space:]]*@?${HOST}/${SHARE}[[:space:]
 fi
 
 # Ensure mountpoint exists
-sudo mkdir -p "$MOUNT_POINT"
-sudo chown "$(id -u):$(id -g)" "$MOUNT_POINT"
-
+if [ ! -d "$MOUNT_POINT" ]; then
+  mkdir -p "$MOUNT_POINT" 2>/dev/null || true
+fi
 
 # ----------- Mount (GUI if available, else headless-safe) -----------
 MOUNT_OK=""
@@ -74,10 +80,13 @@ EOF
 else
   # Headless-safe path: mount_smbfs
   # Note: creds in URL appear in process list briefly; for CI/headless integration tests this is usually acceptable.
-  SMB_URL="//${USERNAME}:${PASSWORD}@${HOST}/${SHARE}"
-  if /sbin/mount_smbfs "$SMB_URL" "$MOUNT_POINT" >/dev/null 2>&1; then
+    SMB_URL="//${USERNAME}:${PASSWORD}@${HOST}/${SHARE}"
+    ERR="$((/sbin/mount_smbfs "$SMB_URL" "$MOUNT_POINT") 2>&1 >/dev/null || true)"
+    if /sbin/mount | /usr/bin/grep -qi "${HOST}/${SHARE}"; then
     MOUNT_OK="yes"
-  fi
+    else
+    fail "mount_smbfs failed: ${ERR}"
+    fi
 fi
 
 if [ -z "$MOUNT_OK" ]; then
