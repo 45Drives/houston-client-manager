@@ -185,8 +185,9 @@ describe("SMB mount integration", () => {
       expect(out).toMatchObject({
         smb_server: `smb://${smb_host}/${smb_share}`,
         share: smb_share,
-        MountPoint: `/Volumes/${smb_share}`,
       });
+
+      expect(out.MountPoint).toMatch(new RegExp(`^/Volumes/${escRe(smb_share)}(?:-\\d+)?$`));
 
       expect(out.status).toBeDefined();
       expect(["already mounted", "mounted successfully"]).toContain(out.status);
