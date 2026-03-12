@@ -18,8 +18,9 @@ import { BackUpManager } from "./types";
 import { BackUpTask, backupTaskTag, TaskSchedule } from "@45drives/houston-common-lib";
 import * as fs from "fs";
 import * as os from "os";
-import { exec, execSync, spawn } from "child_process";
+import { exec, execSync, execFileSync, spawn } from "child_process";
 import { getOS, getAppPath, getSmbTargetFromSmbTarget, reconstructFullTarget } from "../utils";
+import { assertSafeHost, assertSafeShare, assertSafeUsername, sanitizeCronComment, shellQuote, toBase64 } from "../security";
 import { checkBackupTaskStatus } from './CheckSmbStatus';
 import path, { join } from "path";
 import { app } from 'electron';
@@ -138,7 +139,7 @@ export class BackUpManagerLin implements BackUpManager {
         .filter(line => !line.includes(task.uuid));
       existingCrontab.push(cronLine);
 
-      execSync(`echo "${existingCrontab.join("\n")}" | crontab -`);
+      execSync("crontab -", { input: existingCrontab.join("\n") + "\n" });
       resolve({ stdout: "Scheduled via user crontab", stderr: "" });
     });
   }
@@ -164,7 +165,7 @@ export class BackUpManagerLin implements BackUpManager {
       this.ensureFstabEntry(smbHost, smbShare, username, password);
 
       this.generateBackupScript(task, username, password, scriptPath);
-      const cronLine = `${this.scheduleToCron(task.schedule)} bash "${scriptPath}" # ${task.description}`;
+      const cronLine = `${this.scheduleToCron(task.schedule)} bash "${scriptPath}" # ${sanitizeCronComment(task.description)}`;
       cronEntries.push(cronLine);
       onProgress?.(i + 1, total, `Created and scheduled ${task.description}`);
     }
@@ -173,7 +174,7 @@ export class BackUpManagerLin implements BackUpManager {
       .filter(line => !tasks.some(task => line.includes(`Houston_Backup_Task_${task.uuid}.sh`)));
 
     const finalCrontab = [...existing, ...cronEntries].join("\n") + "\n";
-    execSync(`echo "${finalCrontab}" | crontab -`);
+    execSync("crontab -", { input: finalCrontab });
 
     // onProgress?.(total, total, "All backup tasks scheduled successfully.");
   }
@@ -183,9 +184,9 @@ export class BackUpManagerLin implements BackUpManager {
     const finalContent = cleaned.join("\n");
 
     if (finalContent.trim().length === 0) {
-      execSync("crontab -r || true");
+      try { execSync("crontab -r"); } catch { }
     } else {
-      execSync(`echo "${finalContent}" | crontab -`);
+      execSync("crontab -", { input: finalContent + "\n" });
     }
   }
 
@@ -249,7 +250,7 @@ export class BackUpManagerLin implements BackUpManager {
 
     const comment = updated[index].includes('#') ? updated[index].substring(updated[index].indexOf('#')) : '';
     updated[index] = `${newTiming} bash "${scriptPath}" ${comment}`;
-    execSync(`echo "${updated.join("\n")}" | crontab -`);
+    execSync("crontab -", { input: updated.join("\n") + "\n" });
   }
   
 
@@ -327,42 +328,51 @@ export class BackUpManagerLin implements BackUpManager {
   
 
   protected ensureFstabEntry(smbHost: string, smbShare: string, username: string, password: string): void {
+    const safeHost = assertSafeHost(smbHost);
+    const safeShare = assertSafeShare(smbShare);
+    const safeUser = assertSafeUsername(username);
+
     const credDir = "/etc/samba/houston-credentials";
-    const credFile = `${credDir}/${smbShare}.cred`;
-    const mountDir = `/mnt/houston-mounts/${smbShare}`;
+    const credFile = `${credDir}/${safeShare}.cred`;
+    const mountDir = `/mnt/houston-mounts/${safeShare}`;
     const localUser = os.userInfo().username;
 
     const uid = typeof process.getuid === 'function' ? process.getuid() : 1000;
     const gid = typeof process.getgid === 'function' ? process.getgid() : 1000;
 
-    const fstabEntry = `//${smbHost}/${smbShare} ${mountDir} cifs credentials=${credFile},iocharset=utf8,rw,uid=${uid},gid=${gid},vers=3.0,user,noauto 0 0`;
+    const fstabEntry = `//${safeHost}/${safeShare} ${mountDir} cifs credentials=${credFile},iocharset=utf8,rw,uid=${uid},gid=${gid},vers=3.0,user,noauto 0 0`;
 
     const fstab = fs.readFileSync("/etc/fstab", "utf-8");
-    const hasFstab = fstab.includes(`//${smbHost}/${smbShare}`);
+    const hasFstab = fstab.includes(`//${safeHost}/${safeShare}`);
     const hasCred = fs.existsSync(credFile);
     const hasMountDir = fs.existsSync(mountDir);
     if (!hasFstab || !hasCred || !hasMountDir) {
-      const tempScript = `/tmp/add_fstab_entry_${smbShare}.sh`;
+      const tempScript = `/tmp/add_fstab_entry_${safeShare}.sh`;
+      const passwordB64 = toBase64(password);
       const scriptContent = `#!/bin/bash
-mkdir -p "${credDir}"
-echo "username=${username}" > "${credFile}"
-echo "password=${password}" >> "${credFile}"
-chown ${localUser}:${localUser} "${credFile}"
-chmod 600 "${credFile}"
-mkdir -p "${mountDir}"
-chown ${localUser}:${localUser} "${mountDir}"
-chmod 755 "${mountDir}"
-echo "${fstabEntry}" >> /etc/fstab
+set -euo pipefail
+mkdir -p ${shellQuote(credDir)}
+chmod 700 ${shellQuote(credDir)}
+PASSWORD="$(printf '%s' ${shellQuote(passwordB64)} | base64 --decode)"
+printf 'username=%s\n' ${shellQuote(safeUser)} > ${shellQuote(credFile)}
+printf 'password=%s\n' "$PASSWORD" >> ${shellQuote(credFile)}
+chown ${localUser}:${localUser} ${shellQuote(credFile)}
+chmod 600 ${shellQuote(credFile)}
+mkdir -p ${shellQuote(mountDir)}
+chown ${localUser}:${localUser} ${shellQuote(mountDir)}
+chmod 755 ${shellQuote(mountDir)}
+echo ${shellQuote(fstabEntry)} >> /etc/fstab
 `;
 
       fs.writeFileSync(tempScript, scriptContent, { mode: 0o700 });
-      execSync(`${this.pkexec} bash "${tempScript}"`);
+      execFileSync(this.pkexec, ["bash", tempScript]);
     }
   }
 
   protected generateBackupScript(task: BackUpTask, username: string, password: string, scriptPath: string): void {
-    const [smbHost, smbSharePart] = task.target.split(":");
-    const smbShare = smbSharePart.split("/")[0];
+    const [smbHostRaw, smbSharePart] = task.target.split(":");
+    const smbHost = assertSafeHost(smbHostRaw);
+    const smbShare = assertSafeShare(smbSharePart.split("/")[0]);
 
     const logPath = path.join(LOG_DIR, `Houston_Backup_Task_${task.uuid}.log`);
     const mountDir = `/mnt/houston-mounts/${smbShare}`;
@@ -371,21 +381,22 @@ echo "${fstabEntry}" >> /etc/fstab
     const scriptContent = `#!/bin/bash
 set -euo pipefail
 
-EVENT_LOG='${LOG_DIR}/45drives_backup_events.json'
-SMB_HOST='${smbHost}'
-SMB_SHARE='${smbShare}'
-SOURCE='${task.source}/'
-TARGET='${target}'
-LOG_FILE='${logPath}'
-MOUNT_DIR='${mountDir}'
-START_DATE='${task.schedule.startDate}'
+EVENT_LOG=${shellQuote(path.join(LOG_DIR, "45drives_backup_events.json"))}
+SMB_HOST=${shellQuote(smbHost)}
+SMB_SHARE=${shellQuote(smbShare)}
+SOURCE=${shellQuote(`${task.source}/`)}
+TARGET=${shellQuote(target)}
+LOG_FILE=${shellQuote(logPath)}
+MOUNT_DIR=${shellQuote(mountDir)}
+START_DATE=${shellQuote(task.schedule.startDate.toISOString())}
+DESC=${shellQuote(task.description)}
 
 mkdir -p "$(dirname "$LOG_FILE")"
 
 # Send ALL stdout/stderr to both console and the log file, without a pipeline
 exec > >(tee -a "$LOG_FILE") 2>&1
 
-echo '{"event":"backup_start","timestamp":"'$(date -Iseconds)'","uuid":"'"${task.uuid}"'","host":"'"${smbHost}"'","share":"'"${smbShare}"'","source":"'"${task.source}"'","target":"'"${target}"'"}' >> "$EVENT_LOG"
+echo '{"event":"backup_start","timestamp":"'$(date -Iseconds)'","uuid":"'"${task.uuid}"'","host":"'"$SMB_HOST"'","share":"'"$SMB_SHARE"'","source":"'"$SOURCE"'","target":"'"$TARGET"'"}' >> "$EVENT_LOG"
 
 cleanup() {
   # Only attempt unmount if it's actually mounted
@@ -396,7 +407,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-echo "===== [$(date -Iseconds)] Starting backup task: '${task.description}' ====="
+echo "===== [$(date -Iseconds)] Starting backup task: '$DESC' ====="
 echo "[INFO] Source: $SOURCE"
 echo "[INFO] Target: $TARGET"
 echo "[INFO] Mount directory: $MOUNT_DIR"
@@ -424,7 +435,7 @@ else
 fi
 
 STATUS=$([ $RSYNC_STATUS -eq 0 ] && echo "success" || echo "failure")
-echo '{"event":"backup_end","timestamp":"'"$(date -Iseconds)"'","uuid":"'"${task.uuid}"'","host":"'"${smbHost}"'","share":"'"${smbShare}"'","source":"'"${task.source}"'","target":"'"${target}"'","status":"'"$STATUS"'"}' >> "$EVENT_LOG"
+echo '{"event":"backup_end","timestamp":"'"$(date -Iseconds)"'","uuid":"'"${task.uuid}"'","host":"'"$SMB_HOST"'","share":"'"$SMB_SHARE"'","source":"'"$SOURCE"'","target":"'"$TARGET"'","status":"'"$STATUS"'"}' >> "$EVENT_LOG"
 
 echo "===== [$(date -Iseconds)] Backup task completed ====="
 `;
@@ -433,11 +444,10 @@ echo "===== [$(date -Iseconds)] Backup task completed ====="
     fs.writeFileSync(scriptPath, scriptContent, { mode: 0o700 });
   }  
 
-
-  protected generateCronLine(task: BackUpTask, scriptPath: string): string {
+protected generateCronLine(task: BackUpTask, scriptPath: string): string {
     const cronTiming = this.scheduleToCron(task.schedule);
     const isoStart = task.schedule.startDate.toISOString();
-    const comment = `# ${backupTaskTag} start=${isoStart} ${task.description}`;
+    const comment = `# ${backupTaskTag} start=${isoStart} ${sanitizeCronComment(task.description)}`;
     return `${cronTiming} root ${scriptPath} ${comment}`;
   }
   

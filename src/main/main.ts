@@ -78,17 +78,68 @@ function sanitizeConsoleArgs(args: any[]): any[] {
 const redactAndFilterFormat = format((info) => {
   const redacted = scrubValue(info);
 
-  if (
-    typeof redacted.message === 'string' &&
-    redacted.message.includes(
-      'Warning: Setting the NODE_TLS_REJECT_UNAUTHORIZED'
-    )
-  ) {
-    return false;
-  }
-
   return redacted;
 });
+
+type TrustedCertEntry = {
+  fingerprint256: string;
+  subjectName?: string;
+  issuerName?: string;
+  validStart?: number;
+  validExpiry?: number;
+  addedAt: string;
+};
+
+type TrustedCertStore = Record<string, TrustedCertEntry>;
+
+const TRUSTED_CERTS_FILENAME = "trusted-certs.json";
+let trustedCerts: TrustedCertStore = {};
+
+function normalizeHostname(hostname: string): string {
+  return (hostname || "").trim().toLowerCase();
+}
+
+function isPrivateHost(hostname: string): boolean {
+  return (
+    /^10\./.test(hostname) ||
+    /^192\.168\./.test(hostname) ||
+    /^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(hostname)
+  );
+}
+
+function isLocalHost(hostname: string): boolean {
+  return hostname === "localhost" || hostname === "127.0.0.1" || isPrivateHost(hostname);
+}
+
+function getTrustedCertsPath(): string {
+  return path.join(app.getPath("userData"), TRUSTED_CERTS_FILENAME);
+}
+
+function loadTrustedCerts(): void {
+  try {
+    const p = getTrustedCertsPath();
+    if (fs.existsSync(p)) {
+      const raw = fs.readFileSync(p, "utf-8");
+      trustedCerts = JSON.parse(raw) || {};
+    }
+  } catch (e: any) {
+    trustedCerts = {};
+    console.warn("Failed to load trusted cert store:", e?.message || e);
+  }
+}
+
+function saveTrustedCerts(): void {
+  try {
+    const p = getTrustedCertsPath();
+    fs.writeFileSync(p, JSON.stringify(trustedCerts, null, 2), { mode: 0o600 });
+  } catch (e: any) {
+    console.error("Failed to save trusted cert store:", e?.message || e);
+  }
+}
+
+function getFingerprint256(cert: any): string {
+  return (cert?.fingerprint256 || cert?.fingerprint || "").toString();
+}
 
 
 function initLogging(resolvedLogDir: string) {
@@ -198,8 +249,6 @@ function initLogging(resolvedLogDir: string) {
   };
 }
 
-process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
-
 process.on('uncaughtException', (err: any) => {
   jsonLogger.error({
     event: 'uncaughtException',
@@ -234,6 +283,7 @@ import { Server } from './types';
 import mountSmbPopup from './smbMountPopup';
 import { IPCRouter } from '../../houston-common/houston-common-lib/lib/electronIPC/IPCRouter';
 import { getOS, extractJsonFromOutput } from './utils';
+import { assertSafeHost, assertSafeShare, assertSafeUsername } from './security';
 import { BackUpManager, BackUpManagerLin, BackUpManagerMac, BackUpManagerWin, BackUpSetupConfigurator } from './backup';
 import { BackUpSetupConfig, BackUpTask, server, unwrap } from '@45drives/houston-common-lib';
 import fetchBackups from './backup/FetchBackups';
@@ -248,8 +298,6 @@ export let jsonLogger: ReturnType<typeof createLogger>;
 export function jl(level: 'info' | 'warn' | 'error' | 'debug', event: string, extra: Record<string, any> = {}) {
   try { (jsonLogger as any)[level]({ event, ...extra }); } catch { }
 }
-
-app.commandLine.appendSwitch('ignore-certificate-errors', 'true');
 
 function checkLogDir(): string {
   // LINUX: /home/<username>/.config/45drives-setup-wizard/logs       (IN DEV MODE: /home/<username>/config/Electron/logs/)
@@ -322,15 +370,24 @@ function getSubnetBase(ip: string): string {
 }
 
 
+let mainWindow: BrowserWindow | null = null;
+
+function assertMainWindowSender(event: Electron.IpcMainInvokeEvent | Electron.IpcMainEvent) {
+  if (!mainWindow || event.sender !== mainWindow.webContents) {
+    throw new Error("Unauthorized IPC sender");
+  }
+}
+
 function createWindow() {
-  const mainWindow = new BrowserWindow({
+  mainWindow = new BrowserWindow({
     width: 800,
     height: 600,
     webPreferences: {
-      sandbox: false,
+      sandbox: true,
       preload: join(__dirname, 'preload.js'),
       nodeIntegration: false,
       contextIsolation: true,
+      enableRemoteModule: false,
       webviewTag: true,
       javascript: true,
       backgroundThrottling: false,  // Disable throttling
@@ -367,39 +424,24 @@ function createWindow() {
         if (!portOpen) return null;
         console.debug("port open at 9090 ", candidateIp);
         
-        try {
-          const res = await fetch(`https://${candidateIp}:9090/`, {
-            method: 'GET',
-            cache: 'no-store',
-            signal: AbortSignal.timeout(3000),
-            
-          });
-          if (!res.ok) return null;
-
-          console.debug("https at 9090 ", candidateIp);
-          
-          return {
-            ip: candidateIp,
-            name: candidateIp,
-            status: 'unknown',
-            setupComplete: false,
-            serverName: candidateIp,
-            shareName: '',
-            setupTime: '',
-            serverInfo: {
-              moboMake: '',
-              moboModel: '',
-              serverModel: '',
-              aliasStyle: '',
-              chassisSize: '',
-            },
-            lastSeen: Date.now(),
-            fallbackAdded: true
-          } as Server;
-
-        } catch {
-          return null;
-        }
+        return {
+          ip: candidateIp,
+          name: candidateIp,
+          status: 'unknown',
+          setupComplete: false,
+          serverName: candidateIp,
+          shareName: '',
+          setupTime: '',
+          serverInfo: {
+            moboMake: '',
+            moboModel: '',
+            serverModel: '',
+            aliasStyle: '',
+            chassisSize: '',
+          },
+          lastSeen: Date.now(),
+          fallbackAdded: true
+        } as Server;
       })
     );
 
@@ -421,6 +463,7 @@ function createWindow() {
   let bufferedNotifications: string[] = [];
 
   ipcMain.on("renderer-ready", (event) => {
+    assertMainWindowSender(event);
     rendererIsReady = true;
 
     bufferedNotifications.forEach((msg) => event.sender.send("notification", msg));
@@ -432,7 +475,8 @@ function createWindow() {
     } catch { }
   });
 
-  ipcMain.on('renderer-log', (_event, payload: { level: string; args: any[] }) => {
+  ipcMain.on('renderer-log', (event, payload: { level: string; args: any[] }) => {
+    assertMainWindowSender(event);
     const { level, args } = payload || {};
     const lvl = (level === 'log' ? 'info' : level) as 'info' | 'warn' | 'error' | 'debug';
 
@@ -454,10 +498,13 @@ function createWindow() {
   ipcMain.handle(
     "install-cockpit-module",
     async (event, { host, username, password, id }: { host: string; username: string; password: string; id: string }) => {
+      assertMainWindowSender(event);
+      const safeHost = assertSafeHost(host);
+      const safeUser = assertSafeUsername(username);
       
       mainWindow.webContents.send('store-manual-creds', {
-        ip: host,
-        username,
+        ip: safeHost,
+        username: safeUser,
         password,
       });
 
@@ -475,8 +522,8 @@ function createWindow() {
 
       try {
         const res = await installServerDepsRemotely({
-          host,
-          username,
+          host: safeHost,
+          username: safeUser,
           password,
           onProgress: ({ step, label }) => send(label, step),
         });
@@ -496,23 +543,30 @@ function createWindow() {
     },
   );
   
-  ipcMain.handle('get-os', () => getOS());
+  ipcMain.handle('get-os', (event) => {
+    assertMainWindowSender(event);
+    return getOS();
+  });
 
-  ipcMain.handle("backup:isFirstRunNeeded", (_evt, host, share) => {
+  ipcMain.handle("backup:isFirstRunNeeded", (event, host, share) => {
+    assertMainWindowSender(event);
+    const safeHost = assertSafeHost(host);
+    const safeShare = assertSafeShare(share);
     const manager = getBackUpManager();
     if (
       manager &&
       (getOS() === "rocky" || getOS() === "debian") &&
       typeof manager.isFirstBackupNeeded === "function"
     ) {
-      return manager.isFirstBackupNeeded(host, share); // MUST RETURN
+      return manager.isFirstBackupNeeded(safeHost, safeShare); // MUST RETURN
     }
 
     return false;
   });
 
   
-  ipcMain.handle('scan-network-fallback', async () => {
+  ipcMain.handle('scan-network-fallback', async (event) => {
+    assertMainWindowSender(event);
     return await doFallbackScan();
   });
 
@@ -564,7 +618,8 @@ function createWindow() {
     mdnsInterval = pollActionInterval = clearInactiveServerInterval = null;
   }
 
-  ipcMain.handle('discovery:setEnabled', (_e, enabled: boolean) => {
+  ipcMain.handle('discovery:setEnabled', (event, enabled: boolean) => {
+    assertMainWindowSender(event);
     if (enabled) startDiscoveryLoops();
     else stopDiscoveryLoops();
   });
@@ -709,7 +764,7 @@ function createWindow() {
           }
 
           try {
-            await backupManager.updateSchedule(task, username, password);
+            await backupManager.updateSchedule(task, username: safeUser, password);
             jsonLogger.info({
               event: 'updateBackUpTask_success',
               taskUuid: task.uuid,
@@ -1209,7 +1264,7 @@ function createWindow() {
         // console.debug("New action received:", server, data);
 
         if (data.action === "mount_samba_client") {
-          mountSmbPopup(data.smb_host, data.smb_share, data.smb_user, data.smb_pass, mainWindow);
+          mountSmbPopup(assertSafeHost(data.smb_host), assertSafeShare(data.smb_share), assertSafeUsername(data.smb_user), data.smb_pass, mainWindow);
         } else {
           console.debug("Unknown new actions.", server);
         }
@@ -1269,8 +1324,19 @@ function createWindow() {
 }
 
 app.on('web-contents-created', (_event, contents) => {
+  contents.setWindowOpenHandler(() => ({ action: "deny" }));
   contents.on('will-attach-webview', (_wawevent, webPreferences, _params) => {
     webPreferences.preload = `${__dirname}/webview-preload.js`;
+    webPreferences.nodeIntegration = false;
+    webPreferences.contextIsolation = true;
+    webPreferences.sandbox = true;
+    webPreferences.enableRemoteModule = false;
+    webPreferences.webSecurity = true;
+    webPreferences.allowRunningInsecureContent = false;
+    webPreferences.javascript = true;
+    if (!webPreferences.partition) {
+      webPreferences.partition = 'persist:authSession';
+    }
   });
 });
 
@@ -1336,29 +1402,28 @@ app.whenReady().then(() => {
   // autoUpdater.checkForUpdatesAndNotify();
 
 
-  // Allow self-signed Cockpit/Houston certs on port 9090 only
+  loadTrustedCerts();
+
+  // Trust only system-validated certs, or explicitly pinned local Cockpit certs.
   const cockpitCertVerifier = (request: any, callback: (result: number) => void) => {
-    const hostname = request.hostname as string;
-    // port & errorCode are not in the TS type, so cast
+    const hostname = normalizeHostname(request.hostname as string);
     const port = (request as any).port as number | undefined;
-    const errorCode = (request as any).errorCode as number | undefined;
+    const verificationResult = (request as any).verificationResult as string | undefined;
 
-    const isPrivateIp =
-      /^192\.168\./.test(hostname) ||
-      /^10\./.test(hostname) ||
-      /^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(hostname);
-
-    const isCockpit = port === 9090 && isPrivateIp;
-
-    if (isCockpit) {
-      // most self-signed / unknown-CA errors are -202, but when Chromium
-      // calls us for the first time errorCode can be undefined
-      if (errorCode === -202 || errorCode === undefined) {
-        return callback(0); // accept the cert
-      }
+    if (verificationResult === "net::OK") {
+      return callback(0);
     }
 
-    // Let Chromium do its default checks for everything else
+    if (port !== 9090 || !isLocalHost(hostname)) {
+      return callback(-3);
+    }
+
+    const fp = getFingerprint256((request as any).certificate);
+    const trusted = trustedCerts[hostname];
+    if (trusted && trusted.fingerprint256 === fp) {
+      return callback(0);
+    }
+
     callback(-3);
   };
 
@@ -1368,9 +1433,76 @@ app.whenReady().then(() => {
     .fromPartition('persist:authSession')
     .setCertificateVerifyProc(cockpitCertVerifier);
 
-  ipcMain.handle("is-dev", async () => process.env.NODE_ENV === 'development');
+  app.on("certificate-error", async (event, _webContents, url, error, certificate, callback) => {
+    event.preventDefault();
+    let hostname = "";
+    let port: number | undefined;
+    try {
+      const u = new URL(url);
+      hostname = normalizeHostname(u.hostname);
+      port = u.port ? Number(u.port) : (u.protocol === "https:" ? 443 : undefined);
+    } catch {
+      callback(false);
+      return;
+    }
 
-  ipcMain.handle('dialog:openFolder', async () => {
+    if (port !== 9090 || !isLocalHost(hostname)) {
+      callback(false);
+      return;
+    }
+
+    const fp = getFingerprint256(certificate);
+    const trusted = trustedCerts[hostname];
+    if (trusted && trusted.fingerprint256 === fp) {
+      callback(true);
+      return;
+    }
+
+    const issuer = certificate?.issuerName || "Unknown issuer";
+    const subject = certificate?.subjectName || "Unknown subject";
+    const validStart = certificate?.validStart ? new Date(certificate.validStart).toISOString() : "unknown";
+    const validExpiry = certificate?.validExpiry ? new Date(certificate.validExpiry).toISOString() : "unknown";
+
+    const { response } = await dialog.showMessageBox(mainWindow ?? undefined, {
+      type: "warning",
+      buttons: ["Trust This Certificate", "Cancel"],
+      defaultId: 1,
+      cancelId: 1,
+      title: "Untrusted Certificate",
+      message: `The certificate for https://${hostname}:9090 is not trusted.`,
+      detail:
+        `Error: ${error}\n\n` +
+        `Subject: ${subject}\n` +
+        `Issuer: ${issuer}\n` +
+        `Valid: ${validStart} → ${validExpiry}\n` +
+        `Fingerprint (SHA-256): ${fp}\n\n` +
+        "Only trust this certificate if you verified it belongs to your local Cockpit server.",
+    });
+
+    if (response === 0 && fp) {
+      trustedCerts[hostname] = {
+        fingerprint256: fp,
+        subjectName: certificate?.subjectName,
+        issuerName: certificate?.issuerName,
+        validStart: certificate?.validStart,
+        validExpiry: certificate?.validExpiry,
+        addedAt: new Date().toISOString(),
+      };
+      saveTrustedCerts();
+      callback(true);
+      return;
+    }
+
+    callback(false);
+  });
+
+  ipcMain.handle("is-dev", async (event) => {
+    assertMainWindowSender(event);
+    return process.env.NODE_ENV === 'development';
+  });
+
+  ipcMain.handle('dialog:openFolder', async (event) => {
+    assertMainWindowSender(event);
     const result = await dialog.showOpenDialog({
       properties: ['openDirectory'], // Opens folder selection dialog
     });
@@ -1410,4 +1542,3 @@ function getBackUpManager() {
   return backUpManager;
 
 }
-

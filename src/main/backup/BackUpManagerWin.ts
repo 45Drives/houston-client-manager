@@ -18,6 +18,7 @@ import { jsonLogger } from '../main';
 import { BackUpManager } from "./types";
 import { BackUpTask, TaskSchedule } from "@45drives/houston-common-lib";
 import { formatDateForTask, getMountSmbScript, getSmbTargetFromSmbTarget } from "../utils";
+import { assertSafeHost, assertSafeShare, assertSafeUsername, escapeCmdValue, toBase64 } from "../security";
 import sudo from 'sudo-prompt';
 import path from "path";
 import { app } from 'electron';
@@ -79,7 +80,7 @@ export class BackUpManagerWin implements BackUpManager {
 
   private getTaskPaths(task: BackUpTask) {
     const pgm = process.env.ProgramData ?? "C:\\ProgramData";
-    const share = task.share || task.target.split(":")[1].split("/")[0];
+    const share = assertSafeShare(task.share || task.target.split(":")[1].split("/")[0]);
     return {
       bat: path.join(pgm, "houston-backups", "scripts", `Houston_Backup_Task_${task.uuid}.bat`),
       log: path.join(pgm, "houston-backups", "logs", `backup_task_${task.uuid}.log`),
@@ -268,23 +269,30 @@ if (-not $hasBatchLogon -or -not $hasServiceLogon) {
   ): Promise<void> {
 
     const scriptsDir = path.join(process.env.ProgramData ?? 'C:\\ProgramData', 'houston-backups', 'scripts');
+    const safeUser = assertSafeUsername(username);
+    const userB64 = toBase64(safeUser);
+    const passB64 = toBase64(password);
     const credDir = path.join(process.env.ProgramData ?? 'C:\\ProgramData', 'houston-backups', 'credentials');
 
     const psLines: string[] = [
       `# Backup-Operators membership & rights`,
       `$user = "$env:USERNAME"`,
+      `$userVal = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String("${userB64}"))`,
+      `$passVal = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String("${passB64}"))`,
       `${this.addUserToBackupOperatorsGroup()}`,
       `${this.getAddBackupGroupsToLogOnBatchAndService()}`,
 
       `New-Item -ItemType Directory -Force -Path "${scriptsDir}" | Out-Null`,
-      `New-Item -ItemType Directory -Force -Path "${credDir}"   | Out-Null`
+      `New-Item -ItemType Directory -Force -Path "${credDir}"   | Out-Null`,
+      `icacls "${credDir}" /inheritance:r /grant "$env:USERNAME:(OI)(CI)F" /grant "SYSTEM:(OI)(CI)F" /grant "Administrators:(OI)(CI)F" /T`
     ];
 
     tasks.forEach((t, idx) => {
       console.debug(t)
 
-      const [smbHost, smbSharePath] = t.target.split(':');
-      const smbShare = smbSharePath.split('/')[0];
+      const [smbHostRaw, smbSharePath] = t.target.split(':');
+      const smbHost = assertSafeHost(smbHostRaw);
+      const smbShare = assertSafeShare(smbSharePath.split('/')[0]);
       // const target = getSmbTargetFromSmbTarget(task.target);
       t.host = smbHost;
       t.share = smbShare;
@@ -293,8 +301,8 @@ if (-not $hasBatchLogon -or -not $hasServiceLogon) {
       const batPathEsc = this.scriptPath(t.uuid).replace(/\\/g, '\\\\');
 
       /*   cred file (idempotent) */
-      psLines.push(`"username=${username}\n` + `" | Out-File -Encoding ascii -NoNewline -Force "${credFile}"`);
-      psLines.push(`"password=${password}` + `" | Out-File -Append  -Encoding ascii "${credFile}"`);
+      psLines.push(`"username=$userVal\n" | Out-File -Encoding ascii -NoNewline -Force "${credFile}"`);
+      psLines.push(`"password=$passVal" | Out-File -Append  -Encoding ascii "${credFile}"`);
 
       /*   BAT file */
       const batTxt = this.buildActionBat(t);
@@ -391,6 +399,11 @@ if (-not $hasBatchLogon -or -not $hasServiceLogon) {
       .replace(/\//g, '\\')
       .replace(/^\\/, '');
 
+    const safeHost = escapeCmdValue(task.host || '');
+    const safeShare = escapeCmdValue(task.share || '');
+    const safeSource = escapeCmdValue(task.source || '');
+    const safeDst = escapeCmdValue(rawDst);
+
     const logFile = path.join(
       logPath,
       `Houston_Backup_Task_${task.uuid}.log`
@@ -405,7 +418,7 @@ if (-not $hasBatchLogon -or -not $hasServiceLogon) {
   for /f "delims=" %%I in ('powershell -NoProfile -Command "Get-Date -Format o"') do set "TS=%%I"
 
   :: --- backup_start event ---
-  echo {^"event^":^"backup_start^",^"timestamp^":^"!TS!^",^"uuid^":^"${task.uuid}"^,^"host^":^"${task.host}"^,^"share^":^"${task.share}"^,^"source^":^"${task.source}"^,^"target^":^"${rawDst}"^} >> "${eventLog}"
+  echo {^"event^":^"backup_start^",^"timestamp^":^"!TS!^",^"uuid^":^"${task.uuid}"^,^"host^":^"!SMB_HOST!"^,^"share^":^"!SMB_SHARE!"^,^"source^":^"!SOURCE!"^,^"target^":^"!DST_PATH!"^} >> "${eventLog}"
 
   :: --- Houston backup task metadata (for reference) ---
   :: uuid        = ${task.uuid}
@@ -419,16 +432,16 @@ if (-not $hasBatchLogon -or -not $hasServiceLogon) {
   
   :: --- export all four params as env vars ---
   set "CRED_FILE=${credFile}"
-  set "SMB_HOST=${task.host}"
-  set "SMB_SHARE=${task.share}"
+  set "SMB_HOST=${safeHost}"
+  set "SMB_SHARE=${safeShare}"
   
   :: turn delayed expansion on so we can use !VAR!
   setlocal EnableDelayedExpansion
   
   :: --- prepare paths ---
   set "LOG=${logFile}"
-  set "SOURCE=${task.source}"
-  set "DST_PATH=${rawDst}"
+  set "SOURCE=${safeSource}"
+  set "DST_PATH=${safeDst}"
   set "mountBat=${mountBat}"
   set "NETWORK_PATH=\\\\!SMB_HOST!\\!SMB_SHARE!"
   
@@ -496,7 +509,7 @@ if (-not $hasBatchLogon -or -not $hasServiceLogon) {
   for /f "delims=" %%I in ('powershell -NoProfile -Command "Get-Date -Format o"') do set "TS2=%%I"
   set "STATUS="
   if !RC! EQU 0 (set STATUS=success) else (set STATUS=failure)
-  echo {^"event^":^"backup_end^",^"timestamp^":^"!TS2!^",^"uuid^":^"${task.uuid}"^,^"host^":^"${task.host}"^,^"share^":^"${task.share}"^,^"source^":^"${task.source}"^,^"target^":^"${rawDst}"^,^"status^":^"!STATUS!"^} >> "${eventLog}"
+  echo {^"event^":^"backup_end^",^"timestamp^":^"!TS2!^",^"uuid^":^"${task.uuid}"^,^"host^":^"!SMB_HOST!"^,^"share^":^"!SMB_SHARE!"^,^"source^":^"!SOURCE!"^,^"target^":^"!DST_PATH!"^,^"status^":^"!STATUS!"^} >> "${eventLog}"
 
   rem --- clean up the mapping ---
   timeout /t 2 >nul

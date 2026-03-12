@@ -27,9 +27,10 @@
       </div> -->
 
       <webview v-show="showWebView" id="myWebview" :src="currentUrl" partition="persist:authSession"
-        webpreferences="contextIsolation=true, nodeIntegration=false, enableRemoteModule=false" ref="webview"
-        allowpopups :style="{ visibility: webviewVisible ? 'visible' : 'hidden', height: '100vh', width: '100%' }"
-        @dom-ready="onWebViewDomReady" @did-finish-load="onWebViewLoaded" @did-fail-load="onWebViewFailed" />
+        webpreferences="contextIsolation=true, nodeIntegration=false, enableRemoteModule=false, sandbox=yes" ref="webview"
+        :style="{ visibility: webviewVisible ? 'visible' : 'hidden', height: '100vh', width: '100%' }"
+        @dom-ready="onWebViewDomReady" @did-finish-load="onWebViewLoaded" @did-fail-load="onWebViewFailed"
+        @will-navigate="onWebViewWillNavigate" />
 
       <div v-if="loadingWebview" class="absolute inset-0 z-40 bg-default flex flex-col items-center justify-center">
         <p class="text-2xl text-center">
@@ -674,6 +675,30 @@ const onWebViewDomReady = async () => {
   }
 };
 
+function isAllowedWebviewUrl(url: string): boolean {
+  if (!url) return false;
+  if (url === "about:blank") return true;
+  try {
+    const u = new URL(url);
+    const allowedHost = currentServer.value?.ip ?? "";
+    const isHttps = u.protocol === "https:";
+    const isHostMatch = !!allowedHost && u.hostname === allowedHost;
+    const isPortMatch = !u.port || u.port === "9090";
+    return isHttps && isHostMatch && isPortMatch;
+  } catch {
+    return false;
+  }
+}
+
+const onWebViewWillNavigate = (event: any) => {
+  const url = event?.url || "";
+  if (!isAllowedWebviewUrl(url)) {
+    try { event.preventDefault(); } catch {}
+    console.warn("Blocked webview navigation:", url);
+    reportError(new Error(`Blocked webview navigation to ${url}`));
+  }
+};
+
 
 const onWebViewLoaded = async () => {
   const url = webview.value?.getURL?.() ?? currentUrl.value;
@@ -687,8 +712,14 @@ const onWebViewLoaded = async () => {
   const routerRenderer = IPCRouter.getInstance() as IPCMessageRouterRenderer;
   routerRenderer.setCockpitWebView(webview.value);
 
+  const credsJson = JSON.stringify({ user, pass });
+  const credsLiteral = JSON.stringify(credsJson);
+
   const loginAndSimplifyScript = `
 (function() {
+  const CREDS = JSON.parse(${credsLiteral});
+  const user = (CREDS && CREDS.user) ? String(CREDS.user) : "";
+  const pass = (CREDS && CREDS.pass) ? String(CREDS.pass) : "";
   return new Promise((resolve) => {
     const LOGIN_SELECTOR  = "#login";
     const ERROR_SELECTOR  = "#login-error-message";
@@ -864,7 +895,7 @@ const onWebViewLoaded = async () => {
       setTimeout(() => {
         clearGlobalTimeout();
         setChromeMode(true);
-        elevateToAdmin("${pass}", 60000)
+        elevateToAdmin(pass, 60000)
           .then(r => done("no-login", { admin: !!r.ok, adminError: r.error || null }))
           .catch(e => done("no-login", { admin: false, adminError: String(e && (e.message || e)) }));
       }, 300);
@@ -885,8 +916,8 @@ const onWebViewLoaded = async () => {
 
     if (onModulePage()) setChromeMode(true);
 
-    usernameField.value = "${user}";
-    passwordField.value = "${pass}";
+    usernameField.value = user;
+    passwordField.value = pass;
     usernameField.dispatchEvent(new Event("input", { bubbles: true }));
     passwordField.dispatchEvent(new Event("input", { bubbles: true }));
 
@@ -912,7 +943,7 @@ const onWebViewLoaded = async () => {
         setTimeout(() => {
           clearGlobalTimeout();
           setChromeMode(true);
-          elevateToAdmin("${pass}", 60000)
+          elevateToAdmin(pass, 60000)
             .then(r => done("login-success", { admin: !!r.ok, adminError: r.error || null }))
             .catch(e => done("login-success", { admin: false, adminError: String(e && (e.message || e)) }));
         }, 500);

@@ -1,20 +1,25 @@
 import { BrowserWindow, dialog } from 'electron';
 import os from 'os';
 import installDepPopup from './installDepsPopup';
-import { exec } from 'child_process';
+import { exec, execFile } from 'child_process';
 import { getAsset, extractJsonFromOutput } from './utils';
+import { assertSafeHost, assertSafeShare, assertSafeUsername } from './security';
 
 async function mountSambaClient(smb_host: string, smb_share: string, smb_user: string, smb_pass: string, mainWindow: BrowserWindow, uiMode: "popup" | "silent" = "silent"): Promise<string> {
 
+  const safeHost = assertSafeHost(smb_host);
+  const safeShare = assertSafeShare(smb_share);
+  const safeUser = assertSafeUsername(smb_user);
+
   const platform = os.platform();
   if (platform === "win32") {
-    return mountSambaClientWin(smb_host, smb_share, smb_user, smb_pass, mainWindow, uiMode);
+    return mountSambaClientWin(safeHost, safeShare, safeUser, smb_pass, mainWindow, uiMode);
   } else if (platform === "linux") {
     // console.debug(`passing host:${smb_host}, share:${smb_share}, user:${smb_user}, pass:${smb_pass} to script`);
-    return mountSambaClientScriptLin(smb_host, smb_share, smb_user, smb_pass, await getAsset("static", "mount_smb_lin.sh"), mainWindow);
+    return mountSambaClientScriptLin(safeHost, safeShare, safeUser, smb_pass, await getAsset("static", "mount_smb_lin.sh"), mainWindow);
   } else if (platform === "darwin") {
     console.debug("mounting smb mac")
-    return mountSambaClientScriptMac(smb_host, smb_share, smb_user, await getAsset("static", "mount_smb_mac.sh"), mainWindow, uiMode);
+    return mountSambaClientScriptMac(safeHost, safeShare, safeUser, await getAsset("static", "mount_smb_mac.sh"), mainWindow, uiMode);
   } else {
     console.debug("Unknown OS:", platform);
     return "Unknown OS: " + platform;
@@ -76,7 +81,7 @@ function mountSambaClientScriptLin(smb_host: string, smb_share: string, smb_user
   return new Promise((resolve, reject) => {
     // installDepPopup();
     console.debug("[DEBUG - mountSMBLin] script path being used:", script);
-    exec(`bash "${script}" "${smb_host}" "${smb_share}" "${smb_user}" "${smb_pass}"`,
+    execFile('bash', [script, smb_host, smb_share, smb_user, smb_pass],
       (error, stdout, stderr) => {
         handleExecOutput(error, stdout, stderr, smb_host, smb_share, mainWindow, "silent"); // or uiMode if you want
         if (error) {
@@ -99,7 +104,7 @@ function mountSambaClientScriptMac(
   return new Promise((resolve, reject) => {
     // installDepPopup();
     console.debug("[DEBUG - mountSMBMac] script path being used:", script);
-    exec(`bash "${script}" "${smb_host}" "${smb_share}" "${smb_user}" "${uiMode}"`,
+    execFile('bash', [script, smb_host, smb_share, smb_user, uiMode],
       (error, stdout, stderr) => {
         handleExecOutput(error, stdout, stderr, smb_host, smb_share, mainWindow, uiMode);
         if (error) {

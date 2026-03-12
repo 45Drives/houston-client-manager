@@ -11,9 +11,14 @@ SMB_HOST="$1"
 SMB_SHARE="$2"
 USERNAME="$3"
 PASSWORD="$4"
+
+# --- Input Sanitization ---
+if [[ ! "$SMB_HOST" =~ ^[A-Za-z0-9.-]+$ ]]; then echo '{"error": "Invalid host"}'; exit 1; fi
+if [[ "$SMB_SHARE" == *"/"* || "$SMB_SHARE" == *\\* || "$SMB_SHARE" == *".."* ]]; then echo '{"error": "Invalid share"}'; exit 1; fi
 SMB_PATH="//$SMB_HOST/$SMB_SHARE"
 MOUNT_POINT="/mnt/houston-mounts/$SMB_SHARE"
-CREDENTIALS_FILE="/etc/smbcredentials/$SMB_HOST.cred"
+CRED_DIR="/run/houston-credentials"
+CREDENTIALS_FILE="$CRED_DIR/$SMB_HOST.cred"
 
 # --- Debug Output (sanitized) ---
 # echo "[INFO] Mounting $SMB_PATH to $MOUNT_POINT"
@@ -39,7 +44,11 @@ if mountpoint -q "$MOUNT_POINT"; then
 fi
 
 # --- Write Credentials File ---
-sudo mkdir -p /etc/smbcredentials
+# Credentials file is short-lived; remove on exit
+cleanup() { sudo rm -f "$CREDENTIALS_FILE"; }
+trap cleanup EXIT
+sudo mkdir -p "$CRED_DIR"
+sudo chmod 700 "$CRED_DIR"
 echo -e "username=$USERNAME\npassword=$PASSWORD" | sudo tee "$CREDENTIALS_FILE" > /dev/null
 sudo chmod 600 "$CREDENTIALS_FILE"
 

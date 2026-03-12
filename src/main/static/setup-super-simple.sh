@@ -137,8 +137,13 @@ else
 
   export NVM_DIR="$HOME/.nvm"
   if [[ ! -s "$NVM_DIR/nvm.sh" ]]; then
-    echo "[INFO] Installing NVM..."
-    curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash
+    echo "[INFO] Installing NVM from git..."
+    if ! command -v git >/dev/null 2>&1; then
+      echo "[INFO] git not found; installing..."
+      install_pkg git
+    fi
+    rm -rf "$NVM_DIR"
+    git clone --depth 1 --branch v0.39.7 https://github.com/nvm-sh/nvm.git "$NVM_DIR"
   fi
 
   # Load NVM
