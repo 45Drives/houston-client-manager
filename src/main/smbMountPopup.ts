@@ -105,10 +105,13 @@ function mountSambaClientScriptMac(
     // installDepPopup();
     console.debug("[DEBUG - mountSMBMac] script path being used:", script);
     execFile('bash', [script, smb_host, smb_share, smb_user, uiMode],
+      { timeout: 45_000, killSignal: "SIGKILL", maxBuffer: 10 * 1024 * 1024 },
       (error, stdout, stderr) => {
         handleExecOutput(error, stdout, stderr, smb_host, smb_share, mainWindow, uiMode);
         if (error) {
-          reject(stderr || error.message);
+          reject(
+            `mount_smb_mac failed: ${error.message}\nstdout:\n${stdout}\nstderr:\n${stderr}`
+          );
         } else {
           resolve(stdout.trim());
         }

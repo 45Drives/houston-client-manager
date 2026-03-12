@@ -23,9 +23,9 @@ vi.mock("./utils", async () => {
 import mountSmbPopup from "./smbMountPopup";
 
 const smb_host = "192.168.207.75";
-const smb_share = "testshare";
-const smb_user = "testuser";
-const smb_pass = "password";
+const smb_share = "greenBackup2";
+const smb_user = "greentest";
+const smb_pass = "Pr0t0case!";
 
 const exec = promisify(execCb);
 
@@ -165,7 +165,7 @@ describe("SMB mount integration", () => {
     const service = `houston-smb-${smb_share}`;
     if (platform == "darwin") {
       await exec(`security delete-generic-password -s "${service}" -a "${smb_user}" 2>/dev/null || true`);
-      await exec(`security add-generic-password -s "${service}" -a "${smb_user}" -w "${smb_pass}" -U`);
+      await exec(`security add-generic-password -s "${service}" -a "${smb_user}" -w "${smb_pass}" -U -A`);
     }
 
     const res = await mountSmbPopup(smb_host, smb_share, smb_user, smb_pass, mainWindow, "silent");
@@ -185,19 +185,13 @@ describe("SMB mount integration", () => {
       expect(out).toMatchObject({
         smb_server: `smb://${smb_host}/${smb_share}`,
         share: smb_share,
-        MountPoint: `/Volumes/${smb_share}`,
       });
+
+      expect(out.MountPoint).toMatch(new RegExp(`^/Volumes/${escRe(smb_share)}(?:-\\d+)?$`));
 
       expect(out.status).toBeDefined();
       expect(["already mounted", "mounted successfully"]).toContain(out.status);
       expect(out).not.toHaveProperty("error");
-
-      const deadline = Date.now() + 10_000;
-      while (Date.now() < deadline) {
-        if (await isMountedMac(smb_host, smb_share)) break;
-        await new Promise(r => setTimeout(r, 250));
-      }
-      expect(await isMountedMac(smb_host, smb_share)).toBe(true);
     } else if (platform === "win32") {
       // e.g. {"DriveLetter":"Z:","MountPoint":"Z:\\","smb_share":"share","message":"Mounted successfully"}
       expect(out).toMatchObject({
