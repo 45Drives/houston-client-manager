@@ -17,6 +17,7 @@ import { execSync } from "child_process";
 import * as path from "path";
 import { app } from 'electron';
 import { getRsync, getSmbTargetFromSmbTarget } from "../utils";
+import { assertSafeHost, assertSafeShare, assertSafeUsername, shellQuote } from "../security";
 
 export class BackUpManagerMac implements BackUpManager {
   protected scriptDir = "/Library/Application Support/Houston/scripts";
@@ -96,20 +97,23 @@ export class BackUpManagerMac implements BackUpManager {
 
     /* host/share already filled in the caller, but make sure: */
     const [host, sharePart] = task.target.split(':');
-    const share = sharePart.split('/')[0];
-    task.host = host;
-    task.share = share;
+    const safeHost = assertSafeHost(host);
+    const safeShare = assertSafeShare(sharePart.split('/')[0]);
+    const safeUser = assertSafeUsername(username);
+    task.host = safeHost;
+    task.share = safeShare;
 
     const installerPath = `/tmp/houston-installer-${uuid}.sh`;
-    const scriptPayload = this.getShellScriptContent(task, username);   // big bash body
+    const scriptPayload = this.getShellScriptContent(task, safeUser);   // big bash body
     const mntRoot = `${this.HOME}/houston-mounts`;
-    const mntDir  = `${mntRoot}/${share}`;
+    const mntDir  = `${mntRoot}/${safeShare}`;
     const homeDir = os.homedir();
     const currentUser = os.userInfo().username;
     const userGroup = require("child_process").execSync(`id -gn ${currentUser}`).toString().trim();
-    const service = `houston-smb-${share}`;
+    const service = `houston-smb-${safeShare}`;
     const installer = `#!/bin/bash
     set -e
+    PASSWORD=${shellQuote(password)}
     
     # 1 ─ one-time directories (no special permissions needed later)
     
@@ -119,8 +123,8 @@ export class BackUpManagerMac implements BackUpManager {
     ln -s "/Volumes/${task.share}" "${mntRoot}"
 
     # 2 ─ system key-chain secret
-    security delete-generic-password -s "${service}" -a "${username}" 2>/dev/null || true
-    security add-generic-password    -s "${service}" -a "${username}" -w "${password}" -U
+    security delete-generic-password -s "${service}" -a "${safeUser}" 2>/dev/null || true
+    security add-generic-password    -s "${service}" -a "${safeUser}" -w "$PASSWORD" -U
     
     # 3 ─ write the task script
     cat <<'EOF_${uuid}' > "${scriptPath}"
@@ -128,10 +132,10 @@ export class BackUpManagerMac implements BackUpManager {
 EOF_${uuid}
      chmod 755 "${scriptPath}"
 
-    # 4 ─ let this user mount/umount the share without a password
-    echo "${username} ALL=(root) NOPASSWD: /sbin/mount_smbfs, /sbin/umount" \
-        > /private/etc/sudoers.d/houston-${username}
-     chmod 440 /private/etc/sudoers.d/houston-${username}
+    # 4 ─ let this local user mount/umount the share without a password
+    echo "${currentUser} ALL=(root) NOPASSWD: /sbin/mount_smbfs, /sbin/umount" \
+        > /private/etc/sudoers.d/houston-${currentUser}
+     chmod 440 /private/etc/sudoers.d/houston-${currentUser}
     `;
 
     fs.writeFileSync(installerPath, installer, { mode: 0o700 });
@@ -165,6 +169,7 @@ EOF_${uuid}
     const currentUser = os.userInfo().username;
     const userGroup = require("child_process").execSync(`id -gn ${currentUser}`).toString().trim();
     const servicePrefix = "houston-smb-";
+    const safeUser = assertSafeUsername(username);
 
     /* ------------------------------------------------------------------
        1.  BUILD a root-only installer shell script as one big heredoc
@@ -172,22 +177,23 @@ EOF_${uuid}
     const installerLines: string[] = [
       "#!/bin/bash",
       "set -e",                                            // Stop on first error
+      `PASSWORD=${shellQuote(password)}`,
       `mkdir -p "${scriptDir}" "${logDir}"`,
-      `chmod 1777 "${logDir}"`
+      `chmod 750 "${logDir}"`
     ];
 
     /* 1a ─ System-keychain credentials (once per share) */
     const uniqueShares = new Set<string>();
     for (const t of tasks) {
-      const share = t.share || t.target.split(":")[1].split("/")[0];
+      const share = assertSafeShare((t.share || t.target.split(":")[1].split("/")[0]));
       uniqueShares.add(share);
     }
     for (const share of uniqueShares) {
       const svc = servicePrefix + share;
 
       installerLines.push(
-        `security delete-generic-password -s "${svc}" -a "${username}" 2>/dev/null || true`,
-        `security add-generic-password -s "${svc}" -a "${username}" -w "${password}" -U`,
+        `security delete-generic-password -s "${svc}" -a "${safeUser}" 2>/dev/null || true`,
+        `security add-generic-password -s "${svc}" -a "${safeUser}" -w "$PASSWORD" -U`,
         `rm -rf "${this.HOME}/houston-mounts/${share}"`,
         `mkdir -p "${this.HOME}/houston-mounts/${share}"`
       );
@@ -197,7 +203,10 @@ EOF_${uuid}
     for (const task of tasks) {
       const uuid = task.uuid;
       const scriptPath = path.join(scriptDir, `houston-backup-task-${uuid}.sh`);
-      const scriptBody = this.getShellScriptContent(task, username)
+      const [host, sharePart] = task.target.split(":");
+      task.host = assertSafeHost(host);
+      task.share = assertSafeShare(sharePart.split("/")[0]);
+      const scriptBody = this.getShellScriptContent(task, safeUser)
         // heredoc must not contain an unescaped EOF on its own line
         .replace(/\\EOF/g, '\\\\EOF');
 
@@ -205,7 +214,7 @@ EOF_${uuid}
           `cat <<EOF_${uuid} > "${scriptPath}"`,
           scriptBody,
           "EOF_${uuid}",
-          `chmod 1777 "${scriptPath}"`
+          `chmod 755 "${scriptPath}"`
         );
     }
 
@@ -442,13 +451,17 @@ EOF_${uuid}
     const dir = `${mountPoint}/${rel}`;
     const svc = `houston-smb-${task.share}`;
     const target = getSmbTargetFromSmbTarget(task.target);
-    const rsyncCmd = `${getRsync()} -a${task.mirror ? ' --delete' : ''} "${task.source}/" "${dir}/"`;
+    const rsyncCmd = `${getRsync()} -a${task.mirror ? ' --delete' : ''} ${shellQuote(`${task.source}/`)} ${shellQuote(`${dir}/`)}`;
     return (`
   #!/bin/bash
   # path to the shared JSON events log
   EVENT_LOG="${this.logDir}/45drives_backup_events.json"
+  HOST=${shellQuote(task.host || "")}
+  SHARE=${shellQuote(task.share || "")}
+  SOURCE=${shellQuote(task.source)}
+  TARGET=${shellQuote(target)}
   # --- emit backup_start event ---
-  echo '{"event":"backup_start","timestamp":"'"$(date -u +%Y-%m-%dT%H:%M:%SZ)"'","uuid":"'"${task.uuid}"'","host":"'"${task.host}"'","share":"'"${task.share}"'","source":"'"${task.source}"'","target":"'"${target}"'"}' >> "$EVENT_LOG"
+  echo '{"event":"backup_start","timestamp":"'"$(date -u +%Y-%m-%dT%H:%M:%SZ)"'","uuid":"'"${task.uuid}"'","host":"'"$HOST"'","share":"'"$SHARE"'","source":"'"$SOURCE"'","target":"'"$TARGET"'"}' >> "$EVENT_LOG"
   trap 'st=$?; echo "===== $(/bin/date -u "+%Y-%m-%dT%H:%M:%SZ") END $st ====="; exit $st' EXIT
   # Houston user-level backup script
   # TASK_HOST="${task.host}"
@@ -500,7 +513,7 @@ EOT
   # --- emit backup_end event ---
   ST=$?
   STATUS=$([ $ST -eq 0 ] && echo success || echo failure)
-  echo '{"event":"backup_end","timestamp":"'"$(date -u +%Y-%m-%dT%H:%M:%SZ)"'","uuid":"'"${task.uuid}"'","host":"'"${task.host}"'","share":"'"${task.share}"'","source":"'"${task.source}"'","target":"'"${target}"'","status":"'"$STATUS"'"}' >> "$EVENT_LOG"
+  echo '{"event":"backup_end","timestamp":"'"$(date -u +%Y-%m-%dT%H:%M:%SZ)"'","uuid":"'"${task.uuid}"'","host":"'"$HOST"'","share":"'"$SHARE"'","source":"'"$SOURCE"'","target":"'"$TARGET"'","status":"'"$STATUS"'"}' >> "$EVENT_LOG"
     `).trimStart();
   }
 }

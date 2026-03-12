@@ -1,6 +1,7 @@
 import path from "path";
 import { NodeSSH } from "node-ssh";
 import { checkSSH, setupSshKey, runBootstrapScript, checkRemoteDeps } from "./setupSsh";
+import { assertSafeHost, assertSafeUsername } from "./security";
 import { getAgentSocket, getKeyDir, ensureKeyPair } from "./crossPlatformSsh";
 
 
@@ -16,17 +17,20 @@ export async function installServerDepsRemotely({
     password: string;
     onProgress?: ProgressFn;
 }) {
+    const safeHost = assertSafeHost(host);
+    const safeUser = assertSafeUsername(username);
+
     const send = (step: string, label: string) => {
         onProgress?.({ step, label });
         console.debug("installServerDepsRemotely.onProgress:", step, label);
     };
 
     try {
-        send("probe", `Checking if ${host}:22 is reachable…`);
-        const reachable = await checkSSH(host);
+        send("probe", `Checking if ${safeHost}:22 is reachable…`);
+        const reachable = await checkSSH(safeHost);
 
         if (!reachable) {
-            const msg = `Host ${host}:22 not reachable.`;
+            const msg = `Host ${safeHost}:22 not reachable.`;
             send("error", msg);
             return { success: false, error: msg };
         }
@@ -38,8 +42,8 @@ export async function installServerDepsRemotely({
             const trial = new NodeSSH();
             try {
                 await trial.connect({
-                    host,
-                    username,
+                    host: safeHost,
+                    username: safeUser,
                     agent: agentSock,
                     tryKeyboard: false,
                 });
@@ -54,7 +58,7 @@ export async function installServerDepsRemotely({
 
         if (!hasAuth) {
             send("key", "Generating SSH key and copying it to the server…");
-            await setupSshKey(host, username, password);
+            await setupSshKey(safeHost, safeUser, password);
             send("key", "SSH key installed on server.");
         } else {
             send("key", "Reusing existing SSH key / agent credentials.");
@@ -71,7 +75,7 @@ export async function installServerDepsRemotely({
         send("probe", "Checking for required dependencies (Cockpit, ZFS, Samba, cockpit-super-simple-setup)…");
         let missing: string[] = [];
         try {
-            const result = await checkRemoteDeps(host, username, privateKeyPath);
+            const result = await checkRemoteDeps(safeHost, safeUser, privateKeyPath);
             missing = result.missing;
             if (missing.length === 0) {
                 send("done", "All required dependencies are already installed. Skipping bootstrap.");
@@ -87,8 +91,8 @@ export async function installServerDepsRemotely({
         send("bootstrap", "Running setup script on the server… this may take several minutes.");
 
         const rebootRequired = await runBootstrapScript(
-            host,
-            username,
+            safeHost,
+            safeUser,
             privateKeyPath,
             password,
             (line, stream) => {
