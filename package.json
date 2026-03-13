@@ -1,5 +1,5 @@
 {
-  "name": "45drives-storage-wizard",
+  "name": "45drives-setup-wizard",
   "version": "1.3.0",
   "description": "Create backups to any houston servers on your local network",
   "main": "main/src/main/main.js",
