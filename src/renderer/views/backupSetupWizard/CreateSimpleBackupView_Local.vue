@@ -88,18 +88,18 @@
 				</button>
 			</div>
 		</template>
-		<MessageDialog ref="messageFolderAlreadyAdded" message="⚠️ Folder is already added." />
+		<MessageDialog ref="messageFolderAlreadyAdded" message="Folder is already added." />
 		<MessageDialog ref="messageSubFolderAlreadyAdded"
-			message="⚠️ A subfolder of this folder is already added. Please remove it first." />
+			message="A subfolder of this folder is already added. Please remove it first." />
 		<MessageDialog ref="messageParentFolderAlreadyAdded"
-			message="⚠️ A parent folder is already added. You cannot add a subfolder." />
+			message="A parent folder is already added. You cannot add a subfolder." />
 
 	</CardContainer>
 </template>
 
 <script setup lang="ts">
 import { CardContainer, CommanderToolTip, confirm, useEnterToAdvance, WizardState } from "@45drives/houston-common-ui";
-import { computed, inject, InjectionKey, onMounted, ref, watch } from "vue";
+import { computed, inject, InjectionKey, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { PlusIcon, MinusIcon } from "@heroicons/vue/20/solid";
 import { useWizardSteps } from '@45drives/houston-common-ui';
 import { Server, DiscoveryState } from '../../types'
@@ -187,6 +187,14 @@ const loadExistingFolders = () => {
 	}));
 };
 onMounted(loadExistingFolders);
+
+onMounted(() => {
+	window.electron?.ipcRenderer.invoke('discovery:setEnabled', true);
+});
+
+onBeforeUnmount(() => {
+	window.electron?.ipcRenderer.invoke('discovery:setEnabled', false);
+});
 
 // Normalize path function for cross-platform compatibility
 const normalizePath = (path: string) =>

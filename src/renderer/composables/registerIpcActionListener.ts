@@ -5,13 +5,13 @@ import type { Router } from "vue-router";
 type Options = {
   vueRouter: Router;
 
-  // Optional hooks you may already have in your app:
-  setShowWebView?: (v: boolean) => void;        // e.g. show/hide WebView pane
+  // Optional hooks:
+  setShowWebView?: (v: boolean) => void;        // show/hide WebView pane
   setCurrentWizard?: (w: string | null) => void; // store the current wizard id
-  openStorageSetup?: (arg: unknown) => void;     // existing helper from your old app
-  openHoustonWindow?: () => void;                // existing helper from your old app
+  openStorageSetup?: (arg: unknown) => void;
+  openHoustonWindow?: () => void;
 
-  // Reboot helpers from your old flow (recommended to pass in):
+  // Reboot helpers (recommended to pass in):
   waitForServerRebootAndShowWizard?: () => Promise<void>;
   waitForServerRebootAndOpenHouston?: () => Promise<void>;
 };
@@ -33,7 +33,7 @@ export function registerIpcActionListener(opts: Options) {
   let isRebootWatcherRunning = false;
 
   const pushRoute = (nameOrPath: { name?: string; path?: string }) => {
-    // Prefer named routes if you have them registered
+    // Prefer named routes if registered
     vueRouter.push(nameOrPath).catch((e) => {
       // Ignore NavigationDuplicated or similar benign errors
       if (e && e.name !== "NavigationDuplicated") console.error(e);
@@ -68,7 +68,7 @@ export function registerIpcActionListener(opts: Options) {
               if (openStorageSetup) {
                 openStorageSetup(null);
               } else {
-                // Sensible fallback if you don't pass openStorageSetup:
+                // Fallback if openStorageSetup not provided:
                 const fallbackName = wiz === "storage" ? "setup" : "restore";
                 pushRoute({ name: fallbackName });
               }
@@ -84,7 +84,7 @@ export function registerIpcActionListener(opts: Options) {
             setCurrentWizard?.(wiz ?? null);
             setShowWebView?.(false);
 
-            // Keep old flow if you provide the helper:
+            // Keep old flow if the helper is provided:
             if (waitForServerRebootAndShowWizard) {
               await waitForServerRebootAndShowWizard();
             }
@@ -109,7 +109,7 @@ export function registerIpcActionListener(opts: Options) {
             if (openHoustonWindow) {
               openHoustonWindow();
             } else {
-              // Fallback: navigate to a webview route if you have one
+              // Fallback: navigate to a webview route
               pushRoute({ name: "houston" });
             }
             break;
@@ -135,7 +135,7 @@ export function registerIpcActionListener(opts: Options) {
             break;
           }
 
-          // Optional: a generic route message if you ever send it
+          // Generic route message handler
           case "show_route": {
             if (message.route) {
               // Accept either a name or a path from the payload
@@ -156,7 +156,7 @@ export function registerIpcActionListener(opts: Options) {
     ipc.addEventListener("action", actionListener);
   }
 
-  // Return an unregister to call on unmount if you want cleanup
+  // Return unregister function for cleanup on unmount
   return () => {
     if (actionListener) {
       try {

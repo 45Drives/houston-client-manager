@@ -73,8 +73,8 @@ const isButtonDisabled = computed(() => !backUpSetupConfig?.username || !backUpS
 // Method to handle the "Open" button action
 const proceedToNextStep = () => {
   if (backUpSetupConfig.username && backUpSetupConfig.password) {
-    // Trigger your backend logic for opening the server (you will handle the action)
-    // Pass username, password, and backupTask.target (URL) to your backend code
+    // Trigger backend logic for opening the server
+    // Pass username, password, and backupTask.target (URL) to backend
     // For example: openBackupServer(username.value, password.value, props.backupTask.target);
     // console.debug('Attempting to open server with:', {
     //   username: backUpSetupConfig.username,

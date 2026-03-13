@@ -1,6 +1,6 @@
 {
-  "name": "45drives-setup-wizard",
-  "version": "1.2.0",
+  "name": "45drives-storage-wizard",
+  "version": "1.3.0",
   "description": "Create backups to any houston servers on your local network",
   "main": "main/src/main/main.js",
   "workspaces": [
@@ -11,11 +11,19 @@
     "build": "yarn build:common && node scripts/build.js && electron-builder",
     "build:common": "yarn build:lib && yarn build:ui",
     "build:win": "yarn build:common && node scripts/build.js && yarn test && electron-builder --win --config electron-builder.json",
-    "build:mac": "yarn build:common && node scripts/build.js && electron-builder --mac",
+    "build:mac": "yarn build:common && node scripts/build.js && yarn test && electron-builder --mac",
     "build:linux": "yarn build:common && node scripts/build.js && yarn test && electron-builder --linux",
+    "release:gen-yml": "node scripts/release/generate-update-yml.mjs",
+    "release:publish-from-builds": "bash scripts/release/publish-from-builds.sh",
+    "release:orchestrate": "bash scripts/release/orchestrate-release.sh",
+    "release:win:stage": "RUN_LINUX_BUILD=0 RUN_MAC_BUILD=0 RUN_WINDOWS_BUILD=1 WIN_PHASE=stage GH_CREATE_DRAFT=0 GH_UPLOAD_RELEASE=0 GH_PUBLISH_RELEASE=0 bash scripts/release/orchestrate-release.sh",
+    "release:win:finalize": "RUN_LINUX_BUILD=0 RUN_MAC_BUILD=0 RUN_WINDOWS_BUILD=1 WIN_PHASE=finalize GH_CREATE_DRAFT=0 GH_UPLOAD_RELEASE=0 GH_PUBLISH_RELEASE=0 bash scripts/release/orchestrate-release.sh",
+    "mac:dir:arm64": "yarn build:common && node scripts/build.js && CSC_IDENTITY_AUTO_DISCOVERY=false SKIP_AFTER_SIGN=1 electron-builder --mac --arm64 --dir",
+    "mac:dir:x64": "yarn build:common && node scripts/build.js && CSC_IDENTITY_AUTO_DISCOVERY=false SKIP_AFTER_SIGN=1 electron-builder --mac --x64 --dir",
+    "mac:dir:universal": "yarn build:common && node scripts/build.js && CSC_IDENTITY_AUTO_DISCOVERY=false SKIP_AFTER_SIGN=1 electron-builder --mac --universal --dir",
     "test": "vitest run"
   },
-  "repository": "https://github.com/45Drives/45drives-setup-wizard",
+  "repository": "https://github.com/45Drives/houston-client-manager",
   "author": {
     "name": "Matt Pyne",
     "email": "mpyne@45drives.com"

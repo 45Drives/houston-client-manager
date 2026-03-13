@@ -147,7 +147,7 @@ import { IPCRouter } from '@45drives/houston-common-lib';
 import HoustonServerListView from '../../components/HoustonServerListView.vue'
 import { EyeIcon, EyeSlashIcon } from "@heroicons/vue/20/solid";
 import { Server } from '../../types';
-import { computed, ref, watch, inject, Ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch, inject, Ref } from 'vue';
 import { useRouter } from 'vue-router'
 import { CommanderToolTip } from '../../components/commander';
 import { useHeader } from '../../composables/useHeader'
@@ -271,7 +271,7 @@ const installModule = async (
         password,
       });
 
-    console.debug("🚀 installModule result:", result);
+    console.debug("installModule result:", result);
     if (!result.success) {
       statusMessage.value = result.error || "Installation failed.";
     } else if (result.reboot) {
@@ -343,7 +343,7 @@ const proceedToNextStep = async () => {
     }
   } 
 
-  // now do your existing installModule flow, pulling creds from the cache:
+  // proceed with installModule flow, pulling creds from the cache:
   if (srv.manuallyAdded || srv.fallbackAdded) {
     const { username, password } = manualCredentials.value[srv.ip];
     const result = await installModule(srv.ip, username, password);
@@ -352,7 +352,7 @@ const proceedToNextStep = async () => {
 
   providedCurrentServer.value = {
     ...srv,
-    // keep whatever fields you need (name, status, etc.)
+    // keep fields needed (name, status, etc.)
   }
 
   const cached = manualCredentials.value[srv.ip]
@@ -430,6 +430,15 @@ useEnterToAdvance(
     goBackStep(); // left arrow key ← acts like "Back"
   }
 );
+
+
+onMounted(() => {
+  window.electron?.ipcRenderer.invoke('discovery:setEnabled', true);
+});
+
+onBeforeUnmount(() => {
+  window.electron?.ipcRenderer.invoke('discovery:setEnabled', false);
+});
 
 
 </script>

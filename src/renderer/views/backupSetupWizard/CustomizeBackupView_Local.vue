@@ -91,11 +91,11 @@
 			</div>
 		</template>
 
-		<MessageDialog ref="messageFolderAlreadyAdded" message="⚠️ Folder is already added." />
+		<MessageDialog ref="messageFolderAlreadyAdded" message="Folder is already added." />
 		<MessageDialog ref="messageSubFolderAlreadyAdded"
-			message="⚠️ A subfolder of this folder is already added. Please remove it first." />
+			message="A subfolder of this folder is already added. Please remove it first." />
 		<MessageDialog ref="messageParentFolderAlreadyAdded"
-			message="⚠️ A parent folder is already added. You cannot add a subfolder." />
+			message="A parent folder is already added. You cannot add a subfolder." />
 
 	</CardContainer>
 </template>
@@ -103,7 +103,7 @@
 <script setup lang="ts">
 import { CardContainer, CommanderToolTip, Modal, useEnterToAdvance, WizardState } from "@45drives/houston-common-ui";
 import { useWizardSteps, DynamicBrandingLogo } from '@45drives/houston-common-ui';
-import { inject, ref, reactive, watch, nextTick, computed, InjectionKey } from "vue";
+import { inject, ref, reactive, watch, nextTick, computed, InjectionKey, onMounted, onBeforeUnmount } from "vue";
 import { PlusIcon, MinusIcon } from "@heroicons/vue/20/solid";
 import { backUpSetupConfigKey } from "../../keys/injection-keys";
 import MessageDialog from '../../components/MessageDialog.vue';
@@ -208,6 +208,15 @@ watch(
   },
   { immediate: true } // triggers on mount too
 )
+
+
+onMounted(() => {
+	window.electron?.ipcRenderer.invoke('discovery:setEnabled', true);
+});
+
+onBeforeUnmount(() => {
+	window.electron?.ipcRenderer.invoke('discovery:setEnabled', false);
+});
 
 
 // Folder Selection

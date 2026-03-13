@@ -36,8 +36,8 @@ process.on('unhandledRejection', (reason, promise) => {
 });
 
 import { app, BrowserWindow, ipcMain, dialog, shell, session } from 'electron';
-import { autoUpdater } from 'electron-updater';
 import { createLogger, format } from 'winston';
+import { initAutoUpdates } from './updates';
 
 // ---------------------------------------------------------------------------
 // Log scrubbing — prevent passwords/secrets from leaking into log files
@@ -157,25 +157,28 @@ function isPortOpen(ip: string, port: number, timeout = 2000): Promise<boolean> 
   });
 }
 
-// Timeout duration in milliseconds (e.g., 30 seconds)
-const TIMEOUT_DURATION = 10000;
-const serviceType = '_houstonserver._tcp.local'; // Define the service you're looking for
+// Timeout duration in milliseconds (e.g., 60 seconds)
+const TIMEOUT_DURATION = 60_000;
+const serviceType = '_houstonserver_legacy._tcp.local';
+
+const isPrivateV4 = (ip: string) =>
+  /^10\./.test(ip) ||
+  /^192\.168\./.test(ip) ||
+  /^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(ip);
 
 const getLocalIP = () => {
   const nets = os.networkInterfaces();
   for (const name of Object.keys(nets)) {
-    const something = nets[name];
-    if (something) {
-      for (const net of something) {
-        // Only return the IPv4 address (ignoring internal/loopback addresses)
-        if (net.family === "IPv4" && !net.internal && net.address.startsWith("192")) {
-          return net.address;
-        }
+    const items = nets[name];
+    if (!items) continue;
+
+    for (const net of items) {
+      if (net.family === 'IPv4' && !net.internal && isPrivateV4(net.address)) {
+        return net.address;
       }
     }
   }
-  
-  return "127.0.0.1"; // Fallback
+  return '127.0.0.1';
 };
 
 
@@ -227,7 +230,7 @@ function createWindow() {
       .from({ length: 256 }, (_, i) => `${subnet}.${i}`)
       .filter(candidate => candidate !== ip);
 
-    // exactly your old logic, with proper serverInfo defaults
+    // scan all IPs in subnet for cockpit on port 9090
     const scanned = await Promise.allSettled(
       ips.map(async candidateIp => {
 
@@ -297,10 +300,6 @@ function createWindow() {
     bufferedNotifications = [];
   });
 
-  ipcMain.on('check-for-updates', () => {
-    autoUpdater.checkForUpdatesAndNotify();
-  });
-
   ipcMain.handle('install-cockpit-module', async (event, { host, username, password }) => {
     assertMainWindowSender(event);
     // 4. Store manual creds for login UI (if needed)
@@ -340,8 +339,62 @@ function createWindow() {
     return await doFallbackScan();
   });
 
+  let discoveryEnabled = false;
+  let mdnsInterval: NodeJS.Timeout | null = null;
+  let pollActionInterval: NodeJS.Timeout | null = null;
+  let clearInactiveServerInterval: NodeJS.Timeout | null = null;
+
+  function startDiscoveryLoops() {
+    if (discoveryEnabled) return;
+    discoveryEnabled = true;
+
+    mdnsInterval = setInterval(() => {
+      mDNSClient.query({ questions: [{ name: serviceType, type: 'PTR' }] });
+    }, 5000);
+
+    clearInactiveServerInterval = setInterval(() => {
+      const now = Date.now();
+      const before = discoveredServers.length;
+
+      discoveredServers = discoveredServers.filter(srv =>
+        now - srv.lastSeen <= TIMEOUT_DURATION || (srv as any).manuallyAdded === true
+      );
+
+      if (discoveredServers.length !== before) {
+        mainWindow!.webContents.send('discovered-servers', discoveredServers);
+      }
+    }, 5000);
+
+    pollActionInterval = setInterval(() => {
+      const servers = discoveredServers.filter(s =>
+        !(s as any).manuallyAdded &&
+        !(s as any).fallbackAdded &&
+        s.ip !== '127.0.0.1'
+      );
+
+      // run in parallel so one slow/offline host doesn't stall the whole loop
+      void Promise.allSettled(servers.map(s => pollActions(s)));
+    }, 5000);
+  }
+
+  function stopDiscoveryLoops() {
+    discoveryEnabled = false;
+
+    if (mdnsInterval) clearInterval(mdnsInterval);
+    if (pollActionInterval) clearInterval(pollActionInterval);
+    if (clearInactiveServerInterval) clearInterval(clearInactiveServerInterval);
+
+    mdnsInterval = pollActionInterval = clearInactiveServerInterval = null;
+  }
+
+  ipcMain.handle('discovery:setEnabled', (event, enabled: boolean) => {
+    assertMainWindowSender(event);
+    if (enabled) startDiscoveryLoops();
+    else stopDiscoveryLoops();
+  });
+
   // function notify(message: string) {
-  //   // console.debug("[Main] 🔔 notify() called with:", message);
+  //   // console.debug("[Main] notify() called with:", message);
 
   //   if (!mainWindow || !mainWindow.webContents || mainWindow.webContents.isDestroyed()) {
   //     console.warn("[Main]  mainWindow/webContents not ready");
@@ -360,7 +413,7 @@ function createWindow() {
 
   //   if (rendererIsReady) {
   //     mainWindow.webContents.send("notification", message);
-  //     // 🆕 also mirror to the same bus your page already listens to
+  //     // also mirror to the IPCRouter bus
   //     try {
   //       IPCRouter.getInstance().send(
   //         'renderer',
@@ -378,7 +431,7 @@ function createWindow() {
     // always send to the standard channel
     mainWindow.webContents.send("notification", message);
 
-    // mirror to your IPCRouter bus; if nothing is listening, no harm done
+    // mirror to IPCRouter bus
     try {
       IPCRouter.getInstance().send(
         'renderer', 'action',
@@ -419,10 +472,10 @@ function createWindow() {
     // }
     else {
       try {
-        // console.debug("[Main] 📩 Raw message received:", data);
+        // console.debug("[Main] Raw message received:", data);
 
         const message = JSON.parse(data);
-        // console.debug("[Main] 📩 Parsed message:", message);
+        // console.debug("[Main] Parsed message:", message);
         if (message.type === 'configureBackUp') {
 
           message.config.backUpTasks.forEach(backUpTask => {
@@ -467,9 +520,9 @@ function createWindow() {
 
           try {
             await backupManager.unschedule(task);
-            notify(`🗑️ Successfully removed ${task.source} → ${task.target}`);
+            notify(`Successfully removed ${task.source} → ${task.target}`);
 
-            // 🔄 After deletion, re-send updated tasks
+            // After deletion, re-send updated tasks
             const tasks = await backupManager.queryTasks();
 
             IPCRouter.getInstance().send('renderer', 'action', JSON.stringify({
@@ -541,7 +594,7 @@ function createWindow() {
         } else if (message.type === 'openFolder') {
           const folderPath: string = message.path;
           try {
-            console.debug('🧪 Trying to open folder:', folderPath);
+            console.debug('Trying to open folder:', folderPath);
 
             const exists = fs.existsSync(folderPath);
             console.debug(' Exists:', exists);
@@ -562,7 +615,7 @@ function createWindow() {
                 console.error(` shell.openPath failed:`, result);
                 notify(` Error opening folder: ${result}`);
               } else {
-                notify(`📂 Opened folder: ${folderPath}`);
+                notify(`Opened folder: ${folderPath}`);
               }
             });
           } catch (err) {
@@ -629,11 +682,11 @@ function createWindow() {
           }
 
           try {
-            console.debug("▶️ Attempting to run backup:", task.description);
+            console.debug("Attempting to run backup:", task.description);
             const result = await (backupManager as any).runNow(task);
 
             if (result.stderr && result.stderr.trim() !== "") {
-              console.warn("⚠️ Backup completed with warnings/errors in stderr:", result.stderr);
+              console.warn("Backup completed with warnings/errors in stderr:", result.stderr);
             }
 
             console.debug(" runNow completed:", result);
@@ -832,24 +885,36 @@ function createWindow() {
         const ipAnswer = records.find(a => a.type === 'A' && a.name === (answer1.data as any).target);
         const txtAnswer = records.find(a => a.type === 'TXT' && a.name === answer1.name);
 
-        if (ipAnswer && ipAnswer.data) {
-          const serverIp = ipAnswer.data as string;
-          const instance = answer1.name;    // e.g. "hl4-test._houstonserver._tcp.local"
+        // Parse TXT into a map
+        const txtRecord: Record<string, string> = {};
+        if (txtAnswer && Array.isArray(txtAnswer.data)) {
+          txtAnswer.data.forEach((buf: Buffer) => {
+            const s = buf?.toString?.() ?? '';
+            const eq = s.indexOf('=');
+            if (eq === -1) return;
+            const k = s.slice(0, eq).trim();
+            const v = s.slice(eq + 1).trim();
+            if (k) txtRecord[k] = v;
+          });
+        }
 
-          // Parse TXT into a map
-          const txtRecord: Record<string, string> = {};
-          if (txtAnswer && Array.isArray(txtAnswer.data)) {
-            txtAnswer.data.forEach((buf: Buffer) => {
-              const [k, v] = buf.toString().split('=');
-              txtRecord[k] = v;
-            });
-          }
+        // Fallback path: TXT contains ip=...
+        const serverIp: string | null =
+          (ipAnswer && ipAnswer.data ? (ipAnswer.data as string) : null) ||
+          (txtRecord.ip ? String(txtRecord.ip) : null);
 
-          // Derive a friendly name (strip off the "._houstonserver._tcp.local" suffix)
+        if (serverIp) {
+          // Never accept loopback as a discovered server
+          if (serverIp === '127.0.0.1') continue;
+          if (serverIp === '0.0.0.0') continue;
+
+          const instance = answer1.name;    // e.g. "hl4-test._houstonserver_legacy._tcp.local"
+
+          // Derive a friendly name (strip off the service suffix)
           const [bare] = instance.split('._');
           const displayName = `${bare}.local`;
 
-          // Build your Server exactly as before, using displayName
+          // Build Server object from mDNS response
           const server: Server = {
             ip: serverIp,
             name: displayName,
@@ -870,17 +935,46 @@ function createWindow() {
             fallbackAdded: false,
           };
 
-          if (!server.manuallyAdded && !server.fallbackAdded) {
+          // Optionally refine using HTTP status if reachable
+          if (
+            discoveryEnabled &&
+            !server.manuallyAdded &&
+            !server.fallbackAdded
+          ) {
             try {
-              const fetchResponse = await fetch(`http://${server.ip}:9099/setup-status`);
+              const fetchResponse = await fetch(`http://${server.ip}:9099/setup-status`, {
+                cache: 'no-store',
+                signal: AbortSignal.timeout(2000),
+              });
+
               if (fetchResponse.ok) {
                 const setupStatusResponse = await fetchResponse.json();
-                server.status = setupStatusResponse.status ?? 'unknown';
-              } else {
-                console.warn(`HTTP error! server: ${server.name} status: ${fetchResponse.status}`);
+
+                if (typeof setupStatusResponse.setupComplete === 'boolean') {
+                  server.setupComplete = setupStatusResponse.setupComplete;
+                  server.status = setupStatusResponse.setupComplete ? 'complete' : 'not complete';
+                } else if (typeof setupStatusResponse.status === 'string') {
+                  server.status = setupStatusResponse.status;
+                  if (server.status === 'complete') server.setupComplete = true;
+                }
+
+                server.shareName = setupStatusResponse.shareName || server.shareName;
+                server.serverName = setupStatusResponse.serverName || server.serverName;
+                server.setupTime = setupStatusResponse.setupTime || server.setupTime;
+                server.serverInfo = {
+                  moboMake: setupStatusResponse.moboMake || server.serverInfo!.moboMake,
+                  moboModel: setupStatusResponse.moboModel || server.serverInfo!.moboModel,
+                  serverModel: setupStatusResponse.serverModel || server.serverInfo!.serverModel,
+                  aliasStyle: setupStatusResponse.aliasStyle || server.serverInfo!.aliasStyle,
+                  chassisSize: setupStatusResponse.chassisSize || server.serverInfo!.chassisSize,
+                };
               }
             } catch (error) {
-              // console.error('Server Search -> Fetch error:', error);
+              // This is expected when 9099 isn't up; use debug instead of warn
+              console.debug(
+                `setup-status fetch failed for ${server.ip}:9099; using mDNS TXT only`,
+                error
+              );
             }
           }
 
@@ -915,26 +1009,6 @@ function createWindow() {
     }
   });
 
-  const mdnsInterval = setInterval(() => {
-    mDNSClient.query({
-      questions: [{ name: '_houstonserver._tcp.local', type: 'PTR' }],
-    })
-  }, 5000);
-
-
-  const clearInactiveServerInterval = setInterval(() => {
-    const now = Date.now()
-
-    // only keep servers that are still “fresh” OR that have manuallyAdded === true
-    discoveredServers = discoveredServers.filter(srv =>
-      now - srv.lastSeen <= TIMEOUT_DURATION
-      || (srv as any).manuallyAdded === true
-    )
-
-    // push the updated list back to the renderer
-    mainWindow!.webContents.send('discovered-servers', discoveredServers)
-  }, 5000)
-  
 
   async function pollActions(server: Server) {
     try {
@@ -969,19 +1043,9 @@ function createWindow() {
     }))
   });
 
-  const pollActionInterval = setInterval(async () => {
-    for (let server of discoveredServers) {
-      if ((server as any).manuallyAdded || (server as any).fallbackAdded) continue
-      await pollActions(server)
-    }
-  }, 5000);
-
-
   app.on('window-all-closed', function () {
     ipcMain.removeAllListeners('message')
-    clearInterval(pollActionInterval);
-    clearInterval(clearInactiveServerInterval);
-    clearInterval(mdnsInterval);
+    stopDiscoveryLoops();
     mDNSClient.destroy();
     if (process.platform !== 'darwin') {
       app.quit();
@@ -1159,52 +1223,8 @@ app.whenReady().then(() => {
     jsonLogger.error({ event: 'unhandledRejection', reason, promise: String(promise) });
   });
 
-  autoUpdater.logger = log;
-  (autoUpdater.logger as typeof log).transports.file.level = 'info';
-
-  autoUpdater.on('checking-for-update', () => {
-    log.info('🔄 Checking for update...');
-  });
-
-  autoUpdater.on('update-available', (info) => {
-    log.info('⬇️ Update available:', info);
-
-    if (process.platform === 'linux') {
-      // Notify renderer that a manual download is needed
-      const url = 'https://github.com/45Drives/houston-client-manager/releases/latest';
-      const win = BrowserWindow.getAllWindows()[0];
-      win?.webContents.send('update-available-linux', url);
-    }
-  });
-
-  autoUpdater.on('update-not-available', (info) => {
-    log.info(' No update available:', info);
-  });
-
-  autoUpdater.on('error', (err) => {
-    log.error(' Update error:', err);
-  });
-
-  autoUpdater.on('download-progress', (progressObj) => {
-    const logMsg = `📦 Download speed: ${progressObj.bytesPerSecond} - Downloaded ${progressObj.percent.toFixed(
-      1
-    )}% (${progressObj.transferred}/${progressObj.total})`;
-    log.info(logMsg);
-  });
-
-  if (process.platform !== 'linux') {
-    autoUpdater.on('update-downloaded', (info) => {
-      log.info(' Update downloaded. Will install on quit:', info);
-      // autoUpdater.quitAndInstall(); // Optional
-    });
-
-    autoUpdater.checkForUpdatesAndNotify();
-  } else {
-    autoUpdater.checkForUpdates(); // Only checks, doesn't download
-  }
-
-  // Automatically check for updates and notify user if one is downloaded
-  autoUpdater.checkForUpdatesAndNotify();
+  // Auto-updates are now handled by src/main/updates.ts
+  initAutoUpdates(() => mainWindow);
 
   ipcMain.handle('session:clear-origin', async (_event, origin: string) => {
     try {
@@ -1318,12 +1338,9 @@ app.whenReady().then(() => {
   });
 
 });
-ipcMain.on('check-for-updates', () => {
-  autoUpdater.checkForUpdatesAndNotify();
-});
 
 app.on('window-all-closed', () => {
-  //  This ensures your app fully quits on Windows
+  // Quit the app on Windows when all windows are closed
   if (process.platform !== 'darwin') {
     app.quit();
   }

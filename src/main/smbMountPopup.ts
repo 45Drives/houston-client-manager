@@ -166,7 +166,7 @@ function handleExecOutput(
     const result = extractJsonFromOutput(stdout.toString());
 
     if (result.message) {
-      // that 'S' prefix looks accidental; you might want to drop it
+      // the 'S' prefix looks accidental; may want to drop it
       mainWindow.webContents.send('notification', `${result.message}.`);
       return false;
     }

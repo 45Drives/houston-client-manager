@@ -8,18 +8,18 @@
         <div class="flex flex-col space-y-4 mt-[2rem]">
           <div class="overflow-y-auto max-h-[40vh] p-2 space-y-4">
             <div v-for="completedStep in completedSteps" class="w-full max-w-xl text-left">
-              <div class="smallcheckmark ">✔ - {{ completedStep.message }}</div>
+              <div class="smallcheckmark ">Done - {{ completedStep.message }}</div>
             </div>
           </div>
         </div>
         
         <div v-if="error" class="text-red-500">
-          🔴 {{ error }}
+          {{ error }}
         </div>
 
         <div v-if="setupComplete === 'yes' && !error"
           class="flex flex-col items-center mt-1 px-4 py-4 max-w-6xl">
-          <div class="checkmark text-3xl mb-3">✔ - DONE!</div>
+          <div class="checkmark text-3xl mb-3">Complete - DONE!</div>
           <p class="text-2xl mb-2 text-center">
             Your Backup Plan is Now Active.
           </p>
