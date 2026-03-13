@@ -1,20 +1,6 @@
 <template>
   <CardContainer class="overflow-y-auto min-h-0">
-    <template #header class="!text-center">
-      <div class="relative flex items-center justify-center h-18  w-full">
-        <div class="absolute left-0 p-1 px-4 rounded-lg">
-         <DynamicBrandingLogo :division="division" :height="(division === 'studio' ? 16 : 12)"/>
-
-        </div>
-        <p class="text-3xl font-semibold text-center">
-          Summary
-        </p>
-        <div class="absolute right-0 top-1/2 -translate-y-1/2">
-          <GlobalSetupWizardMenu />
-        </div>
-      </div>
-    </template>
-
+    
     <div class="w-9/12 mx-auto text-center">
       <p class="mb-6 text-2xl">
         You're almost finished! A summary of information can be found below. <br />
@@ -83,17 +69,18 @@
 
 <script setup lang="ts">
 import { CardContainer, CommanderToolTip, confirm, useEnterToAdvance } from "@45drives/houston-common-ui";
-import { computed, inject, onMounted, ref } from "vue";
-import { useWizardSteps, DynamicBrandingLogo } from '@45drives/houston-common-ui';
-import { backUpSetupConfigKey, divisionCodeInjectionKey, thisOsInjectionKey } from "../../keys/injection-keys";
+import { inject, onMounted, ref } from "vue";
+import { useWizardSteps} from '@45drives/houston-common-ui';
+import { backUpSetupConfigKey, thisOsInjectionKey } from "../../keys/injection-keys";
 import { formatFrequency } from "./utils";
-import GlobalSetupWizardMenu from '../../components/GlobalSetupWizardMenu.vue';
-const division = inject(divisionCodeInjectionKey);
+import { useHeader } from '../../composables/useHeader'
+useHeader('Summary')
+
 const thisOs = inject(thisOsInjectionKey);
 
 const isFirstBackupRun = ref(false);
 
-const { completeCurrentStep, prevStep } = useWizardSteps("backup");
+const { completeCurrentStep, prevStep } = useWizardSteps("backup-new");
 
 const backUpSetupConfig = inject(backUpSetupConfigKey);
 
@@ -111,7 +98,7 @@ onMounted(async () => {
   const share = path.split("/")[0];
   actualHost.value = host;
   actualShare.value = share;
-  const result = await window.electron.isFirstRunNeeded(host, share);
+  const result = await window.electron.isFirstRunNeeded(host, share, backUpSetupConfig.username);
   // console.debug("First run result:", result);
 
   isFirstBackupRun.value = result;

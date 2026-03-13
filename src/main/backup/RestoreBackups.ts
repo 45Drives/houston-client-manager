@@ -1,6 +1,5 @@
 import { getOS } from "../utils";
 import fsAsync from "fs/promises";
-import fs from "fs";
 import path from "path";
 import { IPCMessageRouter } from "@45drives/houston-common-lib/lib/electronIPC";
 import { execSync } from "child_process";
@@ -11,7 +10,7 @@ export default async function restoreBackups(
 ) {
   const os = getOS();
 
-  console.debug("===  restoreBackups triggered ===");
+  console.debug("=== 🟡 restoreBackups triggered ===");
   console.debug("Incoming restore data:", JSON.stringify(data, null, 2));
 
   // 1) Determine the root of the share
@@ -24,25 +23,22 @@ export default async function restoreBackups(
     basePath = `/mnt/houston-mounts/${data.smb_share}`;
   }
 
-  // const { uuid, client } = data;
-  const { uuid } = data;  
+  const { uuid, client } = data;
   const files = data.files as string[];
 
-  // const folderPath = path.join(basePath, uuid, client !== uuid ? client : '');
-  const folderPath = path.join(basePath, uuid);
-  console.debug(" Source folderPath:", folderPath);
-  console.debug(" Files to restore:", files);
+  const folderPath = path.join(basePath, uuid, client !== uuid ? client : '');
+  console.debug("📂 Source folderPath:", folderPath);
+  console.debug("📁 Files to restore:", files);
 
   // 2) Copy each file, reporting back via IPC
-  for (let i = 0; i < files.length; i++) {
-    const relFile = files[i];
+  for (const relFile of files) {
     const sourcePath = path.join(folderPath, relFile);
     let destPath = relFile;
     if (os === "win") {
       destPath = fixWinPath(relFile);
     }
 
-    console.debug(" Preparing restore:");
+    console.debug(`🔄 Preparing restore:`);
     console.debug(`  relFile:        ${relFile}`);
     console.debug(`  sourcePath:     ${sourcePath}`);
     console.debug(`  destPath (raw): ${destPath}`);
@@ -60,21 +56,13 @@ export default async function restoreBackups(
     }
 
     try {
-      const result = await copyFileWithProgress(
-        sourcePath,
-        destPath,
-        relFile,
-        i,
-        files.length,
-        IPCRouter
-      );
-
+      const result = await copyFile(sourcePath, destPath, relFile);
       IPCRouter.send("renderer", "action", JSON.stringify({
         type: "restoreBackupsResult",
         result,
       }));
     } catch (err) {
-      console.error("   Copy failed:", err);
+      console.error(`   Copy failed:`, err);
       IPCRouter.send("renderer", "action", JSON.stringify({
         type: "restoreBackupsResult",
         result: { file: relFile, error: (err as Error).message },
@@ -86,11 +74,9 @@ export default async function restoreBackups(
   try {
     const restoredFolders = Array.from(
       new Set(files.map((f: string) => path.dirname(f)))
-    ).map(f => normalizeRestorePath(
-      os === "win" ? fixWinPath(f) : f
-    ));
+    ).map(f => (os === "win" ? fixWinPath(f) : f));
 
-    console.debug(" Restored folders:", restoredFolders);
+    console.debug("📬 Restored folders:", restoredFolders);
 
     IPCRouter.send("renderer", "action", JSON.stringify({
       type: "restoreCompleted",
@@ -103,16 +89,37 @@ export default async function restoreBackups(
   console.debug("===  restoreBackups finished ===");
 }
 
-async function copyFileWithProgress(
+// async function copyFile(
+//   sourcePath: string,
+//   destRelPath: string,
+//   originalFilePath: string
+// ) {
+//   const destFullPath = normalizeRestorePath(destRelPath);
+//   console.debug("Restoring", sourcePath, "→", destFullPath);
+
+//   const dir = path.dirname(destFullPath);
+
+//   try {
+//     // Check if directory exists and is writable
+//     await fsAsync.mkdir(dir, { recursive: true });
+//     await fsAsync.access(dir, fsAsync.constants.W_OK);
+//   } catch (e) {
+//     throw new Error(`Destination folder not writable: ${dir}`);
+//   }
+
+//   // Copy the file
+//   await fsAsync.copyFile(sourcePath, destFullPath);
+//   console.debug(` Copied ${sourcePath} → ${destFullPath}`);
+//   return { file: originalFilePath };
+// }
+
+async function copyFile(
   sourcePath: string,
   destRelPath: string,
-  originalFilePath: string,
-  fileIndex: number,
-  totalFiles: number,
-  IPCRouter: IPCMessageRouter
-): Promise<{ file: string }> {
+  originalFilePath: string
+) {
   const destFullPath = normalizeRestorePath(destRelPath);
-  console.debug(` copyFile(): ${sourcePath} → ${destFullPath}`);
+  console.debug(`📦 copyFile(): ${sourcePath} → ${destFullPath}`);
 
   const dir = path.dirname(destFullPath);
 
@@ -124,57 +131,11 @@ async function copyFileWithProgress(
     throw new Error(`Destination folder not writable: ${dir}`);
   }
 
-  const stat = await fsAsync.stat(sourcePath);
-  const totalBytes = stat.size;
+  await fsAsync.copyFile(sourcePath, destFullPath);
+  console.debug(`   File copied successfully`);
+  require("child_process").execSync(`dir "${path.dirname(destFullPath)}"`);
 
-  return new Promise((resolve, reject) => {
-    const readStream = fs.createReadStream(sourcePath);
-    const writeStream = fs.createWriteStream(destFullPath);
-
-    let copiedBytes = 0;
-    let lastEmit = Date.now();
-
-    readStream.on("data", (chunk) => {
-      copiedBytes += chunk.length;
-
-      const now = Date.now();
-      // throttle progress IPC to, say, every 200ms
-      if (now - lastEmit > 200) {
-        lastEmit = now;
-        IPCRouter.send("renderer", "action", JSON.stringify({
-          type: "restoreBackupsProgress",
-          progress: {
-            file: originalFilePath,
-            fileIndex: fileIndex + 1,
-            totalFiles,
-            copiedBytes,
-            totalBytes,
-          },
-        }));
-      }
-    });
-
-    readStream.on("error", (err) => reject(err));
-    writeStream.on("error", (err) => reject(err));
-
-    writeStream.on("finish", () => {
-      console.debug("   File copied successfully");
-      // final 100% progress emit
-      IPCRouter.send("renderer", "action", JSON.stringify({
-        type: "restoreBackupsProgress",
-        progress: {
-          file: originalFilePath,
-          fileIndex: fileIndex + 1,
-          totalFiles,
-          copiedBytes: totalBytes,
-          totalBytes,
-        },
-      }));
-      resolve({ file: originalFilePath });
-    });
-
-    readStream.pipe(writeStream);
-  });
+  return { file: originalFilePath };
 }
 
 
@@ -182,29 +143,15 @@ function normalizeRestorePath(relPath: string): string {
   const platform = getOS();
 
   if (platform === 'win') {
-    // For Windows we already pre-normalize with fixWinPath
+    // Already fixed by fixWinPath
     return relPath;
   }
 
-  // Split into path segments
-  const parts = relPath.split(/[\\/]+/).filter(Boolean);
-
-  if (platform === 'mac') {
-    const idx = parts.indexOf('Users');
-    if (idx >= 0) {
-      return '/' + parts.slice(idx).join('/');
-    }
-  } else {
-    const idx = parts.indexOf('home');
-    if (idx >= 0) {
-      return '/' + parts.slice(idx).join('/');
-    }
-  }
-
-  // Fallbacks
+  // macOS or Linux: ensure it's absolute
   if (path.isAbsolute(relPath)) {
     return relPath;
   }
+
   return path.resolve('/', relPath);
 }
 

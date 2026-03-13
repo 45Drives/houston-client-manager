@@ -18,4 +18,15 @@ export interface Server {
   fallbackAdded?: boolean;
 }
 
-export type DivisionType = 'default' | 'enterprise' | 'homelab' | 'professional' | 'studio';
+export type DivisionType = 'default' | 'enterprise' | 'homelab' | 'professional';
+
+
+export type SavedServer = {
+  id: string;
+  host: string;
+  name?: string;
+  username: string;
+  favorite?: boolean;
+  lastUsedAt?: number;
+  // future: token?: string;
+};

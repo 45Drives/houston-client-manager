@@ -1,19 +1,5 @@
 <template>
   <CardContainer class="overflow-y-auto min-h-0">
-    <template #header class="!text-center">
-      <div class="relative flex items-center justify-center h-18  w-full">
-        <div class="absolute left-0 p-1 px-4 rounded-lg">
-         <DynamicBrandingLogo :division="division" :height="(division === 'studio' ? 16 : 12)"/>
-
-        </div>
-        <p class="text-3xl font-semibold text-center">
-          Congratulations
-        </p>
-        <div class="absolute right-0 top-1/2 -translate-y-1/2">
-          <GlobalSetupWizardMenu />
-        </div>
-      </div>
-    </template>
 
     <div class="flex flex-col items-center justify-center text-center w-full h-full py-2">
       <!-- Complete Section -->
@@ -74,12 +60,15 @@
 <script setup lang="ts">
 import { CardContainer, useEnterToAdvance } from "@45drives/houston-common-ui";
 import { ref, watch, inject, onActivated, onBeforeUnmount } from "vue";
-import { useWizardSteps, DynamicBrandingLogo } from "@45drives/houston-common-ui";
+import { useWizardSteps} from "@45drives/houston-common-ui";
 import { EasySetupProgress, IPCRouter } from "@45drives/houston-common-lib";
-import { backUpSetupConfigKey, divisionCodeInjectionKey } from "../../keys/injection-keys";
-import GlobalSetupWizardMenu from '../../components/GlobalSetupWizardMenu.vue';
-const division = inject(divisionCodeInjectionKey);
-const { setStep } = useWizardSteps('backup');
+import { backUpSetupConfigKey } from "../../keys/injection-keys";
+import { useHeader } from '../../composables/useHeader'
+import { useRouter } from 'vue-router'
+const router = useRouter()
+
+useHeader('Congratulations')
+// const { setStep } = useWizardSteps('backup-new');
 
 const setupComplete = ref<string>("no");
 const error = ref<string>();
@@ -108,9 +97,10 @@ function goToBackupWizard(): void {
   }
 
   // console.debug("after clearing: ", backUpSetupConfig);
-  setStep(1);
-}
+  // setStep(0);
 
+  router.push({ name: 'backup' })
+}
 
 function goToSetupWizard(): void {
   IPCRouter.getInstance().send('renderer', 'action', JSON.stringify({

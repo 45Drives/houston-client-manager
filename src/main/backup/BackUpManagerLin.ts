@@ -1,18 +1,3 @@
-// import log from 'electron-log';
-// log.transports.console.level = false;
-// process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
-// console.debug = (...args) => log.info(...args);
-// console.error = (...args) => log.error(...args);
-// console.warn = (...args) => log.warn(...args);
-// console.debug = (...args) => log.debug(...args);
-
-// process.on('uncaughtException', (error) => {
-//   log.error('Uncaught Exception:', error);
-// });
-
-// process.on('unhandledRejection', (reason, promise) => {
-//   log.error('Unhandled Rejection at:', promise, 'reason:', reason);
-// });
 import { jsonLogger } from '../main'; 
 import { BackUpManager } from "./types";
 import { BackUpTask, backupTaskTag, TaskSchedule } from "@45drives/houston-common-lib";
@@ -52,12 +37,13 @@ export class BackUpManagerLin implements BackUpManager {
         const targetMatch = content.match(/TARGET='([^']+)'/);
         const smbHostMatch = content.match(/SMB_HOST='([^']+)'/);
         const smbShareMatch = content.match(/SMB_SHARE='([^']+)'/);
+        const smbUserMatch = content.match(/SMB_USER='([^']+)'/);
         const startDateMatch = content.match(/START_DATE='([^']+)'/);
         const startDate = startDateMatch ? new Date(startDateMatch[1]) : new Date();
         const descMatch = content.match(/Starting backup task: '([^']+)'/);
         const mirror = content.includes("--delete");
 
-        if (!uuidMatch || !sourceMatch || !targetMatch || !smbHostMatch || !smbShareMatch) continue;
+        if (!uuidMatch || !sourceMatch || !targetMatch || !smbHostMatch || !smbShareMatch || !smbUserMatch) continue;
 
         const cronLines = execSync("crontab -l 2>/dev/null || true").toString().split("\n");
         const matchingLine = cronLines.find(line => line.includes(uuidMatch[1]));
@@ -72,10 +58,11 @@ export class BackUpManagerLin implements BackUpManager {
           mirror,
           description: descMatch ? descMatch[1] : "Unnamed",
           schedule: parsedSchedule ?? { repeatFrequency: "day", startDate },
-          status: "checking"
+          status: "checking",
+          smb_user: smbUserMatch[1]
         };
 
-        //  Perform status check
+        // 🔍 Perform status check
         // try {
         //   task.status = await checkBackupTaskStatus(task);
         // } catch (err) {
@@ -91,31 +78,45 @@ export class BackUpManagerLin implements BackUpManager {
 
     return tasks;
   }
-  
-
 
   isFirstBackupNeeded(
     smbHost: string,
-    smbShare: string
+    smbShare: string,
+    smbUser?: string
   ): boolean {
-    const mountRoot = "/mnt/houston-mounts";
     const fstabPath = "/etc/fstab";
+    const mountBase = "/mnt/houston-mounts";
+    const credBase = "/etc/samba/houston-credentials";
 
     try {
-      /* 1 ─ root mount directory */
-      if (!fs.existsSync(mountRoot)) return true;
+      // If we don't know which SMB user this is for, require a first run
+      // so we can capture per-user credentials & create the keyed entries.
+      if (!smbUser || !smbUser.trim()) return true;
 
-      /* 2 ─ check vault for any credential for this host+share */
-      const cm = getCredentialManager();
-      if (!cm.has(smbHost, smbShare)) return true;
+      const safe = (s: string) => s.replace(/[^A-Za-z0-9_.-]/g, "_");
+      const key = `${safe(smbHost)}_${safe(smbShare)}_${safe(smbUser)}`;
 
-      /* 3 ─ fstab line containing //host/share */
+      const mountDir = `${mountBase}/${key}`;
+      const credFile = `${credBase}/${key}.cred`;
+
+      // 1) base mount root present?
+      if (!fs.existsSync(mountBase)) return true;
+
+      // 2) per-user cred file present?
+      if (!fs.existsSync(credFile)) return true;
+
+      // 3) fstab has a matching line for this host/share + mountDir + credFile?
       const fstab = fs.readFileSync(fstabPath, "utf-8");
-      const hasLine = fstab.includes(`//${smbHost}/${smbShare}`);
-      return !hasLine;                // if the line is missing → need first run
+      const hasLine =
+        fstab.includes(`//${smbHost}/${smbShare}`) &&
+        fstab.includes(mountDir) &&
+        fstab.includes(`credentials=${credFile}`);
+
+      // If the exact keyed line is missing → we still need the first run
+      return !hasLine;
     } catch (err) {
       console.warn("isFirstBackupNeeded():", err);
-      return true;                    // be cautious if something goes wrong
+      return true; // be cautious if anything goes wrong
     }
   }
 
@@ -130,9 +131,8 @@ export class BackUpManagerLin implements BackUpManager {
       const [smbHost, smbSharePart] = task.target.split(":");
       const smbShare = smbSharePart.split("/")[0];
 
-      // Store credential in encrypted vault first
-      const cm = getCredentialManager();
-      cm.store(smbHost, smbShare, username, password);
+      // Store credential in encrypted vault
+      getCredentialManager().store(smbHost, smbShare, username, password);
 
       this.ensureFstabEntry(smbHost, smbShare, username, password);
 
@@ -160,7 +160,6 @@ export class BackUpManagerLin implements BackUpManager {
     if (!fs.existsSync(scriptDir)) fs.mkdirSync(scriptDir, { recursive: true });
 
     const total = tasks.length;
-    const cm = getCredentialManager();
 
     for (let i = 0; i < total; i++) {
       const task = tasks[i];
@@ -170,7 +169,7 @@ export class BackUpManagerLin implements BackUpManager {
       const smbShare = smbSharePart.split("/")[0];
 
       // Store credential in encrypted vault
-      cm.store(smbHost, smbShare, username, password);
+      getCredentialManager().store(smbHost, smbShare, username, password);
 
       this.ensureFstabEntry(smbHost, smbShare, username, password);
 
@@ -194,7 +193,7 @@ export class BackUpManagerLin implements BackUpManager {
     const finalContent = cleaned.join("\n");
 
     if (finalContent.trim().length === 0) {
-      try { execSync("crontab -r"); } catch { }
+      execSync("crontab -r || true");
     } else {
       execSync("crontab -", { input: finalContent + "\n" });
     }
@@ -337,27 +336,62 @@ export class BackUpManagerLin implements BackUpManager {
   }
   
 
+//   protected ensureFstabEntry(smbHost: string, smbShare: string, username: string, password: string): void {
+//     const credDir = "/etc/samba/houston-credentials";
+//     const credFile = `${credDir}/${smbShare}.cred`;
+//     const mountDir = `/mnt/houston-mounts/${smbShare}`;
+//     const localUser = os.userInfo().username;
+
+//     const uid = typeof process.getuid === 'function' ? process.getuid() : 1000;
+//     const gid = typeof process.getgid === 'function' ? process.getgid() : 1000;
+
+//     const fstabEntry = `//${smbHost}/${smbShare} ${mountDir} cifs credentials=${credFile},iocharset=utf8,rw,uid=${uid},gid=${gid},vers=3.0,user,noauto 0 0`;
+
+//     const fstab = fs.readFileSync("/etc/fstab", "utf-8");
+//     if (!fstab.includes(`//${smbHost}/${smbShare}`)) {
+//       const tempScript = `/tmp/add_fstab_entry_${smbShare}.sh`;
+//       const scriptContent = `#!/bin/bash
+// mkdir -p "${credDir}"
+// echo "username=${username}" > "${credFile}"
+// echo "password=${password}" >> "${credFile}"
+// chown ${localUser}:${localUser} "${credFile}"
+// chmod 600 "${credFile}"
+// mkdir -p "${mountDir}"
+// chown ${localUser}:${localUser} "${mountDir}"
+// chmod 755 "${mountDir}"
+// echo "${fstabEntry}" >> /etc/fstab
+// `;
+
+//       fs.writeFileSync(tempScript, scriptContent, { mode: 0o700 });
+//       execSync(`${this.pkexec} bash "${tempScript}"`);
+//     }
+//   }
+
   protected ensureFstabEntry(smbHost: string, smbShare: string, username: string, password: string): void {
     const safeHost = assertSafeHost(smbHost);
     const safeShare = assertSafeShare(smbShare);
     const safeUser = assertSafeUsername(username);
 
     const credDir = "/etc/samba/houston-credentials";
-    const credFile = `${credDir}/${safeHost}_${safeShare}_${safeUser}.cred`;
-    const mountDir = `/mnt/houston-mounts/${safeShare}`;
+    const safe = (s: string) => s.replace(/[^A-Za-z0-9_.-]/g, "_");
+    const key = `${safe(smbHost)}_${safe(smbShare)}_${safe(username)}`;
+
+    const credFile = `${credDir}/${key}.cred`;
+    const mountDir = `/mnt/houston-mounts/${key}`;
     const localUser = os.userInfo().username;
 
     const uid = typeof process.getuid === 'function' ? process.getuid() : 1000;
     const gid = typeof process.getgid === 'function' ? process.getgid() : 1000;
 
-    const fstabEntry = `//${safeHost}/${safeShare} ${mountDir} cifs credentials=${credFile},iocharset=utf8,rw,uid=${uid},gid=${gid},vers=3.0,user,noauto 0 0`;
+    const fstabEntry =
+      `//${safeHost}/${safeShare} ${mountDir} cifs ` +
+      `credentials=${credFile},iocharset=utf8,rw,uid=${uid},gid=${gid},vers=3.0,user,noauto 0 0`;
 
     const fstab = fs.readFileSync("/etc/fstab", "utf-8");
-    const hasFstab = fstab.includes(`//${safeHost}/${safeShare}`);
+    const hasFstab = fstab.includes(mountDir);
     const hasCred = fs.existsSync(credFile);
     const hasMountDir = fs.existsSync(mountDir);
     if (!hasFstab || !hasCred || !hasMountDir) {
-      const tempScript = `/tmp/add_fstab_entry_${safeHost}_${safeShare}.sh`;
       const passwordB64 = toBase64(password);
       const scriptContent = `#!/bin/bash
 set -euo pipefail
@@ -374,89 +408,102 @@ chmod 755 ${shellQuote(mountDir)}
 ${ hasFstab ? '' : `echo ${shellQuote(fstabEntry)} >> /etc/fstab` }
 `;
 
+      const tempScript = path.join(os.tmpdir(), `houston_fstab_${key}.sh`);
       fs.writeFileSync(tempScript, scriptContent, { mode: 0o700 });
       execFileSync(this.pkexec, ["bash", tempScript]);
-      // Clean up temp script
       try { fs.unlinkSync(tempScript); } catch { }
     }
   }
 
+
   protected generateBackupScript(task: BackUpTask, username: string, password: string, scriptPath: string): void {
-    const [smbHostRaw, smbSharePart] = task.target.split(":");
-    const smbHost = assertSafeHost(smbHostRaw);
-    const smbShare = assertSafeShare(smbSharePart.split("/")[0]);
+    const [smbHost, smbSharePart] = task.target.split(":");
+    const smbShare = smbSharePart.split("/")[0];
+
+    // Ensure /etc/fstab and cred file are set up once during schedule
+    this.ensureFstabEntry(smbHost, smbShare, username, password);
 
     const logPath = path.join(LOG_DIR, `Houston_Backup_Task_${task.uuid}.log`);
-    const mountDir = `/mnt/houston-mounts/${smbShare}`;
+    // const mountDir = `/mnt/houston-mounts/${smbShare}`;
+    const safe = (s: string) => s.replace(/[^A-Za-z0-9_.-]/g, "_");
+    const key = `${safe(smbHost)}_${safe(smbShare)}_${safe(username)}`;
+    const mountDir = `/mnt/houston-mounts/${key}`;  // instead of /mnt/houston-mounts/${smbShare}
+
     const target = getSmbTargetFromSmbTarget(task.target);
 
     const scriptContent = `#!/bin/bash
-set -euo pipefail
+  EVENT_LOG='${LOG_DIR}/45drives_backup_events.json'
+  SMB_HOST='${smbHost}'
+  SMB_SHARE='${smbShare}'
+  SMB_USER='${username}'
+  SOURCE='${task.source}/'
+  TARGET='${target}'
+  LOG_FILE='${logPath}'
+  MOUNT_DIR='${mountDir}'
+  START_DATE='${task.schedule.startDate}'
 
-EVENT_LOG=${shellQuote(path.join(LOG_DIR, "45drives_backup_events.json"))}
-SMB_HOST=${shellQuote(smbHost)}
-SMB_SHARE=${shellQuote(smbShare)}
-SOURCE=${shellQuote(`${task.source}/`)}
-TARGET=${shellQuote(target)}
-LOG_FILE=${shellQuote(logPath)}
-MOUNT_DIR=${shellQuote(mountDir)}
-START_DATE=${shellQuote(task.schedule.startDate.toISOString())}
-DESC=${shellQuote(task.description)}
+  CLIENT_ID_FILE='${path.join(app.getPath("userData"), "client-id.txt")}'
+  INSTALL_ID="$(cat "$CLIENT_ID_FILE" 2>/dev/null || true)"
 
-mkdir -p "$(dirname "$LOG_FILE")"
+  echo '{"event":"backup_start","timestamp":"'$(date -Iseconds)'","uuid":"'"${task.uuid}"'","host":"'"${smbHost}"'","share":"'"${smbShare}"'","source":"'"${task.source}"'","target":"'"${target}"'","install_id":"'"$INSTALL_ID"'","smb_user":"'"$SMB_USER"'"}' >> "$EVENT_LOG"
+  mkdir -p "$(dirname "$LOG_FILE")"
 
-# Send ALL stdout/stderr to both console and the log file, without a pipeline
-exec > >(tee -a "$LOG_FILE") 2>&1
+  cleanup() {
+    if [ -d "$MOUNT_DIR" ]; then
+      echo "[CLEANUP] Unmounting $MOUNT_DIR" >> "$LOG_FILE"
+      umount "$MOUNT_DIR" >> "$LOG_FILE" 2>&1
+    fi
+  }
+  trap cleanup EXIT
 
-echo '{"event":"backup_start","timestamp":"'$(date -Iseconds)'","uuid":"'"${task.uuid}"'","host":"'"$SMB_HOST"'","share":"'"$SMB_SHARE"'","source":"'"$SOURCE"'","target":"'"$TARGET"'"}' >> "$EVENT_LOG"
+  {
+    echo "===== [$(date -Iseconds)] Starting backup task: '${task.description}' ====="
+    echo "[INFO] Source: $SOURCE"
+    echo "[INFO] Target: $TARGET"
+    echo "[INFO] Mount directory: $MOUNT_DIR"
 
-cleanup() {
-  # Only attempt unmount if it's actually mounted
-  if mountpoint -q "$MOUNT_DIR"; then
-    echo "[CLEANUP] Unmounting $MOUNT_DIR"
-    umount "$MOUNT_DIR" || true
-  fi
-}
-trap cleanup EXIT
+    mkdir -p "$MOUNT_DIR"
 
-echo "===== [$(date -Iseconds)] Starting backup task: '$DESC' ====="
-echo "[INFO] Source: $SOURCE"
-echo "[INFO] Target: $TARGET"
-echo "[INFO] Mount directory: $MOUNT_DIR"
+    mount "$MOUNT_DIR" >> "$LOG_FILE" 2>&1
+    if ! mountpoint -q "$MOUNT_DIR"; then
+      echo "[ERROR] Failed to mount $MOUNT_DIR" >> "$LOG_FILE"
+      exit 1
+    fi
+    echo "[SUCCESS] SMB share mounted at $MOUNT_DIR"
 
-mkdir -p "$MOUNT_DIR"
+    UUID="$(printf '%s' "$TARGET" | awk -F/ '{print $2}')"
 
-# This relies on /etc/fstab having a matching entry for $MOUNT_DIR
-mount "$MOUNT_DIR"
+    MARKER_DIR="$MOUNT_DIR/$UUID/.houston"
+    MARKER_FILE="$MARKER_DIR/client.json"
+    mkdir -p "$MARKER_DIR"
 
-# With -e, this will exit non-zero if not mounted
-mountpoint -q "$MOUNT_DIR"
+    printf '{"install_id":"%s","smb_user":"%s","source":"%s","user":"%s","host":"%s","platform":"linux"}\n' \
+    "$INSTALL_ID" "$SMB_USER" "$SOURCE" "$(id -un)" "$(hostname -s)" > "$MARKER_FILE"
 
-echo "[SUCCESS] SMB share mounted at $MOUNT_DIR"
+    mkdir -p "$MOUNT_DIR/$TARGET"
+    echo "[INFO] Running rsync..."
+    rsync -a${task.mirror ? ' --delete' : ''} "$SOURCE" "$MOUNT_DIR/$TARGET" >> "$LOG_FILE" 2>&1
+    RSYNC_STATUS=$?
 
-mkdir -p "$MOUNT_DIR/$TARGET"
-echo "[INFO] Running rsync..."
-rsync -a${task.mirror ? ' --delete' : ''} "$SOURCE" "$MOUNT_DIR/$TARGET"
-RSYNC_STATUS=$?
+    if [ $RSYNC_STATUS -ne 0 ]; then
+      echo "[ERROR] rsync failed with exit code $RSYNC_STATUS" >> "$LOG_FILE"
+      exit $RSYNC_STATUS
+    else
+      echo "[SUCCESS] rsync completed successfully" >> "$LOG_FILE"
+    fi
 
-if [ $RSYNC_STATUS -ne 0 ]; then
-  echo "[ERROR] rsync failed with exit code $RSYNC_STATUS"
-  exit $RSYNC_STATUS
-else
-  echo "[SUCCESS] rsync completed successfully"
-fi
+    STATUS=$([ $RSYNC_STATUS -eq 0 ] && echo "success" || echo "failure")
+      echo '{"event":"backup_end","timestamp":"'"$(date -Iseconds)"'","uuid":"'"${task.uuid}"'","host":"'"${smbHost}"'","share":"'"${smbShare}"'","source":"'"${task.source}"'","target":"'"${target}"'","status":"'"$STATUS"'","install_id":"'"$INSTALL_ID"'","smb_user":"'"$SMB_USER"'"}' >> "$EVENT_LOG"
 
-STATUS=$([ $RSYNC_STATUS -eq 0 ] && echo "success" || echo "failure")
-echo '{"event":"backup_end","timestamp":"'"$(date -Iseconds)"'","uuid":"'"${task.uuid}"'","host":"'"$SMB_HOST"'","share":"'"$SMB_SHARE"'","source":"'"$SOURCE"'","target":"'"$TARGET"'","status":"'"$STATUS"'"}' >> "$EVENT_LOG"
-
-echo "===== [$(date -Iseconds)] Backup task completed ====="
-`;
-
+    echo "===== [$(date -Iseconds)] Backup task completed ====="
+  } 2>&1 | tee -a "$LOG_FILE"
+  `;
 
     fs.writeFileSync(scriptPath, scriptContent, { mode: 0o700 });
   }  
 
-protected generateCronLine(task: BackUpTask, scriptPath: string): string {
+
+  protected generateCronLine(task: BackUpTask, scriptPath: string): string {
     const cronTiming = this.scheduleToCron(task.schedule);
     const isoStart = task.schedule.startDate.toISOString();
     const comment = `# ${backupTaskTag} start=${isoStart} ${sanitizeCronComment(task.description)}`;

@@ -24,3 +24,13 @@ export interface DiscoveryState {
   servers: Server[]
   fallbackTriggered: boolean
 }
+
+export type SavedServer = {
+  id: string;
+  host: string;
+  name?: string;
+  username: string;
+  favorite?: boolean;
+  lastUsedAt?: number;
+  // future: token?: string;
+};
