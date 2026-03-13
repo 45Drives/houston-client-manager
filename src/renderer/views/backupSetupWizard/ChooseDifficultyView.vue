@@ -46,8 +46,10 @@
 import { CardContainer } from '@45drives/houston-common-ui'
 import { CommanderToolTip } from '../../components/commander';
 import { useWizardSteps, useEnterToAdvance } from '@45drives/houston-common-ui';
+import { useRouter } from 'vue-router'
 import { useHeader } from '../../composables/useHeader'
 useHeader('Choose Your Backup Schedule Type')
+const router = useRouter()
 const { completeCurrentStep, prevStep } = useWizardSteps("backup-new");
 
 const startCreateBackupSchedualSetup = () => {
@@ -60,7 +62,7 @@ const startCustomSetup = () => {
 };
 
 const proceedToPreviousStep = () => {
-  prevStep();
+  router.push({ name: 'backup-manage' });
 };
 
 useEnterToAdvance(
