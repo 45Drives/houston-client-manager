@@ -18,6 +18,7 @@ import * as path from "path";
 import { app } from 'electron';
 import { getRsync, getSmbTargetFromSmbTarget } from "../utils";
 import { assertSafeHost, assertSafeShare, assertSafeUsername, shellQuote } from "../security";
+import { getCredentialManager } from '../credentialManager';
 
 export class BackUpManagerMac implements BackUpManager {
   protected scriptDir = "/Library/Application Support/Houston/scripts";
@@ -103,6 +104,10 @@ export class BackUpManagerMac implements BackUpManager {
     task.host = safeHost;
     task.share = safeShare;
 
+    // Store credential in encrypted vault
+    const cm = getCredentialManager();
+    cm.store(safeHost, safeShare, safeUser, password);
+
     const installerPath = `/tmp/houston-installer-${uuid}.sh`;
     const scriptPayload = this.getShellScriptContent(task, safeUser);   // big bash body
     const mntRoot = `${this.HOME}/houston-mounts`;
@@ -110,7 +115,7 @@ export class BackUpManagerMac implements BackUpManager {
     const homeDir = os.homedir();
     const currentUser = os.userInfo().username;
     const userGroup = require("child_process").execSync(`id -gn ${currentUser}`).toString().trim();
-    const service = `houston-smb-${safeShare}`;
+    const service = `houston-smb-${safeHost}-${safeShare}`;
     const installer = `#!/bin/bash
     set -e
     PASSWORD=${shellQuote(password)}
@@ -171,6 +176,9 @@ EOF_${uuid}
     const servicePrefix = "houston-smb-";
     const safeUser = assertSafeUsername(username);
 
+    // Store credentials in encrypted vault
+    const cm = getCredentialManager();
+
     /* ------------------------------------------------------------------
        1.  BUILD a root-only installer shell script as one big heredoc
     ------------------------------------------------------------------ */
@@ -182,14 +190,21 @@ EOF_${uuid}
       `chmod 750 "${logDir}"`
     ];
 
-    /* 1a ─ System-keychain credentials (once per share) */
-    const uniqueShares = new Set<string>();
+    /* 1a ─ System-keychain credentials (once per host+share) */
+    const uniqueHostShares = new Map<string, { host: string; share: string }>();
     for (const t of tasks) {
+      const tHost = assertSafeHost(t.host || t.target.split(":")[0]);
       const share = assertSafeShare((t.share || t.target.split(":")[1].split("/")[0]));
-      uniqueShares.add(share);
+      const key = `${tHost}/${share}`;
+      if (!uniqueHostShares.has(key)) {
+        uniqueHostShares.set(key, { host: tHost, share });
+      }
     }
-    for (const share of uniqueShares) {
-      const svc = servicePrefix + share;
+    for (const [, { host: tHost, share }] of uniqueHostShares) {
+      const svc = servicePrefix + tHost + "-" + share;
+
+      // Store in vault
+      cm.store(tHost, share, safeUser, password);
 
       installerLines.push(
         `security delete-generic-password -s "${svc}" -a "${safeUser}" 2>/dev/null || true`,
@@ -449,7 +464,7 @@ EOF_${uuid}
     const volumesMount = `/Volumes/${task.share}`;
     const rel = task.target!.split('/').slice(1).join('/');
     const dir = `${mountPoint}/${rel}`;
-    const svc = `houston-smb-${task.share}`;
+    const svc = `houston-smb-${task.host}-${task.share}`;
     const target = getSmbTargetFromSmbTarget(task.target);
     const rsyncCmd = `${getRsync()} -a${task.mirror ? ' --delete' : ''} ${shellQuote(`${task.source}/`)} ${shellQuote(`${dir}/`)}`;
     return (`

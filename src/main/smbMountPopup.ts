@@ -4,12 +4,20 @@ import installDepPopup from './installDepsPopup';
 import { exec, execFile } from 'child_process';
 import { getAsset, extractJsonFromOutput } from './utils';
 import { assertSafeHost, assertSafeShare, assertSafeUsername } from './security';
+import { getCredentialManager } from './credentialManager';
 
 async function mountSambaClient(smb_host: string, smb_share: string, smb_user: string, smb_pass: string, mainWindow: BrowserWindow, uiMode: "popup" | "silent" = "silent"): Promise<string> {
 
   const safeHost = assertSafeHost(smb_host);
   const safeShare = assertSafeShare(smb_share);
   const safeUser = assertSafeUsername(smb_user);
+
+  // Store credential in vault for future unattended use
+  try {
+    getCredentialManager().store(safeHost, safeShare, safeUser, smb_pass);
+  } catch (err) {
+    console.warn('Failed to store mount credential in vault (non-fatal):', err);
+  }
 
   const platform = os.platform();
   if (platform === "win32") {
@@ -41,8 +49,8 @@ async function mountSambaClientWin(
 ): Promise<string> {
   return new Promise((resolve, reject) => {
     getAsset("static", "mount_smb.bat").then(batpath => {
-      //  Path to .cred file
-      const credFile = `C:\\ProgramData\\houston-backups\\credentials\\${smb_share}.cred`;
+      //  Path to .cred file (keyed by host+share+user)
+      const credFile = `C:\\ProgramData\\houston-backups\\credentials\\${smb_host}_${smb_share}_${smb_user}.cred`;
       console.debug("[DEBUG - mountSMBWin] script path being used:", batpath);
       //  Construct argument list
       const args = [

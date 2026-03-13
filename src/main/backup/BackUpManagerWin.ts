@@ -25,6 +25,7 @@ import { app } from 'electron';
 import fs from 'fs';
 import os from 'os';
 import { exec } from "child_process";
+import { getCredentialManager } from '../credentialManager';
 
 const TASK_ID = "Houston_Backup_Task";
 const logPath = path.join(app.getPath('userData'), 'logs');
@@ -80,11 +81,15 @@ export class BackUpManagerWin implements BackUpManager {
 
   private getTaskPaths(task: BackUpTask) {
     const pgm = process.env.ProgramData ?? "C:\\ProgramData";
+    const host = assertSafeHost(task.host || task.target.split(":")[0]);
     const share = assertSafeShare(task.share || task.target.split(":")[1].split("/")[0]);
+    const cm = getCredentialManager();
+    const storedCred = cm.findByHostAndShare(host, share);
+    const user = storedCred ? storedCred.username : 'default';
     return {
       bat: path.join(pgm, "houston-backups", "scripts", `Houston_Backup_Task_${task.uuid}.bat`),
       log: path.join(pgm, "houston-backups", "logs", `backup_task_${task.uuid}.log`),
-      cred: path.join(pgm, "houston-backups", "credentials", `${share}.cred`),
+      cred: path.join(pgm, "houston-backups", "credentials", `${host}_${share}_${user}.cred`),
       share
     };
   }
@@ -274,6 +279,9 @@ if (-not $hasBatchLogon -or -not $hasServiceLogon) {
     const passB64 = toBase64(password);
     const credDir = path.join(process.env.ProgramData ?? 'C:\\ProgramData', 'houston-backups', 'credentials');
 
+    // Store credentials in encrypted vault
+    const cm = getCredentialManager();
+
     const psLines: string[] = [
       `# Backup-Operators membership & rights`,
       `$user = "$env:USERNAME"`,
@@ -297,11 +305,14 @@ if (-not $hasBatchLogon -or -not $hasServiceLogon) {
       t.host = smbHost;
       t.share = smbShare;
 
-      const credFile = path.join(credDir, `${smbShare}.cred`).replace(/\\/g, '\\\\');
+      // Store in encrypted vault (per host+share+user)
+      cm.store(smbHost, smbShare, safeUser, password);
+
+      const credFile = path.join(credDir, `${smbHost}_${smbShare}_${safeUser}.cred`).replace(/\\/g, '\\\\');
       const batPathEsc = this.scriptPath(t.uuid).replace(/\\/g, '\\\\');
 
-      /*   cred file (idempotent) */
-      psLines.push(`"username=$userVal\n" | Out-File -Encoding ascii -NoNewline -Force "${credFile}"`);
+      /*   cred file (idempotent) — runtime copy for Task Scheduler */
+      psLines.push(`"username=$userVal`+`\n" | Out-File -Encoding ascii -NoNewline -Force "${credFile}"`);
       psLines.push(`"password=$passVal" | Out-File -Append  -Encoding ascii "${credFile}"`);
 
       /*   BAT file */
@@ -387,11 +398,16 @@ if (-not $hasBatchLogon -or -not $hasServiceLogon) {
   ): string {
     const mountBat = getMountSmbScript();
 
+    // Look up the stored username for this host+share to build the correct cred file path
+    const cm = getCredentialManager();
+    const storedCred = cm.findByHostAndShare(task.host || '', task.share || '');
+    const credUsername = storedCred ? storedCred.username : 'default';
+
     const credFile = path.join(
       process.env.ProgramData || 'C:\\ProgramData',
       'houston-backups',
       'credentials',
-      `${task.share}.cred`
+      `${task.host}_${task.share}_${credUsername}.cred`
     );
 
     // remove any leading "\" so drive:\<path> is well-formed 

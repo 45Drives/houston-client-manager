@@ -24,6 +24,7 @@ import { assertSafeHost, assertSafeShare, assertSafeUsername, sanitizeCronCommen
 import { checkBackupTaskStatus } from './CheckSmbStatus';
 import path, { join } from "path";
 import { app } from 'electron';
+import { getCredentialManager } from '../credentialManager';
 
 const SCRIPT_DIR = path.join(os.homedir(), ".local", "share", "houston-backups");
 // const LOG_DIR = path.join(os.homedir(), ".local", "share", "houston-logs");
@@ -98,20 +99,19 @@ export class BackUpManagerLin implements BackUpManager {
     smbShare: string
   ): boolean {
     const mountRoot = "/mnt/houston-mounts";
-    const credFile = `/etc/samba/houston-credentials/${smbShare}.cred`;
     const fstabPath = "/etc/fstab";
 
     try {
       /* 1 ─ root mount directory */
       if (!fs.existsSync(mountRoot)) return true;
 
-      /* 2 ─ credentials file for this share */
-      if (!fs.existsSync(credFile)) return true;
+      /* 2 ─ check vault for any credential for this host+share */
+      const cm = getCredentialManager();
+      if (!cm.has(smbHost, smbShare)) return true;
 
-      /* 3 ─ fstab line containing //host/share and our cred file */
+      /* 3 ─ fstab line containing //host/share */
       const fstab = fs.readFileSync(fstabPath, "utf-8");
-      const hasLine = fstab.includes(`//${smbHost}/${smbShare}`)
-        && fstab.includes(`credentials=${credFile}`);
+      const hasLine = fstab.includes(`//${smbHost}/${smbShare}`);
       return !hasLine;                // if the line is missing → need first run
     } catch (err) {
       console.warn("isFirstBackupNeeded():", err);
@@ -129,6 +129,11 @@ export class BackUpManagerLin implements BackUpManager {
 
       const [smbHost, smbSharePart] = task.target.split(":");
       const smbShare = smbSharePart.split("/")[0];
+
+      // Store credential in encrypted vault first
+      const cm = getCredentialManager();
+      cm.store(smbHost, smbShare, username, password);
+
       this.ensureFstabEntry(smbHost, smbShare, username, password);
 
       this.generateBackupScript(task, username, password, scriptPath);
@@ -155,6 +160,7 @@ export class BackUpManagerLin implements BackUpManager {
     if (!fs.existsSync(scriptDir)) fs.mkdirSync(scriptDir, { recursive: true });
 
     const total = tasks.length;
+    const cm = getCredentialManager();
 
     for (let i = 0; i < total; i++) {
       const task = tasks[i];
@@ -162,6 +168,10 @@ export class BackUpManagerLin implements BackUpManager {
 
       const [smbHost, smbSharePart] = task.target.split(":");
       const smbShare = smbSharePart.split("/")[0];
+
+      // Store credential in encrypted vault
+      cm.store(smbHost, smbShare, username, password);
+
       this.ensureFstabEntry(smbHost, smbShare, username, password);
 
       this.generateBackupScript(task, username, password, scriptPath);
@@ -223,7 +233,7 @@ export class BackUpManagerLin implements BackUpManager {
   }
   
   
-  async updateSchedule(task: BackUpTask): Promise<void> {
+  async updateSchedule(task: BackUpTask, _username: string, _password: string): Promise<void> {
     const crontabLines = execSync("crontab -l 2>/dev/null || true").toString().split("\n");
     const updated = [...crontabLines]; // Copy
 
@@ -333,7 +343,7 @@ export class BackUpManagerLin implements BackUpManager {
     const safeUser = assertSafeUsername(username);
 
     const credDir = "/etc/samba/houston-credentials";
-    const credFile = `${credDir}/${safeShare}.cred`;
+    const credFile = `${credDir}/${safeHost}_${safeShare}_${safeUser}.cred`;
     const mountDir = `/mnt/houston-mounts/${safeShare}`;
     const localUser = os.userInfo().username;
 
@@ -347,7 +357,7 @@ export class BackUpManagerLin implements BackUpManager {
     const hasCred = fs.existsSync(credFile);
     const hasMountDir = fs.existsSync(mountDir);
     if (!hasFstab || !hasCred || !hasMountDir) {
-      const tempScript = `/tmp/add_fstab_entry_${safeShare}.sh`;
+      const tempScript = `/tmp/add_fstab_entry_${safeHost}_${safeShare}.sh`;
       const passwordB64 = toBase64(password);
       const scriptContent = `#!/bin/bash
 set -euo pipefail
@@ -361,11 +371,13 @@ chmod 600 ${shellQuote(credFile)}
 mkdir -p ${shellQuote(mountDir)}
 chown ${localUser}:${localUser} ${shellQuote(mountDir)}
 chmod 755 ${shellQuote(mountDir)}
-echo ${shellQuote(fstabEntry)} >> /etc/fstab
+${ hasFstab ? '' : `echo ${shellQuote(fstabEntry)} >> /etc/fstab` }
 `;
 
       fs.writeFileSync(tempScript, scriptContent, { mode: 0o700 });
       execFileSync(this.pkexec, ["bash", tempScript]);
+      // Clean up temp script
+      try { fs.unlinkSync(tempScript); } catch { }
     }
   }
 

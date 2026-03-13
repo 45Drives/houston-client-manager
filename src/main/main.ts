@@ -292,6 +292,7 @@ import restoreBackups from './backup/RestoreBackups';
 import { checkBackupTaskStatus } from './backup/CheckSmbStatus';
 import { installServerDepsRemotely } from './installServerDeps';
 import { checkSSH } from './setupSsh';
+import { getCredentialManager } from './credentialManager';
 
 let discoveredServers: Server[] = [];
 export let jsonLogger: ReturnType<typeof createLogger>;
@@ -387,7 +388,6 @@ function createWindow() {
       preload: join(__dirname, 'preload.js'),
       nodeIntegration: false,
       contextIsolation: true,
-      enableRemoteModule: false,
       webviewTag: true,
       javascript: true,
       backgroundThrottling: false,  // Disable throttling
@@ -451,7 +451,7 @@ function createWindow() {
 
     if (fallbackServers.length) {
       discoveredServers = fallbackServers;
-      mainWindow.webContents.send('discovered-servers', discoveredServers);
+      mainWindow!.webContents.send('discovered-servers', discoveredServers);
     }
 
     return fallbackServers;
@@ -502,7 +502,7 @@ function createWindow() {
       const safeHost = assertSafeHost(host);
       const safeUser = assertSafeUsername(username);
       
-      mainWindow.webContents.send('store-manual-creds', {
+      mainWindow!.webContents.send('store-manual-creds', {
         ip: safeHost,
         username: safeUser,
         password,
@@ -546,6 +546,46 @@ function createWindow() {
   ipcMain.handle('get-os', (event) => {
     assertMainWindowSender(event);
     return getOS();
+  });
+
+  // ── Credential Manager IPC ──────────────────────────────────────────
+
+  ipcMain.handle('credentials:store', (event, { host, share, username, password }: { host: string; share: string; username: string; password: string }) => {
+    assertMainWindowSender(event);
+    const safeHost = assertSafeHost(host);
+    const safeShare = assertSafeShare(share);
+    const safeUser = assertSafeUsername(username);
+    getCredentialManager().store(safeHost, safeShare, safeUser, password);
+    return { success: true };
+  });
+
+  ipcMain.handle('credentials:list', (event, { host }: { host?: string } = {}) => {
+    assertMainWindowSender(event);
+    const cm = getCredentialManager();
+    return host ? cm.listForHost(assertSafeHost(host)) : cm.list();
+  });
+
+  ipcMain.handle('credentials:remove', (event, { host, share, username }: { host: string; share: string; username: string }) => {
+    assertMainWindowSender(event);
+    const removed = getCredentialManager().remove(
+      assertSafeHost(host),
+      assertSafeShare(share),
+      assertSafeUsername(username)
+    );
+    return { success: removed };
+  });
+
+  ipcMain.handle('credentials:retrieve', (event, { host, share, username }: { host: string; share: string; username?: string }) => {
+    assertMainWindowSender(event);
+    const cm = getCredentialManager();
+    const safeHost = assertSafeHost(host);
+    const safeShare = assertSafeShare(share);
+    if (username) {
+      const cred = cm.retrieve(safeHost, safeShare, assertSafeUsername(username));
+      return cred ? { host: cred.host, share: cred.share, username: cred.username, found: true } : { found: false };
+    }
+    const cred = cm.findByHostAndShare(safeHost, safeShare);
+    return cred ? { host: cred.host, share: cred.share, username: cred.username, found: true } : { found: false };
   });
 
   ipcMain.handle("backup:isFirstRunNeeded", (event, host, share) => {
@@ -592,7 +632,7 @@ function createWindow() {
       );
 
       if (discoveredServers.length !== before) {
-        mainWindow.webContents.send('discovered-servers', discoveredServers);
+        mainWindow!.webContents.send('discovered-servers', discoveredServers);
       }
     }, 5000);
 
@@ -686,7 +726,7 @@ function createWindow() {
 
           IPCRouter.getInstance().send('renderer', 'action', JSON.stringify({
             type: "fetchBackupsFromServerResult",
-            result: await fetchBackups(message.data, mainWindow)
+            result: await fetchBackups(message.data, mainWindow!)
           }));
 
         } else if (message.type === 'fetchFilesFromBackup') {
@@ -764,7 +804,7 @@ function createWindow() {
           }
 
           try {
-            await backupManager.updateSchedule(task, username: safeUser, password);
+            await backupManager.updateSchedule(task, username, password);
             jsonLogger.info({
               event: 'updateBackUpTask_success',
               taskUuid: task.uuid,
@@ -1005,12 +1045,12 @@ function createWindow() {
             console.error('Add Manual Server-> Fetch error:', error);
           }
 
-          mainWindow.webContents.send('discovered-servers', discoveredServers);
+          mainWindow!.webContents.send('discovered-servers', discoveredServers);
 
         } else if (message.type === 'rescanServers') {
           // clear & notify
           discoveredServers = [];
-          mainWindow.webContents.send('discovered-servers', discoveredServers);
+          mainWindow!.webContents.send('discovered-servers', discoveredServers);
 
           // kick mDNS
           const mDNSClient = mdns();
@@ -1026,7 +1066,7 @@ function createWindow() {
             if (discoveredServers.length === 0) {
               const fallback = await doFallbackScan();
               if (fallback.length) {
-                mainWindow.webContents.send('discovered-servers', fallback);
+                mainWindow!.webContents.send('discovered-servers', fallback);
               }
             }
           }, TIMEOUT_DURATION);
@@ -1264,7 +1304,7 @@ function createWindow() {
         // console.debug("New action received:", server, data);
 
         if (data.action === "mount_samba_client") {
-          mountSmbPopup(assertSafeHost(data.smb_host), assertSafeShare(data.smb_share), assertSafeUsername(data.smb_user), data.smb_pass, mainWindow);
+          mountSmbPopup(assertSafeHost(data.smb_host), assertSafeShare(data.smb_share), assertSafeUsername(data.smb_user), data.smb_pass, mainWindow!);
         } else {
           console.debug("Unknown new actions.", server);
         }
@@ -1283,7 +1323,7 @@ function createWindow() {
         data.smb_share,
         data.smb_user,
         data.smb_pass,
-        mainWindow,
+        mainWindow!,
         "silent"
       );
 
@@ -1330,7 +1370,6 @@ app.on('web-contents-created', (_event, contents) => {
     webPreferences.nodeIntegration = false;
     webPreferences.contextIsolation = true;
     webPreferences.sandbox = true;
-    webPreferences.enableRemoteModule = false;
     webPreferences.webSecurity = true;
     webPreferences.allowRunningInsecureContent = false;
     webPreferences.javascript = true;
@@ -1353,6 +1392,16 @@ app.whenReady().then(() => {
 
   console.debug('userData is here:', app.getPath('userData'))
   console.debug('log dir:', resolvedLogDir);
+
+  // Migrate legacy plaintext credential files to encrypted vault
+  try {
+    const imported = getCredentialManager().importLegacyCredentials();
+    if (imported > 0) {
+      console.info(`Migrated ${imported} legacy credential(s) to encrypted vault`);
+    }
+  } catch (err) {
+    console.warn('Legacy credential migration failed (non-fatal):', err);
+  }
 
   // autoUpdater.logger = log;
   // (autoUpdater.logger as typeof log).transports.file.level = 'info';
@@ -1424,7 +1473,9 @@ app.whenReady().then(() => {
       return callback(0);
     }
 
-    callback(-3);
+    // Not yet trusted — use default verification so certificate-error event
+    // can fire and show the trust dialog to the user.
+    callback(-2);
   };
 
   // IMPORTANT: apply to BOTH the default session and your webview partition
@@ -1463,7 +1514,7 @@ app.whenReady().then(() => {
     const validStart = certificate?.validStart ? new Date(certificate.validStart).toISOString() : "unknown";
     const validExpiry = certificate?.validExpiry ? new Date(certificate.validExpiry).toISOString() : "unknown";
 
-    const { response } = await dialog.showMessageBox(mainWindow ?? undefined, {
+    const { response } = await dialog.showMessageBox(mainWindow!, {
       type: "warning",
       buttons: ["Trust This Certificate", "Cancel"],
       defaultId: 1,
