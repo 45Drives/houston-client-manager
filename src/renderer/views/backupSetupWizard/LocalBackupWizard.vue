@@ -72,6 +72,6 @@ const steps: WizardStep[] = [
     },
 ]
 
-const onComplete = () => router.replace({ name: 'backup-list' })
+const onComplete = () => router.replace({ name: 'backup-manage' })
 provide('wizardKey', wizardId)
 </script>

@@ -99,7 +99,7 @@ function goToBackupWizard(): void {
   // console.debug("after clearing: ", backUpSetupConfig);
   // setStep(0);
 
-  router.push({ name: 'backup' })
+  router.push({ name: 'backup-manage' })
 }
 
 function goToSetupWizard(): void {

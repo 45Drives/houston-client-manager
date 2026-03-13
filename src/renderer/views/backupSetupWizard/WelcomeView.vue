@@ -1,5 +1,5 @@
 <template>
-  <CardContainer v-if="!hasTargetStep" class="overflow-y-auto min-h-0">
+  <CardContainer class="overflow-y-auto min-h-0">
 
     <div class="flex flex-col h-full justify-center items-center">
 
@@ -51,53 +51,29 @@
     </template>
 
   </CardContainer>
-  <div v-else style="height: 1px;" />
 </template>
 
 <script setup lang="ts">
 import { CardContainer } from '@45drives/houston-common-ui'
 import { CommanderToolTip } from '../../components/commander';
-import { useWizardSteps, useEnterToAdvance } from '@45drives/houston-common-ui';
-import { useRoute, useRouter } from 'vue-router'
+import { useEnterToAdvance } from '@45drives/houston-common-ui';
+import { useRouter } from 'vue-router'
 import { useHeader } from '../../composables/useHeader'
-import { computed, onBeforeMount, onMounted, watch } from 'vue';
 useHeader('Welcome to the 45Drives Backup Manager!')
-const route = useRoute();
 const router = useRouter()
 
-const { setStep, steps, completeCurrentStep } = useWizardSteps("backup-root");
-const hasTargetStep = computed(() => route.query.step != null)
-const clamp = (n: number, min: number, max: number) => Math.max(min, Math.min(max, n));
-
-onBeforeMount(() => {
-  const raw = route.query.step
-  if (raw == null) return
-  const s = Number(raw)
-  if (Number.isNaN(s)) return
-
-  const max = steps.value.length - 1
-  // Jump to the requested step BEFORE this component mounts,
-  // so Welcome is never actually inserted into the DOM.
-  setStep(clamp(s, 0, max))
-});
-
-
-const proceedToNextStep = async () => {
-  completeCurrentStep();
+const proceedToNextStep = () => {
+  router.push({ name: 'backup-manage' });
 };
 
 useEnterToAdvance(
-  () => {
-    proceedToNextStep(); // Enter
-  },
-  200, // debounce time for Enter
-  () => {
-    proceedToNextStep(); // ArrowRight
-  }
+  () => { proceedToNextStep(); },
+  200,
+  () => { proceedToNextStep(); }
 );
 
 const goBackStep = () => {
-  router.push({ name: 'dashboard' }) // or use a path: router.push('/dashboard')
+  router.push({ name: 'dashboard' })
 }
 </script>
 
