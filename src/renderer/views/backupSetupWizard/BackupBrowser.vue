@@ -144,7 +144,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onActivated, onDeactivated, watch } from 'vue'
-import { useWizardSteps, confirm, CardContainer, useEnterToAdvance } from '@45drives/houston-common-ui'
+import { confirm, CardContainer, useEnterToAdvance } from '@45drives/houston-common-ui'
 import { IPCRouter, type BackupEntry, type FileEntry, type BackUpTask } from '@45drives/houston-common-lib'
 import { useRouter } from 'vue-router'
 import { useHeader } from '../../composables/useHeader'
@@ -161,16 +161,7 @@ const props = defineProps<{
 }>()
 
 // Wizard back button
-// const { prevStep } = useWizardSteps('backup-root')
-// const proceedToPreviousStep = () => prevStep()
-// const proceedToPreviousStep = () => router.push('/backup')
-let proceedToPreviousStep = () => router.back()
-try {
-    const { prevStep } = useWizardSteps('backup-root')
-    proceedToPreviousStep = () => prevStep()
-} catch {
-    router.push('/backup')
-}
+const proceedToPreviousStep = () => router.push({ name: 'backup-manage' })
 
 // UI state
 const loading = ref<boolean>(false)

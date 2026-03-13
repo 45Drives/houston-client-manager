@@ -157,7 +157,7 @@ import { BackUpTask, IPCRouter } from '@45drives/houston-common-lib';
 import { CardContainer } from '@45drives/houston-common-ui'
 import CockpitWebview from '../../components/CockpitWebview.vue';
 import ServerLoginModal from './ServerLoginModal.vue';
-import { useWizardSteps, useEnterToAdvance } from '@45drives/houston-common-ui';
+import { useEnterToAdvance } from '@45drives/houston-common-ui';
 import BackUpListView from './BackUpListView.vue';
 import { computed, inject, Ref, ref, watch, onMounted, onBeforeUnmount } from 'vue';
 import { currentServerInjectionKey, discoveryStateInjectionKey, reviewBackUpSetupKey } from '../../keys/injection-keys';
@@ -375,7 +375,7 @@ function maybeClearFromNotification(message: string) {
 
 function editSelected() {
     const ids = selectedBackUpTasks.value.map(t => t.uuid).join(',');
-    router.push({ name: 'backups-bulk-edit', query: { ids } });
+    router.push({ name: 'view-selected-backups', query: { ids } });
 }
 
 
@@ -390,22 +390,13 @@ function viewSelectedLog() {
     backUpListRef.value?.editSelectedSchedules?.();
 }
 
-const { completeCurrentStep, unCompleteCurrentStep, prevStep } = useWizardSteps('backup-root');
 
-const proceedToNextStep = async () => {
-    if (selectedBackUpTasks.value.length < 1) throw new Error('Select at least one backup task to proceed');
-    unCompleteCurrentStep();
-    completeCurrentStep(true, selectedBackUpTasks.value);
+
+const proceedToPreviousStep = () => {
+    router.push({ name: 'backup' });
 };
 
-const proceedToPreviousStep = async () => { 
-    // goBackStep();
-    prevStep();
- };
-
 useEnterToAdvance(() => { }, 300, () => { }, () => { proceedToPreviousStep(); });
-
-const goBackStep = () => { router.push({ name: 'dashboard' }); };
 
 const isRunningNow = ref(false);
 const runningTaskIds = ref<string[]>([]);
