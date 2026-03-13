@@ -5,6 +5,7 @@ const SEND_CHANNELS = new Set([
   'renderer-log',
   'IPCMessage',
   'log',
+  'store-manual-creds',
 ]);
 
 const INVOKE_CHANNELS = new Set([
@@ -25,6 +26,8 @@ const INVOKE_CHANNELS = new Set([
   'cred:remove',
   'cred:set-favorite',
   'cred:touch',
+  'get-client-ident',
+  'session:clear-origin',
 ]);
 
 const RECEIVE_CHANNELS = new Set([
@@ -34,6 +37,7 @@ const RECEIVE_CHANNELS = new Set([
   'notification',
   'store-manual-creds',
   'setup-progress',
+  'client-ident',
 ]);
 
 function assertAllowed(channel: string, set: Set<string>) {

@@ -19,7 +19,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, inject, nextTick, onBeforeMount, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, inject, onBeforeMount, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useDarkModeState } from '@45drives/houston-common-ui'
 import { useAdvancedModeState } from '../composables/useAdvancedState'
 import { currentServerInjectionKey } from '../keys/injection-keys'
@@ -99,31 +99,33 @@ webview.value?.addEventListener('console-message', (e: any) => {
     else console.log(msg)
 })
 
-onMounted(async () => {
+// Attach webview event listeners when the element appears in the DOM.
+// The webview uses v-if so it may not exist at onMounted time.
+watch(webview, (wv) => {
+    if (!wv) return
+    wv.addEventListener('did-fail-load', (e: any) => {
+        console.error('webview did-fail-load', e.errorCode, e.errorDescription, e.validatedURL)
+        loadingWebview.value = false
+    })
+    wv.addEventListener('dom-ready', () => {
+        console.debug('cockpit webview dom-ready')
+        injectChromeCSS(wv)
+    })
+    wv.addEventListener('console-message', (e: any) => {
+        const msg = `[webview:${e.level}] ${e.message}`
+        if (e.level >= 3) console.error(msg)
+        else if (e.level === 2) console.warn(msg)
+        else console.log(msg)
+    })
+})
+
+onMounted(() => {
     window.electron?.ipcRenderer.on('client-ident', (_e, x) => {
         if (!clientId.value) clientId.value = x?.installId || ''
     })
     window.electron?.ipcRenderer.on('client-ip', (_e, ip: string) => { clientIp.value = ip || '' })
 
     window.electron?.ipcRenderer.send('renderer-ready', {})  // send once
-
-    await nextTick()
-
-    if (webview.value) {
-        webview.value.addEventListener('did-fail-load', (e: any) => {
-            console.error('webview did-fail-load', e.errorCode, e.errorDescription, e.validatedURL)
-            loadingWebview.value = false
-        })
-        webview.value.addEventListener('dom-ready', () => {
-            console.debug('cockpit webview dom-ready')
-        })
-        webview.value.addEventListener('console-message', (e: any) => {
-            const msg = `[webview:${e.level}] ${e.message}`
-            if (e.level >= 3) console.error(msg)
-            else if (e.level === 2) console.warn(msg)
-            else console.log(msg)
-        })
-    }
 })
 
 onBeforeUnmount(() => {
@@ -131,7 +133,7 @@ onBeforeUnmount(() => {
     window.electron?.ipcRenderer.removeAllListeners?.('client-ip')
 })
 
-const { loginIntoCockpit } = useHoustonWebview()
+const { loginIntoCockpit, injectChromeCSS } = useHoustonWebview()
 
 const onWebViewLoaded = async () => {
     const view = webview.value
@@ -181,26 +183,56 @@ window.electron?.ipcRenderer.on('store-manual-creds', (_e, creds: { ip: string; 
     }
 });
 
+// If credentials arrive after the webview has already loaded (e.g. favorite
+// auto-connect), trigger login now instead of showing the Cockpit login screen.
+watch(manualCreds, async (creds) => {
+    if (!creds || !webview.value) return;
+    // Still loading → onWebViewLoaded will handle it
+    if (loadingWebview.value) return;
+
+    loadingWebview.value = true;
+    try {
+        await loginIntoCockpit(webview.value, { user: creds.username, pass: creds.password });
+    } catch (e) {
+        console.error('Webview auto-login error:', e);
+    } finally {
+        loadingWebview.value = false;
+    }
+});
+
 async function logoutFromCurrentServer() {
     const ip = currentServer.value?.ip;
     if (!ip || !webview.value) return;
 
     const origin = `https://${ip}:9090`;
-    const wc = webview.value.getWebContents?.();
-    const sess = wc?.session;
 
+    // 1. Tell Cockpit to log out (drops its server-side session + cookies)
     try {
-        // Clear auth + storage scoped to the Cockpit origin
-        await sess?.clearAuthCache({ type: 'password' });
-        await sess?.clearStorageData({
-            origin,
-            storages: ['cookies', 'localstorage', 'indexdb', 'serviceworkers', 'cachestorage'],
-        });
+        await webview.value.executeJavaScript(`
+            fetch('/cockpit/logout', { method: 'POST', credentials: 'same-origin' })
+                .catch(function() {})
+        `)
     } catch (e) {
-        console.error('Logout clear error:', e);
+        console.error('Cockpit logout request error:', e)
     }
 
-    // Optional: drop our in-memory creds and reload the page
+    // 2. Clear in-page storage
+    try {
+        await webview.value.executeJavaScript(`
+            try { sessionStorage.clear(); localStorage.clear(); } catch(e) {}
+        `)
+    } catch (e) {
+        console.error('Storage clear error:', e)
+    }
+
+    // 3. Clear the partition's cookies/storage for this origin via main process
+    try {
+        await window.electron?.ipcRenderer.invoke('session:clear-origin', origin)
+    } catch (e) {
+        console.error('session:clear-origin error:', e)
+    }
+
+    // 4. Drop in-memory creds and reload so the login screen reappears
     manualCreds.value = null;
     loadingWebview.value = true;
     webview.value.reload();

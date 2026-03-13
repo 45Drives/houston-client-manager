@@ -1206,6 +1206,18 @@ app.whenReady().then(() => {
   // Automatically check for updates and notify user if one is downloaded
   autoUpdater.checkForUpdatesAndNotify();
 
+  ipcMain.handle('session:clear-origin', async (_event, origin: string) => {
+    try {
+      const sess = session.fromPartition('persist:authSession');
+      await sess.clearStorageData({
+        origin,
+        storages: ['cookies', 'localstorage', 'indexdb', 'cachestorage', 'serviceworkers'],
+      });
+    } catch (e) {
+      console.error('session:clear-origin error:', e);
+    }
+  });
+
   ipcMain.handle("is-dev", async () => process.env.NODE_ENV === 'development');
 
   ipcMain.handle('dialog:openFolder', async (event) => {

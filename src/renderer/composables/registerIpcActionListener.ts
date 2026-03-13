@@ -57,7 +57,7 @@ export function registerIpcActionListener(opts: Options) {
             if (wiz === "backup") {
               setCurrentWizard?.("backup");
               setShowWebView?.(false);
-              pushRoute({ name: "BackupManager" }); // or { path: "/backup-manager" }
+              pushRoute({ name: "backup" });
               break;
             }
 
@@ -68,8 +68,8 @@ export function registerIpcActionListener(opts: Options) {
               if (openStorageSetup) {
                 openStorageSetup(null);
               } else {
-                // Sensible fallback if you don’t pass openStorageSetup:
-                const fallbackName = wiz === "storage" ? "StorageSetup" : "RestoreBackupWizard";
+                // Sensible fallback if you don't pass openStorageSetup:
+                const fallbackName = wiz === "storage" ? "setup" : "restore";
                 pushRoute({ name: fallbackName });
               }
             }
@@ -91,12 +91,12 @@ export function registerIpcActionListener(opts: Options) {
 
             // After reboot, route accordingly:
             if (wiz === "backup") {
-              pushRoute({ name: "BackupManager" });
+              pushRoute({ name: "backup" });
             } else if (wiz === "storage") {
               if (openStorageSetup) openStorageSetup(null);
-              else pushRoute({ name: "StorageSetup" });
+              else pushRoute({ name: "setup" });
             } else if (wiz === "restore-backup") {
-              pushRoute({ name: "RestoreBackupWizard" });
+              pushRoute({ name: "restore" });
             }
 
             isRebootWatcherRunning = false;
@@ -110,7 +110,7 @@ export function registerIpcActionListener(opts: Options) {
               openHoustonWindow();
             } else {
               // Fallback: navigate to a webview route if you have one
-              pushRoute({ name: "HoustonWebView" });
+              pushRoute({ name: "houston" });
             }
             break;
           }
@@ -128,7 +128,7 @@ export function registerIpcActionListener(opts: Options) {
             if (openHoustonWindow) {
               openHoustonWindow();
             } else {
-              pushRoute({ name: "HoustonWebView" });
+              pushRoute({ name: "houston" });
             }
 
             isRebootWatcherRunning = false;
