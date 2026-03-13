@@ -15,6 +15,10 @@ const INVOKE_CHANNELS = new Set([
   'discovery:setEnabled',
   'is-dev',
   'dialog:openFolder',
+  'credentials:store',
+  'credentials:list',
+  'credentials:remove',
+  'credentials:retrieve',
 ]);
 
 const RECEIVE_CHANNELS = new Set([
