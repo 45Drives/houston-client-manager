@@ -19,6 +19,12 @@ const INVOKE_CHANNELS = new Set([
   'credentials:list',
   'credentials:remove',
   'credentials:retrieve',
+  'cred:list-servers',
+  'cred:get-for',
+  'cred:save',
+  'cred:remove',
+  'cred:set-favorite',
+  'cred:touch',
 ]);
 
 const RECEIVE_CHANNELS = new Set([
@@ -56,12 +62,16 @@ contextBridge.exposeInMainWorld('electron', {
     removeListener: (channel: string, listener: (...args: any[]) => void) => {
       assertAllowed(channel, RECEIVE_CHANNELS);
       ipcRenderer.removeListener(channel, listener);
-    },    
+    },
+    removeAllListeners: (channel: string) => {
+      assertAllowed(channel, RECEIVE_CHANNELS);
+      ipcRenderer.removeAllListeners(channel);
+    },
   },
   selectFolder: () => ipcRenderer.invoke('dialog:openFolder'),
   getOS: () => ipcRenderer.invoke('get-os'),
-  isFirstRunNeeded: (host: string, share: string) =>
-    ipcRenderer.invoke("backup:isFirstRunNeeded", host, share),
+  isFirstRunNeeded: (host: string, share: string, smbUser: string) =>
+    ipcRenderer.invoke("backup:isFirstRunNeeded", host, share, smbUser),
   log: {
     debug: (...args: any[]) => ipcRenderer.send('renderer-log', { level: 'debug', args }),
     info: (...args: any[]) => ipcRenderer.send('renderer-log', { level: 'info', args }),

@@ -1,19 +1,5 @@
 <template>
   <CardContainer class="overflow-y-auto min-h-0">
-    <template #header>
-      <div class="relative flex items-center justify-center h-18  w-full">
-        <div class="absolute left-0 p-1 px-4 rounded-lg">
-         <DynamicBrandingLogo :division="division" :height="(division === 'studio' ? 16 : 12)"/>
-
-        </div>
-        <p class="text-3xl font-semibold text-center">
-          Review Your Backups
-        </p>
-        <div class="absolute right-0 top-1/2 -translate-y-1/2">
-          <GlobalSetupWizardMenu />
-        </div>
-      </div>
-    </template>
 
     <div class="flex flex-col h-full justify-center items-center text-default">
       <!-- Header with instructions -->
@@ -79,15 +65,16 @@
 </template>
 
 <script setup lang="ts">
-import GlobalSetupWizardMenu from '../../components/GlobalSetupWizardMenu.vue';
+import { CardContainer } from '@45drives/houston-common-ui'
 import { ref, computed, inject, watch } from 'vue';
 import { EyeIcon, EyeSlashIcon } from "@heroicons/vue/20/solid";
-import { CardContainer, useWizardSteps, DynamicBrandingLogo, useEnterToAdvance, useAutoFocus } from '@45drives/houston-common-ui';
+import { useWizardSteps, useEnterToAdvance, useAutoFocus } from '@45drives/houston-common-ui';
 import { BackUpTask, IPCRouter } from '@45drives/houston-common-lib';
-import { divisionCodeInjectionKey, reviewBackUpSetupKey, thisOsInjectionKey } from '../../keys/injection-keys';
+import { reviewBackUpSetupKey, thisOsInjectionKey } from '../../keys/injection-keys';
+import { useHeader } from '../../composables/useHeader'
+useHeader('View Backup')
 useAutoFocus();
-const division = inject(divisionCodeInjectionKey);
-const { prevStep, wizardData } = useWizardSteps("backup");
+const { prevStep, wizardData } = useWizardSteps("backup-new");
 const thisOs = inject(thisOsInjectionKey);
 
 const reviewBackup = inject(reviewBackUpSetupKey);
@@ -135,48 +122,31 @@ const handleOpen = () => {
       const msg = JSON.parse(raw);
       if (msg.action !== 'mountSmbResult') return;
 
-      // Unwrap payload from main
-      const payload = typeof msg.result === 'string'
+      // Extract the JSON payload
+      const info = typeof msg.result === 'string'
         ? JSON.parse(msg.result)
         : msg.result;
 
-      if (!payload || payload.success === false) {
-        console.warn("Mount failed or invalid payload:", payload);
-        openingBackup.value = false;
-        return;
-      }
+      // What the script actually returned as mount point:
+      const mountPoint = info.MountPoint
+        ?? (info.DriveLetter ? `${info.DriveLetter}:\\` : null);
 
-      // This is the real mount info (Linux/mac/macOS/Windows JSON)
-      const info = payload.mount ?? payload;
-
-      const mountPoint =
-        info.MountPoint ??
-        (info.DriveLetter ? `${info.DriveLetter}:\\` : null);
-
+      // Figure out *which* key to assign this to…
       let key: string | undefined;
 
       if (thisOs!.value === 'win' && info.smb_share) {
-        // Windows case
+        // Windows .bat echoes {"DriveLetter":..., "smb_share": "..."}
         key = info.smb_share;
-      } else if (info.smb_server) {
-        // Linux/mac: smb_server + share
+      }
+      else if (info.smb_server) {
+        // Linux & mac both echo smb_server + either "share" or "smb_share"
         const serverHost = info.smb_server
           .replace(/^smb:\/\//, '')
           .split('/')[0];
-
-        const shareName =
-          info.smb_share ??
-          info.share ??
-          (mountPoint
-            ? mountPoint
-              .split(/[\\/]/)
-              .filter(Boolean)
-              .pop()
-            : undefined);
-
-        if (shareName) {
-          key = `${serverHost}:${shareName}`;
-        }
+        const shareName = info.smb_share
+          ?? info.share
+          ?? mountPoint.split(/[\\/]/).filter(Boolean).pop();
+        key = `${serverHost}:${shareName}`;
       }
 
       if (key && mountPoint) {
@@ -185,10 +155,10 @@ const handleOpen = () => {
         console.warn("Could not derive key or mountPoint from:", info);
       }
 
-      if (key) {
-        remainingKeys.delete(key);
-      }
+      // Mark that key as done
+      if (key) remainingKeys.delete(key);
 
+      // Once they’re all mounted, open the folders
       if (remainingKeys.size === 0) {
         finishOpening();
       }
@@ -197,7 +167,6 @@ const handleOpen = () => {
       openingBackup.value = false;
     }
   };
-
 
   IPCRouter.getInstance().addEventListener("action", smbMountListener);
 
@@ -253,7 +222,7 @@ const handleOpen = () => {
         finalPath = `/mnt/houston-mounts/${task.share}${normalized}`;
       }
 
-      console.debug(" Opening folder:", finalPath);
+      console.debug("📂 Opening folder:", finalPath);
       IPCRouter.getInstance().send("backend", "action", JSON.stringify({
         type: "openFolder",
         path: finalPath

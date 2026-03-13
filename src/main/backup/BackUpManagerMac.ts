@@ -1,13 +1,3 @@
-// import log from 'electron-log';
-// process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
-// console.log = (...args) => log.info(...args);
-// console.error = (...args) => log.error(...args);
-// console.warn = (...args) => log.warn(...args);
-// console.debug = (...args) => log.debug(...args);
-
-// process.on('uncaughtException', (error) => log.error('Uncaught Exception:', error));
-// process.on('unhandledRejection', (reason, promise) => log.error('Unhandled Rejection at:', promise, 'reason:', reason));
-
 import { jsonLogger } from '../main';
 import { BackUpManager } from "./types";
 import { BackUpTask, TaskSchedule } from "@45drives/houston-common-lib";
@@ -17,7 +7,6 @@ import { execSync } from "child_process";
 import * as path from "path";
 import { app } from 'electron';
 import { getRsync, getSmbTargetFromSmbTarget } from "../utils";
-import { assertSafeHost, assertSafeShare, assertSafeUsername, shellQuote } from "../security";
 import { getCredentialManager } from '../credentialManager';
 
 export class BackUpManagerMac implements BackUpManager {
@@ -33,26 +22,29 @@ export class BackUpManagerMac implements BackUpManager {
     const tasks: BackUpTask[] = [];
 
     // cron: 5 timing fields … anything … houston-backup-task-<uuid>.sh
-    const cronRx = /^(\S+\s+\S+\s+\S+\s+\S+\s+\S+).*houston-backup-task-([a-f0-9\-]+)\.sh/i;
+    const cronRx = /^(\S+\s+\S+\s+\S+\s+\S+\s+\S+).*?houston-backup-task-([a-f0-9\-]+)\.sh/i;
 
     for (const line of crontab.split(/\r?\n/)) {
       const m = cronRx.exec(line);
       if (!m) continue;
 
-      /* ----------- 1. schedule comes from the 5 cron fields ---------- */
+      /* 1) schedule from first 5 fields */
       const cronExpr = m[1];
       const schedule = this.parseCronSchedule(cronExpr);
-      if (!schedule) continue;                    // exotic pattern → skip
+      if (!schedule) continue;
 
-      /* ----------- 2. the uuid gives us the script path -------------- */
+      /* 2) script path from uuid */
       const uuid = m[2];
       const scriptPath = path.join(this.scriptDir, `houston-backup-task-${uuid}.sh`);
 
-      /* ----------- 3. pull metadata out of the script ---------------- */
-      let host = '', share = '', source = '', target = ''; let mirror = false;
+      /* 3) parse metadata from script (if present) */
+      let host = '', share = '', source = '', target = '';
+      let mirror = false;
+      let smb_user = '';
 
+      let txt = '';
       if (fs.existsSync(scriptPath)) {
-        const txt = fs.readFileSync(scriptPath, 'utf8');
+        txt = fs.readFileSync(scriptPath, 'utf8');
 
         const grab = (re: RegExp) => (re.exec(txt)?.[1] ?? '').trim();
 
@@ -61,13 +53,25 @@ export class BackUpManagerMac implements BackUpManager {
         source = grab(/#\s*TASK_SOURCE="([^"]+)"/);
         target = grab(/#\s*TASK_TARGET="([^"]+)"/);
         mirror = /#\s*TASK_MIRROR="true"/i.test(txt);
+
+        // Prefer comment tag, fall back to shell var
+        smb_user = grab(/#\s*TASK_SMB_USER="([^"]+)"/)
+          || ((/(?:^|\n)\s*SMB_USER=['"]([^'"]+)['"]/.exec(txt)?.[1] ?? '').trim());
+
+        // Fallback for source/target from rsync line if missing
+        if ((!source || !target) && txt) {
+          const rsync = /rsync\s+[^\n]*?"([^"]+?)\/"\s+"([^"]+?)\/"/.exec(txt);
+          if (rsync) { source ||= rsync[1]; target ||= rsync[2]; }
+        }
       }
 
-      /* fallbacks for source/target if metadata missing */
-      if (!source || !target) {
-        const rsync = /rsync\s+[^\n]*?"([^"]+?)\/"\s+"([^"]+?)\/"/.exec(
-          fs.readFileSync(scriptPath, 'utf8'));
-        if (rsync) { source = source || rsync[1]; target = target || rsync[2]; }
+      // Derive host/share from TARGET if still missing
+      if ((!host || !share) && target) {
+        const parts = target.split(':');
+        if (parts.length >= 2) {
+          host = host || parts[0];
+          share = share || parts[1].split('/')[0];
+        }
       }
 
       tasks.push({
@@ -75,7 +79,8 @@ export class BackUpManagerMac implements BackUpManager {
         description: `Backup ${source || '(unknown)'} → ${target || '(unknown)'}`,
         schedule,
         source, target, host, share, mirror,
-        status: 'checking'
+        status: 'checking',
+        smb_user
       });
     }
 
@@ -98,27 +103,23 @@ export class BackUpManagerMac implements BackUpManager {
 
     /* host/share already filled in the caller, but make sure: */
     const [host, sharePart] = task.target.split(':');
-    const safeHost = assertSafeHost(host);
-    const safeShare = assertSafeShare(sharePart.split('/')[0]);
-    const safeUser = assertSafeUsername(username);
-    task.host = safeHost;
-    task.share = safeShare;
+    const share = sharePart.split('/')[0];
+    task.host = host;
+    task.share = share;
 
     // Store credential in encrypted vault
-    const cm = getCredentialManager();
-    cm.store(safeHost, safeShare, safeUser, password);
+    getCredentialManager().store(host, share, username, password);
 
     const installerPath = `/tmp/houston-installer-${uuid}.sh`;
-    const scriptPayload = this.getShellScriptContent(task, safeUser);   // big bash body
+    const scriptPayload = this.getShellScriptContent(task, username);   // big bash body
     const mntRoot = `${this.HOME}/houston-mounts`;
-    const mntDir  = `${mntRoot}/${safeShare}`;
+    const mntDir  = `${mntRoot}/${share}`;
     const homeDir = os.homedir();
     const currentUser = os.userInfo().username;
     const userGroup = require("child_process").execSync(`id -gn ${currentUser}`).toString().trim();
-    const service = `houston-smb-${safeHost}-${safeShare}`;
+    const service = `houston-smb-${share}`;
     const installer = `#!/bin/bash
     set -e
-    PASSWORD=${shellQuote(password)}
     
     # 1 ─ one-time directories (no special permissions needed later)
     
@@ -128,8 +129,8 @@ export class BackUpManagerMac implements BackUpManager {
     ln -s "/Volumes/${task.share}" "${mntRoot}"
 
     # 2 ─ system key-chain secret
-    security delete-generic-password -s "${service}" -a "${safeUser}" 2>/dev/null || true
-    security add-generic-password    -s "${service}" -a "${safeUser}" -w "$PASSWORD" -U
+    security delete-generic-password -s "${service}" -a "${username}" 2>/dev/null || true
+    security add-generic-password    -s "${service}" -a "${username}" -w "${password}" -U
     
     # 3 ─ write the task script
     cat <<'EOF_${uuid}' > "${scriptPath}"
@@ -137,10 +138,10 @@ export class BackUpManagerMac implements BackUpManager {
 EOF_${uuid}
      chmod 755 "${scriptPath}"
 
-    # 4 ─ let this local user mount/umount the share without a password
-    echo "${currentUser} ALL=(root) NOPASSWD: /sbin/mount_smbfs, /sbin/umount" \
-        > /private/etc/sudoers.d/houston-${currentUser}
-     chmod 440 /private/etc/sudoers.d/houston-${currentUser}
+    # 4 ─ let this user mount/umount the share without a password
+    echo "${username} ALL=(root) NOPASSWD: /sbin/mount_smbfs, /sbin/umount" \
+        > /private/etc/sudoers.d/houston-${username}
+     chmod 440 /private/etc/sudoers.d/houston-${username}
     `;
 
     fs.writeFileSync(installerPath, installer, { mode: 0o700 });
@@ -174,10 +175,6 @@ EOF_${uuid}
     const currentUser = os.userInfo().username;
     const userGroup = require("child_process").execSync(`id -gn ${currentUser}`).toString().trim();
     const servicePrefix = "houston-smb-";
-    const safeUser = assertSafeUsername(username);
-
-    // Store credentials in encrypted vault
-    const cm = getCredentialManager();
 
     /* ------------------------------------------------------------------
        1.  BUILD a root-only installer shell script as one big heredoc
@@ -185,30 +182,22 @@ EOF_${uuid}
     const installerLines: string[] = [
       "#!/bin/bash",
       "set -e",                                            // Stop on first error
-      `PASSWORD=${shellQuote(password)}`,
       `mkdir -p "${scriptDir}" "${logDir}"`,
-      `chmod 750 "${logDir}"`
+      `chmod 700 "${logDir}"`
     ];
 
-    /* 1a ─ System-keychain credentials (once per host+share) */
-    const uniqueHostShares = new Map<string, { host: string; share: string }>();
+    /* 1a ─ System-keychain credentials (once per share) */
+    const uniqueShares = new Set<string>();
     for (const t of tasks) {
-      const tHost = assertSafeHost(t.host || t.target.split(":")[0]);
-      const share = assertSafeShare((t.share || t.target.split(":")[1].split("/")[0]));
-      const key = `${tHost}/${share}`;
-      if (!uniqueHostShares.has(key)) {
-        uniqueHostShares.set(key, { host: tHost, share });
-      }
+      const share = t.share || t.target.split(":")[1].split("/")[0];
+      uniqueShares.add(share);
     }
-    for (const [, { host: tHost, share }] of uniqueHostShares) {
-      const svc = servicePrefix + tHost + "-" + share;
-
-      // Store in vault
-      cm.store(tHost, share, safeUser, password);
+    for (const share of uniqueShares) {
+      const svc = servicePrefix + share;
 
       installerLines.push(
-        `security delete-generic-password -s "${svc}" -a "${safeUser}" 2>/dev/null || true`,
-        `security add-generic-password -s "${svc}" -a "${safeUser}" -w "$PASSWORD" -U`,
+        `security delete-generic-password -s "${svc}" -a "${username}" 2>/dev/null || true`,
+        `security add-generic-password -s "${svc}" -a "${username}" -w "${password}" -U`,
         `rm -rf "${this.HOME}/houston-mounts/${share}"`,
         `mkdir -p "${this.HOME}/houston-mounts/${share}"`
       );
@@ -218,10 +207,7 @@ EOF_${uuid}
     for (const task of tasks) {
       const uuid = task.uuid;
       const scriptPath = path.join(scriptDir, `houston-backup-task-${uuid}.sh`);
-      const [host, sharePart] = task.target.split(":");
-      task.host = assertSafeHost(host);
-      task.share = assertSafeShare(sharePart.split("/")[0]);
-      const scriptBody = this.getShellScriptContent(task, safeUser)
+      const scriptBody = this.getShellScriptContent(task, username)
         // heredoc must not contain an unescaped EOF on its own line
         .replace(/\\EOF/g, '\\\\EOF');
 
@@ -229,7 +215,7 @@ EOF_${uuid}
           `cat <<EOF_${uuid} > "${scriptPath}"`,
           scriptBody,
           "EOF_${uuid}",
-          `chmod 755 "${scriptPath}"`
+          `chmod 700 "${scriptPath}"`
         );
     }
 
@@ -458,77 +444,173 @@ EOF_${uuid}
     execSync("crontab -", { input });
   }
 
+//   private getShellScriptContent(task: BackUpTask, username: string): string {
+//     const mountRoot = this.MOUNT_ROOT;
+//     const mountPoint = `${mountRoot}/${task.share}`;
+//     const volumesMount = `/Volumes/${task.share}`;
+//     const rel = task.target!.split('/').slice(1).join('/');
+//     const dir = `${mountPoint}/${rel}`;
+//     const svc = `houston-smb-${task.share}`;
+//     const target = getSmbTargetFromSmbTarget(task.target);
+//     const rsyncCmd = `${getRsync()} -a${task.mirror ? ' --delete' : ''} "${task.source}/" "${dir}/"`;
+//     return (`
+//   #!/bin/bash
+//   # path to the shared JSON events log
+//   EVENT_LOG="${this.logDir}/45drives_backup_events.json"
+
+//   # install_id for events + marker
+//   CLIENT_ID_FILE='${path.join(app.getPath("userData"), "client-id.txt")}'
+//   INSTALL_ID="$(cat "$CLIENT_ID_FILE" 2>/dev/null || true)"
+
+//   # --- emit backup_start event ---
+//   echo '{"event":"backup_start","timestamp":"'"$(date -u +%Y-%m-%dT%H:%M:%SZ)"'","uuid":"'"${task.uuid}"'","host":"'"${task.host}"'","share":"'"${task.share}"'","source":"'"${task.source}"'","target":"'"${target}"'","install_id":"'"$INSTALL_ID"'"}' >> "$EVENT_LOG"
+//   trap 'st=$?; echo "===== $(/bin/date -u "+%Y-%m-%dT%H:%M:%SZ") END $st ====="; exit $st' EXIT
+//   # Houston user-level backup script
+//   # TASK_HOST="${task.host}"
+//   # TASK_SHARE="${task.share}"
+//   # TASK_SOURCE="${task.source}"
+//   # TASK_TARGET="${target}"
+//   # TASK_MIRROR="${task.mirror}"
+//   # TASK_START="${task.schedule.startDate.toISOString()}"
+//   START_DATE='${task.schedule.startDate.toISOString()}'
+//   LOG="${this.logDir}/Houston_Backup_Task_${task.uuid}.log"
+//   mkdir -p "$(dirname "$LOG")"
+//   exec >>"$LOG" 2>&1
+//   set -x
+//   echo "===== $(/bin/date -u '+%Y-%m-%dT%H:%M:%SZ') START ${task.uuid} ====="
+//   set +x
+//   PASSWORD=$(security find-generic-password -s "${svc}" -a "${username}" -w) || {
+//     echo "[ERROR] key-chain lookup failed"
+//     exit 1
+//   }
+//   set -x
+
+//   # ---------- (1) try Finder / user-level mount first ----------
+//   if ! /sbin/mount | /usr/bin/grep -qE "${mountPoint}|${volumesMount}"; then
+//     set +x
+//     /usr/bin/osascript <<EOT
+//       try
+//         mount volume "smb://${username}:$PASSWORD@${task.host}/${task.share}"
+//       end try
+// EOT
+//     set -x
+
+//     sleep 2  # give Finder a moment to finish the mount
+
+//     real_mnt=$(/sbin/mount | grep "${username}@${task.host}/${task.share}" | awk '{ print $3; exit }')
+//     if [ -z "$real_mnt" ]; then
+//       echo "[ERROR] SMB mount failed or volume not detected"
+//       exit 1
+//     fi
+
+//     if [ "$real_mnt" != "${mountPoint}" ]; then
+//       [ -d "${mountPoint}" ] && rmdir "${mountPoint}" 2>/dev/null || true
+//       ln -snf "$real_mnt" "${mountPoint}"
+//     fi
+//   fi
+
+//   uuid="$(printf '%s' "${target}" | awk -F/ '{print $2}')"
+
+//   marker_dir="${mountPoint}/$uuid/.houston"
+//   mkdir -p "$marker_dir"
+//   printf '{"install_id":"%s","user":"%s","host":"%s","platform":"mac"}\n' \
+//   "$INSTALL_ID" "$(id -un)" "$(hostname -s)" > "$marker_dir/client.json"
+
+//   mkdir -p "${dir}"
+//   echo "[INFO] rsync to ${dir}"
+//   ${rsyncCmd}
+
+//   # --- emit backup_end event ---
+//   ST=$?
+//   STATUS=$([ $ST -eq 0 ] && echo success || echo failure)
+//   echo '{"event":"backup_end","timestamp":"'"$(date -u +%Y-%m-%dT%H:%M:%SZ)"'","uuid":"'"${task.uuid}"'","host":"'"${task.host}"'","share":"'"${task.share}"'","source":"'"${task.source}"'","target":"'"${target}"'","status":"'"$STATUS"'","install_id":"'"$INSTALL_ID"'"}' >> "$EVENT_LOG"
+//     `).trimStart();
+//   }
+
   private getShellScriptContent(task: BackUpTask, username: string): string {
-    const mountRoot = this.MOUNT_ROOT;
+    const mountRoot = this.MOUNT_ROOT;                     // e.g., ~/houston-mounts
     const mountPoint = `${mountRoot}/${task.share}`;
     const volumesMount = `/Volumes/${task.share}`;
-    const rel = task.target!.split('/').slice(1).join('/');
+    const rel = task.target!.split('/').slice(1).join('/'); // strip leading /
     const dir = `${mountPoint}/${rel}`;
-    const svc = `houston-smb-${task.host}-${task.share}`;
+    const svc = `houston-smb-${task.share}`;
     const target = getSmbTargetFromSmbTarget(task.target);
-    const rsyncCmd = `${getRsync()} -a${task.mirror ? ' --delete' : ''} ${shellQuote(`${task.source}/`)} ${shellQuote(`${dir}/`)}`;
+    const rsyncCmd = `${getRsync()} -a${task.mirror ? ' --delete' : ''} "${task.source}/" "${dir}/"`;
+
     return (`
-  #!/bin/bash
-  # path to the shared JSON events log
-  EVENT_LOG="${this.logDir}/45drives_backup_events.json"
-  HOST=${shellQuote(task.host || "")}
-  SHARE=${shellQuote(task.share || "")}
-  SOURCE=${shellQuote(task.source)}
-  TARGET=${shellQuote(target)}
-  # --- emit backup_start event ---
-  echo '{"event":"backup_start","timestamp":"'"$(date -u +%Y-%m-%dT%H:%M:%SZ)"'","uuid":"'"${task.uuid}"'","host":"'"$HOST"'","share":"'"$SHARE"'","source":"'"$SOURCE"'","target":"'"$TARGET"'"}' >> "$EVENT_LOG"
-  trap 'st=$?; echo "===== $(/bin/date -u "+%Y-%m-%dT%H:%M:%SZ") END $st ====="; exit $st' EXIT
-  # Houston user-level backup script
-  # TASK_HOST="${task.host}"
-  # TASK_SHARE="${task.share}"
-  # TASK_SOURCE="${task.source}"
-  # TASK_TARGET="${target}"
-  # TASK_MIRROR="${task.mirror}"
-  # TASK_START="${task.schedule.startDate.toISOString()}"
-  START_DATE='${task.schedule.startDate.toISOString()}'
-  LOG="${this.logDir}/Houston_Backup_Task_${task.uuid}.log"
-  mkdir -p "$(dirname "$LOG")"
-  exec >>"$LOG" 2>&1
-  set -x
-  echo "===== $(/bin/date -u '+%Y-%m-%dT%H:%M:%SZ') START ${task.uuid} ====="
-  set +x
-  PASSWORD=$(security find-generic-password -s "${svc}" -a "${username}" -w) || {
-    echo "[ERROR] key-chain lookup failed"
-    exit 1
-  }
-  set -x
+#!/bin/bash
+set -e
 
-  # ---------- (1) try Finder / user-level mount first ----------
-  if ! /sbin/mount | /usr/bin/grep -qE "${mountPoint}|${volumesMount}"; then
-    set +x
-    /usr/bin/osascript <<EOT
-      try
-        mount volume "smb://${username}:$PASSWORD@${task.host}/${task.share}"
-      end try
+EVENT_LOG="${this.logDir}/45drives_backup_events.json"
+LOG="${this.logDir}/Houston_Backup_Task_${task.uuid}.log"
+START_DATE='${task.schedule.startDate.toISOString()}'
+
+# identities
+CLIENT_ID_FILE='${path.join(app.getPath("userData"), "client-id.txt")}'
+INSTALL_ID="$(cat "$CLIENT_ID_FILE" 2>/dev/null || true)"
+SMB_USER='${username}'
+
+# ---- Houston backup task metadata (for queryTasks) -------------------------
+# TASK_HOST="${task.host}"
+# TASK_SHARE="${task.share}"
+# TASK_SOURCE="${task.source}"
+# TASK_TARGET="${getSmbTargetFromSmbTarget(task.target)}"
+# TASK_MIRROR="${task.mirror}"
+# TASK_SMB_USER="${username}"
+
+mkdir -p "$(dirname "$LOG")"
+exec >>"$LOG" 2>&1
+
+echo "===== $(/bin/date -u '+%Y-%m-%dT%H:%M:%SZ') START ${task.uuid} ====="
+
+# --- backup_start (with install_id + smb_user) ------------------------------
+echo '{"event":"backup_start","timestamp":"'"$(date -u +%Y-%m-%dT%H:%M:%SZ)"'","uuid":"'"${task.uuid}"'","host":"'"${task.host}"'","share":"'"${task.share}"'","source":"'"${task.source}"'","target":"'"${target}"'","install_id":"'"$INSTALL_ID"'","smb_user":"'"$SMB_USER"'"}' >> "$EVENT_LOG"
+
+# keychain lookup for password
+PASSWORD=$(security find-generic-password -s "${svc}" -a "${username}" -w) || {
+  echo "[ERROR] key-chain lookup failed"
+  exit 1
+}
+
+# ---------- (1) try Finder / user-level mount first -------------------------
+if ! /sbin/mount | /usr/bin/grep -qE "${mountPoint}|${volumesMount}"; then
+  /usr/bin/osascript <<EOT
+    try
+      mount volume "smb://${username}:$PASSWORD@${task.host}/${task.share}"
+    end try
 EOT
-    set -x
-
-    sleep 2  # give Finder a moment to finish the mount
-
-    real_mnt=$(/sbin/mount | grep "${username}@${task.host}/${task.share}" | awk '{ print $3; exit }')
-    if [ -z "$real_mnt" ]; then
-      echo "[ERROR] SMB mount failed or volume not detected"
-      exit 1
-    fi
-
-    if [ "$real_mnt" != "${mountPoint}" ]; then
-      [ -d "${mountPoint}" ] && rmdir "${mountPoint}" 2>/dev/null || true
-      ln -snf "$real_mnt" "${mountPoint}"
-    fi
+  sleep 2
+  real_mnt=$(/sbin/mount | grep "${username}@${task.host}/${task.share}" | awk '{ print $3; exit }')
+  if [ -z "$real_mnt" ]; then
+    echo "[ERROR] SMB mount failed or volume not detected"
+    exit 1
   fi
-  mkdir -p "${dir}"
-  echo "[INFO] rsync to ${dir}"
-  ${rsyncCmd}
+  if [ "$real_mnt" != "${mountPoint}" ]; then
+    [ -d "${mountPoint}" ] && rmdir "${mountPoint}" 2>/dev/null || true
+    ln -snf "$real_mnt" "${mountPoint}"
+  fi
+fi
 
-  # --- emit backup_end event ---
-  ST=$?
-  STATUS=$([ $ST -eq 0 ] && echo success || echo failure)
-  echo '{"event":"backup_end","timestamp":"'"$(date -u +%Y-%m-%dT%H:%M:%SZ)"'","uuid":"'"${task.uuid}"'","host":"'"$HOST"'","share":"'"$SHARE"'","source":"'"$SOURCE"'","target":"'"$TARGET"'","status":"'"$STATUS"'"}' >> "$EVENT_LOG"
-    `).trimStart();
+# ---- marker: write install_id + smb_user at /<UUID>/.houston/client.json ---
+uuid="$(printf '%s' "${target}" | awk -F/ '{print $2}')"
+marker_dir="${mountPoint}/$uuid/.houston"
+mkdir -p "$marker_dir"
+printf '{"install_id":"%s","smb_user":"%s","source":"%s","user":"%s","host":"%s","platform":"mac"}\n' \
+  "$INSTALL_ID" "$SMB_USER" "$SOURCE" "$(id -un)" "$(hostname -s)" > "$marker_dir/client.json"
+
+# ---------- copy -------------------------------------------------------------
+mkdir -p "${dir}"
+echo "[INFO] rsync to ${dir}"
+${rsyncCmd}
+ST=$?
+
+# --- backup_end (with install_id + smb_user) --------------------------------
+STATUS=$([ $ST -eq 0 ] && echo success || echo failure)
+echo '{"event":"backup_end","timestamp":"'"$(date -u +%Y-%m-%dT%H:%M:%SZ)"'","uuid":"'"${task.uuid}"'","host":"'"${task.host}"'","share":"'"${task.share}"'","source":"'"${task.source}"'","target":"'"${target}"'","status":"'"$STATUS"'","install_id":"'"$INSTALL_ID"'","smb_user":"'"$SMB_USER"'"}' >> "$EVENT_LOG"
+
+echo "===== $(/bin/date -u '+%Y-%m-%dT%H:%M:%SZ') END $ST ====="
+exit $ST
+  `).trimStart();
   }
+
 }

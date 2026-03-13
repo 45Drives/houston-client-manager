@@ -1,7 +1,8 @@
+// src/renderer/composables/useThemeFromAlias.ts
 import { ref, watchEffect } from 'vue'
 
-type Theme = 'theme-homelab' | 'theme-professional' | 'theme-default' | 'theme-studio'
-type Division = 'studio' | 'homelab' | 'professional' | 'default'
+type Theme = 'theme-homelab' | 'theme-professional' | 'theme-default'
+type Division = 'homelab' | 'professional' | 'default'
 
 const aliasToTheme: Record<string, Theme> = {
   homelab: 'theme-homelab',
@@ -12,8 +13,7 @@ const aliasToTheme: Record<string, Theme> = {
 const themeToDivision: Record<Theme, Division> = {
   'theme-homelab': 'homelab',
   'theme-professional': 'professional',
-  'theme-studio': 'studio',
-  'theme-default': 'default'
+  'theme-default': 'default',
 }
 
 const currentTheme = ref<Theme>('theme-homelab')      // default boot theme
@@ -21,7 +21,7 @@ const currentDivision = ref<Division>('homelab')
 
 function setHtmlThemeClass(theme: Theme) {
   const root = document.documentElement
-  root.classList.remove('theme-default', 'theme-homelab', 'theme-professional', 'theme-studio')
+  root.classList.remove('theme-default', 'theme-homelab', 'theme-professional')
   root.classList.add(theme)
 }
 
@@ -36,16 +36,16 @@ function applyThemeFromAlias(aliasStyle?: string) {
   currentTheme.value = aliasToTheme[normalized] ?? 'theme-homelab'
 }
 
-/** Directly set a theme */
+/** Directly set a theme (if you ever need to switch by hand) */
 function setTheme(theme: Theme) {
   currentTheme.value = theme
 }
 
 export function useThemeFromAlias() {
   return {
-    currentTheme,         // reactive (theme-homelab|theme-studio|theme-professional|theme-default)
-    currentDivision,      // reactive (homelab|studio|professional|default)
+    currentTheme,         // reactive (theme-homelab|theme-professional|theme-default)
+    currentDivision,      // reactive (homelab|professional|default)
     applyThemeFromAlias,  // call with aliasStyle from server info
-    setTheme,             // manual setter
+    setTheme,             // optional manual setter
   }
 }

@@ -159,7 +159,33 @@ export function reconstructFullTarget(scriptPath: string): string {
   }
 }
 
-export function formatDateForTask(date, useT = false) {
+export function getScp() {
+  const sshKeyPath = getSSHKey();
+  const scpPath = "scp";
+  const scp = `${scpPath} -o StrictHostKeyChecking=no -o PasswordAuthentication=no -i ""${sshKeyPath}"" -r`
+  return scp;
+}
+
+export function getSsh() {
+  const sshKeyPath = getSSHKey();
+  return `ssh -o StrictHostKeyChecking=no -o PasswordAuthentication=no -i ""${sshKeyPath}""`;
+}
+
+export function getSSHKey() {
+  let basePath = getAppPath();
+
+  const sshKeyPath = path.join(basePath, ".ssh", "id_rsa");
+  return sshKeyPath;
+}
+
+export function getNoneQuotedScp() {
+  const sshKeyPath = getSSHKey();
+  const scpPath = "scp";
+  const scp = `${scpPath} -o StrictHostKeyChecking=no -o PasswordAuthentication=no -i "${sshKeyPath}" -r`
+  return scp;
+}
+
+export function formatDateForTask(date) {
   const pad = (n) => String(n).padStart(2, '0');
 
   const year = date.getFullYear();
@@ -170,7 +196,19 @@ export function formatDateForTask(date, useT = false) {
   const minutes = pad(date.getMinutes());
   const seconds = pad(date.getSeconds());
 
-  const separator = useT ? 'T' : ' ';
+  return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+}
 
-  return `${year}-${month}-${day}${separator}${hours}:${minutes}:${seconds}`;
+export function formatDateForTask2(date) {
+  const pad = (n) => String(n).padStart(2, '0');
+
+  const year = date.getFullYear();
+  const month = pad(date.getMonth() + 1);
+  const day = pad(date.getDate());
+
+  const hours = pad(date.getHours());
+  const minutes = pad(date.getMinutes());
+  const seconds = pad(date.getSeconds());
+
+  return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}`;
 }

@@ -60,6 +60,12 @@ export interface CredentialEntry {
   encryptedPassword: string;
   createdAt: string;
   updatedAt: string;
+  /** User-assigned display name for this server */
+  name?: string;
+  /** Whether the user pinned this as a favorite */
+  favorite?: boolean;
+  /** Epoch ms of last time this credential was actively used */
+  lastUsedAt?: number;
 }
 
 export interface CredentialVault {
@@ -170,6 +176,9 @@ export class CredentialManager {
       encryptedPassword: encryptPassword(password),
       createdAt: existing?.createdAt ?? now,
       updatedAt: now,
+      name: existing?.name,
+      favorite: existing?.favorite,
+      lastUsedAt: existing?.lastUsedAt,
     };
 
     this.save();
@@ -243,6 +252,98 @@ export class CredentialManager {
       }
     }
     return null;
+  }
+
+  // ── Server-level helpers (used by renderer for saved-server UX) ──────
+
+  /**
+   * Store or update a server-level credential (share defaults to '*').
+   * Includes UX metadata: name, favorite, lastUsedAt.
+   */
+  storeServer(host: string, username: string, password: string, opts?: { name?: string; favorite?: boolean }): string {
+    const share = '*';
+    this.store(host, share, username, password);
+    const key = makeKey(host, share, username);
+    const entry = this.vault.credentials[key];
+    if (opts?.name !== undefined) entry.name = opts.name;
+    if (opts?.favorite !== undefined) entry.favorite = opts.favorite;
+    entry.lastUsedAt = Date.now();
+    this.save();
+    return `${host}|${username}`;
+  }
+
+  /**
+   * List all server-level credentials (share='*') with metadata, no passwords.
+   */
+  listServers(): { id: string; host: string; name?: string; username: string; favorite?: boolean; lastUsedAt?: number }[] {
+    return Object.values(this.vault.credentials)
+      .filter(e => e.share === '*')
+      .map(e => ({
+        id: `${e.host}|${e.username}`,
+        host: e.host,
+        name: e.name,
+        username: e.username,
+        favorite: e.favorite,
+        lastUsedAt: e.lastUsedAt,
+      }));
+  }
+
+  /**
+   * Get credential for a host (best match: favorite first, then most-recently-used).
+   * Returns decrypted password.
+   */
+  getForHost(host: string): { id: string; username: string; password: string } | null {
+    const lowerHost = host.toLowerCase();
+    const matches = Object.values(this.vault.credentials)
+      .filter(e => e.host.toLowerCase() === lowerHost && e.share === '*');
+    if (!matches.length) return null;
+    matches.sort((a, b) =>
+      (b.favorite ? 1 : 0) - (a.favorite ? 1 : 0) ||
+      (b.lastUsedAt || 0) - (a.lastUsedAt || 0)
+    );
+    const best = matches[0];
+    return {
+      id: `${best.host}|${best.username}`,
+      username: best.username,
+      password: decryptPassword(best.encryptedPassword),
+    };
+  }
+
+  /**
+   * Remove a server credential by composite id ("host|username").
+   */
+  removeById(id: string): boolean {
+    const [host, username] = id.split('|');
+    if (!host || !username) return false;
+    return this.remove(host, '*', username);
+  }
+
+  /**
+   * Set favorite flag for a server credential.
+   */
+  setFavorite(id: string, fav: boolean): void {
+    const [host, username] = id.split('|');
+    if (!host || !username) return;
+    const key = makeKey(host, '*', username);
+    const entry = this.vault.credentials[key];
+    if (entry) {
+      entry.favorite = fav;
+      this.save();
+    }
+  }
+
+  /**
+   * Touch lastUsedAt timestamp for a server credential.
+   */
+  touch(id: string): void {
+    const [host, username] = id.split('|');
+    if (!host || !username) return;
+    const key = makeKey(host, '*', username);
+    const entry = this.vault.credentials[key];
+    if (entry) {
+      entry.lastUsedAt = Date.now();
+      this.save();
+    }
   }
 
   /**

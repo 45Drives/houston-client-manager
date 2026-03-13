@@ -1,19 +1,5 @@
 <template>
   <CardContainer class="overflow-y-auto min-h-0">
-    <template #header>
-      <div class="relative flex items-center justify-center h-24">
-        <div class="absolute left-0  p-1 px-4 rounded-lg">
-         <DynamicBrandingLogo :division="division" :height="(division === 'studio' ? 16 : 12)"/>
-
-        </div>
-        <p class="text-3xl font-semibold text-center">
-          Server Credentials
-        </p>
-        <div class="absolute right-0 top-1/2 -translate-y-1/2">
-          <GlobalSetupWizardMenu />
-        </div>
-      </div>
-    </template>
 
     <div class="flex flex-col h-full justify-center items-center text-default">
       <!-- Username and Password input fields -->
@@ -61,14 +47,18 @@
 </template>
 
 <script setup lang="ts">
+
+import { CardContainer } from '@45drives/houston-common-ui'
 import { ref, computed, inject } from 'vue';
 import { EyeIcon, EyeSlashIcon } from "@heroicons/vue/20/solid";
-import { CardContainer, useWizardSteps, DynamicBrandingLogo, useAutoFocus, useEnterToAdvance } from '@45drives/houston-common-ui';
-import { backUpSetupConfigKey, divisionCodeInjectionKey } from '../../keys/injection-keys';
-import GlobalSetupWizardMenu from '../../components/GlobalSetupWizardMenu.vue';
+import { useWizardSteps, useAutoFocus, useEnterToAdvance } from '@45drives/houston-common-ui';
+import { backUpSetupConfigKey } from '../../keys/injection-keys';
+import { useHeader } from '../../composables/useHeader'
+useHeader('Server Credentials')
+
 useAutoFocus();
-const division = inject(divisionCodeInjectionKey);
-const { prevStep, nextStep, wizardData } = useWizardSteps("backup");
+
+const { prevStep, nextStep, wizardData } = useWizardSteps("backup-new");
 const backUpSetupConfig = inject(backUpSetupConfigKey)!;
 
 const openingBackup = ref(false);
@@ -83,8 +73,22 @@ const isButtonDisabled = computed(() => !backUpSetupConfig?.username || !backUpS
 // Method to handle the "Open" button action
 const proceedToNextStep = () => {
   if (backUpSetupConfig.username && backUpSetupConfig.password) {
+    // Trigger your backend logic for opening the server (you will handle the action)
+    // Pass username, password, and backupTask.target (URL) to your backend code
+    // For example: openBackupServer(username.value, password.value, props.backupTask.target);
+    // console.debug('Attempting to open server with:', {
+    //   username: backUpSetupConfig.username,
+    //   password: backUpSetupConfig.password,
+    //   target: backUpSetupConfig.backUpTasks[0].target,
+    // });
+
+    // console.debug("Target:", backUpSetupConfig.backUpTasks[0].target);
+
     let [host, share] = backUpSetupConfig.backUpTasks[0].target.split(":");
     share = share.split("/")[0]
+
+    // console.debug("Host:", host);  // Output: "hl4-test.local"
+    // console.debug("Share:", share); // Output: "backups"
 
     nextStep();
   }
