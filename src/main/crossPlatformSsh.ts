@@ -51,7 +51,7 @@ export async function ensureKeyPair(pk: string, pub: string) {
     );
 }
 
-/* ---------- per-OS paths that your callers need ---------- */
+/* ---------- per-OS paths ---------- */
 export function getKeyDir() {
     // one place under %APPDATA% / ~/.config / ~/Library
     return path.join(app.getPath("userData"), ".ssh");

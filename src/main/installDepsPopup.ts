@@ -4,7 +4,7 @@ import { getOS } from './utils';
 import { exec } from 'child_process';
 
 const options = {
-  name: '45Drives Setup Wizard',
+  name: '45Drives Storage Wizard',
 };
 
 const dependencies: Record<string, string[]> = {

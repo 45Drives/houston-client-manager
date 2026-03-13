@@ -326,7 +326,7 @@ watch(selectedIp, (ip) => {
     const srv = discoveryState.servers.find(s => s.ip === ip) || null
     if (srv) {
         currentServer!.value = srv
-        // If you cache credentials per-IP, you can also emit 'store-manual-creds' here.
+        // Cache credentials per-IP if needed
     }
 })
 
@@ -380,12 +380,12 @@ function editSelected() {
 
 
 function viewSelected() {
-    // Reuse your wizard flow; this just triggers the same next step action
+    // triggers the same next step action
     // proceedToNextStep();
 }
 
 function viewSelectedLog() {
-    // Reuse your wizard flow; this just triggers the same next step action
+    // triggers the same next step action
     // proceedToNextStep();
     backUpListRef.value?.editSelectedSchedules?.();
 }

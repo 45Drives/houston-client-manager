@@ -1,6 +1,6 @@
-# 45Drives Setup Wizard
+# 45Drives Storage Wizard
 
-The 45Drives Setup Wizard connects your personal computer to a 45Drives server to configure storage, schedule backups, and manage ongoing tasks. Follow the instructions below to download, install, and launch the application on your preferred platform.
+The 45Drives Storage Wizard connects your personal computer to a 45Drives server to configure storage, schedule backups, and manage ongoing tasks. Follow the instructions below to download, install, and launch the application on your preferred platform.
 
 ---
 
@@ -12,10 +12,10 @@ The 45Drives Setup Wizard connects your personal computer to a 45Drives server t
    \`45drives-setup-wizard.Setup.1.0.0.exe\`  
 2. Run the installer and follow the on-screen prompts.  
 3. After installation:  
-   -  If the **Run 45Drives Setup Wizard** checkbox is selected at the end, the app will launch automatically.  
+   -  If the **Run 45Drives Storage Wizard** checkbox is selected at the end, the app will launch automatically.  
    -  Otherwise, launch it anytime from:  
      - Desktop shortcut  
-     - Start Menu → **45Drives Setup Wizard**
+     - Start Menu → **45Drives Storage Wizard**
 
 **Notes**  
 - The app runs with standard user permissions.  
@@ -30,7 +30,7 @@ The 45Drives Setup Wizard connects your personal computer to a 45Drives server t
 
 1. Download the macOS disk image:  
    \`45drives-setup-wizard.dmg\`  
-2. Open the \`.dmg\` and drag **45Drives Setup Wizard.app** into **Applications**.  
+2. Open the \`.dmg\` and drag **45Drives Storage Wizard.app** into **Applications**.  
 3. Launch the app via Launchpad or Applications.
 
 #### First-Time Launch
@@ -76,7 +76,7 @@ sudo pacman -U ./45drives-setup-wizard-1.0.0.pacman
 
 ####  Launch the Application
 
-- From your desktop environment’s launcher (search “45Drives Setup Wizard”), or  
+- From your desktop environment’s launcher (search “45Drives Storage Wizard”), or  
 - In a terminal:  
   \`\`\`bash
   45drives-setup-wizard
@@ -93,7 +93,7 @@ Subsequent tasks for the same server usually won’t require re-elevation.
 
 ##  Setting Up a Server
 
-On first launch, the wizard appears automatically. If you land in the Backup Client, open the ☰ menu and select **Setup**.
+On first launch, the wizard appears automatically. If you land in the Backup Client, open the menu and select **Setup**.
 
 1. **Welcome Screen**  
    - Overview of what the app will do  
@@ -180,15 +180,15 @@ Enable **Active Backup** to create two mirrored pools:
 - Backup Location  
 - Interval (hourly/daily/weekly/monthly)  
 - Folders:  
-  - ➕ Add folder → **OK**  
-  - ➖ Remove folder  
+  - Add folder -> **OK**  
+  - Remove folder  
 
 > All folders share the same interval.
 
 ####  Custom Backup
 
 1. Select **Backup Location**  
-2. ➕ Add folder  
+2. Add folder  
 3. Calendar UI: set start date/time & frequency  
 4. **Save Schedule**  
 5. Repeat for more tasks  
@@ -242,7 +242,7 @@ Mounts SMB share & opens server directories.
 
 ###  Restore Backups
 
-In the Restore Backup module (☰ menu):
+In the Restore Backup module (menu):
 
 1. **Welcome & Server Selection**  
    - **Restore Welcome** screen → **Next**  

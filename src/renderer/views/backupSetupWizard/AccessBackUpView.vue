@@ -116,7 +116,7 @@ const handleOpen = () => {
   // 2) Store real mount points here
   const mountResults = new Map<string, string>();
 
-  // 3) Listen for your mount scripts’ JSON replies
+  // 3) Listen for mount scripts' JSON replies
   smbMountListener = (raw) => {
     try {
       const msg = JSON.parse(raw);
@@ -218,11 +218,11 @@ const handleOpen = () => {
         finalPath = `${mp}${normalized}`;
 
       } else {
-        // Linux: keep your working code intact
+        // Linux: keep working code intact
         finalPath = `/mnt/houston-mounts/${task.share}${normalized}`;
       }
 
-      console.debug("📂 Opening folder:", finalPath);
+      console.debug("Opening folder:", finalPath);
       IPCRouter.getInstance().send("backend", "action", JSON.stringify({
         type: "openFolder",
         path: finalPath

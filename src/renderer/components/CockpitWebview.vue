@@ -44,7 +44,7 @@ const dark = useDarkModeState()
 const adv = useAdvancedModeState()
 const currentServer = inject(currentServerInjectionKey, ref<any>(null))
 
-// creds & ip supplied by main like your HoustonWebView
+// creds & ip supplied by main like HoustonWebView
 const manualCreds = ref<{ ip: string; username: string; password: string } | null>(null)
 const clientIp = ref('')
 const clientId = ref('');
@@ -73,8 +73,8 @@ const currentUrl = computed(() => {
     const base = `https://${ip}:9090${props.routePath}`
     const route = props.hash ? (props.hash.startsWith('/') ? props.hash : `/${props.hash}`) : ''
 
-    // optional: keep dark/advanced/client_ip/server_ip only in search if you want,
-    // but they're not needed for this problem.
+    // optional: dark/advanced/client_ip/server_ip in search params
+    // not needed for this purpose.
     const searchQS = new URLSearchParams({
         dark: String(dark.value),
         advanced: String(adv.value),

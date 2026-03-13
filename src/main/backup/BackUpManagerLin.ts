@@ -62,7 +62,7 @@ export class BackUpManagerLin implements BackUpManager {
           smb_user: smbUserMatch[1]
         };
 
-        // 🔍 Perform status check
+        // Perform status check
         // try {
         //   task.status = await checkBackupTaskStatus(task);
         // } catch (err) {
@@ -193,7 +193,7 @@ export class BackUpManagerLin implements BackUpManager {
     const finalContent = cleaned.join("\n");
 
     if (finalContent.trim().length === 0) {
-      execSync("crontab -r || true");
+      try { execSync("crontab -r", { stdio: "ignore" }); } catch { /* noop */ }
     } else {
       execSync("crontab -", { input: finalContent + "\n" });
     }
@@ -336,37 +336,6 @@ export class BackUpManagerLin implements BackUpManager {
   }
   
 
-//   protected ensureFstabEntry(smbHost: string, smbShare: string, username: string, password: string): void {
-//     const credDir = "/etc/samba/houston-credentials";
-//     const credFile = `${credDir}/${smbShare}.cred`;
-//     const mountDir = `/mnt/houston-mounts/${smbShare}`;
-//     const localUser = os.userInfo().username;
-
-//     const uid = typeof process.getuid === 'function' ? process.getuid() : 1000;
-//     const gid = typeof process.getgid === 'function' ? process.getgid() : 1000;
-
-//     const fstabEntry = `//${smbHost}/${smbShare} ${mountDir} cifs credentials=${credFile},iocharset=utf8,rw,uid=${uid},gid=${gid},vers=3.0,user,noauto 0 0`;
-
-//     const fstab = fs.readFileSync("/etc/fstab", "utf-8");
-//     if (!fstab.includes(`//${smbHost}/${smbShare}`)) {
-//       const tempScript = `/tmp/add_fstab_entry_${smbShare}.sh`;
-//       const scriptContent = `#!/bin/bash
-// mkdir -p "${credDir}"
-// echo "username=${username}" > "${credFile}"
-// echo "password=${password}" >> "${credFile}"
-// chown ${localUser}:${localUser} "${credFile}"
-// chmod 600 "${credFile}"
-// mkdir -p "${mountDir}"
-// chown ${localUser}:${localUser} "${mountDir}"
-// chmod 755 "${mountDir}"
-// echo "${fstabEntry}" >> /etc/fstab
-// `;
-
-//       fs.writeFileSync(tempScript, scriptContent, { mode: 0o700 });
-//       execSync(`${this.pkexec} bash "${tempScript}"`);
-//     }
-//   }
-
   protected ensureFstabEntry(smbHost: string, smbShare: string, username: string, password: string): void {
     const safeHost = assertSafeHost(smbHost);
     const safeShare = assertSafeShare(smbShare);
@@ -417,87 +386,91 @@ ${ hasFstab ? '' : `echo ${shellQuote(fstabEntry)} >> /etc/fstab` }
 
 
   protected generateBackupScript(task: BackUpTask, username: string, password: string, scriptPath: string): void {
-    const [smbHost, smbSharePart] = task.target.split(":");
-    const smbShare = smbSharePart.split("/")[0];
-
-    // Ensure /etc/fstab and cred file are set up once during schedule
-    this.ensureFstabEntry(smbHost, smbShare, username, password);
+    const [smbHostRaw, smbSharePart] = task.target.split(":");
+    const smbHost = assertSafeHost(smbHostRaw);
+    const smbShare = assertSafeShare(smbSharePart.split("/")[0]);
 
     const logPath = path.join(LOG_DIR, `Houston_Backup_Task_${task.uuid}.log`);
-    // const mountDir = `/mnt/houston-mounts/${smbShare}`;
     const safe = (s: string) => s.replace(/[^A-Za-z0-9_.-]/g, "_");
     const key = `${safe(smbHost)}_${safe(smbShare)}_${safe(username)}`;
-    const mountDir = `/mnt/houston-mounts/${key}`;  // instead of /mnt/houston-mounts/${smbShare}
+    const mountDir = `/mnt/houston-mounts/${key}`;
 
     const target = getSmbTargetFromSmbTarget(task.target);
 
     const scriptContent = `#!/bin/bash
-  EVENT_LOG='${LOG_DIR}/45drives_backup_events.json'
-  SMB_HOST='${smbHost}'
-  SMB_SHARE='${smbShare}'
-  SMB_USER='${username}'
-  SOURCE='${task.source}/'
-  TARGET='${target}'
-  LOG_FILE='${logPath}'
-  MOUNT_DIR='${mountDir}'
-  START_DATE='${task.schedule.startDate}'
+set -euo pipefail
 
-  CLIENT_ID_FILE='${path.join(app.getPath("userData"), "client-id.txt")}'
-  INSTALL_ID="$(cat "$CLIENT_ID_FILE" 2>/dev/null || true)"
+EVENT_LOG=${shellQuote(path.join(LOG_DIR, "45drives_backup_events.json"))}
+SMB_HOST=${shellQuote(smbHost)}
+SMB_SHARE=${shellQuote(smbShare)}
+SMB_USER=${shellQuote(username)}
+SOURCE=${shellQuote(`${task.source}/`)}
+TARGET=${shellQuote(target)}
+LOG_FILE=${shellQuote(logPath)}
+MOUNT_DIR=${shellQuote(mountDir)}
+START_DATE=${shellQuote(String(task.schedule.startDate))}
+DESC=${shellQuote(task.description)}
 
-  echo '{"event":"backup_start","timestamp":"'$(date -Iseconds)'","uuid":"'"${task.uuid}"'","host":"'"${smbHost}"'","share":"'"${smbShare}"'","source":"'"${task.source}"'","target":"'"${target}"'","install_id":"'"$INSTALL_ID"'","smb_user":"'"$SMB_USER"'"}' >> "$EVENT_LOG"
-  mkdir -p "$(dirname "$LOG_FILE")"
+CLIENT_ID_FILE=${shellQuote(path.join(app.getPath("userData"), "client-id.txt"))}
+INSTALL_ID="$(cat "$CLIENT_ID_FILE" 2>/dev/null || true)"
 
-  cleanup() {
-    if [ -d "$MOUNT_DIR" ]; then
-      echo "[CLEANUP] Unmounting $MOUNT_DIR" >> "$LOG_FILE"
-      umount "$MOUNT_DIR" >> "$LOG_FILE" 2>&1
-    fi
-  }
-  trap cleanup EXIT
+mkdir -p "$(dirname "$LOG_FILE")"
 
-  {
-    echo "===== [$(date -Iseconds)] Starting backup task: '${task.description}' ====="
-    echo "[INFO] Source: $SOURCE"
-    echo "[INFO] Target: $TARGET"
-    echo "[INFO] Mount directory: $MOUNT_DIR"
+# Send ALL stdout/stderr to both console and the log file, without a pipeline
+exec > >(tee -a "$LOG_FILE") 2>&1
 
-    mkdir -p "$MOUNT_DIR"
+echo '{"event":"backup_start","timestamp":"'$(date -Iseconds)'","uuid":"'"${task.uuid}"'","host":"'"$SMB_HOST"'","share":"'"$SMB_SHARE"'","source":"'"$SOURCE"'","target":"'"$TARGET"'","install_id":"'"$INSTALL_ID"'","smb_user":"'"$SMB_USER"'"}' >> "$EVENT_LOG"
 
-    mount "$MOUNT_DIR" >> "$LOG_FILE" 2>&1
-    if ! mountpoint -q "$MOUNT_DIR"; then
-      echo "[ERROR] Failed to mount $MOUNT_DIR" >> "$LOG_FILE"
-      exit 1
-    fi
-    echo "[SUCCESS] SMB share mounted at $MOUNT_DIR"
+cleanup() {
+  # Only attempt unmount if it's actually mounted
+  if mountpoint -q "$MOUNT_DIR"; then
+    echo "[CLEANUP] Unmounting $MOUNT_DIR"
+    umount "$MOUNT_DIR" || true
+  fi
+}
+trap cleanup EXIT
 
-    UUID="$(printf '%s' "$TARGET" | awk -F/ '{print $2}')"
+echo "===== [$(date -Iseconds)] Starting backup task: '$DESC' ====="
+echo "[INFO] Source: $SOURCE"
+echo "[INFO] Target: $TARGET"
+echo "[INFO] Mount directory: $MOUNT_DIR"
 
-    MARKER_DIR="$MOUNT_DIR/$UUID/.houston"
-    MARKER_FILE="$MARKER_DIR/client.json"
-    mkdir -p "$MARKER_DIR"
+mkdir -p "$MOUNT_DIR"
 
-    printf '{"install_id":"%s","smb_user":"%s","source":"%s","user":"%s","host":"%s","platform":"linux"}\n' \
-    "$INSTALL_ID" "$SMB_USER" "$SOURCE" "$(id -un)" "$(hostname -s)" > "$MARKER_FILE"
+# This relies on /etc/fstab having a matching entry for $MOUNT_DIR
+mount "$MOUNT_DIR"
 
-    mkdir -p "$MOUNT_DIR/$TARGET"
-    echo "[INFO] Running rsync..."
-    rsync -a${task.mirror ? ' --delete' : ''} "$SOURCE" "$MOUNT_DIR/$TARGET" >> "$LOG_FILE" 2>&1
-    RSYNC_STATUS=$?
+# With -e, this will exit non-zero if not mounted
+mountpoint -q "$MOUNT_DIR"
 
-    if [ $RSYNC_STATUS -ne 0 ]; then
-      echo "[ERROR] rsync failed with exit code $RSYNC_STATUS" >> "$LOG_FILE"
-      exit $RSYNC_STATUS
-    else
-      echo "[SUCCESS] rsync completed successfully" >> "$LOG_FILE"
-    fi
+echo "[SUCCESS] SMB share mounted at $MOUNT_DIR"
 
-    STATUS=$([ $RSYNC_STATUS -eq 0 ] && echo "success" || echo "failure")
-      echo '{"event":"backup_end","timestamp":"'"$(date -Iseconds)"'","uuid":"'"${task.uuid}"'","host":"'"${smbHost}"'","share":"'"${smbShare}"'","source":"'"${task.source}"'","target":"'"${target}"'","status":"'"$STATUS"'","install_id":"'"$INSTALL_ID"'","smb_user":"'"$SMB_USER"'"}' >> "$EVENT_LOG"
+UUID="$(printf '%s' "$TARGET" | awk -F/ '{print $2}')"
 
-    echo "===== [$(date -Iseconds)] Backup task completed ====="
-  } 2>&1 | tee -a "$LOG_FILE"
-  `;
+MARKER_DIR="$MOUNT_DIR/$UUID/.houston"
+MARKER_FILE="$MARKER_DIR/client.json"
+mkdir -p "$MARKER_DIR"
+
+printf '{"install_id":"%s","smb_user":"%s","source":"%s","user":"%s","host":"%s","platform":"linux"}\n' \
+"$INSTALL_ID" "$SMB_USER" "$SOURCE" "$(id -un)" "$(hostname -s)" > "$MARKER_FILE"
+
+mkdir -p "$MOUNT_DIR/$TARGET"
+echo "[INFO] Running rsync..."
+rsync -a${task.mirror ? ' --delete' : ''} "$SOURCE" "$MOUNT_DIR/$TARGET"
+RSYNC_STATUS=$?
+
+if [ $RSYNC_STATUS -ne 0 ]; then
+  echo "[ERROR] rsync failed with exit code $RSYNC_STATUS"
+  exit $RSYNC_STATUS
+else
+  echo "[SUCCESS] rsync completed successfully"
+fi
+
+STATUS=$([ $RSYNC_STATUS -eq 0 ] && echo "success" || echo "failure")
+echo '{"event":"backup_end","timestamp":"'"$(date -Iseconds)"'","uuid":"'"${task.uuid}"'","host":"'"$SMB_HOST"'","share":"'"$SMB_SHARE"'","source":"'"$SOURCE"'","target":"'"$TARGET"'","status":"'"$STATUS"'","install_id":"'"$INSTALL_ID"'","smb_user":"'"$SMB_USER"'"}' >> "$EVENT_LOG"
+
+echo "===== [$(date -Iseconds)] Backup task completed ====="
+`;
 
     fs.writeFileSync(scriptPath, scriptContent, { mode: 0o700 });
   }  

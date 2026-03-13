@@ -7,5 +7,12 @@ builds
 yarn.lock
 .vscode
 .idea
-package-lin-mac-sshpass.sh
-factory-reset-server.sh
+
+.env
+.env*
+!scripts/release/.env.orchestrator.example
+!scripts/release/.env.release.example
+
+scripts/test-pkg.sh
+.yarn/install-state.gz
+.DS_Store

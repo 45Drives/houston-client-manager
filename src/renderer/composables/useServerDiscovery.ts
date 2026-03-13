@@ -39,7 +39,7 @@ export function useServerDiscovery() {
       const toAdd = fallback.filter(fb => !discoveryState.servers.some(existing => existing.ip === fb.ip))
       if (toAdd.length) {
         discoveryState.servers.push(...toAdd)
-        // toast is optional; you can show it where this composable is used
+        // toast is optional
       }
     } catch (err) {
       console.error('Fallback scan failed:', err)

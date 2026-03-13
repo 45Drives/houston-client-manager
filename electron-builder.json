@@ -1,9 +1,9 @@
 {
-    "appId": "com.protocase.drivesetupwizard",
+    "appId": "com.protocase.drivestoragewizard",
     "directories": {
         "output": "dist"
     },
-    "productName": "45Drives-Setup-Wizard",
+    "productName": "45Drives-Storage-Wizard",
     "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
     "publish": {
         "provider": "github",
@@ -16,18 +16,27 @@
         "oneClick": false,
         "perMachine": false,
         "allowToChangeInstallationDirectory": true,
-        "shortcutName": "45Drives Setup Wizard"
+        "shortcutName": "45Drives Storage Wizard"
     },
     "mac": {
         "hardenedRuntime": true,
         "entitlements": "entitlements.mac.plist",
-        "entitlementsInherit": "entitlements.mac.plist"
+        "entitlementsInherit": "entitlements.mac.inherit.plist",
+        "signIgnore": [
+            ".*\\.(png|jpe?g|svg|gif|webp|ico|icns)$",
+            ".*\\.(mp3|wav|aac|mp4|mov|webm|ogg)$",
+            ".*\\.(json|txt|md|html|css|map)$",
+            ".*\\.pak$",
+            ".*/[A-Za-z_]+\\.lproj/.*$",
+            ".*/Electron Framework\\.framework/Versions/A/Resources/.*$",
+            ".*/assets/.*"
+        ]
     },
     "win": {
         "target": "nsis",
         "compression": "maximum",
         "icon": "icon.ico",
-        "sign": false
+        "signAndEditExecutable": true
     },
     "linux": {
         "target": [
@@ -88,14 +97,35 @@
         "!**/.yarn/**",
         "!**/node_modules/*/test/**",
         "!**/node_modules/*/.git/**",
+        "!**/node_modules/@rollup/**",
         "!**/node_modules/rollup/**",
         "!**/node_modules/webpack/**",
         "!**/node_modules/esbuild/**",
+        "!**/node_modules/@esbuild/**",
         "!**/node_modules/vite/**",
+        "!**/node_modules/@vitejs/**",
+        "!**/@esbuild/**",
+        "!**/esbuild-*/**",
         "!**/node_modules/@vue/**",
         "!**/node_modules/typescript/**",
         "!**/node_modules/vue/**",
-        "!**/node_modules/@types/**"
+        "!**/node_modules/@types/**",
+        "!**/node_modules/@45drives/houston-common-ui/node_modules/**",
+        "!**/node_modules/@45drives/houston-common-ui/lib/**",
+        "!**/node_modules/@45drives/houston-common-ui/scripts/**",
+        "!**/node_modules/@45drives/houston-common-ui/typings/**",
+        "!**/node_modules/@45drives/houston-common-lib/node_modules/**",
+        "!**/node_modules/@45drives/houston-common-lib/lib/**",
+        "!**/node_modules/@45drives/houston-common-lib/examples/**",
+        "!**/node_modules/@45drives/houston-common-lib/scripts/**",
+        "!**/node_modules/@45drives/houston-common-lib/tests/**",
+        "!**/node_modules/@45drives/houston-common-lib/typings/**",
+        "!**/node_modules/@45drives/houston-common-ui/lib/components/ServerView/assets/**",
+        "!**/node_modules/@45drives/houston-common-ui/lib/components/img/**",
+        "!Mac-signed",
+        "!Mac-signed/**",
+        "!mac-signing-out",
+        "!mac-signing-out/**"
     ],
     "extraResources": [
         {
@@ -106,5 +136,6 @@
             ]
         }
     ],
-    "asar": false
+    "asar": true,
+    "asarUnpack": ["**/*.node", "**/*.dylib"]
 }

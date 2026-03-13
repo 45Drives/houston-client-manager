@@ -57,7 +57,7 @@ const { discoveryState } = useServerDiscovery()
 provide(discoveryStateInjectionKey, discoveryState as DiscoveryState)
 
 
-// 🌈 THEME: hook composable and reflect division into provided ref
+// THEME: hook composable and reflect division into provided ref
 const { currentTheme, currentDivision, applyThemeFromAlias } = useThemeFromAlias()
 
 watch(currentDivision, (d) => { divisionCode.value = d as DivisionType }, { immediate: true })
@@ -74,7 +74,7 @@ onMounted(() => {
     vueRouter: router,
     setCurrentWizard: (w) => { /* optional: track wizard here if needed */ },
     setShowWebView: (v) => { /* optional: track webview toggle */ },
-    // if you have old helpers, pass them in:
+    // pass old helpers if available:
     // openStorageSetup,
     // openHoustonWindow,
     // waitForServerRebootAndShowWizard,

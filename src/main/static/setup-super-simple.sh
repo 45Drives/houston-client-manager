@@ -14,7 +14,7 @@ echo "[BOOTSTRAP_STARTED] $(date)"
 
 if [[ $EUID -ne 0 ]]; then
   echo "[ERROR] This script must be run as root (or with passwordless sudo)."
-  echo "[ERROR] Please use the root account in the Setup Wizard, or configure sudoers accordingly."
+  echo "[ERROR] Please use the root account in the Storage Wizard, or configure sudoers accordingly."
   exit 1
 fi
 

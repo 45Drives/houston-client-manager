@@ -148,7 +148,7 @@ export default async function fetchBackupsFromServer(data: any, mainWindow: Brow
       let folder = "/";
 
       if (event?.source) {
-        // show the original source path (what you backed up)
+        // show the original source path (what was backed up)
         folder = event.source;
       } else if (event?.target) {
         // Remove /uuid/clientname prefix from target path

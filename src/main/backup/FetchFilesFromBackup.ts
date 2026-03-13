@@ -45,7 +45,7 @@ export default async function fetchFilesFromBackup(data: FetchFilesFromBackupDat
 function listFiles(dir: string, relPath = ""): string[] {
   const out: string[] = [];
 
-  // If you want to skip dot-directories early for speed, you can:
+  // To skip dot-directories early for speed:
   // for (const entry of fs.readdirSync(dir, { withFileTypes: true })) { ... }
   for (const entry of fs.readdirSync(dir)) {
     const full = path.join(dir, entry);

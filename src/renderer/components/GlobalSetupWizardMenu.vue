@@ -41,6 +41,8 @@
                         @click="selectTheme('theme-homelab')">45Homelab</button>
                     <button class="btn theme-btn theme-btn-professional w-full mb-1"
                         @click="selectTheme('theme-professional')">45Pro</button>
+                    <button class="btn theme-btn theme-btn-studio w-full mb-1"
+                        @click="selectTheme('theme-studio')">45Studio</button>
                 </div>
 
                 <!-- Dark mode -->
@@ -120,7 +122,7 @@ const darkModeButtonClass = computed(() => (darkMode.value ? 'btn-sun' : 'btn-mo
 // }
 const { setTheme, currentTheme } = useThemeFromAlias()
 
-function selectTheme(theme: 'theme-default' | 'theme-homelab' | 'theme-professional') {
+function selectTheme(theme: 'theme-default' | 'theme-homelab' | 'theme-professional' | 'theme-studio') {
    setTheme(theme) // updates currentTheme, which updates currentDivision, which updates the logo
 }
 
@@ -218,6 +220,18 @@ const buttonClass = (name: 'setup' | 'backup' | 'restore' | 'dashboard') =>
 .theme-btn-professional:hover {
     background-color: #4F8F37;
     border-color: #4F8F37;
+}
+
+.theme-btn-studio {
+    background-color: #6557A5;
+    border: 1px solid #6557A5;
+    color: white;
+    transition: all 0.2s ease-in-out;
+}
+
+.theme-btn-studio:hover {
+    background-color: #504584;
+    border-color: #504584;
 }
 
 .theme-btn {

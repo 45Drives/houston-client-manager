@@ -19,7 +19,7 @@ export function useRebootWatcher() {
       } catch {}
       if (!serverUp) await sleep(5000)
       else {
-        // double-check after 5s like your original
+        // double-check after 5s
         await sleep(5000)
         try { serverUp = (await fetch(url, { method: 'GET', cache: 'no-store' })).ok } catch { serverUp = false }
       }

@@ -1,13 +1,14 @@
 import { jsonLogger } from '../main';
 import { BackUpManager } from "./types";
 import { BackUpTask, TaskSchedule } from "@45drives/houston-common-lib";
-import { formatDateForTask, formatDateForTask2, getAppPath, getMountSmbScript, getSmbTargetFromSmbTarget } from "../utils";
+import { formatDateForTask, getAppPath, getMountSmbScript, getSmbTargetFromSmbTarget } from "../utils";
 import sudo from 'sudo-prompt';
 import path from "path";
 import { app } from 'electron';
 import fs from 'fs';
 import os from 'os';
 import { exec } from "child_process";
+import { assertSafeHost, assertSafeShare, assertSafeUsername, escapeCmdValue, toBase64 } from "../security";
 import { getCredentialManager } from '../credentialManager';
 
 const TASK_ID = "Houston_Backup_Task";
@@ -37,7 +38,7 @@ export class BackUpManagerWin implements BackUpManager {
 
   protected runScriptAdmin(powershellScript: string, scriptName: string): Promise<{ stdout: string, stderr: string }> {
     const options = {
-      name: '45Drives Setup Wizard'
+      name: '45Drives Storage Wizard'
     };
 
     // Save to file
@@ -218,6 +219,63 @@ export class BackUpManagerWin implements BackUpManager {
     }
   }
 
+  addUserToBackupOperatorsGroup() {
+    return `
+# Get current members of Backup Operators
+$groupMembers = Get-LocalGroupMember -Group "Backup Operators" | Select-Object -ExpandProperty Name
+Write-Output "Group Members: $groupMembers"
+
+# Check if user is already a member before adding
+if ($groupMembers -notcontains $user) {
+    Add-LocalGroupMember -Group "Backup Operators" -Member $user
+    Write-Output "$user added to Backup Operators."
+} else {
+    Write-Output "$user is already a member of Backup Operators."
+}    
+`
+  }
+
+  getAddBackupGroupsToLogOnBatchAndService() {
+    return `
+# Check if "Backup Operators" has the required rights
+$backupOperatorsGroup = "Backup Operators"
+$requiredRights = @("SeBatchLogonRight", "SeServiceLogonRight")
+
+# Export current security settings
+$cfgFile = "$env:TEMP\\secpol.cfg"
+secedit /export /areas USER_RIGHTS /cfg $cfgFile
+
+# Get current rights from the policy
+$content = Get-Content $cfgFile
+$batchLogonRight = ($content | Select-String "SeBatchLogonRight").Line
+$serviceLogonRight = ($content | Select-String "SeServiceLogonRight").Line
+
+# Check if Backup Operators already have the rights
+$hasBatchLogon = $batchLogonRight -like "*S-1-5-32-551"
+$hasServiceLogon = $serviceLogonRight -like "*S-1-5-32-551"
+
+# If Backup Operators do not have the required rights, modify the policy
+if (-not $hasBatchLogon -or -not $hasServiceLogon) {
+    Write-Output "Backup Operators do not have the required rights. Updating permissions..."
+
+    # Modify the policy file
+    if (-not $hasBatchLogon) {
+        $content = $content -replace "(SeBatchLogonRight =.*)", "\`$1, *S-1-5-32-551"
+    }
+    if (-not $hasServiceLogon) {
+        $content = $content -replace "(SeServiceLogonRight =.*)", "\`$1, *S-1-5-32-551"
+    }
+
+    # Save changes and apply policy
+    $content | Set-Content $cfgFile
+    secedit /configure /db c:\\windows\\security\\local.sdb /cfg $cfgFile /areas USER_RIGHTS /quiet
+    Write-Output "Permissions updated. Restart required for changes to take effect."
+} else {
+    Write-Output "Backup Operators already have the required rights."
+}
+`
+  }
+
   async scheduleAllTasks(
     tasks: BackUpTask[],
     username: string,
@@ -225,44 +283,51 @@ export class BackUpManagerWin implements BackUpManager {
     onProgress?: (done: number, total: number, msg: string) => void
   ): Promise<void> {
 
-    // const scriptsDir = path.join(process.env.ProgramData ?? 'C:\\ProgramData', 'houston-backups', 'scripts');
-    // const credDir = path.join(process.env.ProgramData ?? 'C:\\ProgramData', 'houston-backups', 'credentials');
     // We still elevate this whole function (task creation needs S4U + registration),
     // but we write to per-user dirs so future reads/writes don't need admin.
     const scriptsDir = SCRIPTS_DIR.replace(/\\/g, '\\\\');
     const credDir = CREDS_DIR.replace(/\\/g, '\\\\');
 
+    const safeUser = assertSafeUsername(username);
+    const userB64 = toBase64(safeUser);
+    const passB64 = toBase64(password);
+
     const psLines: string[] = [
+      `# Backup-Operators membership & rights`,
+      `$user = "$env:USERNAME"`,
+      `$userVal = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String("${userB64}"))`,
+      `$passVal = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String("${passB64}"))`,
+      `${this.addUserToBackupOperatorsGroup()}`,
+      `${this.getAddBackupGroupsToLogOnBatchAndService()}`,
       `New-Item -ItemType Directory -Force -Path "${scriptsDir}" | Out-Null`,
-      `New-Item -ItemType Directory -Force -Path "${credDir}"   | Out-Null`
+      `New-Item -ItemType Directory -Force -Path "${credDir}"   | Out-Null`,
+      `icacls "${credDir}" /inheritance:r /grant "$env:USERNAME:(OI)(CI)F" /grant "SYSTEM:(OI)(CI)F" /grant "Administrators:(OI)(CI)F" /T`
     ];
 
     tasks.forEach((t, idx) => {
       console.debug(t)
 
-      const [smbHost, smbSharePath] = t.target.split(':');
-      const smbShare = smbSharePath.split('/')[0];
-      // const target = getSmbTargetFromSmbTarget(task.target);
+      const [smbHostRaw, smbSharePath] = t.target.split(':');
+      const smbHost = assertSafeHost(smbHostRaw);
+      const smbShare = assertSafeShare(smbSharePath.split('/')[0]);
       t.host = smbHost;
       t.share = smbShare;
 
       // Store credential in encrypted vault
       getCredentialManager().store(smbHost, smbShare, username, password);
 
-      // const credFile = path.join(credDir, `${smbShare}.cred`).replace(/\\/g, '\\\\');
-      // const batPathEsc = this.scriptPath(t.uuid).replace(/\\/g, '\\\\');
       const credFile = path.join(credDir, `${smbShare}.cred`).replace(/\\/g, '\\\\');
       const batPathEsc = this.scriptPath(t.uuid).replace(/\\/g, '\\\\');
 
-      /* 1️⃣  cred file (idempotent) */
-      psLines.push(`"username=${username}\n` + `" | Out-File -Encoding ascii -NoNewline -Force "${credFile}"`);
-      psLines.push(`"password=${password}` + `" | Out-File -Append  -Encoding ascii "${credFile}"`);
+      /* cred file (idempotent) — use base64-decoded values */
+      psLines.push(`"username=$userVal\n` + `" | Out-File -Encoding ascii -NoNewline -Force "${credFile}"`);
+      psLines.push(`"password=$passVal` + `" | Out-File -Append  -Encoding ascii "${credFile}"`);
 
-      /* 2️⃣  BAT file */
+      /* BAT file */
       const batTxt = this.buildActionBat(t, username);
       psLines.push(`[IO.File]::WriteAllText("${batPathEsc}", @'\n${batTxt}\n'@)`);
 
-      /* 3️⃣  ScheduledTask */
+      /* ScheduledTask */
       psLines.push(this.scheduleToTaskTrigger(t.schedule));
 
       if (t.schedule.repeatFrequency == 'month'){
@@ -299,7 +364,7 @@ export class BackUpManagerWin implements BackUpManager {
           # 6.) Trigger: Monthly
           $triggers = $task.Triggers
           $trigger = $triggers.Create(4)
-          $trigger.StartBoundary = "${formatDateForTask2(t.schedule.startDate)}"
+          $trigger.StartBoundary = "${formatDateForTask(t.schedule.startDate, true)}"
           $trigger.DaysOfMonth = 1
           $trigger.MonthsOfYear = 0x0FFF
 
@@ -336,162 +401,6 @@ export class BackUpManagerWin implements BackUpManager {
  * We keep it in one place so both `schedule()` and `scheduleAllTasks()` use the
  * exact same payload.
  */
-  // private buildActionBat(
-  //   task: BackUpTask
-  // ): string {
-  //   const mountBat = getMountSmbScript();
-
-  //   // const credFile = path.join(
-  //   //   process.env.ProgramData || 'C:\\ProgramData',
-  //   //   'houston-backups',
-  //   //   'credentials',
-  //   //   `${task.share}.cred`
-  //   // );
-  //   const credFile = path.join(CREDS_DIR, `${task.share}.cred`);
-
-  //   // remove any leading "\" so drive:\<path> is well-formed 
-  //   const rawDst = getSmbTargetFromSmbTarget(task.target)
-  //     .replace(/\//g, '\\')
-  //     .replace(/^\\/, '');
-
-  //   const logFile = path.join(
-  //     logPath,
-  //     `Houston_Backup_Task_${task.uuid}.log`
-  //   );
-  //   const eventLog = path.join(logPath, `45drives_backup_events.json`);
-
-  //   return `
-  // @echo off
-  // setlocal enabledelayedexpansion
-
-  // :: get ISO timestamp via PowerShell
-  // for /f "delims=" %%I in ('powershell -NoProfile -Command "Get-Date -Format o"') do set "TS=%%I"
-
-  // :: read install_id for events + marker
-  // set "CLIENT_ID_FILE=${path.join(app.getPath('userData'), 'client-id.txt').replace(/\\/g, '\\\\')}"
-  // set "INSTALL_ID="
-  // if exist "%CLIENT_ID_FILE%" for /f "usebackq delims=" %%I in ("%CLIENT_ID_FILE%") do set "INSTALL_ID=%%I"
-  
-  // :: --- backup_start event ---
-  //   echo {^"event^":^"backup_start^",^"timestamp^":^"!TS!^",^"uuid^":^"${task.uuid}"^,^"host^":^"${task.host}"^,^"share^":^"${task.share}"^,^"source^":^"${task.source}"^,^"target^":^"${rawDst}"^,^"install_id^":^"!INSTALL_ID!"^} >> "${eventLog}"
-
-  // :: --- Houston backup task metadata (for reference) ---
-  // :: uuid        = ${task.uuid}
-  // :: description = ${task.description}
-  // :: source      = ${task.source}
-  // :: target      = ${rawDst}
-  // :: mirror      = ${task.mirror}
-  // :: START_DATE  = ${task.schedule.startDate.toISOString()}
-  // :: SMB_HOST    = ${task.host}
-  // :: SMB_SHARE   = ${task.share}
-  
-  // :: --- export all four params as env vars ---
-  // set "CRED_FILE=${credFile}"
-  // set "SMB_HOST=${task.host}"
-  // set "SMB_SHARE=${task.share}"
-  
-  // :: turn delayed expansion on so we can use !VAR!
-  // setlocal EnableDelayedExpansion
-  
-  // :: --- prepare paths ---
-  // set "LOG=${logFile}"
-  // set "SOURCE=${task.source}"
-  // set "DST_PATH=${rawDst}"
-  // set "mountBat=${mountBat}"
-  // set "NETWORK_PATH=\\\\!SMB_HOST!\\!SMB_SHARE!"
-  
-  // :: --- ensure log directory ---
-  // if not exist "${logPath}" (
-  //   mkdir "${logPath}"
-  // )
-  
-  // :: --- run everything inside a single redirect block ---
-  // echo ==========================================================
-  // echo [!date! !time!]  START  ${task.uuid}
-  // echo  Source      : !SOURCE!
-  // echo  Target      : !DST_PATH!
-  // echo  NetworkPath : !NETWORK_PATH!
-  // echo ----------------------------------------------------------
-
-  // :: --- DEBUG: show exactly what we're about to run ---
-  // echo [DEBUG] mount command: cmd /c ""!mountBat!" "!SMB_HOST!" "!SMB_SHARE!" "!CRED_FILE!"" >> "%LOG%" 2>&1
-
-  // :: --- actually run it & capture JSON + stderr ---
-  // set "TEMP_JSON=%TEMP%\mount_result_%RANDOM%.txt"
-  // cmd /c ""!mountBat!" "!SMB_HOST!" "!SMB_SHARE!" "!CRED_FILE!"" > "!TEMP_JSON!" 2>&1
-
-  // :: Debug
-  // echo [DEBUG] mount output: >> "%LOG%"
-  // type "!TEMP_JSON!" >> "%LOG%"
-  // echo !TEMP_JSON!
-
-  // :: Extract line with DriveLetter
-  // set "json="
-  // for /f "delims=" %%L in ('findstr "DriveLetter" "!TEMP_JSON!"') do (
-  //     call set "json=%%L"
-  // )
-
-  // echo !json!
-
-  // :: Write json to temp file
-  // echo !json! > "%TEMP%\__extract.json"
-
-  // :: Extract drive letter
-  // for /f "tokens=2 delims=:" %%a in ('findstr /i "DriveLetter" "%TEMP%\__extract.json"') do (
-  //     set "temp=%%a"
-  // )
-
-  // set "temp=!temp:"=!"
-  // set "temp=!temp: =!"
-  // set "drive=!temp:~0,1!"
-
-  // echo !drive!
-  // :: Clean up temp file
-  // del "%TEMP%\__extract.json" >nul 2>&1
-
-  // :: Build DEST
-  // set "DEST=!drive!:\!DST_PATH!"
-
-  // echo !DEST!
-
-  // rem DST_PATH starts with: \UUID\host\...
-  // for /f "tokens=1 delims=\\" %%U in ("!DST_PATH!") do set "UUID=%%U"
-
-  // set "MARKER_DIR=!drive!:\!UUID!\.houston"
-  // if not exist "!MARKER_DIR!" mkdir "!MARKER_DIR!"
-  // > "!MARKER_DIR!\client.json" echo {"install_id":"!INSTALL_ID!","user":"%USERNAME%","host":"%COMPUTERNAME%","platform":"win"}
-
-  // rem --- copy payload with robocopy ---
-  // mkdir "!DEST!" 2>nul
-  // echo [INFO] Running robocopy ...
-  // robocopy "!SOURCE!" "!DEST!" /E /Z /FFT /R:2 /W:5 /V /NP
-  // set "RC=!errorlevel!"
-
-  // :: --- backup_end event ---
-  // for /f "delims=" %%I in ('powershell -NoProfile -Command "Get-Date -Format o"') do set "TS2=%%I"
-  // set "STATUS="
-  // if !RC! EQU 0 (set STATUS=success) else (set STATUS=failure)
-  // echo {^"event^":^"backup_end^",^"timestamp^":^"!TS2!^",^"uuid^":^"${task.uuid}"^,^"host^":^"${task.host}"^,^"share^":^"${task.share}"^,^"source^":^"${task.source}"^,^"target^":^"${rawDst}"^,^"status^":^"!STATUS!"^,^"install_id^":^"!INSTALL_ID!"^} >> "${eventLog}"
-
-  // rem --- clean up the mapping ---
-  // timeout /t 2 >nul
-  // net use !drive!: /delete /y >> "%LOG%" 2>&1
-
-  // rem --- interpret robocopy return codes ---
-  // rem Exit codes: 0 = no copy needed, 1 = some files copied, 8+ = errors
-  // if !RC! GEQ 8 (
-  //   echo [ERROR] robocopy returned !RC! >> "%LOG%" 2>&1
-  //   exit /b !RC!
-  // ) else (
-  //   echo [INFO] robocopy completed with code !RC! >> "%LOG%" 2>&1
-  // )
-
-  // :: --- final exit ---
-  // echo [!date! !time!]  END    rc=!RC! >> "!LOG!" 2>&1
-  // exit /b !RC!
-  // `.trimStart();
-  // }
-  
   private buildActionBat(task: BackUpTask, smbUser: string): string {
     const mountBat = getMountSmbScript();
 
@@ -499,6 +408,12 @@ export class BackUpManagerWin implements BackUpManager {
     const rawDst = getSmbTargetFromSmbTarget(task.target)
       .replace(/\//g, '\\')
       .replace(/^\\/, '');
+
+    const safeHost = escapeCmdValue(task.host || '');
+    const safeShare = escapeCmdValue(task.share || '');
+    const safeSource = escapeCmdValue(task.source || '');
+    const safeDst = escapeCmdValue(rawDst);
+    const safeSmbUser = escapeCmdValue(smbUser);
 
     const logFile = path.join(logPath, `Houston_Backup_Task_${task.uuid}.log`);
     const eventLog = path.join(logPath, `45drives_backup_events.json`);
@@ -520,15 +435,15 @@ setlocal enabledelayedexpansion
 
 :: identities and constants
 set "CRED_FILE=${credFile.replace(/\\/g, '\\\\')}"
-set "SMB_HOST=${task.host}"
-set "SMB_SHARE=${task.share}"
-set "SOURCE=${task.source}"
-set "DST_PATH=${rawDst}"
+set "SMB_HOST=${safeHost}"
+set "SMB_SHARE=${safeShare}"
+set "SOURCE=${safeSource}"
+set "DST_PATH=${safeDst}"
 set "LOG=${logFile.replace(/\\/g, '\\\\')}"
 set "EVENT_LOG=${eventLog.replace(/\\/g, '\\\\')}"
 set "MOUNTBAT=${mountBat}"
 set "NETWORK_PATH=\\\\!SMB_HOST!\\!SMB_SHARE!"
-set "SMB_USER=${smbUser}"
+set "SMB_USER=${safeSmbUser}"
 
 :: install_id from client-id.txt
 set "CLIENT_ID_FILE=${path.join(app.getPath('userData'), 'client-id.txt').replace(/\\/g, '\\\\')}"
@@ -624,32 +539,6 @@ exit /b !RC!
   }
 
 
-  // async unschedule(task: BackUpTask): Promise<void> {
-  //   const { bat, log, cred } = this.getTaskPaths(task);
-
-  //   // one PS script to both unregister and delete
-  //   const ps = `
-  //   # unregister the scheduled task
-  //   if (Get-ScheduledTask -TaskName "${TASK_ID}_${task.uuid}" -ErrorAction SilentlyContinue) {
-  //     Unregister-ScheduledTask -TaskName "${TASK_ID}_${task.uuid}" -Confirm:$false
-  //   }
-
-  //   # delete the on-disk artifacts
-  //   Remove-Item -Path "${bat}"   -Force -ErrorAction SilentlyContinue
-  //   # Remove-Item -Path "${log}"   -Force -ErrorAction SilentlyContinue
-
-  //   # prune the credential file if no other task uses it
-  //   $share = "${task.share}"
-  //   $inUse = (Get-ScheduledTask | Where-Object TaskName -like "*${TASK_ID}_*" `
-  //     + `| ForEach-Object { $_.TaskName.Split('_')[-1] } `
-  //     + `| Where-Object { $_ -eq "${task.uuid}" }).Count -gt 0
-  //   if (-not $inUse) {
-  //     Remove-Item -Path "${cred}" -Force -ErrorAction SilentlyContinue
-  //   }
-  // `;
-
-  //   await this.runScriptAdmin(ps, `unschedule_and_cleanup_${task.uuid}`);
-  // }
   async unschedule(task: BackUpTask): Promise<void> {
     const { bat, cred } = this.getTaskPaths(task);
 
@@ -709,39 +598,6 @@ $task | Set-ScheduledTask
     }
   }
 
-  /** Unschedule & clean up MANY tasks in one go */
-  // async unscheduleSelectedTasks(tasks: BackUpTask[]): Promise<void> {
-  //   // build PS lines to unregister each task
-  //   const unregisterLines = tasks.map(t =>
-  //     `if (Get-ScheduledTask -TaskName "${TASK_ID}_${t.uuid}" -ErrorAction SilentlyContinue) { ` +
-  //     `Unregister-ScheduledTask -TaskName "${TASK_ID}_${t.uuid}" -Confirm:$false }`
-  //   );
-
-  //   // collect all file paths
-  //   const bats = tasks.map(t => `"${this.getTaskPaths(t).bat}"`);
-  //   const logs = tasks.map(t => `"${this.getTaskPaths(t).log}"`);
-  //   const creds = Array.from(
-  //     new Set(tasks.map(t => this.getTaskPaths(t).cred))
-  //   ).map(p => `"${p}"`);
-
-  //   // combine into one PS blob
-  //   const ps = [
-  //     '# — unregister all selected tasks',
-  //     ...unregisterLines,
-  //     '',
-  //     '# — delete .bat scripts',
-  //     `Remove-Item -Path ${bats.join(', ')} -Force -ErrorAction SilentlyContinue`,
-  //     '',
-  //     // '# — delete .log files',
-  //     // `Remove-Item -Path ${logs.join(', ')} -Force -ErrorAction SilentlyContinue`,
-  //     '',
-  //     '# — delete orphaned .cred files',
-  //     `Remove-Item -Path ${creds.join(', ')} -Force -ErrorAction SilentlyContinue`
-  //   ].join('\n');
-
-  //   // run it once as admin
-  //   await this.runScriptAdmin(ps, 'bulk_unschedule_and_cleanup');
-  // }
   async unscheduleSelectedTasks(tasks: BackUpTask[]): Promise<void> {
     if (!tasks || tasks.length === 0) return;
 
@@ -841,7 +697,7 @@ $taskTrigger = New-ScheduledTaskTrigger -At $startTime -Daily -DaysInterval 7
 if (Get-ScheduledTask -TaskName "${taskName}" -ErrorAction SilentlyContinue) {
   Unregister-ScheduledTask -TaskName "${taskName}" -Confirm:$false
 } else {
-  Write-Host "⚠ Task '${taskName}' not found — skipping delete"
+  Write-Host "Task '${taskName}' not found - skipping delete"
 }
 `;
 

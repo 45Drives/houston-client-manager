@@ -215,7 +215,6 @@ function taskToBackupEntry(task: BackUpTask): BackupEntry & { __task: BackUpTask
 
 function resolveConnForTask(task: BackUpTask) {
     // Construct SMB connection fields for backend actions
-    // Adjust these to match your actual BackUpTask structure.
     const serverName = (task as any).serverName || (task as any).host || (task as any).server || ''
     const smb_host = serverName ? `${serverName}.local` : ''
     const smb_share = (task as any).shareName || (task as any).share || ''

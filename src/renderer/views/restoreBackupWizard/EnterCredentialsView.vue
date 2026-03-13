@@ -65,7 +65,7 @@
 <script setup lang="ts">
 
 import { CardContainer } from '@45drives/houston-common-ui'
-import { ref, computed, inject } from 'vue';
+import { ref, computed, inject, onMounted, onBeforeUnmount } from 'vue';
 import { EyeIcon, EyeSlashIcon } from "@heroicons/vue/20/solid";
 import { useWizardSteps, useAutoFocus, useEnterToAdvance } from '@45drives/houston-common-ui';
 import { divisionCodeInjectionKey, restoreBackUpSetupDataKey } from '../../keys/injection-keys';
@@ -74,6 +74,15 @@ import { Server } from '../../types';
 import { useHeader } from '../../composables/useHeader'
 useHeader('Select Server + Enter Credentials')
 useAutoFocus();
+
+onMounted(() => {
+  window.electron?.ipcRenderer.invoke('discovery:setEnabled', true);
+});
+
+onBeforeUnmount(() => {
+  window.electron?.ipcRenderer.invoke('discovery:setEnabled', false);
+});
+
 const division = inject(divisionCodeInjectionKey);
 const restoreBackUpData = inject(restoreBackUpSetupDataKey)!;
 const { prevStep, nextStep, wizardData } = useWizardSteps("restore-backup");

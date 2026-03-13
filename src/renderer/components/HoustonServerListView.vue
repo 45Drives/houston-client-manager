@@ -3,8 +3,8 @@
     <div class="font-bold text-center text-xl mb-2 border-b-2 border-default pb-1 w-full max-w-md">
       Detected 45Drives Servers
     </div>
-    <div class="w-full max-w-lg overflow-y-auto max-h-52 border-collapse border border-default">
-      <table class="table-auto border-collapse border border-default w-full max-w-lg">
+    <div class="w-full max-w-md overflow-y-auto max-h-52 border-collapse border border-default">
+      <table class="table-auto border-collapse border border-default w-full max-w-md">
         <thead>
           <tr class="bg-accent">
             <th class="border border-default p-2 text-center">Select</th>
@@ -61,7 +61,7 @@ const emit = defineEmits<{
   (e: 'serverSelected', srv: Server | null): void
 }>()
 
-// 3) manage your discovered servers
+// 3) manage discovered servers
 const discoveryState = inject<DiscoveryState>(discoveryStateInjectionKey)!
 
 const servers = computed(() => {
