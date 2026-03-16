@@ -90,10 +90,11 @@ export class BackUpManagerWin implements BackUpManager {
   queryTasks(): Promise<BackUpTask[]> {
     const powerShellScript = `
     $me = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
+    $meShort = $env:USERNAME
     Get-ScheduledTask |
       Where-Object {
         $_.TaskName -like '*${TASK_ID}*' -and
-        $_.Principal.UserId -eq $me
+        ($_.Principal.UserId -eq $me -or $_.Principal.UserId -eq $meShort)
       } |
       Select-Object TaskName, Triggers, Actions, State, Principal |
       ConvertTo-Json -Depth 10
