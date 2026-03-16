@@ -527,18 +527,18 @@ function createWindow() {
           try {
             await backupManager.unschedule(task);
             notify(`Successfully removed ${task.source} → ${task.target}`);
-
-            // After deletion, re-send updated tasks
-            const tasks = await backupManager.queryTasks();
-
-            IPCRouter.getInstance().send('renderer', 'action', JSON.stringify({
-              type: 'sendBackupTasks',
-              tasks
-            }));
           } catch (err: any) {
             notify(`Error deleting task: ${err.message}`);
             console.error("removeBackUpTask failed:", err);
           }
+
+          // Always re-send updated tasks so the renderer can continue
+          const tasks = await backupManager.queryTasks();
+
+          IPCRouter.getInstance().send('renderer', 'action', JSON.stringify({
+            type: 'sendBackupTasks',
+            tasks
+          }));
         } else if (message.type === 'removeMultipleBackUpTasks') {
           const tasks: BackUpTask[] = message.tasks;
           const backupManager = getBackUpManager();
@@ -551,15 +551,7 @@ function createWindow() {
           try {
             if (backupManager?.unscheduleSelectedTasks) {
               await backupManager.unscheduleSelectedTasks(tasks);
-
               notify(`Successfully removed ${tasks.length} backup task(s)!`);
-
-              const updatedTasks = await backupManager.queryTasks();
-              IPCRouter.getInstance().send('renderer', 'action', JSON.stringify({
-                type: 'sendBackupTasks',
-                tasks: updatedTasks
-              }));
-
             } else {
               notify(`Error: Backup Manager does not support bulk deletion.`);
             }
@@ -567,6 +559,13 @@ function createWindow() {
             notify(`Error: ${err.message}`);
             console.error("removeMultipleBackUpTasks failed:", err);
           }
+
+          // Always re-send updated tasks so the renderer can continue
+          const updatedTasks = await backupManager.queryTasks();
+          IPCRouter.getInstance().send('renderer', 'action', JSON.stringify({
+            type: 'sendBackupTasks',
+            tasks: updatedTasks
+          }));
         } else if (message.type === 'updateBackUpTask') {
           const task: BackUpTask = message.task;
           const username: string = message.username;

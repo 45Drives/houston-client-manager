@@ -571,7 +571,7 @@ $credInUse = $false
 try {
   $otherBats = Get-ChildItem -Path "${scriptsDirEsc}" -Filter "Houston_Backup_Task_*.bat" -ErrorAction SilentlyContinue
   foreach ($b in $otherBats) {
-    if (Select-String -Path $b.FullName -Pattern "CRED_FILE=${credEsc.replace(/\\/g, '\\\\')}" -SimpleMatch -Quiet) {
+    if (Select-String -Path $b.FullName -Pattern $credPath -SimpleMatch -Quiet) {
       $credInUse = $true
       break
     }

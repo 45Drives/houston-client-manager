@@ -470,7 +470,7 @@ EOF_${uuid}
     const dir = `${mountPoint}/${rel}`;
     const svc = `houston-smb-${task.host}-${task.share}`;
     const target = getSmbTargetFromSmbTarget(task.target);
-    const rsyncCmd = `${getRsync()} -a${task.mirror ? ' --delete' : ''} ${shellQuote(`${task.source}/`)} ${shellQuote(`${dir}/`)}`;
+    const rsyncCmd = `COPYFILE_DISABLE=1 ${getRsync()} -a${task.mirror ? ' --delete' : ''} ${shellQuote(`${task.source}/`)} ${shellQuote(`${dir}/`)}`;
 
     return (`
 #!/bin/bash
