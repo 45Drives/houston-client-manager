@@ -1,30 +1,16 @@
-// 1) capture originals
-const _origWarn = console.warn.bind(console)
-const _origError = console.error.bind(console)
-
-// 2) override warn & error
-console.warn = (...args: any[]) => {
-  const msg = args.map(String).join(' ')
-  if (
-    msg.includes('APPIMAGE env is not defined') ||
-    msg.includes('NODE_TLS_REJECT_UNAUTHORIZED')
-  ) return
-  _origWarn(...args)
-}
-
-console.error = (...args: any[]) => {
-  const msg = args.map(String).join(' ')
-  if (msg.includes('NODE_TLS_REJECT_UNAUTHORIZED')) return
-  _origError(...args)
-}
-
 import log from 'electron-log';
 log.transports.console.level = false;
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
-// process.env.NODE_ENV = 'development';
+
+// Noise-filtered console overrides (TLS warnings, APPIMAGE)
+const SUPPRESS_PATTERNS = ['APPIMAGE env is not defined', 'NODE_TLS_REJECT_UNAUTHORIZED'];
+const isSuppressed = (args: any[]) => {
+  const msg = args.map(String).join(' ');
+  return SUPPRESS_PATTERNS.some(p => msg.includes(p));
+};
 console.log = (...args) => log.info(...args);
-console.error = (...args) => log.error(...args);
-console.warn = (...args) => log.warn(...args);
+console.error = (...args) => { if (!isSuppressed(args)) log.error(...args); };
+console.warn = (...args) => { if (!isSuppressed(args)) log.warn(...args); };
 console.debug = (...args) => log.debug(...args);
 
 process.on('uncaughtException', (error) => {
@@ -434,18 +420,17 @@ function createWindow() {
   function notify(message: string) {
     if (!mainWindow || mainWindow.webContents?.isDestroyed()) return;
 
-    // always send to the standard channel
-    mainWindow.webContents.send("notification", message);
-
-    // mirror to IPCRouter bus
-    try {
-      IPCRouter.getInstance().send(
-        'renderer', 'action',
-        JSON.stringify({ type: 'notification', message })
-      );
-    } catch { }
-
-    if (!rendererIsReady) bufferedNotifications.push(message);
+    if (rendererIsReady) {
+      mainWindow.webContents.send("notification", message);
+      try {
+        IPCRouter.getInstance().send(
+          'renderer', 'action',
+          JSON.stringify({ type: 'notification', message })
+        );
+      } catch { }
+    } else {
+      bufferedNotifications.push(message);
+    }
   }
 
 
@@ -498,18 +483,30 @@ function createWindow() {
             }));
           })
         } else if (message.type === 'fetchBackupsFromServer') {
-
-          IPCRouter.getInstance().send('renderer', 'action', JSON.stringify({
-            type: "fetchBackupsFromServerResult",
-            result: await fetchBackups(message.data, mainWindow!)
-          }));
+          try {
+            IPCRouter.getInstance().send('renderer', 'action', JSON.stringify({
+              type: "fetchBackupsFromServerResult",
+              result: await fetchBackups(message.data, mainWindow!)
+            }));
+          } catch (err: any) {
+            IPCRouter.getInstance().send('renderer', 'action', JSON.stringify({
+              type: "fetchBackupsFromServerResult",
+              result: { error: err.message || 'Failed to fetch backups' }
+            }));
+          }
 
         } else if (message.type === 'fetchFilesFromBackup') {
-
-          IPCRouter.getInstance().send('renderer', 'action', JSON.stringify({
-            type: "fetchFilesFromBackupResult",
-            result: await fetchFilesInBackup(message.data)
-          }));
+          try {
+            IPCRouter.getInstance().send('renderer', 'action', JSON.stringify({
+              type: "fetchFilesFromBackupResult",
+              result: await fetchFilesInBackup(message.data)
+            }));
+          } catch (err: any) {
+            IPCRouter.getInstance().send('renderer', 'action', JSON.stringify({
+              type: "fetchFilesFromBackupResult",
+              result: { error: err.message || 'Failed to fetch files' }
+            }));
+          }
 
         } else if (message.type === 'restoreBackups') {
 
@@ -648,33 +645,19 @@ function createWindow() {
           }));
         } else if (message.type === 'requestBackUpTasksWithStatus') {
           const backUpManager = getBackUpManager();
+          if (!backUpManager) {
+            notify(`Error: No Backup Manager available.`);
+            return;
+          }
           try {
-            if (backUpManager !== null) {
-              const tasks = await backUpManager.queryTasks();
-
-              // for (const task of tasks) {
-              //   try {
-              //     task.status = await checkBackupTaskStatus(task);
-              //   } catch (err) {
-              //     console.error(`Failed to check status for ${task.description}:`, err);
-              //     task.status = 'offline_connection_error';
-              //   }
-              // }
-
-              IPCRouter.getInstance().send('renderer', 'action', JSON.stringify({
-                type: 'sendBackupTasks',
-                tasks
-              }));
-            }
-
-            const backupManager = getBackUpManager();
-            if (!backupManager) {
-             notify(`Error: No Backup Manager available.`);
-              return;
-            }
+            const tasks = await backUpManager.queryTasks();
+            IPCRouter.getInstance().send('renderer', 'action', JSON.stringify({
+              type: 'sendBackupTasks',
+              tasks
+            }));
           } catch (err: any) {
-           notify(`Error: ${err.message}`);
-            console.error("updateBackUpTask failed:", err);
+            notify(`Error: ${err.message}`);
+            console.error("requestBackUpTasksWithStatus failed:", err);
           }
 
         } else if (message.type === 'runBackUpTaskNow') {
@@ -1193,25 +1176,22 @@ app.whenReady().then(() => {
     });
   });
   
-  // const origConsole = {
-  //   log: console.debug,
-  //   warn: console.warn,
-  //   error: console.error,
-  //   debug: console.debug,
-  // };
-
   // Monkey‐patch so calls go to both electron-log + jsonLogger
-  console.debug = (...args: any[]) => {
+  console.log = (...args: any[]) => {
     log.info(...args);
     jsonLogger.info({ message: scrubString(args.map(String).join(' ')) });
   };
   console.warn = (...args: any[]) => {
-    log.warn(...args);
-    jsonLogger.warn({ message: scrubString(args.map(String).join(' ')) });
+    if (!isSuppressed(args)) {
+      log.warn(...args);
+      jsonLogger.warn({ message: scrubString(args.map(String).join(' ')) });
+    }
   };
   console.error = (...args: any[]) => {
-    log.error(...args);
-    jsonLogger.error({ message: scrubString(args.map(String).join(' ')) });
+    if (!isSuppressed(args)) {
+      log.error(...args);
+      jsonLogger.error({ message: scrubString(args.map(String).join(' ')) });
+    }
   };
   console.debug = (...args: any[]) => {
     log.debug(...args);
@@ -1351,17 +1331,19 @@ app.on('window-all-closed', () => {
   }
 });
 
-function getBackUpManager() {
+let _backUpManager: BackUpManager | null | undefined;
+function getBackUpManager(): BackUpManager | null {
+  if (_backUpManager !== undefined) return _backUpManager;
   const os = getOS();
-  let backUpManager: BackUpManager | null = null;
   if (os === "win") {
-    backUpManager = new BackUpManagerWin();
+    _backUpManager = new BackUpManagerWin();
   } else if (os === "debian" || os == "rocky") {
-    backUpManager = new BackUpManagerLin();
+    _backUpManager = new BackUpManagerLin();
   } else if (os === "mac") {
-    backUpManager = new BackUpManagerMac();
+    _backUpManager = new BackUpManagerMac();
+  } else {
+    _backUpManager = null;
   }
-  return backUpManager;
-
+  return _backUpManager;
 }
 
