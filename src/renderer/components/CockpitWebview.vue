@@ -117,31 +117,56 @@ watch(webview, (wv) => {
     wv.addEventListener('dom-ready', () => {
         console.debug('cockpit webview dom-ready')
         injectChromeCSS(wv)
+        // Inject a postMessage relay so scheduler iframe can request OAuth
+        // and receive tokens back. The scheduler cannot call window.open()
+        // from within its Cockpit iframe, so it posts a message upward.
+        // The relay logs a tagged string which the console-message listener
+        // on the Electron side picks up to open a real BrowserWindow via IPC.
+        wv.executeJavaScript(`
+          (function() {
+            if (window.__oauthRelayInstalled) return;
+            window.__oauthRelayInstalled = true;
+            window.addEventListener('message', function(e) {
+              if (e.data && e.data.type === '45d-oauth-request' && e.data.url) {
+                console.log('__45D_OAUTH_REQUEST__:' + e.data.url);
+              }
+            });
+          })();
+        `).catch((err: any) => console.error('OAuth relay injection failed:', err))
     })
-    wv.addEventListener('console-message', (e: any) => {
-        const msg = `[webview:${e.level}] ${e.message}`
-        if (e.level >= 3) console.error(msg)
-        else if (e.level === 2) console.warn(msg)
-        else console.log(msg)
-    })
-
-    // Intercept OAuth popups from the webview and open in a real BrowserWindow
-    wv.addEventListener('new-window', async (e: any) => {
-        const url = e.url || ''
-        if (url.startsWith('https://cloud-sync.45d.io/')) {
-            e.preventDefault()
+    wv.addEventListener('console-message', async (e: any) => {
+        const message = e.message || ''
+        // Handle OAuth requests relayed from scheduler iframe via console.log
+        if (typeof message === 'string' && message.startsWith('__45D_OAUTH_REQUEST__:')) {
+            const url = message.slice('__45D_OAUTH_REQUEST__:'.length)
+            console.log('[CockpitWebview] OAuth request intercepted:', url)
             try {
                 const result = await window.electron?.ipcRenderer.invoke('oauth:open', url)
                 if (result?.success && result.token) {
-                    // Relay the token back into the webview via postMessage
+                    const envelope = JSON.stringify({ type: '45d-oauth-response', ...result.token })
                     wv.executeJavaScript(`
-                        window.postMessage(${JSON.stringify(result.token)}, '*');
+                        (function() {
+                            var data = ${envelope};
+                            function broadcast(win, d) {
+                                for (var i = 0; i < win.frames.length; i++) {
+                                    try { win.frames[i].postMessage(d, '*'); } catch(e) {}
+                                    try { broadcast(win.frames[i], d); } catch(e) {}
+                                }
+                            }
+                            window.postMessage(data, '*');
+                            broadcast(window, data);
+                        })();
                     `)
                 }
             } catch (err) {
-                console.error('OAuth popup IPC error:', err)
+                console.error('OAuth IPC error:', err)
             }
+            return
         }
+        const msg = `[webview:${e.level}] ${message}`
+        if (e.level >= 3) console.error(msg)
+        else if (e.level === 2) console.warn(msg)
+        else console.log(msg)
     })
 })
 

@@ -28,6 +28,7 @@ const INVOKE_CHANNELS = new Set([
   'cred:touch',
   'get-client-ident',
   'session:clear-origin',
+  'oauth:open',
 ]);
 
 const RECEIVE_CHANNELS = new Set([

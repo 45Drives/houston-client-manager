@@ -36,16 +36,6 @@
                 </div>
 
                 <!-- right: remote-only controls -->
-                <!-- <div v-if="activeTab === 'remote'" class="col-start-3 justify-self-end flex items-center gap-2">
-                    <label class="text-sm">Server:</label>
-                    <select v-model="selectedIp" :title="selectedIp"
-                        class="input-textlike border rounded px-3 py-1 min-w-64">
-                        <option value="">Select Server</option>
-                        <option v-for="opt in serversForDropdown" :key="opt.ip" :value="opt.ip">
-                            {{ opt.label }}
-                        </option>
-                    </select>
-                </div> -->
                 <div v-if="activeTab === 'remote'" class="col-start-3 justify-self-end flex items-center gap-2">
                     <label class="text-sm">Server:</label>
                     <select v-model="selectedIp" :title="selectedIp"
@@ -65,17 +55,16 @@
                         </optgroup>
                     </select>
 
-                    <button class="btn btn-primary h-9 px-3" :disabled="!selectedIp" @click="openLogin">
-                        Connect…
+                    <button class="btn btn-success h-fit w-fit" :title="`Connect to ${selectedIp}`" :disabled="!selectedIp" @click="openLogin">
+                        Connect
                     </button>
 
-                    <button v-if="currentServer" class="btn btn-secondary h-9 px-3"
-                        @click="cockpitRef?.logoutFromCurrentServer()" title="Clear Cockpit session & reload">
+                    <button v-if="currentServer" class="btn btn-secondary h-fit w-fit" :title="`Clear Cockpit session & reload for ${currentServer.name || currentServer.ip}`"
+                        @click="cockpitRef?.logoutFromCurrentServer()">
                         Log out
                     </button>
 
-                    <button v-if="activeCredId && currentServer" class="btn btn-danger h-9 px-3" @click="forgetActive"
-                        title="Remove saved credentials for this host">
+                    <button v-if="activeCredId && currentServer" class="btn btn-danger h-fit w-fit" :title="`Remove saved credentials for ${currentServer.name || currentServer.ip}`" @click="forgetActive">
                         Forget saved login
                     </button>
                 </div>
@@ -90,9 +79,6 @@
                     <button class="btn btn-secondary w-64 h-10 px-5" :disabled="selectedBackUpTasks.length !== 1"
                         @click="viewSelected">View Selected Backup{{ selectedBackUpTasks.length > 1 ? 's' : ''
                         }}</button>
-                    <!-- <button class="btn btn-primary w-64 h-10 px-5" :disabled="selectedBackUpTasks.length === 0"
-                        @click="runSelected">Run Selected Backup{{ selectedBackUpTasks.length > 1 ? 's' : '' }} NOW
-                    </button> -->
                     <button class="btn btn-primary w-64 h-10 px-5 min-w-64"
                         :disabled="selectedBackUpTasks.length === 0 || isRunningNow" @click="runSelected">
                         <template v-if="!isRunningNow">
@@ -311,8 +297,6 @@ watch(selectedIp, async (ip) => {
 });
 
 
-
-
 watch(serversForDropdown, (list) => {
     // If no servers, or the currently selected IP disappeared, reset to empty
     if (!list.length || (selectedIp.value && !list.some(x => x.ip === selectedIp.value))) {
@@ -326,9 +310,6 @@ const deleteSelectedTasks = () => {
     backUpListRef.value?.deleteSelectedTasks?.();
 };
 
-// function runSelected() {
-//     backUpListRef.value?.runSelectedNow?.();
-// }
 async function runSelected() {
     if (selectedBackUpTasks.value.length === 0 || isRunningNow.value) return;
 

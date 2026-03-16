@@ -98,38 +98,98 @@ ipcMain.on('renderer-ready', (e) => {
   e.sender.send('client-ident', clientIdent);
 });
 
-// NEW: request/response path
+// request/response path
 ipcMain.handle('get-client-ident', async () => ({ installId }))
 
 // OAuth popup: open a real BrowserWindow so postMessage works
 ipcMain.handle('oauth:open', async (_event, url: string) => {
+  // Use a dedicated session partition so the OAuth window doesn't trigger
+  // the TOFU cert-pinning prompts from the default session.
+  const oauthSession = session.fromPartition('persist:oauth');
+
   const win = new BrowserWindow({
     width: 520,
     height: 920,
-    webPreferences: { nodeIntegration: false, contextIsolation: true },
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+      session: oauthSession,
+    },
   });
-  win.loadURL(url);
 
-  return new Promise<any>((resolve) => {
-    // Listen for navigation to the callback with token in the fragment
-    win.webContents.on('will-redirect', (_e, redirectUrl) => {
+  let resolved = false;
+  let resolvePromise: (val: any) => void;
+  const promise = new Promise<any>((r) => { resolvePromise = r; });
+
+  const OPENER_POLYFILL = `
+    (function() {
+      if (window.__oauthPatched) return;
+      window.__oauthPatched = true;
+      if (!window.opener) {
+        Object.defineProperty(window, 'opener', {
+          value: {
+            postMessage: function(data) {
+              console.log('__OAUTH_TOKEN__:' + JSON.stringify(data));
+            }
+          },
+          configurable: true
+        });
+      }
+    })();
+  `;
+
+  function handleTokenMessage(_e: any, _level: any, message: string) {
+    if (resolved) return;
+    if (typeof message === 'string' && message.startsWith('__OAUTH_TOKEN__:')) {
       try {
-        const u = new URL(redirectUrl);
-        if (u.origin === 'https://cloud-sync.45d.io') {
-          // Token may be in hash or query
-          const params = new URLSearchParams(u.hash.slice(1) || u.search.slice(1));
-          const token = Object.fromEntries(params.entries());
-          if (Object.keys(token).length) {
-            resolve({ success: true, token });
-            win.close();
-            return;
-          }
-        }
-      } catch { /* ignore */ }
-    });
+        const data = JSON.parse(message.slice('__OAUTH_TOKEN__:'.length));
+        resolved = true;
+        resolvePromise({ success: true, token: data });
+        try { win.close(); } catch {}
+      } catch { /* ignore parse errors */ }
+    }
+  }
 
-    win.on('closed', () => resolve({ success: false }));
+  // Polyfill window.opener on every page load in the main OAuth window
+  win.webContents.on('dom-ready', () => {
+    win.webContents.executeJavaScript(OPENER_POLYFILL).catch(() => {});
   });
+  win.webContents.on('console-message', handleTokenMessage);
+  win.on('closed', () => { if (!resolved) resolvePromise({ success: false }); });
+
+  // Handle child popups (e.g. "Sign in with Google" from Dropbox's page)
+  win.webContents.setWindowOpenHandler(({ url: popupUrl }) => {
+    const child = new BrowserWindow({
+      width: 500,
+      height: 700,
+      parent: win,
+      webPreferences: {
+        nodeIntegration: false,
+        contextIsolation: true,
+        session: oauthSession,
+      },
+    });
+    child.loadURL(popupUrl);
+    child.webContents.on('dom-ready', () => {
+      child.webContents.executeJavaScript(OPENER_POLYFILL).catch(() => {});
+    });
+    child.webContents.on('console-message', (_e: any, _level: any, msg: string) => {
+      if (resolved) return;
+      if (typeof msg === 'string' && msg.startsWith('__OAUTH_TOKEN__:')) {
+        try {
+          const data = JSON.parse(msg.slice('__OAUTH_TOKEN__:'.length));
+          resolved = true;
+          resolvePromise({ success: true, token: data });
+          try { child.close(); } catch {}
+          try { win.close(); } catch {}
+        } catch { /* ignore */ }
+      }
+    });
+    return { action: 'deny' }; // we opened it manually
+  });
+
+  win.loadURL(url);
+  return promise;
 });
 
 app.commandLine.appendSwitch('ignore-certificate-errors', 'true');
