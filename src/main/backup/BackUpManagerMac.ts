@@ -132,9 +132,13 @@ export class BackUpManagerMac implements BackUpManager {
     mkdir -p "${mntRoot}"
     ln -s "/Volumes/${task.share}" "${mntRoot}"
 
-    # 2 ─ system key-chain secret
+    # 2 ─ system key-chain secret (for our script to retrieve)
     security delete-generic-password -s "${service}" -a "${safeUser}" 2>/dev/null || true
     security add-generic-password    -s "${service}" -a "${safeUser}" -w "$PASSWORD" -U
+
+    # 2b ─ internet-password (so macOS Finder/mount won't prompt)
+    security delete-internet-password -s "${safeHost}" -a "${safeUser}" -r "smb " -D "Network Password" 2>/dev/null || true
+    security add-internet-password    -s "${safeHost}" -a "${safeUser}" -w "$PASSWORD" -r "smb " -D "Network Password"
     
     # 3 ─ write the task script
     cat <<'EOF_${uuid}' > "${scriptPath}"
@@ -207,6 +211,8 @@ EOF_${uuid}
       installerLines.push(
         `security delete-generic-password -s "${svc}" -a "${safeUser}" 2>/dev/null || true`,
         `security add-generic-password -s "${svc}" -a "${safeUser}" -w "$PASSWORD" -U`,
+        `security delete-internet-password -s "${host}" -a "${safeUser}" -r "smb " -D "Network Password" 2>/dev/null || true`,
+        `security add-internet-password    -s "${host}" -a "${safeUser}" -w "$PASSWORD" -r "smb " -D "Network Password"`,
         `rm -rf "${this.HOME}/houston-mounts/${share}"`,
         `mkdir -p "${this.HOME}/houston-mounts/${share}"`
       );
