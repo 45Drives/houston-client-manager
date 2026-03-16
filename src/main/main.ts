@@ -101,6 +101,37 @@ ipcMain.on('renderer-ready', (e) => {
 // NEW: request/response path
 ipcMain.handle('get-client-ident', async () => ({ installId }))
 
+// OAuth popup: open a real BrowserWindow so postMessage works
+ipcMain.handle('oauth:open', async (_event, url: string) => {
+  const win = new BrowserWindow({
+    width: 520,
+    height: 920,
+    webPreferences: { nodeIntegration: false, contextIsolation: true },
+  });
+  win.loadURL(url);
+
+  return new Promise<any>((resolve) => {
+    // Listen for navigation to the callback with token in the fragment
+    win.webContents.on('will-redirect', (_e, redirectUrl) => {
+      try {
+        const u = new URL(redirectUrl);
+        if (u.origin === 'https://cloud-sync.45d.io') {
+          // Token may be in hash or query
+          const params = new URLSearchParams(u.hash.slice(1) || u.search.slice(1));
+          const token = Object.fromEntries(params.entries());
+          if (Object.keys(token).length) {
+            resolve({ success: true, token });
+            win.close();
+            return;
+          }
+        }
+      } catch { /* ignore */ }
+    });
+
+    win.on('closed', () => resolve({ success: false }));
+  });
+});
+
 app.commandLine.appendSwitch('ignore-certificate-errors', 'true');
 
 function checkLogDir(): string {

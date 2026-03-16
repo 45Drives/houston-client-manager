@@ -4,7 +4,7 @@
     <header v-if="!hideHeader" class="relative flex items-center justify-center h-18 mt-4 w-full">
       <!-- Left (logo) -->
       <div id="app-header-left" class="absolute left-0 p-1 px-4 rounded-l">
-        <DynamicBrandingLogo :division="divisionCode" />
+        <DynamicBrandingLogo :division="divisionCode" :height="(divisionCode === 'studio' ? 16 : 12)" />
       </div>
 
       <!-- Center (title) -->
@@ -13,7 +13,7 @@
       </div>
 
       <!-- Right (menu) -->
-      <div id="app-header-right" class="absolute right-4 top-1/2 -translate-y-1/2">
+      <div id="app-header-right" class="absolute right-3 top-1/2 -translate-y-1/2">
         <GlobalSetupWizardMenu />
       </div>
     </header>
@@ -61,6 +61,11 @@ provide(discoveryStateInjectionKey, discoveryState as DiscoveryState)
 const { currentTheme, currentDivision, applyThemeFromAlias } = useThemeFromAlias()
 
 watch(currentDivision, (d) => { divisionCode.value = d as DivisionType }, { immediate: true })
+
+// Apply theme when the connected server changes
+watch(currentServer, (srv) => {
+  if (srv?.serverInfo?.aliasStyle) applyThemeFromAlias(srv.serverInfo.aliasStyle)
+})
 
 let unregisterIpcListener: (() => void) | null = null
 

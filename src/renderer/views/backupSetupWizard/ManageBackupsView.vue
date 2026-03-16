@@ -322,15 +322,6 @@ watch(serversForDropdown, (list) => {
 }, { immediate: true })
 
 
-watch(selectedIp, (ip) => {
-    const srv = discoveryState.servers.find(s => s.ip === ip) || null
-    if (srv) {
-        currentServer!.value = srv
-        // Cache credentials per-IP if needed
-    }
-})
-
-
 const deleteSelectedTasks = () => {
     backUpListRef.value?.deleteSelectedTasks?.();
 };

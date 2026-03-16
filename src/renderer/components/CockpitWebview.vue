@@ -46,6 +46,9 @@ const adv = useAdvancedModeState()
 const currentServer = inject(currentServerInjectionKey, ref<any>(null))
 const { getCredentials } = useServerCredentials()
 
+// Resolve theme alias from the connected server's info
+const serverAliasStyle = computed(() => currentServer.value?.serverInfo?.aliasStyle || '')
+
 // creds & ip supplied by main like HoustonWebView
 const manualCreds = ref<{ ip: string; username: string; password: string } | null>(null)
 const clientIp = ref('')
@@ -84,8 +87,10 @@ const currentUrl = computed(() => {
         server_ip: ip,
     }).toString()
 
-    // ONLY client_id in the hash so it survives Cockpit’s rewrite
-    const hashQS = `client_id=${encodeURIComponent(clientId.value)}`
+    // client_id + aliasStyle in the hash so they survive Cockpit's rewrite
+    const parts = [`client_id=${encodeURIComponent(clientId.value)}`]
+    if (serverAliasStyle.value) parts.push(`aliasStyle=${encodeURIComponent(serverAliasStyle.value)}`)
+    const hashQS = parts.join('&')
     const url = `${base}${searchQS ? `?${searchQS}` : ''}#${withQs(route, hashQS)}`
     // console.log('[CockpitWebview] URL:', url)
     return url
@@ -118,6 +123,25 @@ watch(webview, (wv) => {
         if (e.level >= 3) console.error(msg)
         else if (e.level === 2) console.warn(msg)
         else console.log(msg)
+    })
+
+    // Intercept OAuth popups from the webview and open in a real BrowserWindow
+    wv.addEventListener('new-window', async (e: any) => {
+        const url = e.url || ''
+        if (url.startsWith('https://cloud-sync.45d.io/')) {
+            e.preventDefault()
+            try {
+                const result = await window.electron?.ipcRenderer.invoke('oauth:open', url)
+                if (result?.success && result.token) {
+                    // Relay the token back into the webview via postMessage
+                    wv.executeJavaScript(`
+                        window.postMessage(${JSON.stringify(result.token)}, '*');
+                    `)
+                }
+            } catch (err) {
+                console.error('OAuth popup IPC error:', err)
+            }
+        }
     })
 })
 

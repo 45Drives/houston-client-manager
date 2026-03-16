@@ -16,7 +16,7 @@
         <div class="rounded-lg shadow-lg border border-default bg-accent p-4">
           <div class="grid grid-cols-1 md:grid-cols-[1fr_0.85fr] gap-3">
             <!-- Server Selection Panel -->
-            <section class="min-w-0 p-3 border border-default rounded-xl bg-primary">
+            <section class="min-w-0 p-3 border border-default rounded-xl bg-secondary">
               <div class="text-sm tracking-wider uppercase opacity-85 font-bold mb-1">Server Selection</div>
 
               <div class="flex flex-col text-left">
@@ -40,7 +40,7 @@
 
               <div class="flex items-center gap-2 mt-3">
                 <button type="button" @click="onRescanServers" :disabled="isInstalling"
-                  class="btn btn-secondary px-4 py-1 text-sm whitespace-nowrap">
+                  class="btn btn-primary px-4 py-1 text-sm whitespace-nowrap">
                   Rescan Servers
                 </button>
                 <a href="#" @click.prevent="onRestartSetup" class="text-sm text-blue-600 hover:underline ml-2">
@@ -50,7 +50,7 @@
             </section>
 
             <!-- Authentication Panel -->
-            <section class="min-w-0 p-3 border border-default rounded-xl bg-primary">
+            <section class="min-w-0 p-3 border border-default rounded-xl bg-secondary">
               <div class="text-sm tracking-wider uppercase opacity-85 font-bold mb-1">Authentication</div>
 
               <label class="flex flex-col text-left">

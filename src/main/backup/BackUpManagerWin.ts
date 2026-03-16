@@ -517,7 +517,8 @@ echo [DEBUG] DEST=!DEST! >> "%LOG%"
 for /f "tokens=1 delims=\\" %%U in ("!DST_PATH!") do set "UUID=%%U"
 set "MARKER_DIR=!drive!:\\!UUID!\\.houston"
 if not exist "!MARKER_DIR!" mkdir "!MARKER_DIR!"
-> "!MARKER_DIR!\\client.json" echo {"install_id":"!INSTALL_ID!","smb_user":"!SMB_USER!","source":"!SOURCE!","user":"%USERNAME%","host":"%COMPUTERNAME%","platform":"win"}
+set "JSON_SOURCE=!SOURCE:\=\\!"
+> "!MARKER_DIR!\\client.json" echo {"install_id":"!INSTALL_ID!","smb_user":"!SMB_USER!","source":"!JSON_SOURCE!","user":"%USERNAME%","host":"%COMPUTERNAME%","platform":"win"}
 
 :: --- copy payload ----------------------------------------------------------
 mkdir "!DEST!" 2>nul
