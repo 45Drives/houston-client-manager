@@ -13,10 +13,10 @@
                     <p class="text-xs text-default mb-1">Navigation</p>
 
                     <!-- Optional Dashboard -->
-                    <button class="btn btn-secondary wizard-btn w-full mb-1" :class="buttonClass('dashboard')"
+                    <!-- <button class="btn btn-secondary wizard-btn w-full mb-1" :class="buttonClass('dashboard')"
                         @click="goto('dashboard')">
                         Dashboard
-                    </button>
+                    </button> -->
 
                     <button class="btn btn-secondary wizard-btn w-full mb-1" :class="buttonClass('setup')"
                         @click="goto('setup')">
@@ -24,12 +24,12 @@
                     </button>
                     <button class="btn btn-secondary wizard-btn w-full mb-1" :class="buttonClass('backup')"
                         @click="goto('backup')">
-                        Backup Client
+                        Backup Manager
                     </button>
-                    <button class="btn btn-secondary wizard-btn w-full mb-1" :class="buttonClass('restore')"
+                    <!-- <button class="btn btn-secondary wizard-btn w-full mb-1" :class="buttonClass('restore')"
                         @click="goto('restore')">
                         Restore Backup
-                    </button>
+                    </button> -->
                 </div>
 
                 <!-- Themes -->

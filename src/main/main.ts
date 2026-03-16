@@ -300,6 +300,12 @@ function createWindow() {
     bufferedNotifications = [];
   });
 
+  // Relay store-manual-creds from renderer back to renderer (same window)
+  // so CockpitWebview receives creds even for discovered servers that skip install
+  ipcMain.on('store-manual-creds', (event, creds) => {
+    mainWindow?.webContents.send('store-manual-creds', creds);
+  });
+
   ipcMain.handle('install-cockpit-module', async (event, { host, username, password }) => {
     assertMainWindowSender(event);
     // 4. Store manual creds for login UI (if needed)

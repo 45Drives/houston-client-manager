@@ -391,7 +391,13 @@ export class CredentialManager {
     if (!fs.existsSync(credDir)) return 0;
 
     let imported = 0;
-    const files = fs.readdirSync(credDir).filter(f => f.endsWith('.cred'));
+    let files: string[];
+    try {
+      files = fs.readdirSync(credDir).filter(f => f.endsWith('.cred'));
+    } catch {
+      // Directory exists but user lacks list permission (mode 711) — expected
+      return 0;
+    }
 
     for (const file of files) {
       try {
@@ -506,7 +512,7 @@ export class CredentialManager {
     const scriptContent = `#!/bin/bash
 set -euo pipefail
 mkdir -p ${shellQuote(credDir)}
-chmod 700 ${shellQuote(credDir)}
+chmod 711 ${shellQuote(credDir)}
 PASSWORD="$(printf '%s' ${shellQuote(passwordB64)} | base64 --decode)"
 printf 'username=%s\\n' ${shellQuote(safeUser)} > ${shellQuote(credFile)}
 printf 'password=%s\\n' "$PASSWORD" >> ${shellQuote(credFile)}

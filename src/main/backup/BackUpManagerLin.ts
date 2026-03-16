@@ -365,7 +365,7 @@ export class BackUpManagerLin implements BackUpManager {
       const scriptContent = `#!/bin/bash
 set -euo pipefail
 mkdir -p ${shellQuote(credDir)}
-chmod 700 ${shellQuote(credDir)}
+chmod 711 ${shellQuote(credDir)}
 PASSWORD="$(printf '%s' ${shellQuote(passwordB64)} | base64 --decode)"
 printf 'username=%s\n' ${shellQuote(safeUser)} > ${shellQuote(credFile)}
 printf 'password=%s\n' "$PASSWORD" >> ${shellQuote(credFile)}

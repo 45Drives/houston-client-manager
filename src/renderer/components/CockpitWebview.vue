@@ -25,6 +25,7 @@ import { useAdvancedModeState } from '../composables/useAdvancedState'
 import { currentServerInjectionKey } from '../keys/injection-keys'
 import { IPCRouter, IPCMessageRouterRenderer } from '@45drives/houston-common-lib'
 import { useHoustonWebview } from '../composables/useHoustonWebview'
+import { useServerCredentials } from '../composables/useServerCredentials'
 
 const props = withDefaults(defineProps<{
     routePath?: string              // e.g. '/super-simple-setup' or '/scheduler-test'
@@ -43,6 +44,7 @@ const props = withDefaults(defineProps<{
 const dark = useDarkModeState()
 const adv = useAdvancedModeState()
 const currentServer = inject(currentServerInjectionKey, ref<any>(null))
+const { getCredentials } = useServerCredentials()
 
 // creds & ip supplied by main like HoustonWebView
 const manualCreds = ref<{ ip: string; username: string; password: string } | null>(null)
@@ -120,10 +122,19 @@ watch(webview, (wv) => {
 })
 
 onMounted(() => {
+    // Hydrate credentials from the shared store (set before navigation)
+    const ip = currentServer.value?.ip
+    if (ip && !manualCreds.value) {
+        const stored = getCredentials(ip)
+        if (stored) {
+            manualCreds.value = { ip, username: stored.username, password: stored.password }
+        }
+    }
+
     window.electron?.ipcRenderer.on('client-ident', (_e, x) => {
         if (!clientId.value) clientId.value = x?.installId || ''
     })
-    window.electron?.ipcRenderer.on('client-ip', (_e, ip: string) => { clientIp.value = ip || '' })
+    window.electron?.ipcRenderer.on('client-ip', (_e, ipVal: string) => { clientIp.value = ipVal || '' })
 
     window.electron?.ipcRenderer.send('renderer-ready', {})  // send once
 })
@@ -182,6 +193,15 @@ window.electron?.ipcRenderer.on('store-manual-creds', (_e, creds: { ip: string; 
         manualCreds.value = creds;
     }
 });
+
+// When currentServer changes, check the shared credential store
+watch(() => currentServer.value?.ip, (ip) => {
+    if (!ip || manualCreds.value?.ip === ip) return
+    const stored = getCredentials(ip)
+    if (stored) {
+        manualCreds.value = { ip, username: stored.username, password: stored.password }
+    }
+}, { immediate: false })
 
 // If credentials arrive after the webview has already loaded (e.g. favorite
 // auto-connect), trigger login now instead of showing the Cockpit login screen.
