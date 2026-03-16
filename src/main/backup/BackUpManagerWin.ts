@@ -74,10 +74,14 @@ export class BackUpManagerWin implements BackUpManager {
 
   private getTaskPaths(task: BackUpTask) {
     const share = task.share || task.target.split(":")[1].split("/")[0];
+    const host = task.host || task.target.split(':')[0];
+    const user = task.smb_user || '';
+    const safe = (s: string) => s.replace(/[^A-Za-z0-9_.-]/g, '_');
+    const key = `${safe(host)}_${safe(share)}_${safe(user)}`;
     return {
       bat: path.join(SCRIPTS_DIR, `Houston_Backup_Task_${task.uuid}.bat`),
       log: path.join(logPath, `backup_task_${task.uuid}.log`), // logs under userData
-      cred: path.join(CREDS_DIR, `${share}.cred`),
+      cred: path.join(CREDS_DIR, `${key}.cred`),
       share
     };
   }
@@ -316,7 +320,9 @@ if (-not $hasBatchLogon -or -not $hasServiceLogon) {
       // Store credential in encrypted vault
       getCredentialManager().store(smbHost, smbShare, username, password);
 
-      const credFile = path.join(credDir, `${smbShare}.cred`).replace(/\\/g, '\\\\');
+      const safe = (s: string) => s.replace(/[^A-Za-z0-9_.-]/g, '_');
+      const credKey = `${safe(smbHost)}_${safe(smbShare)}_${safe(safeUser)}`;
+      const credFile = path.join(credDir, `${credKey}.cred`).replace(/\\/g, '\\\\');
       const batPathEsc = this.scriptPath(t.uuid).replace(/\\/g, '\\\\');
 
       /* cred file (idempotent) — use base64-decoded values */
@@ -404,7 +410,9 @@ if (-not $hasBatchLogon -or -not $hasServiceLogon) {
   private buildActionBat(task: BackUpTask, smbUser: string): string {
     const mountBat = getMountSmbScript();
 
-    const credFile = path.join(CREDS_DIR, `${task.share}.cred`);
+    const safe = (s: string) => s.replace(/[^A-Za-z0-9_.-]/g, '_');
+    const credKey = `${safe(task.host || '')}_${safe(task.share || '')}_${safe(smbUser)}`;
+    const credFile = path.join(CREDS_DIR, `${credKey}.cred`);
     const rawDst = getSmbTargetFromSmbTarget(task.target)
       .replace(/\//g, '\\')
       .replace(/^\\/, '');
@@ -556,21 +564,20 @@ if (Get-ScheduledTask -TaskName "${taskName}" -ErrorAction SilentlyContinue) {
 # 2) Remove the BAT script for this task
 Remove-Item -Path "${batEsc}" -Force -ErrorAction SilentlyContinue
 
-# 3) Remove the credential file only if no other BAT references its share
+# 3) Remove the credential file only if no other BAT references the same cred path
 $credPath = "${credEsc}"
-$shareInUse = $false
+$credInUse = $false
 try {
   $otherBats = Get-ChildItem -Path "${scriptsDirEsc}" -Filter "Houston_Backup_Task_*.bat" -ErrorAction SilentlyContinue
   foreach ($b in $otherBats) {
-    # Any script still referencing this share?
-    if (Select-String -Path $b.FullName -Pattern "SMB_SHARE=${task.share}" -SimpleMatch -Quiet) {
-      $shareInUse = $true
+    if (Select-String -Path $b.FullName -Pattern "CRED_FILE=${credEsc.replace(/\\/g, '\\\\')}" -SimpleMatch -Quiet) {
+      $credInUse = $true
       break
     }
   }
 } catch {}
 
-if (-not $shareInUse) {
+if (-not $credInUse) {
   Remove-Item -Path $credPath -Force -ErrorAction SilentlyContinue
 }
 `.trim();
@@ -606,18 +613,18 @@ $task | Set-ScheduledTask
     // Build lists for PS
     const taskNames = tasks.map(t => `${TASK_ID}_${t.uuid}`);
     const bats = tasks.map(t => this.getTaskPaths(t).bat);
-    const shares = Array.from(new Set(tasks.map(t => t.share!).filter(Boolean)));
+    const creds = tasks.map(t => this.getTaskPaths(t).cred);
 
     // Escape for PS array literals
     const psTaskNames = taskNames.map(s => `"${s}"`).join(', ');
     const psBats = bats.map(p => `"${p.replace(/\\/g, '\\\\')}"`).join(', ');
-    const psShares = shares.map(s => `"${s}"`).join(', ');
+    const psCreds = creds.map(p => `"${p.replace(/\\/g, '\\\\')}"`).join(', ');
 
     const ps = `
 # Inputs
 $TaskNames = @(${psTaskNames})
 $BatPaths  = @(${psBats})
-$Shares    = @(${psShares})
+$CredPaths = @(${psCreds})
 
 # 1) Unregister all selected tasks (ignore if missing)
 foreach ($tn in $TaskNames) {
@@ -633,23 +640,22 @@ if ($BatPaths.Length -gt 0) {
   try { Remove-Item -Path $BatPaths -Force -ErrorAction SilentlyContinue } catch {}
 }
 
-# 3) For each share, delete its cred file only if no remaining BAT references it
+# 3) For each cred file, delete only if no remaining BAT references it
 try {
   $remainingBats = @()
   try { $remainingBats = Get-ChildItem -Path "${scriptsDirEsc}" -Filter "Houston_Backup_Task_*.bat" -ErrorAction SilentlyContinue } catch {}
 
-  foreach ($share in $Shares) {
+  foreach ($credPath in $CredPaths) {
     $inUse = $false
+    $credEscaped = [regex]::Escape($credPath)
     foreach ($b in $remainingBats) {
-      if (Select-String -Path $b.FullName -Pattern ("SMB_SHARE=" + $share) -SimpleMatch -Quiet) {
+      if (Select-String -Path $b.FullName -Pattern $credEscaped -SimpleMatch -Quiet) {
         $inUse = $true
         break
       }
     }
 
     if (-not $inUse) {
-      # cred path is %LOCALAPPDATA%\\houston-backups\\credentials\\<share>.cred
-      $credPath = Join-Path (Join-Path $env:LOCALAPPDATA "houston-backups\\credentials") ($share + ".cred")
       try { Remove-Item -Path $credPath -Force -ErrorAction SilentlyContinue } catch {}
     }
   }

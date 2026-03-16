@@ -120,7 +120,7 @@ export class BackUpManagerMac implements BackUpManager {
     const homeDir = os.homedir();
     const currentUser = os.userInfo().username;
     const userGroup = require("child_process").execSync(`id -gn ${currentUser}`).toString().trim();
-    const service = `houston-smb-${safeShare}`;
+    const service = `houston-smb-${safeHost}-${safeShare}`;
     const installer = `#!/bin/bash
     set -e
     PASSWORD=${shellQuote(password)}
@@ -193,14 +193,16 @@ EOF_${uuid}
       `chmod 750 "${logDir}"`
     ];
 
-    /* 1a ─ System-keychain credentials (once per share) */
-    const uniqueShares = new Set<string>();
+    /* 1a ─ System-keychain credentials (once per host+share) */
+    const uniqueHostShares = new Set<string>();
     for (const t of tasks) {
+      const host = assertSafeHost(t.host || t.target.split(':')[0]);
       const share = assertSafeShare((t.share || t.target.split(":")[1].split("/")[0]));
-      uniqueShares.add(share);
+      uniqueHostShares.add(`${host}\0${share}`);
     }
-    for (const share of uniqueShares) {
-      const svc = servicePrefix + share;
+    for (const key of uniqueHostShares) {
+      const [host, share] = key.split('\0');
+      const svc = `${servicePrefix}${host}-${share}`;
 
       installerLines.push(
         `security delete-generic-password -s "${svc}" -a "${safeUser}" 2>/dev/null || true`,
@@ -460,7 +462,7 @@ EOF_${uuid}
     const volumesMount = `/Volumes/${task.share}`;
     const rel = task.target!.split('/').slice(1).join('/'); // strip leading /
     const dir = `${mountPoint}/${rel}`;
-    const svc = `houston-smb-${task.share}`;
+    const svc = `houston-smb-${task.host}-${task.share}`;
     const target = getSmbTargetFromSmbTarget(task.target);
     const rsyncCmd = `${getRsync()} -a${task.mirror ? ' --delete' : ''} ${shellQuote(`${task.source}/`)} ${shellQuote(`${dir}/`)}`;
 

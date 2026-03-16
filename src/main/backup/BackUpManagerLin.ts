@@ -40,7 +40,7 @@ export class BackUpManagerLin implements BackUpManager {
         const smbUserMatch = content.match(/SMB_USER='([^']+)'/);
         const startDateMatch = content.match(/START_DATE='([^']+)'/);
         const startDate = startDateMatch ? new Date(startDateMatch[1]) : new Date();
-        const descMatch = content.match(/Starting backup task: '([^']+)'/);
+        const descMatch = content.match(/^DESC='([^']*)'/m);
         const mirror = content.includes("--delete");
 
         if (!uuidMatch || !sourceMatch || !targetMatch || !smbHostMatch || !smbShareMatch || !smbUserMatch) continue;

@@ -12,14 +12,31 @@ export async function checkBackupTaskStatus(task: BackUpTask): Promise<BackUpTas
     const targetPath = task.target!;
     const homeDir = osDir.homedir();
 
+    const safe = (s: string) => s.replace(/[^A-Za-z0-9_.-]/g, '_');
+    const smbUser = task.smb_user || '';
+    const credKey = `${safe(smbHost)}_${safe(smbShare)}_${safe(smbUser)}`;
+
+    // Mac uses the system Keychain, not .cred files
+    if (os === 'mac') {
+        try {
+            execSync(
+                `security find-generic-password -s ${JSON.stringify(`houston-smb-${smbHost}-${smbShare}`)} -a ${JSON.stringify(smbUser)} -w`,
+                { stdio: 'pipe' }
+            );
+        } catch {
+            console.warn(`[SMB Check] Missing keychain credentials for ${task.uuid}: houston-smb-${smbHost}-${smbShare} / ${smbUser}`);
+            return 'offline_invalid_credentials';
+        }
+    }
+
     const credPath =
         os === 'win'
-            ? path.join(process.env.ProgramData || 'C:\\ProgramData', 'houston-backups', 'credentials', `${smbShare}.cred`)
-            : os === 'mac'
-                ? `${homeDir}/houston-credentials/${smbShare}.cred`
-                : `/etc/samba/houston-credentials/${smbShare}.cred`;
+            ? path.join(
+                process.env.LOCALAPPDATA || path.join(homeDir, 'AppData', 'Local'),
+                'houston-backups', 'credentials', `${credKey}.cred`)
+            : `/etc/samba/houston-credentials/${credKey}.cred`;
 
-    if (!fs.existsSync(credPath)) {
+    if (os !== 'mac' && !fs.existsSync(credPath)) {
         console.warn(`[SMB Check] Missing credentials for ${task.uuid}: ${credPath}`);
         return 'offline_invalid_credentials';
     }
@@ -62,12 +79,36 @@ export async function checkBackupTaskStatus(task: BackUpTask): Promise<BackUpTas
             return 'offline_connection_error';
         }
 
-        const scriptAsset = await getAsset("static", "check_smb_task_status.sh");
+        const scriptName = os === 'mac' ? 'check_smb_task_status_mac.sh' : 'check_smb_task_status.sh';
+        const scriptAsset = await getAsset("static", scriptName);
         const escape = (arg: string) => `"${arg.replace(/(["\\$`])/g, '\\$1')}"`;
-        const cmd = `bash ${escape(scriptAsset)} ${escape(smbHost)} ${escape(smbShare)} ${escape(targetPath)} ${escape(credPath)}`;
+
+        // On Mac, create a temporary .cred file from the Keychain so the
+        // check script can read it in the same format as Linux/Win.
+        let effectiveCredPath = credPath;
+        if (os === 'mac') {
+            try {
+                const pw = execSync(
+                    `security find-generic-password -s ${JSON.stringify(`houston-smb-${smbHost}-${smbShare}`)} -a ${JSON.stringify(smbUser)} -w`,
+                    { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }
+                ).trim();
+                const tmpCred = path.join(osDir.tmpdir(), `houston-smb-check-${task.uuid}.cred`);
+                fs.writeFileSync(tmpCred, `user=${smbUser}\npassword=${pw}\n`, { mode: 0o600 });
+                effectiveCredPath = tmpCred;
+            } catch {
+                return 'offline_invalid_credentials';
+            }
+        }
+
+        const cmd = `bash ${escape(scriptAsset)} ${escape(smbHost)} ${escape(smbShare)} ${escape(targetPath)} ${escape(effectiveCredPath)}`;
 
         return new Promise((resolve) => {
             exec(cmd, (error, stdout, stderr) => {
+                // Clean up temp cred file on Mac
+                if (os === 'mac' && effectiveCredPath !== credPath) {
+                    try { fs.unlinkSync(effectiveCredPath); } catch {}
+                }
+
                 console.debug(`[SMB Check] stdout for ${task.uuid}:`, stdout);
                 if (stderr) console.warn(`[SMB Check] stderr for ${task.uuid}:`, stderr);
 

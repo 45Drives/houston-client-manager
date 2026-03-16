@@ -374,20 +374,17 @@ function maybeClearFromNotification(message: string) {
 // }
 
 function editSelected() {
+    backUpListRef.value?.editSelectedSchedules?.();
+}
+
+function viewSelected() {
     const ids = selectedBackUpTasks.value.map(t => t.uuid).join(',');
     router.push({ name: 'view-selected-backups', query: { ids } });
 }
 
-
-function viewSelected() {
-    // triggers the same next step action
-    // proceedToNextStep();
-}
-
 function viewSelectedLog() {
-    // triggers the same next step action
-    // proceedToNextStep();
-    backUpListRef.value?.editSelectedSchedules?.();
+    const ids = selectedBackUpTasks.value.map(t => t.uuid).join(',');
+    router.push({ name: 'view-selected-backups', query: { ids, showLogs: 'true' } });
 }
 
 
