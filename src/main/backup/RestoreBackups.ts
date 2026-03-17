@@ -5,8 +5,16 @@ import path from "path";
 import { IPCMessageRouter } from "@45drives/houston-common-lib/lib/electronIPC";
 import { execSync } from "child_process";
 
+interface RestoreBackupsData {
+  smb_host: string;
+  smb_share: string;
+  mountPoint?: string;
+  uuid: string;
+  files: string[];
+}
+
 export default async function restoreBackups(
-  data: any,
+  data: RestoreBackupsData,
   IPCRouter: IPCMessageRouter
 ) {
   const os = getOS();

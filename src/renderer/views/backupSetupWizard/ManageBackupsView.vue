@@ -166,7 +166,7 @@ const handleBackUpTaskSelected = (tasks: BackUpTask[]) => {
 
 const backUpListRef = ref<InstanceType<typeof BackUpListView> | null>(null);
 
-const currentServer = inject<Ref<ServerType | null>>(currentServerInjectionKey, ref(null) as any)
+const currentServer = inject<Ref<ServerType | null>>(currentServerInjectionKey, ref<ServerType | null>(null))
 const discoveryState = inject<DiscoveryState>(discoveryStateInjectionKey)!
 const selectedIp = ref<string>('')
 const serversForDropdown = computed(() =>
@@ -390,14 +390,13 @@ const actionHandler = (raw: string) => {
 
 
         if (msg?.type === 'backUpStatusesUpdated') {
-            const containsRanTask = (msg.tasks || []).some((t: any) =>
+            const containsRanTask = (msg.tasks || []).some((t: { uuid: string }) =>
                 runningTaskIds.value.includes(t.uuid)
             );
             if (containsRanTask) stopRunningUi();
         }
-    } catch { }
+    } catch (e) { console.debug('actionHandler parse error:', e); }
 };
-
 
 onMounted(() => {
     IPCRouter.getInstance().addEventListener('action', actionHandler);

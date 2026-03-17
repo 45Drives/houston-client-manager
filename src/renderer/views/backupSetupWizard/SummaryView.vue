@@ -88,10 +88,8 @@ const actualHost = ref('');
 const actualShare = ref('');
 
 onMounted(async () => {
-  // console.debug("backUpSetupConfig:", backUpSetupConfig);
 
   const target = backUpSetupConfig?.backUpTasks?.[0]?.target;
-  // console.debug("Target for isFirstBackupRun check:", target);
   if (!target) return;
 
   const [host, path] = target.split(":");
@@ -99,7 +97,6 @@ onMounted(async () => {
   actualHost.value = host;
   actualShare.value = share;
   const result = await window.electron.isFirstRunNeeded(host, share, backUpSetupConfig.username);
-  // console.debug("First run result:", result);
 
   isFirstBackupRun.value = result;
 });

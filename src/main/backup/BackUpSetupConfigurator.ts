@@ -26,8 +26,8 @@ export class BackUpSetupConfigurator {
       const backUpManager = this.getBackUpManager();
 
       // If scheduleAllTasks exists on the manager, always prefer it
-      if (typeof (backUpManager as any).scheduleAllTasks === "function" && config.backUpTasks.length > 1) {
-        await (backUpManager as any).scheduleAllTasks(
+      if (backUpManager.scheduleAllTasks && config.backUpTasks.length > 1) {
+        await backUpManager.scheduleAllTasks(
           config.backUpTasks,
           config.username,
           config.password,
@@ -59,7 +59,6 @@ export class BackUpSetupConfigurator {
         total: config.backUpTasks.length + 1
       });
 
-      // console.debug(config);
 
       progressCallback({
         message: "All backup tasks scheduled successfully.",
@@ -67,9 +66,10 @@ export class BackUpSetupConfigurator {
         total,
       });
 
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
       console.error("Error in setting up backups:", error);
-      progressCallback({ message: `Error: ${error.message}`, step: -1, total: -1 });
+      progressCallback({ message: `Error: ${message}`, step: -1, total: -1 });
     }    
 
   }

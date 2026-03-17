@@ -82,7 +82,7 @@
 
 <script setup lang="ts">
 import { computed, inject, nextTick, onActivated, onMounted, onUnmounted, reactive, ref } from 'vue';
-import { BackUpTask, IPCRouter, unwrap } from '@45drives/houston-common-lib';
+import { BackUpTask, IPCRouter, unwrap, type TaskSchedule } from '@45drives/houston-common-lib';
 import { Modal, confirm } from '@45drives/houston-common-ui';
 import CredentialsModal from "../../components/CredentialsModal.vue";
 import { formatFrequency } from "./utils";
@@ -101,7 +101,7 @@ const thisOs = inject(thisOsInjectionKey);
 
 const credsModalRef = ref<InstanceType<typeof CredentialsModal> | null>(null);
 
-const selectedTaskSchedule = ref<any>();
+const selectedTaskSchedule = ref<TaskSchedule | undefined>();
 const showCalendar = ref(false);
 let resolveCalendarPromise: ((value: boolean) => void) | null = null;
 
@@ -171,9 +171,9 @@ function formatDateTime(dt?: Date | string | number | null) {
   });
 }
 
-function getLastRunAt(task: any): Date | null {
-  const cand = task.lastRunAt ?? task.lastRun ?? task.lastRunTime ?? task.previousRunAt ?? null;
-  return cand ? new Date(cand) : null;
+function getLastRunAt(task: BackUpTask): Date | null {
+  const cand = (task as Record<string, unknown>).lastRunAt ?? (task as Record<string, unknown>).lastRun ?? null;
+  return cand ? new Date(cand as string | number) : null;
 }
 
 function getNextBackupDate(startDate: Date, repeatFrequency: string): Date {

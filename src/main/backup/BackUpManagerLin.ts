@@ -12,7 +12,7 @@ import { app } from 'electron';
 import { getCredentialManager } from '../credentialManager';
 
 const SCRIPT_DIR = path.join(os.homedir(), ".local", "share", "houston-backups");
-// const LOG_DIR = path.join(os.homedir(), ".local", "share", "houston-logs");
+
 const LOG_DIR = path.join(app.getPath('userData'), 'logs');
 
 export class BackUpManagerLin implements BackUpManager {
@@ -61,14 +61,6 @@ export class BackUpManagerLin implements BackUpManager {
           status: "checking",
           smb_user: smbUserMatch[1]
         };
-
-        // Perform status check
-        // try {
-        //   task.status = await checkBackupTaskStatus(task);
-        // } catch (err) {
-        //   console.warn(`Failed to check status for task ${task.uuid}:`, err);
-        //   task.status = "offline_connection_error";
-        // }
 
         tasks.push(task);
       } catch (err) {

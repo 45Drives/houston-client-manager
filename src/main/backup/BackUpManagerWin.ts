@@ -32,6 +32,8 @@ interface TaskData {
   SMB_HOST?: string;
   SMB_SHARE?: string;
   SMB_USER?: string;
+  START_DATE?: string;
+  [key: string]: string | boolean | undefined;
 }
 
 export class BackUpManagerWin implements BackUpManager {
@@ -152,11 +154,11 @@ export class BackUpManagerWin implements BackUpManager {
               host: actionDetails.SMB_HOST,
               share: actionDetails.SMB_SHARE,
               status: "checking",
-              smb_user: (actionDetails as any).SMB_USER   
+              smb_user: actionDetails.SMB_USER   
             };
 
-            if ((actionDetails as any).START_DATE) {
-              backUpTask.schedule.startDate = new Date((actionDetails as any).START_DATE);
+            if (actionDetails.START_DATE) {
+              backUpTask.schedule.startDate = new Date(actionDetails.START_DATE);
             }
 
             return backUpTask;
@@ -722,7 +724,7 @@ if (Get-ScheduledTask -TaskName "${taskName}" -ErrorAction SilentlyContinue) {
   }
 
 
-  protected convertTriggersToTaskSchedule(triggers: any[]): TaskSchedule | null {
+  protected convertTriggersToTaskSchedule(triggers: Record<string, unknown>[]): TaskSchedule | null {
     try {
 
       const triggersArray = triggers.map(trigger => {
@@ -774,12 +776,13 @@ if (Get-ScheduledTask -TaskName "${taskName}" -ErrorAction SilentlyContinue) {
               monthsIntervalMatch = prop.Value;
             }
           }
-        } else {
-          startBoundaryMatch = cimProperties.StartBoundary;
-          hoursIntervalMatch = cimProperties.HoursInterval;
-          daysIntervalMatch = cimProperties.DaysInterval;
-          weeksIntervalMatch = cimProperties.WeeksInterval;
-          monthsIntervalMatch = cimProperties.MonthsInterval;
+        } else if (cimProperties && typeof cimProperties === 'object') {
+          const props = cimProperties as Record<string, unknown>;
+          startBoundaryMatch = props.StartBoundary;
+          hoursIntervalMatch = props.HoursInterval;
+          daysIntervalMatch = props.DaysInterval;
+          weeksIntervalMatch = props.WeeksInterval;
+          monthsIntervalMatch = props.MonthsInterval;
         }
 
         // Check if the matches were found and extract values
@@ -826,7 +829,7 @@ if (Get-ScheduledTask -TaskName "${taskName}" -ErrorAction SilentlyContinue) {
       if (triggersArray.length !== 1) {
         return null;
       } else {
-        return triggersArray[0] as any;
+        return triggersArray[0] as TaskSchedule;
       }
     } catch (error) {
       console.error("failed to match Triggers:", triggers)
@@ -840,7 +843,6 @@ if (Get-ScheduledTask -TaskName "${taskName}" -ErrorAction SilentlyContinue) {
 
       command = command.replace("/C ", '').replace("\"", "").replace("\"", "").trim();
 
-      // console.debug(command)
       // Path to your .bat file
       const batFilePath = command;
       /* ----- bail out early if the target BAT is gone ----- */
@@ -866,7 +868,7 @@ if (Get-ScheduledTask -TaskName "${taskName}" -ErrorAction SilentlyContinue) {
         // Clean up value if needed (e.g., remove ${} if still present)
         value = value.replace(/^\${|}$/g, '');
 
-        (task as any)[key] = value;
+        task[key] = value;
       }
 
       return task;

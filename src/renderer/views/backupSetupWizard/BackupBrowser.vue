@@ -189,38 +189,24 @@ function toggleFileSelection(file: FileEntry) {
     file.selected = !file.selected
 }
 
-/**
- * Map incoming tasks to our local BackupEntry shape.
- * NOTE: Adjust field extraction as needed for your BackUpTask.
- */
 function taskToBackupEntry(task: BackUpTask): BackupEntry & { __task: BackUpTask } {
-    // --- Heuristics/guesses about task fields ---
-    // Prefer explicit fields if present; otherwise fall back to common names.
-    const server = (task as any).serverName || (task as any).host || (task as any).server || ''
-    const shareName = (task as any).shareName || (task as any).share || ''
-    const client = (task as any).client || (task as any).source || (task as any).target || ''
-    const folder = (task as any).folder || (task as any).target || (task as any).backupFolder || ''
-    const lastBackup = (task as any).lastRun || (task as any).lastBackup || ''
-
     return {
-        uuid: (task as any).uuid,
-        server,
-        client,
-        folder,
-        lastBackup,
+        uuid: task.uuid,
+        server: task.host ?? '',
+        client: task.source || task.target,
+        folder: task.target,
+        lastBackup: '',
         files: [],
+        onSystem: false,
         __task: task
-    } as any
+    }
 }
 
 function resolveConnForTask(task: BackUpTask) {
-    // Construct SMB connection fields for backend actions
-    const serverName = (task as any).serverName || (task as any).host || (task as any).server || ''
-    const smb_host = serverName ? `${serverName}.local` : ''
-    const smb_share = (task as any).shareName || (task as any).share || ''
-    const smb_user = (task as any).username || (task as any).smbUser || ''
-    const smb_pass = (task as any).password || (task as any).smbPass || ''
-    return { smb_host, smb_share, smb_user, smb_pass }
+    const smb_host = task.host ? `${task.host}.local` : ''
+    const smb_share = task.share ?? ''
+    const smb_user = task.smb_user ?? ''
+    return { smb_host, smb_share, smb_user, smb_pass: '' }
 }
 
 // When tasks prop changes, rebuild the list
@@ -263,11 +249,7 @@ onActivated(() => {
                 for (const id of deleted) delete multiSelectedMap.value[id]
                 if (selectedBackup.value && deleted.includes(selectedBackup.value.uuid)) selectedBackup.value = null
             }
-        } catch { }
-    })
-})
-
-onDeactivated(() => {
+        } catch (e) { console.debug('BackupBrowser action parse error:', e); }
     backups.value = []
     selectedBackup.value = null
     restoreProgress.value = { current: 0, total: 0, lastFile: '' }

@@ -172,7 +172,6 @@ watch(scheduleFrequency, (newSchedule) => {
 		backUpSetupConfig.backUpTasks = backUpSetupConfig.backUpTasks.map((task) => {
 			task.schedule.repeatFrequency = newSchedule;
 			task.schedule.startDate = getNextScheduleDate(newSchedule)
-			// console.debug("some update task.startDate:", task.schedule.startDate);
 			return task;
 		});
 	}
@@ -271,7 +270,6 @@ const handleFolderSelect = async () => {
 				uuid: crypto.randomUUID(),
 			};
 
-			// console.debug("NewTask.Startdate:", newTask.schedule.startDate);
 
 			backUpSetupConfig.backUpTasks.push(newTask);
 			selectedFolders.value.push({ name: folderName, path: folderPath });
@@ -326,7 +324,6 @@ function getNextScheduleDate(frequency: 'hour' | 'day' | 'week' | 'month'): Date
 			}
 			break;
 	}
-	// console.debug("nextDate ", nextDate)
 
 	return nextDate;
 }

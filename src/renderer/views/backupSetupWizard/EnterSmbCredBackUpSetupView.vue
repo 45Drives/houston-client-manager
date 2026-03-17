@@ -76,19 +76,15 @@ const proceedToNextStep = () => {
     // Trigger backend logic for opening the server
     // Pass username, password, and backupTask.target (URL) to backend
     // For example: openBackupServer(username.value, password.value, props.backupTask.target);
-    // console.debug('Attempting to open server with:', {
     //   username: backUpSetupConfig.username,
     //   password: backUpSetupConfig.password,
     //   target: backUpSetupConfig.backUpTasks[0].target,
     // });
 
-    // console.debug("Target:", backUpSetupConfig.backUpTasks[0].target);
 
     let [host, share] = backUpSetupConfig.backUpTasks[0].target.split(":");
     share = share.split("/")[0]
 
-    // console.debug("Host:", host);  // Output: "hl4-test.local"
-    // console.debug("Share:", share); // Output: "backups"
 
     nextStep();
   }

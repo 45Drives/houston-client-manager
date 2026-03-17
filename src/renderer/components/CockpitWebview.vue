@@ -92,7 +92,6 @@ const currentUrl = computed(() => {
     if (serverAliasStyle.value) parts.push(`aliasStyle=${encodeURIComponent(serverAliasStyle.value)}`)
     const hashQS = parts.join('&')
     const url = `${base}${searchQS ? `?${searchQS}` : ''}#${withQs(route, hashQS)}`
-    // console.log('[CockpitWebview] URL:', url)
     return url
 })
 

@@ -61,14 +61,12 @@ export function extractJsonFromOutput(output: string): any {
     // Try to find the first valid-looking JSON object in the string
     const jsonMatch = output.match(/\{[\s\S]*?\}/);
     if (!jsonMatch) {
-      // console.warn('[extractJsonFromOutput] No JSON object found in output:', output);
       return { error: true, message: 'No JSON object found in output' };
     }
 
     const jsonString = jsonMatch[0];
     return JSON.parse(jsonString);
   } catch (err) {
-    // console.error('[extractJsonFromOutput] Failed to parse JSON:', err);
     return { error: true, message: 'Invalid JSON format in output' };
   }
 }
@@ -114,16 +112,10 @@ export function isDev() {
 }
 
 export function getSmbTargetFromSmbTarget(target: string) {
-  // console.debug('[getSmbTargetFromSmbTarget] raw target:', target);
   // let targetPath = "/tank/" + target.split(":")[1];
-  // console.debug("[getSmbTargetFromSmbTarget] targetPath", targetPath)
   let [smbHost, smbShare] = target.split(":");
-  // console.debug("[getSmbTargetFromSmbTarget] smbHost", smbHost)
-  // console.debug("[getSmbTargetFromSmbTarget] smbShare before", smbShare)
   smbShare = smbShare.split("/")[0]; 
-  // console.debug("[getSmbTargetFromSmbTarget] smbShare after", smbShare)
   const result = target.replace(smbHost + ":" + smbShare, "");
-  // console.debug("[getSmbTargetFromSmbTarget] result", result)
   return result;
 }
 

@@ -23,7 +23,6 @@ async function mountSambaClient(smb_host: string, smb_share: string, smb_user: s
   if (platform === "win32") {
     return mountSambaClientWin(safeHost, safeShare, safeUser, smb_pass, mainWindow, uiMode);
   } else if (platform === "linux") {
-    // console.debug(`passing host:${smb_host}, share:${smb_share}, user:${smb_user}, pass:${smb_pass} to script`);
     return mountSambaClientScriptLin(safeHost, safeShare, safeUser, smb_pass, await getAsset("static", "mount_smb_lin.sh"), mainWindow);
   } else if (platform === "darwin") {
     console.debug("mounting smb mac")

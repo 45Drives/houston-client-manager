@@ -8,6 +8,7 @@ const isSuppressed = (args: any[]) => {
   const msg = args.map(String).join(' ');
   return SUPPRESS_PATTERNS.some(p => msg.includes(p));
 };
+// Initial console routing through electron-log (upgraded in app.whenReady with jsonLogger)
 console.log = (...args) => log.info(...args);
 console.error = (...args) => { if (!isSuppressed(args)) log.error(...args); };
 console.warn = (...args) => { if (!isSuppressed(args)) log.warn(...args); };
@@ -82,6 +83,9 @@ import { checkSSH } from './setupSsh';
 import { getPin, isHostPinned, rememberPin } from './certPins'
 import { getCredentialManager } from './credentialManager';
 import { assertSafeHost, assertSafeShare, assertSafeUsername } from './security';
+import { handleBackupMessage } from './ipc/backupHandlers';
+import { handleDiscoveryMessage } from './ipc/discoveryHandlers';
+import type { IPCHandlerContext } from './ipc/types';
 
 let discoveredServers: Server[] = [];
 export let jsonLogger: ReturnType<typeof createLogger>;
@@ -311,7 +315,6 @@ function createWindow() {
     const scanned = await Promise.allSettled(
       ips.map(async candidateIp => {
 
-        // console.debug("checking for server at ", candidateIp);
 
         const portOpen = await isPortOpen(candidateIp, 9090);
         if (!portOpen) return null;
@@ -412,7 +415,7 @@ function createWindow() {
       (getOS() === "rocky" || getOS() === "debian") &&
       typeof manager.isFirstBackupNeeded === "function"
     ) {
-      return (manager as any).isFirstBackupNeeded(host, share, smbUser);
+      return manager.isFirstBackupNeeded(host, share, smbUser);
     }
     return true;
   });
@@ -440,7 +443,7 @@ function createWindow() {
       const before = discoveredServers.length;
 
       discoveredServers = discoveredServers.filter(srv =>
-        now - srv.lastSeen <= TIMEOUT_DURATION || (srv as any).manuallyAdded === true
+        now - srv.lastSeen <= TIMEOUT_DURATION || srv.manuallyAdded === true
       );
 
       if (discoveredServers.length !== before) {
@@ -450,8 +453,8 @@ function createWindow() {
 
     pollActionInterval = setInterval(() => {
       const servers = discoveredServers.filter(s =>
-        !(s as any).manuallyAdded &&
-        !(s as any).fallbackAdded &&
+        !s.manuallyAdded &&
+        !s.fallbackAdded &&
         s.ip !== '127.0.0.1'
       );
 
@@ -476,38 +479,6 @@ function createWindow() {
     else stopDiscoveryLoops();
   });
 
-  // function notify(message: string) {
-  //   // console.debug("[Main] notify() called with:", message);
-
-  //   if (!mainWindow || !mainWindow.webContents || mainWindow.webContents.isDestroyed()) {
-  //     console.warn("[Main]  mainWindow/webContents not ready");
-  //     return;
-  //   }
-    
-  //   if (rendererIsReady && mainWindow?.webContents) {
-  //     mainWindow.webContents.send("notification", message);
-  //   } else {
-  //     bufferedNotifications.push(message);
-  //   }
-  // }
-  
-  // function notify(message: string) {
-  //   if (!mainWindow || mainWindow.webContents?.isDestroyed()) return;
-
-  //   if (rendererIsReady) {
-  //     mainWindow.webContents.send("notification", message);
-  //     // also mirror to the IPCRouter bus
-  //     try {
-  //       IPCRouter.getInstance().send(
-  //         'renderer',
-  //         'action',
-  //         JSON.stringify({ type: 'notification', message })
-  //       );
-  //     } catch { /* no-op */ }
-  //   } else {
-  //     bufferedNotifications.push(message);
-  //   }
-  // }
   function notify(message: string) {
     if (!mainWindow || mainWindow.webContents?.isDestroyed()) return;
 
@@ -518,28 +489,27 @@ function createWindow() {
           'renderer', 'action',
           JSON.stringify({ type: 'notification', message })
         );
-      } catch { }
-    } else {
-      bufferedNotifications.push(message);
+      } catch (e) { console.debug('IPCRouter notification relay failed:', e); }
     }
   }
 
 
+  const handlerCtx: IPCHandlerContext = {
+    getBackUpManager,
+    notify,
+    jsonLogger,
+    mainWindow: mainWindow!,
+  };
+
   IPCRouter.getInstance().addEventListener('action', async (data) => {
-    // console.debug('action data:', data);
     if (data === "requestBackUpTasks") {
-      let backUpManager: BackUpManager | null = getBackUpManager();
- 
+      const backUpManager = getBackUpManager();
       if (backUpManager) {
         const tasks = await backUpManager.queryTasks();
         console.debug('tasks found:', tasks);
-        IPCRouter.getInstance().send('renderer', 'action', JSON.stringify({
-          type: 'sendBackupTasks',
-          tasks
-        }));
-        jsonLogger.info({ event: 'requestBackUpTasks', tasks: tasks });
+        IPCRouter.getInstance().send('renderer', 'action', JSON.stringify({ type: 'sendBackupTasks', tasks }));
+        jsonLogger.info({ event: 'requestBackUpTasks', tasks });
       }
-
     } else if (data === "requestHostname") {
       IPCRouter.getInstance().send('renderer', 'action', JSON.stringify({
         type: "sendHostname",
@@ -547,383 +517,30 @@ function createWindow() {
       }));
     } else if (data === "show_storage_setup_wizard" || data === "show_backup_setup_wizard" || data === "show_restore-backup_setup_wizard") {
       IPCRouter.getInstance().send('renderer', 'action', data);
-      return;
-    }
-    //  else if (data === "show_dashboard") {
-    //   IPCRouter.getInstance().send('renderer', 'action', 'show_dashboard');
-    // }
-    else {
+    } else {
       try {
-        // console.debug("[Main] Raw message received:", data);
-
         const message = JSON.parse(data);
-        // console.debug("[Main] Parsed message:", message);
-        if (message.type === 'configureBackUp') {
 
-          message.config.backUpTasks.forEach(backUpTask => {
+        if (await handleBackupMessage(message, handlerCtx)) return;
 
-            backUpTask.schedule.startDate = new Date(backUpTask.schedule.startDate);
-          })
+        const discoveryCtx = {
+          discoveredServers,
+          mainWindow: mainWindow!,
+          notify,
+          mDNSClient,
+          serviceType,
+          TIMEOUT_DURATION,
+          doFallbackScan,
+          setDiscoveredServers: (servers: Server[]) => { discoveredServers = servers; },
+        };
+        if (await handleDiscoveryMessage(message, discoveryCtx)) return;
 
-          const config: BackUpSetupConfig = message.config;
-
-          new BackUpSetupConfigurator().applyConfig(config, (progress) => {
-            IPCRouter.getInstance().send('renderer', 'action', JSON.stringify({
-              type: "backUpSetupStatus",
-              status: progress
-            }));
-          })
-        } else if (message.type === 'fetchBackupsFromServer') {
-          try {
-            IPCRouter.getInstance().send('renderer', 'action', JSON.stringify({
-              type: "fetchBackupsFromServerResult",
-              result: await fetchBackups(message.data, mainWindow!)
-            }));
-          } catch (err: any) {
-            IPCRouter.getInstance().send('renderer', 'action', JSON.stringify({
-              type: "fetchBackupsFromServerResult",
-              result: { error: err.message || 'Failed to fetch backups' }
-            }));
-          }
-
-        } else if (message.type === 'fetchFilesFromBackup') {
-          try {
-            IPCRouter.getInstance().send('renderer', 'action', JSON.stringify({
-              type: "fetchFilesFromBackupResult",
-              result: await fetchFilesInBackup(message.data)
-            }));
-          } catch (err: any) {
-            IPCRouter.getInstance().send('renderer', 'action', JSON.stringify({
-              type: "fetchFilesFromBackupResult",
-              result: { error: err.message || 'Failed to fetch files' }
-            }));
-          }
-
-        } else if (message.type === 'restoreBackups') {
-
-          await restoreBackups(message.data, IPCRouter.getInstance())
-
-        } else if (message.type === 'removeBackUpTask') {
-          const task: BackUpTask = message.task;
-          const backupManager = getBackUpManager();
-
-          if (!backupManager) {
-            notify(`Error: No Backup Manager available.`);
-            return;
-          }
-
-          try {
-            await backupManager.unschedule(task);
-            notify(`Successfully removed ${task.source} → ${task.target}`);
-          } catch (err: any) {
-            notify(`Error deleting task: ${err.message}`);
-            console.error("removeBackUpTask failed:", err);
-          }
-
-          // Always re-send updated tasks so the renderer can continue
-          const tasks = await backupManager.queryTasks();
-
-          IPCRouter.getInstance().send('renderer', 'action', JSON.stringify({
-            type: 'sendBackupTasks',
-            tasks
-          }));
-        } else if (message.type === 'removeMultipleBackUpTasks') {
-          const tasks: BackUpTask[] = message.tasks;
-          const backupManager = getBackUpManager();
-
-          if (!backupManager) {
-            notify(`Error: No Backup Manager available.`);
-            return;
-          }
-
-          try {
-            if (backupManager?.unscheduleSelectedTasks) {
-              await backupManager.unscheduleSelectedTasks(tasks);
-              notify(`Successfully removed ${tasks.length} backup task(s)!`);
-            } else {
-              notify(`Error: Backup Manager does not support bulk deletion.`);
-            }
-          } catch (err: any) {
-            notify(`Error: ${err.message}`);
-            console.error("removeMultipleBackUpTasks failed:", err);
-          }
-
-          // Always re-send updated tasks so the renderer can continue
-          const updatedTasks = await backupManager.queryTasks();
-          IPCRouter.getInstance().send('renderer', 'action', JSON.stringify({
-            type: 'sendBackupTasks',
-            tasks: updatedTasks
-          }));
-        } else if (message.type === 'updateBackUpTask') {
-          const task: BackUpTask = message.task;
-          const username: string = message.username;
-          const password: string = message.password;
-          const backupManager = getBackUpManager();
-
-          if (!backupManager) {
-            notify(`Error: No Backup Manager available.`);
-            return;
-          }
-
-          try {
-            await backupManager.updateSchedule(task, username, password);
-            jsonLogger.info({
-              event: 'updateBackUpTask_success',
-              taskUuid: task.uuid,
-            });
-            const date = new Date(task.schedule.startDate);
-            const minute = date.getMinutes().toString().padStart(2, '0');
-            const hour = date.getHours();
-            notify(`Updated task schedule for ${task.description} to ${hour}:${minute}`);
-          } catch (err: any) {
-            notify(`Error: ${err.message}`);
-            jsonLogger.error({
-              event: 'updateBackUpTask_error',
-              taskUuid: task.uuid,
-              error: err.message,
-            });
-            console.error("updateBackUpTask failed:", err);
-          }
-        } else if (message.type === 'openFolder') {
-          const folderPath: string = message.path;
-          try {
-            console.debug('Trying to open folder:', folderPath);
-
-            const exists = fs.existsSync(folderPath);
-            console.debug(' Exists:', exists);
-
-            if (!exists) {
-              notify(` Folder does not exist: ${folderPath}`);
-              return;
-            }
-
-            const stats = fs.statSync(folderPath);
-            if (!stats.isDirectory()) {
-              notify(` Not a directory: ${folderPath}`);
-              return;
-            }
-
-            shell.openPath(folderPath).then(result => {
-              if (result) {
-                console.error(` shell.openPath failed:`, result);
-                notify(` Error opening folder: ${result}`);
-              } else {
-                notify(`Opened folder: ${folderPath}`);
-              }
-            });
-          } catch (err) {
-            notify(` Exception while opening folder: ${folderPath}`);
-            console.error("Error opening folder:", folderPath, err);
-          }
-
-        } else if (message.type === 'checkBackUpStatuses') {
-          // console.debug(" Received checkBackUpStatuses")
-          const tasks: BackUpTask[] = message.tasks;
-          const updatedTasks: BackUpTask[] = [];
-          for (const task of tasks) {
-            try {
-              task.status = await checkBackupTaskStatus(task);
-            } catch (err) {
-              console.error(`Status check failed for task: ${task.description}`, err);
-              task.status = 'offline_connection_error';
-            }
-            updatedTasks.push(task); 
-          }
-
-          IPCRouter.getInstance().send('renderer', 'action', JSON.stringify({
-            type: 'backUpStatusesUpdated',
-            tasks: updatedTasks
-          }));
-        } else if (message.type === 'requestBackUpTasksWithStatus') {
-          const backUpManager = getBackUpManager();
-          if (!backUpManager) {
-            notify(`Error: No Backup Manager available.`);
-            return;
-          }
-          try {
-            const tasks = await backUpManager.queryTasks();
-            IPCRouter.getInstance().send('renderer', 'action', JSON.stringify({
-              type: 'sendBackupTasks',
-              tasks
-            }));
-          } catch (err: any) {
-            notify(`Error: ${err.message}`);
-            console.error("requestBackUpTasksWithStatus failed:", err);
-          }
-
-        } else if (message.type === 'runBackUpTaskNow') {
-          const backupManager = getBackUpManager();
-          const task: BackUpTask = message.task;
-
-          if (!backupManager || typeof (backupManager as any).runNow !== 'function') {
-           notify(`Error: Run Now not supported for this OS`);
-            return;
-          }
-
-          try {
-            console.debug("Attempting to run backup:", task.description);
-            const result = await (backupManager as any).runNow(task);
-
-            if (result.stderr && result.stderr.trim() !== "") {
-              console.warn("Backup completed with warnings/errors in stderr:", result.stderr);
-            }
-
-            console.debug(" runNow completed:", result);
-            jsonLogger.info({
-              event: 'runBackUpTaskNow_success',
-              taskUuid: task.uuid,
-              stderr: result.stderr || null,
-            });
-            notify(` Backup task "${task.description}" started successfully.`);
-
-            setTimeout(async () => {
-              try {
-                task.status = await checkBackupTaskStatus(task);
-                IPCRouter.getInstance().send('renderer', 'action', JSON.stringify({
-                  type: 'backUpStatusesUpdated',
-                  tasks: [task]
-                }));
-              } catch (err) {
-                console.warn(`Post-runNow status update failed for ${task.description}`, err);
-              }
-            }, 5000);
-          } catch (err: any) {
-            console.error(" runNow failed:", err);
-            jsonLogger.error({
-              event: 'runBackUpTaskNow_error',
-              taskUuid: task.uuid,
-              error: err.stderr?.trim() || err.message,
-            });
-            const errorMsg = err?.stderr || err?.message || JSON.stringify(err);
-            notify(` Backup task "${task.description}" failed to run: ${errorMsg}`);
-          }
-
-        } else if (message.type === 'addManualIP') {
-          const { ip, manuallyAdded } = message as { ip: string; manuallyAdded?: boolean };
-
-          // 1) Try Cockpit’s HTTPS on 9090, but DON’T let a throw skip the SSH probe
-          let httpsReachable = false;
-          try {
-            const res = await fetch(`https://${ip}:9090/`, {
-              method: 'GET',
-              cache: 'no-store',
-              signal: AbortSignal.timeout(3000),
-            });
-            httpsReachable = res.ok;
-            // console.debug('HTTPS check:', res.ok ? 'OK' : `status ${res.status}`);
-          } catch (err) {
-            console.warn('HTTPS check failed:', err);
-          }
-
-          // 2) If no HTTPS, fall back to SSH
-          let reachable = httpsReachable;
-          if (!reachable) {
-            // console.debug('Falling back to SSH probe on port 22…');
-            reachable = await checkSSH(ip, 3000);
-            // console.debug(`SSH probe ${reachable ? 'succeeded' : 'failed'}`);
-          }
-
-          // 3) If _still_ unreachable, bail
-          if (!reachable) {
-            return notify(`Error: Unable to reach ${ip} via HTTPS (9090) or SSH (22)`);
-          }
-
-          // 4) success! add to discoveredServers
-          const server: Server = {
-            ip,
-            name: ip,
-            status: 'unknown',
-            setupComplete: false,
-            lastSeen: Date.now(),
-            serverName: ip,
-            shareName: '',
-            setupTime: '',
-            serverInfo: {
-              moboMake: '',
-              moboModel: '',
-              serverModel: '',
-              aliasStyle: '',
-              chassisSize: '',
-            },
-            manuallyAdded: manuallyAdded === true,
-            fallbackAdded: false,
-          };
-
-          // let existingServer = discoveredServers.find((eServer) => eServer.ip === server.ip && eServer.name === server.name);
-          let existingServer = discoveredServers.find(eServer => eServer.ip === server.ip);
-
-          try {
-            if (!existingServer) {
-              discoveredServers.push(server);
-            } else {
-              existingServer.lastSeen = Date.now();
-              existingServer.status = server.status;
-              existingServer.setupComplete = server.status == 'complete' ? true : false;
-              existingServer.serverName = server.serverName;
-              existingServer.shareName = server.shareName;
-              existingServer.setupTime = server.setupTime;
-              existingServer.serverInfo = server.serverInfo;
-            }
-
-          } catch (error) {
-            console.error('Add Manual Server-> Fetch error:', error);
-          }
-
-          mainWindow!.webContents.send('discovered-servers', discoveredServers);
-
-        } else if (message.type === 'rescanServers') {
-          // clear & notify
-          discoveredServers = [];
-          mainWindow!.webContents.send('discovered-servers', discoveredServers);
-
-          // kick mDNS
-          mDNSClient.query({ questions: [{ name: serviceType, type: 'PTR' }] });
-
-          // after timeout: if still empty, call the same fallback fn
-          setTimeout(async () => {
-            if (discoveredServers.length === 0) {
-              const fallback = await doFallbackScan();
-              if (fallback.length) {
-                mainWindow!.webContents.send('discovered-servers', fallback);
-              }
-            }
-          }, TIMEOUT_DURATION);
-        } else if (message.type === 'fetchBackupEvents') {
-          // locate the JSON‐lines events log
-          const logPath = path.join(app.getPath('userData'), 'logs', '45drives_backup_events.json');
-          let events: Array<{ uuid: string; host: string; share: string; source: string; timestamp: string, status: string }> = [];
-
-          if (fs.existsSync(logPath)) {
-            const lines = fs.readFileSync(logPath, 'utf8')
-              .split(/\r?\n/)
-              .filter(line => line.trim());
-            for (const line of lines) {
-              try {
-                const ev = JSON.parse(line);
-                if (ev.event === 'backup_end') {
-                  events.push({
-                    uuid: ev.uuid,
-                    host: ev.host,
-                    share: ev.share,
-                    source: ev.source,
-                    timestamp: ev.timestamp,
-                    status: ev.status
-                  });
-                }
-              } catch { /* skip invalid JSON */ }
-            }
-          }
-          IPCRouter.getInstance().send(
-            'renderer', 'action',
-            JSON.stringify({ type: 'sendBackupEvents', events })
-          );
-        }
-      
       } catch (error) {
         console.error("Failed to handle IPC action:", data, error);
       }
     }
   });
+
 
   mainWindow.maximize();
 
@@ -961,7 +578,7 @@ function createWindow() {
     for (const answer1 of records) {
       if (answer1.type === 'SRV' && answer1.name.includes(serviceType)) {
         // Find related 'A' and 'TXT' records in the combined list
-        const ipAnswer = records.find(a => a.type === 'A' && a.name === (answer1.data as any).target);
+        const ipAnswer = records.find(a => a.type === 'A' && a.name === (answer1.data as { target: string }).target);
         const txtAnswer = records.find(a => a.type === 'TXT' && a.name === answer1.name);
 
         // Parse TXT into a map
@@ -1058,7 +675,6 @@ function createWindow() {
           }
 
           // upsert into discoveredServers
-          // const existing = discoveredServers.find(s => s.ip === server.ip && s.name === server.name);
           const existing = discoveredServers.find(s => s.ip === server.ip);
 
           if (!existing) {
@@ -1095,7 +711,6 @@ function createWindow() {
       const data = await response.json();
 
       if (data.action) {
-        // console.debug("New action received:", server, data);
 
         if (data.action === "mount_samba_client") {
           mountSmbPopup(data.smb_host, data.smb_share, data.smb_user, data.smb_pass, mainWindow!);
@@ -1104,7 +719,6 @@ function createWindow() {
         }
       }
     } catch (error) {
-      // console.error(` [pollActions] fetch failed for ${server.ip}`, error);
     }
   }
 
@@ -1168,23 +782,6 @@ app.whenReady().then(() => {
 
 
   const { combine, timestamp, json } = format;
-  // structured JSON logger used alongside electron-log
-  // jsonLogger = createLogger({
-  //   level: 'info',
-  //   format: format.combine(
-  //     format.timestamp(),
-  //     format.json()
-  //   ),
-  //   transports: [
-  //     new DailyRotateFile({
-  //       dirname: resolvedLogDir,
-  //       filename: '45drives-setup-wizard-%DATE%.json',
-  //       datePattern: 'YYYY-MM-DD',
-  //       maxFiles: '14d',
-  //       zippedArchive: true,
-  //     })
-  //   ]
-  // });
 
   // only let through events (which all have an "event" field)
   const preserveEventsOrErrors = format((info) => {

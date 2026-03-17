@@ -5,7 +5,14 @@ import mountSmbPopup from "../smbMountPopup";
 import path from 'path';
 import fsAsync from 'fs/promises';
 
-export default async function fetchBackupsFromServer(data: any, mainWindow: BrowserWindow): Promise<BackupEntry[]> {
+interface FetchBackupsData {
+  smb_host: string;
+  smb_share: string;
+  smb_user: string;
+  smb_pass: string;
+}
+
+export default async function fetchBackupsFromServer(data: FetchBackupsData, mainWindow: BrowserWindow): Promise<BackupEntry[]> {
   const baseLogDir = path.join(app.getPath('userData'), 'logs');
   const backupEventsPath = path.join(baseLogDir, '45drives_backup_events.json');
 

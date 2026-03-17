@@ -257,10 +257,10 @@ const installModule = async (
       statusMessage.value = "Modules installed and SSH key uploaded!";
     }
     return result;
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error("installModule failed:", err);
     statusMessage.value = "Could not connect or authenticate.";
-    return { success: false, error: err.message };
+    return { success: false, error: err instanceof Error ? err.message : String(err) };
   } finally {
     isInstalling.value = false;
   }

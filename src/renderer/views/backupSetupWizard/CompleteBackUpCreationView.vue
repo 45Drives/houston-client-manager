@@ -63,6 +63,7 @@ import { ref, watch, inject, onActivated, onBeforeUnmount } from "vue";
 import { useWizardSteps} from "@45drives/houston-common-ui";
 import { EasySetupProgress, IPCRouter } from "@45drives/houston-common-lib";
 import { backUpSetupConfigKey } from "../../keys/injection-keys";
+import type { BackUpSetupConfig } from "@45drives/houston-common-lib";
 import { useHeader } from '../../composables/useHeader'
 import { useRouter } from 'vue-router'
 const router = useRouter()
@@ -73,7 +74,7 @@ useHeader('Congratulations')
 const setupComplete = ref<string>("no");
 const error = ref<string>();
 const completedSteps = ref<EasySetupProgress[]>([]);
-const backUpSetupConfig: any = inject(backUpSetupConfigKey);
+const backUpSetupConfig = inject(backUpSetupConfigKey);
 
 watch(setupComplete, (value) => {
   if (value === "yes" && backUpSetupConfig) {
@@ -82,7 +83,6 @@ watch(setupComplete, (value) => {
 });
 
 function goToBackupWizard(): void {
-  // console.debug("before clearing: ", backUpSetupConfig)
 
   if (backUpSetupConfig) {
     for (const key in backUpSetupConfig) {
@@ -96,7 +96,6 @@ function goToBackupWizard(): void {
     }
   }
 
-  // console.debug("after clearing: ", backUpSetupConfig);
   // setStep(0);
 
   router.push({ name: 'backup-manage' })
