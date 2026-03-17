@@ -43,13 +43,20 @@
           <!-- Server connection bar (visible on server tab) -->
           <div v-if="activeTab === 'server'" class="mb-4 flex flex-wrap items-end gap-3">
             <div>
-              <label class="block text-xs text-muted mb-1">Server IP</label>
-              <input
-                v-model.trim="serverIp"
-                type="text"
-                placeholder="e.g. 192.168.1.100"
-                class="input-textlike px-3 py-2 border border-default rounded-lg bg-default text-default w-48"
-              />
+              <label class="block text-xs text-muted mb-1">Server</label>
+              <select
+                v-model="serverIp"
+                class="px-3 py-2 border border-default rounded-lg bg-default text-default w-64"
+              >
+                <option value="" disabled>Select a server…</option>
+                <option
+                  v-for="srv in serverOptions"
+                  :key="srv.ip"
+                  :value="srv.ip"
+                >
+                  {{ srv.label }}
+                </option>
+              </select>
             </div>
             <div>
               <label class="block text-xs text-muted mb-1">Source</label>
@@ -189,13 +196,16 @@
 
 <script setup lang="ts">
 import { CardContainer } from "@45drives/houston-common-ui";
-import { computed, onMounted, ref, watch } from "vue";
+import { computed, inject, onMounted, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import { useHeader } from "../composables/useHeader";
+import { discoveryStateInjectionKey } from "../keys/injection-keys";
+import type { DiscoveryState } from "../types";
 
 useHeader("Log Viewer");
 
 const router = useRouter();
+const discoveryState = inject<DiscoveryState>(discoveryStateInjectionKey)!;
 
 // ─── Types ───────────────────────────────────────────────────────────────
 
@@ -246,18 +256,24 @@ const serverError = ref<string | null>(null);
 const serverEntries = ref<ParsedLogEntry[]>([]);
 const serverMeta = ref<{ file: string; logDir: string }>({ file: "", logDir: "" });
 
-// Populate serverIp from discovered servers if available
-onMounted(() => {
-  // Auto-populate server IP from discovered servers (if globally provided)
-  try {
-    const discovered = (window as any).__discoveredServers;
-    if (Array.isArray(discovered) && discovered.length > 0 && !serverIp.value) {
-      serverIp.value = discovered[0].ip || "";
+// Build dropdown options from discovered servers
+const serverOptions = computed(() =>
+  discoveryState.servers.map((s) => ({
+    ip: s.ip,
+    label: s.name && s.name !== s.ip ? `${s.name} (${s.ip})` : s.ip,
+  }))
+);
+
+// Auto-select the first server when discovered
+watch(
+  () => discoveryState.servers.length,
+  (len) => {
+    if (len > 0 && !serverIp.value) {
+      serverIp.value = discoveryState.servers[0].ip;
     }
-  } catch {
-    // OK — user can enter manually
-  }
-});
+  },
+  { immediate: true },
+);
 
 // ─── Active data (tab-dependent) ────────────────────────────────────────
 
@@ -423,48 +439,28 @@ async function fetchClientLogs() {
   }
 }
 
-// ─── Server log fetching (via HTTP to broadcaster API on port 9099) ──
+// ─── Server log fetching (via IPC → main process → broadcaster API) ──
 
 async function fetchServerLogs() {
   if (!serverIp.value) return;
   serverLoading.value = true;
   serverError.value = null;
   try {
-    const params = new URLSearchParams();
-    params.set("source", serverSource.value);
-    params.set("limit", "600");
-
-    const url = `http://${encodeURIComponent(serverIp.value)}:9099/logs?${params.toString()}`;
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 10_000);
-
-    const resp = await fetch(url, {
-      method: "GET",
-      cache: "no-store",
-      signal: controller.signal,
+    const res = await window.electron?.ipcRenderer.invoke("logs:read-server", {
+      ip: serverIp.value,
+      source: serverSource.value,
+      limit: 600,
     });
-    clearTimeout(timeout);
-
-    if (!resp.ok) {
-      throw new Error(`Server returned ${resp.status}: ${resp.statusText}`);
+    if (!res?.ok) {
+      throw new Error(res?.error || "Unable to read server logs");
     }
-
-    const data = await resp.json();
-    if (!data?.ok) {
-      throw new Error(data?.error || "Server returned an error");
-    }
-
-    serverEntries.value = Array.isArray(data.entries) ? data.entries : [];
+    serverEntries.value = Array.isArray(res.entries) ? res.entries : [];
     serverMeta.value = {
       file: serverIp.value,
-      logDir: Array.isArray(data.files) ? data.files.join(", ") : "",
+      logDir: Array.isArray(res.files) ? res.files.join(", ") : "",
     };
   } catch (e: any) {
-    if (e?.name === "AbortError") {
-      serverError.value = "Request timed out connecting to server";
-    } else {
-      serverError.value = e?.message || String(e);
-    }
+    serverError.value = e?.message || String(e);
     serverEntries.value = [];
   } finally {
     serverLoading.value = false;

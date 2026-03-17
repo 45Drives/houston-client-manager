@@ -2,9 +2,14 @@
   <div
     class="w-screen h-screen overflow-hidden flex flex-col items-center justify-center text-default bg-default text-center">
     <header v-if="!hideHeader" class="relative flex items-center justify-center h-18 mt-4 w-full">
-      <!-- Left (logo) -->
-      <div id="app-header-left" class="absolute left-0 p-1 px-4 rounded-l">
-        <DynamicBrandingLogo :division="divisionCode" :height="(divisionCode === 'studio' ? 16 : 12)" />
+      <!-- Left (logo + breadcrumb) -->
+      <div id="app-header-left" class="absolute left-0 p-1 px-4 rounded-l flex items-center gap-3">
+        <button @click="router.push({ name: 'dashboard' })" class="hover:opacity-80 transition-opacity" title="Go to Dashboard">
+          <DynamicBrandingLogo :division="divisionCode" :height="(divisionCode === 'studio' ? 16 : 12)" />
+        </button>
+        <div class="border-l border-default pl-3 hidden sm:block">
+          <AppBreadcrumb />
+        </div>
       </div>
 
       <!-- Center (title) -->
@@ -23,6 +28,7 @@
     </main>
     <GlobalModalConfirm />
     <NotificationView />
+    <LogModal />
   </div>
 </template>
 
@@ -30,6 +36,8 @@
 import { ref, provide, onMounted, onBeforeUnmount, watch, computed } from 'vue'
 import { DynamicBrandingLogo, GlobalModalConfirm, NotificationView, reportError, reportSuccess } from '@45drives/houston-common-ui'
 import GlobalSetupWizardMenu from '../renderer/components/GlobalSetupWizardMenu.vue'
+import AppBreadcrumb from '../renderer/components/AppBreadcrumb.vue'
+import LogModal from '../renderer/components/LogModal.vue'
 import { divisionCodeInjectionKey, currentServerInjectionKey, discoveryStateInjectionKey, discoveryRescanInjectionKey, thisOsInjectionKey } from '../renderer/keys/injection-keys'
 import type { Server, DivisionType, DiscoveryState } from '../renderer/types'
 import { useServerDiscovery } from '../renderer/composables/useServerDiscovery'

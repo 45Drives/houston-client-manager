@@ -131,10 +131,10 @@ describe('BackUpTask field access (no more "as any")', () => {
   });
 
   it('resolveConnForTask uses direct field access', () => {
-    const task = makeMockTask({ host: 'nas01', share: 'backups', smb_user: 'admin' });
+    const task = makeMockTask({ host: 'nas01.local', share: 'backups', smb_user: 'admin' });
 
     // Mirrors the fixed resolveConnForTask
-    const smb_host = task.host ? `${task.host}.local` : '';
+    const smb_host = task.host ?? '';
     const smb_share = task.share ?? '';
     const smb_user = task.smb_user ?? '';
 
@@ -146,7 +146,7 @@ describe('BackUpTask field access (no more "as any")', () => {
   it('resolveConnForTask handles missing optional fields', () => {
     const task = makeMockTask();
 
-    const smb_host = task.host ? `${task.host}.local` : '';
+    const smb_host = task.host ?? '';
     const smb_share = task.share ?? '';
     const smb_user = task.smb_user ?? '';
 

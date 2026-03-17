@@ -1,5 +1,3 @@
-import log from 'electron-log';
-log.transports.console.level = false;
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 
 // Noise-filtered console overrides (TLS warnings, APPIMAGE)
@@ -8,18 +6,24 @@ const isSuppressed = (args: any[]) => {
   const msg = args.map(String).join(' ');
   return SUPPRESS_PATTERNS.some(p => msg.includes(p));
 };
-// Initial console routing through electron-log (upgraded in app.whenReady with jsonLogger)
-console.log = (...args) => log.info(...args);
-console.error = (...args) => { if (!isSuppressed(args)) log.error(...args); };
-console.warn = (...args) => { if (!isSuppressed(args)) log.warn(...args); };
-console.debug = (...args) => log.debug(...args);
+
+// Buffer early console output before Winston is ready
+const _origConsole = {
+  log: console.log.bind(console),
+  info: console.info.bind(console),
+  warn: console.warn.bind(console),
+  error: console.error.bind(console),
+  debug: console.debug.bind(console),
+};
 
 process.on('uncaughtException', (error) => {
-  log.error('Uncaught Exception:', error);
+  _origConsole.error('Uncaught Exception:', error);
+  if (jsonLogger) jsonLogger.error({ event: 'uncaughtException', message: String(error), error: (error as any)?.stack || String(error) });
 });
 
 process.on('unhandledRejection', (reason, promise) => {
-  log.error('Unhandled Rejection at:', promise, 'reason:', reason);
+  _origConsole.error('Unhandled Rejection at:', promise, 'reason:', reason);
+  if (jsonLogger) jsonLogger.error({ event: 'unhandledRejection', reason: String(reason), promise: String(promise) });
 });
 
 import { app, BrowserWindow, ipcMain, dialog, shell, session } from 'electron';
@@ -485,12 +489,6 @@ function createWindow() {
 
     if (rendererIsReady) {
       mainWindow.webContents.send("notification", message);
-      try {
-        IPCRouter.getInstance().send(
-          'renderer', 'action',
-          JSON.stringify({ type: 'notification', message })
-        );
-      } catch (e) { console.debug('IPCRouter notification relay failed:', e); }
     }
   }
 
@@ -521,6 +519,16 @@ function createWindow() {
     } else {
       try {
         const message = JSON.parse(data);
+
+        if (message.type === 'requestBackUpTasksByIds' && Array.isArray(message.ids)) {
+          const backUpManager = getBackUpManager();
+          if (backUpManager) {
+            const allTasks = await backUpManager.queryTasks();
+            const matched = allTasks.filter(t => message.ids.includes(t.uuid));
+            IPCRouter.getInstance().send('renderer', 'action', JSON.stringify({ type: 'sendBackupTasksByIds', tasks: matched }));
+          }
+          return;
+        }
 
         if (await handleBackupMessage(message, handlerCtx)) return;
 
@@ -776,24 +784,6 @@ app.whenReady().then(() => {
   } catch (err) {
     console.warn('Legacy credential migration failed (non-fatal):', err);
   }
-  log.transports.file.resolvePathFn = () =>
-    path.join(resolvedLogDir, 'main.log');
-  log.info("🟢 Logging initialized.");
-  log.info("Log file path:", log.transports.file.getFile().path);
-
-
-  const { combine, timestamp, json } = format;
-
-  // only let through events (which all have an "event" field)
-  const preserveEventsOrErrors = format((info) => {
-    // keep if it's an error or warning,
-    // or if we've attached an "event" property
-    if (['error', 'warn'].includes(info.level) || info.event) {
-      return info;
-    }
-    return false;
-  });
-
   jsonLogger = createLogger({
     level: 'info',
     format: format.combine(
@@ -809,20 +799,21 @@ app.whenReady().then(() => {
         }
         return info;
       })(),
-      // Redact sensitive fields before writing to disk
       format((info) => scrubValue(info))(),
       format.json()
     ),
     transports: [
       new DailyRotateFile({
         dirname: resolvedLogDir,
-        filename: '45drives-setup-wizard-%DATE%.json',
+        filename: '45drives-storage-wizard-%DATE%.json',
         datePattern: 'YYYY-MM-DD',
         maxFiles: '14d',
         zippedArchive: true,
       })
     ]
   });
+
+  _origConsole.info('Logging initialized. Log dir:', resolvedLogDir);
 
 
   session.defaultSession.setCertificateVerifyProc((req, cb) => {
@@ -865,36 +856,47 @@ app.whenReady().then(() => {
     });
   });
   
-  // Monkey‐patch so calls go to both electron-log + jsonLogger
+  // Monkey-patch console to route through Winston
   console.log = (...args: any[]) => {
-    log.info(...args);
-    jsonLogger.info({ message: scrubString(args.map(String).join(' ')) });
+    if (!isSuppressed(args)) {
+      _origConsole.log(...args);
+      jsonLogger.info({ message: scrubString(args.map(String).join(' ')) });
+    }
+  };
+  console.info = (...args: any[]) => {
+    if (!isSuppressed(args)) {
+      _origConsole.info(...args);
+      jsonLogger.info({ message: scrubString(args.map(String).join(' ')) });
+    }
   };
   console.warn = (...args: any[]) => {
     if (!isSuppressed(args)) {
-      log.warn(...args);
+      _origConsole.warn(...args);
       jsonLogger.warn({ message: scrubString(args.map(String).join(' ')) });
     }
   };
   console.error = (...args: any[]) => {
     if (!isSuppressed(args)) {
-      log.error(...args);
+      _origConsole.error(...args);
       jsonLogger.error({ message: scrubString(args.map(String).join(' ')) });
     }
   };
   console.debug = (...args: any[]) => {
-    log.debug(...args);
+    _origConsole.debug(...args);
     jsonLogger.debug({ message: scrubString(args.map(String).join(' ')) });
   };
 
-  process.on('uncaughtException', (err) => {
-    log.error('Uncaught Exception:', err);
-    jsonLogger.error({ event: 'uncaughtException', error: err.stack || err.message });
-  });
-
-  process.on('unhandledRejection', (reason, promise) => {
-    log.error('Unhandled Rejection at:', promise, 'reason:', reason);
-    jsonLogger.error({ event: 'unhandledRejection', reason, promise: String(promise) });
+  // Handle renderer-log messages from preload bridge
+  ipcMain.on('renderer-log', (_event, payload: { level: string; args: any[] }) => {
+    const { level, args } = payload || {};
+    if (!args || !Array.isArray(args)) return;
+    const mapped = level === 'log' ? 'info' : (level || 'info');
+    const message = scrubString(args.map(String).join(' '));
+    if (['error', 'warn', 'info', 'debug'].includes(mapped)) {
+      (jsonLogger as any)[mapped]({ message, source: 'renderer' });
+    } else {
+      jsonLogger.info({ message, source: 'renderer' });
+    }
   });
 
   // Auto-updates are now handled by src/main/updates.ts

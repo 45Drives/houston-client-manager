@@ -13,14 +13,14 @@ export function useIpcActions(getServerIp: () => string | undefined) {
     switch (msg.type) {
       case 'show_wizard':
       case 'wizard_go_back': {
-        const map:Record<string, string> = { storage:'setup', backup:'backup', 'restore-backup':'restore' }
+        const map:Record<string, string> = { storage:'setup', backup:'backup-manage', 'restore-backup':'restore' }
         if (map[msg.wizard]) router.push({ name: map[msg.wizard] })
         break
       }
       case 'reboot_and_show_wizard': {
         const ip = getServerIp()
         if (!ip) return
-        const map:Record<string, string> = { storage:'setup', backup:'backup', 'restore-backup':'restore' }
+        const map:Record<string, string> = { storage:'setup', backup:'backup-manage', 'restore-backup':'restore' }
         waitFor(ip).then(ok => { if (ok && map[msg.wizard]) router.push({ name: map[msg.wizard] }) })
         break
       }

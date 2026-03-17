@@ -57,7 +57,7 @@ export function registerIpcActionListener(opts: Options) {
             if (wiz === "backup") {
               setCurrentWizard?.("backup");
               setShowWebView?.(false);
-              pushRoute({ name: "backup" });
+              pushRoute({ name: "backup-manage" });
               break;
             }
 
@@ -91,7 +91,7 @@ export function registerIpcActionListener(opts: Options) {
 
             // After reboot, route accordingly:
             if (wiz === "backup") {
-              pushRoute({ name: "backup" });
+              pushRoute({ name: "backup-manage" });
             } else if (wiz === "storage") {
               if (openStorageSetup) openStorageSetup(null);
               else pushRoute({ name: "setup" });

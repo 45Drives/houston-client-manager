@@ -1,146 +1,126 @@
 <template>
-    <CardContainer class="overflow-y-auto min-h-0">
-        <div class="flex flex-col h-full items-stretch gap-3">
-            <p class="w-full text-center text-2xl">Here are your currently scheduled backups.
-                Select <b>LOCAL</b>
-                <CommanderToolTip
-                    :message="'Local backups are backups coming from this computer (the Client) and sent to 45Drives hardware (the Server).'" />
-                or <b>REMOTE</b>
-                <CommanderToolTip
-                    :message="'Remote backups are backups coming from a 45Drives Server to another Server or to a Cloud Provider.'" />
-                to view those backups.
-            </p>
+    <div class="h-full flex flex-col min-h-0 overflow-hidden p-4">
+        <!-- Tab bar + actions header -->
+        <div class="relative flex items-center justify-between mb-4 shrink-0 h-10">
+            <!-- Back to Dashboard -->
+            <div class="flex items-center min-w-0">
+                <button class="btn btn-secondary text-sm h-8 flex items-center gap-1.5" @click="router.push({ name: 'dashboard' })">
+                    <ArrowLeftIcon class="w-4 h-4" />
+                    Dashboard
+                </button>
+            </div>
 
-            <!-- Toggle row centered, with remote controls on the right -->
-            <div class="w-full grid items-center gap-3 grid-cols-[1fr_auto_1fr]">
-                <!-- right: remote-only controls -->
-                <div v-if="activeTab === 'remote'" class="col-start-1 justify-self-start flex items-center gap-3">
-                    <span class="text-sm text-default">
-                        {{ currentServer ? `Viewing: ${currentServer.name || currentServer.ip}` : 'Select a server' }}
-                    </span>
-                </div>
-                <!-- center: tabs -->
-                <div class="col-start-2 justify-self-center">
-                    <div class="inline-flex rounded-lg border border-default overflow-hidden">
-                        <button class="px-4 py-2 text-sm font-medium"
-                            :class="activeTab === 'local' ? 'bg-primary text-primary-foreground' : 'bg-well hover:bg-muted'"
-                            @click="activeTab = 'local'">
-                            LOCAL
-                        </button>
-                        <button class="px-4 py-2 text-sm font-medium border-l border-default"
-                            :class="activeTab === 'remote' ? 'bg-primary text-primary-foreground' : 'bg-well hover:bg-muted'"
-                            @click="activeTab = 'remote'">
-                            REMOTE
-                        </button>
-                    </div>
-                </div>
+            <!-- Centered tab toggle -->
+            <div class="absolute left-1/2 -translate-x-1/2 inline-flex rounded-lg border border-default overflow-hidden">
+                <button class="px-5 py-2 text-sm font-medium flex items-center gap-2 transition-colors"
+                    :class="activeTab === 'local' ? 'bg-primary text-primary-foreground' : 'bg-well hover:bg-accent text-default'"
+                    @click="activeTab = 'local'">
+                    <ComputerDesktopIcon class="w-4 h-4" />
+                    Local Backups
+                </button>
+                <button class="px-5 py-2 text-sm font-medium border-l border-default flex items-center gap-2 transition-colors"
+                    :class="activeTab === 'remote' ? 'bg-primary text-primary-foreground' : 'bg-well hover:bg-accent text-default'"
+                    @click="activeTab = 'remote'">
+                    <GlobeAltIcon class="w-4 h-4" />
+                    Remote Backups
+                </button>
+            </div>
 
-                <!-- right: remote-only controls -->
-                <div v-if="activeTab === 'remote'" class="col-start-3 justify-self-end flex items-center gap-2">
-                    <label class="text-sm">Server:</label>
+            <!-- Right side actions -->
+            <div class="flex items-center gap-2 justify-end min-w-0">
+                <template v-if="activeTab === 'remote'">
                     <select v-model="selectedIp" :title="selectedIp"
-                        class="input-textlike border rounded px-3 py-1 min-w-64">
-                        <option value="">Select Server</option>
-
+                        class="input-textlike border border-default rounded-lg px-3 py-1.5 min-w-56 text-sm">
+                        <option value="">Select Server…</option>
                         <optgroup v-if="favoriteServers.length" label="Favorites">
-                            <option v-for="opt in favoriteServers" :key="'fav-' + opt.ip" :value="opt.ip">
-                                {{ opt.label }}
-                            </option>
+                            <option v-for="opt in favoriteServers" :key="'fav-' + opt.ip" :value="opt.ip">{{ opt.label }}</option>
                         </optgroup>
-
                         <optgroup label="Discovered">
-                            <option v-for="opt in serversForDropdown" :key="opt.ip" :value="opt.ip">
-                                {{ opt.label }}
-                            </option>
+                            <option v-for="opt in serversForDropdown" :key="opt.ip" :value="opt.ip">{{ opt.label }}</option>
                         </optgroup>
                     </select>
-
-                    <button class="btn btn-success h-fit w-fit" :title="`Connect to ${selectedIp}`" :disabled="!selectedIp" @click="openLogin">
-                        Connect
+                    <button class="btn btn-primary text-sm h-8" :disabled="!selectedIp" @click="openLogin">Connect</button>
+                    <button v-if="currentServer" class="btn btn-secondary text-sm h-8"
+                        @click="cockpitRef?.logoutFromCurrentServer()">Log out</button>
+                    <button v-if="activeCredId && currentServer" class="btn btn-danger text-sm h-8"
+                        @click="forgetActive">Forget</button>
+                </template>
+                <template v-else>
+                    <button class="btn btn-primary text-sm h-8 flex items-center gap-1.5" @click="newBackupTask">
+                        <PlusIcon class="w-4 h-4" />
+                        New Backup
                     </button>
-
-                    <button v-if="currentServer" class="btn btn-secondary h-fit w-fit" :title="`Clear Cockpit session & reload for ${currentServer.name || currentServer.ip}`"
-                        @click="cockpitRef?.logoutFromCurrentServer()">
-                        Log out
-                    </button>
-
-                    <button v-if="activeCredId && currentServer" class="btn btn-danger h-fit w-fit" :title="`Remove saved credentials for ${currentServer.name || currentServer.ip}`" @click="forgetActive">
-                        Forget saved login
-                    </button>
-                </div>
-            </div>
-
-            <div v-if="activeTab === 'local'" class="overflow-hidden w-full text-left items-center justify-center">
-                <div class="bg-well p-2 rounded-lg border border-default h-[64vh] flex flex-col">
-                    <BackUpListView ref="backUpListRef" class="flex-1 min-h-0"
-                        @backUpTaskSelected="handleBackUpTaskSelected" />
-                </div>
-                <div class="button-group-row w-full justify-between item-center mt-2">
-                    <button class="btn btn-secondary w-64 h-10 px-5" :disabled="selectedBackUpTasks.length !== 1"
-                        @click="viewSelected">View Selected Backup{{ selectedBackUpTasks.length > 1 ? 's' : ''
-                        }}</button>
-                    <button class="btn btn-primary w-64 h-10 px-5 min-w-64"
-                        :disabled="selectedBackUpTasks.length === 0 || isRunningNow" @click="runSelected">
-                        <template v-if="!isRunningNow">
-                            Run Selected Backup{{ selectedBackUpTasks.length > 1 ? 's' : '' }} NOW
-                        </template>
-                        <template v-else>
-                            <span class="inline-flex items-center text-center gap-2">
-                                Starting…
-                                <div class="justify-self-end spinner"></div>
-                            </span>
-                        </template>
-                    </button>
-                    <button class="btn btn-secondary w-64 h-10 px-5" :disabled="selectedBackUpTasks.length !== 1"
-                        @click="editSelected">Edit Selected Backup{{ selectedBackUpTasks.length > 1 ? 's' : ''
-                        }}</button>
-                    <button class="btn btn-secondary w-64 h-10 px-5" :disabled="selectedBackUpTasks.length !== 1"
-                        @click="viewSelectedLog">Check Selected Backup{{ selectedBackUpTasks.length > 1 ? "s'"
-                        : "'s"
-                        }} Logs</button>
-                    <button class="btn btn-danger w-64 h-10 px-5" :disabled="selectedBackUpTasks.length === 0"
-                        @click="deleteSelectedTasks">Cancel Selected Backup{{ selectedBackUpTasks.length > 1 ? 's' :
-                        '' }}</button>
-                </div>
-            </div>
-            <div v-else class="overflow-hidden w-full items-center justify-center ">
-                <div class="bg-well p-2 rounded-lg border border-default h-[64vh] flex flex-col">
-                    <div class="flex-1 min-h-0">
-                        <CockpitWebview v-if="currentServer" :key="currentServer.ip" ref="cockpitRef"
-                            routePath="/scheduler-test" hash="simple" wrapperClass="h-full rounded-lg"
-                            heightClass="h-full" :openDevtoolsInDev="true" />
-                        <div v-else class="h-full flex flex-col items-center justify-center text-default">
-                            <span>
-                                Select a server to load the remote backup scheduler.
-                            </span>
-                            <div class="col-start-3 justify-self-end flex items-center gap-3">
-                                <select v-model="selectedIp" :title="selectedIp"
-                                    class="input-textlike border rounded px-3 py-1 min-w-72 text-left">
-                                    <option value="">Select Server</option>
-                                    <option v-for="opt in serversForDropdown" :key="opt.ip" :value="opt.ip">
-                                        {{ opt.label }}
-                                    </option>
-                                </select>
-                            </div>
-                        </div>
-                    </div>
-                </div>
+                </template>
             </div>
         </div>
 
-        <template #footer>
-            <div class="button-group-row w-full justify-start">
-                <button @click="proceedToPreviousStep" class="btn btn-secondary w-40 h-20">Back</button>
+        <!-- LOCAL tab content -->
+        <div v-if="activeTab === 'local'" class="flex-1 min-h-0 flex flex-col">
+            <div class="flex-1 min-h-0 bg-well rounded-lg border border-default overflow-hidden">
+                <BackUpListView ref="backUpListRef" class="h-full"
+                    @backUpTaskSelected="handleBackUpTaskSelected" />
             </div>
-        </template>
-    </CardContainer>
+
+            <!-- Contextual action toolbar (appears when tasks selected) -->
+            <div v-if="selectedBackUpTasks.length > 0"
+                class="mt-3 flex items-center gap-2 p-3 bg-accent rounded-lg border border-default shrink-0">
+                <span class="text-sm text-muted mr-2">
+                    {{ selectedBackUpTasks.length }} selected
+                </span>
+
+                <button class="btn btn-primary text-sm h-8 flex items-center gap-1.5"
+                    :disabled="isRunningNow" @click="runSelected">
+                    <PlayIcon class="w-4 h-4" />
+                    <template v-if="!isRunningNow">Run Now</template>
+                    <template v-else>Starting…</template>
+                </button>
+
+                <button class="btn btn-secondary text-sm h-8 flex items-center gap-1.5"
+                    :disabled="selectedBackUpTasks.length !== 1" @click="viewSelected">
+                    <EyeIcon class="w-4 h-4" />
+                    View
+                </button>
+
+                <button class="btn btn-secondary text-sm h-8 flex items-center gap-1.5"
+                    :disabled="selectedBackUpTasks.length !== 1" @click="editSelected">
+                    <PencilSquareIcon class="w-4 h-4" />
+                    Edit Schedule
+                </button>
+
+                <button class="btn btn-secondary text-sm h-8 flex items-center gap-1.5"
+                    :disabled="selectedBackUpTasks.length !== 1" @click="viewSelectedLog">
+                    <DocumentTextIcon class="w-4 h-4" />
+                    Logs
+                </button>
+
+                <div class="flex-1" />
+
+                <button class="btn btn-danger text-sm h-8 flex items-center gap-1.5"
+                    @click="deleteSelectedTasks">
+                    <TrashIcon class="w-4 h-4" />
+                    Delete
+                </button>
+            </div>
+        </div>
+
+        <!-- REMOTE tab content -->
+        <div v-else class="flex-1 min-h-0 bg-well rounded-lg border border-default overflow-hidden">
+            <CockpitWebview v-if="currentServer" :key="currentServer.ip" ref="cockpitRef"
+                routePath="/scheduler-test" hash="simple" wrapperClass="h-full rounded-lg"
+                heightClass="h-full" :openDevtoolsInDev="true" class="p-2"/>
+            <div v-else class="h-full flex flex-col items-center justify-center text-muted gap-4">
+                <GlobeAltIcon class="w-12 h-12 opacity-30" />
+                <p>Select a server above to view remote backups.</p>
+            </div>
+        </div>
+    </div>
+
     <ServerLoginModal :open="loginOpen" :host="selectedIp || null" :displayName="selectedOptionLabel"
         :presetUsername="prefillUsername" @cancel="closeLogin" @submit="onLoginSubmit" />
 </template>
 
 <script setup lang="ts">
 import { BackUpTask, IPCRouter } from '@45drives/houston-common-lib';
-import { CardContainer } from '@45drives/houston-common-ui'
 import CockpitWebview from '../../components/CockpitWebview.vue';
 import ServerLoginModal from './ServerLoginModal.vue';
 import { useEnterToAdvance } from '@45drives/houston-common-ui';
@@ -149,11 +129,17 @@ import { computed, inject, Ref, ref, watch, onMounted, onBeforeUnmount } from 'v
 import { currentServerInjectionKey, discoveryStateInjectionKey, reviewBackUpSetupKey } from '../../keys/injection-keys';
 import { useRouter } from 'vue-router';
 import { useHeader } from '../../composables/useHeader';
-import CommanderToolTip from '../../components/commander/CommanderToolTip.vue';
+import { useLogModal } from '../../composables/useLogModal';
 import { DiscoveryState, type Server as ServerType } from '../../types';
+import {
+    ComputerDesktopIcon, GlobeAltIcon, PlusIcon, PlayIcon,
+    EyeIcon, PencilSquareIcon, DocumentTextIcon, TrashIcon,
+    ArrowLeftIcon
+} from '@heroicons/vue/24/outline';
 
-useHeader('Manage Your Backups');
+useHeader('Backup Manager');
 
+const { openLogModal } = useLogModal();
 const reviewBackup = inject(reviewBackUpSetupKey);
 const router = useRouter();
 const selectedBackUpTasks = ref<BackUpTask[]>([]);
@@ -176,15 +162,12 @@ const serversForDropdown = computed(() =>
     }))
 )
 
-// Reference to the Cockpit view to call logout()
 const cockpitRef = ref<InstanceType<typeof CockpitWebview> | null>(null);
 
-// Saved creds metadata (from keychain-backed DB in main)
 type SavedServer = { id: string; host: string; name?: string; username: string; favorite?: boolean; lastUsedAt?: number };
 const savedServers = ref<SavedServer[]>([]);
 const activeCredId = ref<string | null>(null);
 
-// Modal control + UX helpers
 const loginOpen = ref(false);
 const prefillUsername = ref<string | null>(null);
 
@@ -209,77 +192,61 @@ async function loadSavedServers() {
 onMounted(loadSavedServers);
 
 function openLogin() {
-  // If we already have saved creds for this host, skip modal and connect now
-  maybeAutoConnect(true /*forceModalIfNoSaved*/);
+    maybeAutoConnect(true);
 }
 
 function closeLogin() {
-  loginOpen.value = false;
+    loginOpen.value = false;
 }
 
 function sendCredsToWebview(ip: string, username: string, password: string) {
-  window.electron?.ipcRenderer.send('store-manual-creds', { ip, username, password });
+    window.electron?.ipcRenderer.send('store-manual-creds', { ip, username, password });
 }
 
-// Called when the modal form is submitted
 async function onLoginSubmit({ username, password, remember }:
-  { username: string; password: string; remember: boolean }) {
-  const ip = selectedIp.value!;
-  if (remember) {
-    const res = await window.electron?.ipcRenderer.invoke('cred:save', {
-      host: ip, username, password, favorite: true,
-    });
-    activeCredId.value = res?.id ?? null;
-    await loadSavedServers();
-  }
-
-  sendCredsToWebview(ip, username, password);
-
-  // Set the currentServer so webview mounts
-  const srv = discoveryState.servers.find(s => s.ip === ip) || null;
-  if (srv) currentServer!.value = srv;
-
-  // Close modal and scrub (modal component already scrubs password)
-  prefillUsername.value = null;
-  loginOpen.value = false;
-
-  // Optional: mark last-used
-  if (activeCredId.value) window.electron?.ipcRenderer.invoke('cred:touch', activeCredId.value);
+    { username: string; password: string; remember: boolean }) {
+    const ip = selectedIp.value!;
+    if (remember) {
+        const res = await window.electron?.ipcRenderer.invoke('cred:save', {
+            host: ip, username, password, favorite: true,
+        });
+        activeCredId.value = res?.id ?? null;
+        await loadSavedServers();
+    }
+    sendCredsToWebview(ip, username, password);
+    const srv = discoveryState.servers.find(s => s.ip === ip) || null;
+    if (srv) currentServer!.value = srv;
+    prefillUsername.value = null;
+    loginOpen.value = false;
+    if (activeCredId.value) window.electron?.ipcRenderer.invoke('cred:touch', activeCredId.value);
 }
 
-// “Forget saved login” button
 async function forgetActive() {
-  if (!activeCredId.value) return;
-  await window.electron?.ipcRenderer.invoke('cred:remove', activeCredId.value);
-  activeCredId.value = null;
-  await loadSavedServers();
-  // also clear session
-  cockpitRef.value?.logoutFromCurrentServer();
+    if (!activeCredId.value) return;
+    await window.electron?.ipcRenderer.invoke('cred:remove', activeCredId.value);
+    activeCredId.value = null;
+    await loadSavedServers();
+    cockpitRef.value?.logoutFromCurrentServer();
 }
 
 async function maybeAutoConnect(forceModalIfNoSaved = false) {
     const ip = selectedIp.value;
     if (!ip) return;
-
     const saved = await window.electron?.ipcRenderer.invoke('cred:get-for', ip);
     if (saved?.username && saved?.password) {
         activeCredId.value = saved.id;
         sendCredsToWebview(ip, saved.username, saved.password);
         const srv = discoveryState.servers.find(s => s.ip === ip) || null;
         if (srv) currentServer!.value = srv;
-        return; // done
+        return;
     }
-
-    // No saved creds — show modal
-    prefillUsername.value = null; // or remember last entered name if you want
+    prefillUsername.value = null;
     if (forceModalIfNoSaved) loginOpen.value = true;
 }
 
 watch(selectedIp, async (ip) => {
     activeCredId.value = null;
     if (!ip) return;
-
-    // If a favorite exists, auto-connect immediately
     const fav = savedServers.value.find(s => s.host === ip && s.favorite);
     if (fav) {
         const saved = await window.electron?.ipcRenderer.invoke('cred:get-for', ip);
@@ -288,23 +255,21 @@ watch(selectedIp, async (ip) => {
             sendCredsToWebview(ip, saved.username, saved.password);
             const srv = discoveryState.servers.find(s => s.ip === ip) || null;
             if (srv) currentServer!.value = srv;
-            // Don’t open modal
             return;
         }
     }
-
-    // Otherwise, wait for user to click “Connect…”
 });
 
-
 watch(serversForDropdown, (list) => {
-    // If no servers, or the currently selected IP disappeared, reset to empty
     if (!list.length || (selectedIp.value && !list.some(x => x.ip === selectedIp.value))) {
         selectedIp.value = ''
         if (currentServer) currentServer.value = null
     }
 }, { immediate: true })
 
+function newBackupTask() {
+    router.push({ name: 'create-new-backup' });
+}
 
 const deleteSelectedTasks = () => {
     backUpListRef.value?.deleteSelectedTasks?.();
@@ -312,15 +277,11 @@ const deleteSelectedTasks = () => {
 
 async function runSelected() {
     if (selectedBackUpTasks.value.length === 0 || isRunningNow.value) return;
-
     isRunningNow.value = true;
     runningTaskIds.value = selectedBackUpTasks.value.map(t => t.uuid);
     runningTaskNames.value = selectedBackUpTasks.value.map(t => (t.description || '').trim());
-
-    // fallback, just in case no event ever comes
     if (clearSpinnerTimer) window.clearTimeout(clearSpinnerTimer);
     clearSpinnerTimer = window.setTimeout(stopRunningUi, 20000);
-
     try {
         await backUpListRef.value?.runSelectedNow?.();
     } catch {
@@ -339,12 +300,6 @@ function maybeClearFromNotification(message: string) {
     }
 }
 
-
-
-// function editSelected() {
-//     backUpListRef.value?.editSelectedSchedules?.();
-// }
-
 function editSelected() {
     backUpListRef.value?.editSelectedSchedules?.();
 }
@@ -355,21 +310,14 @@ function viewSelected() {
 }
 
 function viewSelectedLog() {
-    const ids = selectedBackUpTasks.value.map(t => t.uuid).join(',');
-    router.push({ name: 'view-selected-backups', query: { ids, showLogs: 'true' } });
+    if (selectedBackUpTasks.value.length !== 1) return;
+    const task = selectedBackUpTasks.value[0];
+    openLogModal({ uuid: task.uuid, description: task.description || task.target || task.uuid });
 }
-
-
-
-const proceedToPreviousStep = () => {
-    router.push({ name: 'backup' });
-};
-
-useEnterToAdvance(() => { }, 300, () => { }, () => { proceedToPreviousStep(); });
 
 const isRunningNow = ref(false);
 const runningTaskIds = ref<string[]>([]);
-const runningTaskNames = ref<string[]>([]);   // NEW
+const runningTaskNames = ref<string[]>([]);
 let clearSpinnerTimer: number | null = null;
 
 function stopRunningUi() {
@@ -379,16 +327,12 @@ function stopRunningUi() {
     if (clearSpinnerTimer) { window.clearTimeout(clearSpinnerTimer); clearSpinnerTimer = null; }
 }
 
-// listen for the “done/updated” message from main.ts
 const actionHandler = (raw: string) => {
     try {
         const msg = JSON.parse(raw);
-
         if (msg?.type === 'notification' && msg.message) {
-            maybeClearFromNotification(msg.message); 
+            maybeClearFromNotification(msg.message);
         }
-
-
         if (msg?.type === 'backUpStatusesUpdated') {
             const containsRanTask = (msg.tasks || []).some((t: { uuid: string }) =>
                 runningTaskIds.value.includes(t.uuid)
@@ -406,25 +350,3 @@ onBeforeUnmount(() => {
     try { IPCRouter.getInstance().removeEventListener?.('action', actionHandler); } catch { }
 });
 </script>
-
-<style scoped>
-.spinner {
-    width: 1.25rem;
-    /* 20px */
-    height: 1.25rem;
-    border: 2px solid rgba(0, 0, 0, 0.15);
-    border-left-color: #2c3e50;
-    border-radius: 9999px;
-    animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
-    0% {
-        transform: rotate(0deg);
-    }
-
-    100% {
-        transform: rotate(360deg);
-    }
-}
-</style>

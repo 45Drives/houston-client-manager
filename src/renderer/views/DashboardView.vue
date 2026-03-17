@@ -1,59 +1,92 @@
 <template>
-    <div class="h-full flex items-center justify-center">
-        <!-- <div>
-           Add some information up here + Tooltips?
-        </div> -->
-        <div class="grid grid-cols-2 gap-8 text-2xl w-9/12 mx-auto">
-            <CardContainer class="col-span-1 bg-accent border-default rounded-md">
-                <template #header>
-                    <button @click="goSetup()" class="btn btn-secondary w-full h-40 text-6xl">
-                        SERVER SETUP
-                    </button>
-                </template>
-                <div>
-                    <p class="text-lg font-medium">Have new 45Drives Hardware?<br />Click <b>“SERVER SETUP”</b> to have
-                        the Houston Wizard get you up and running with our best practice storage architecture!
+    <div class="h-full flex flex-col items-center justify-center px-6">
+        <p class="text-lg text-muted mb-8 max-w-2xl text-center">
+            Welcome to the 45Drives Storage Wizard. Choose an option below to get started.
+        </p>
+
+        <div class="grid grid-cols-2 gap-6 w-full max-w-4xl">
+            <!-- Setup a New Server -->
+            <button @click="goSetup()"
+                class="group flex flex-col items-center gap-4 p-8 rounded-xl border border-default bg-accent
+                       hover:border-primary hover:shadow-lg transition-all text-left">
+                <div class="w-14 h-14 rounded-full bg-primary/10 flex items-center justify-center
+                            group-hover:bg-primary/20 transition-colors">
+                    <ServerIcon class="w-7 h-7 text-primary" />
+                </div>
+                <div class="text-center">
+                    <h3 class="text-xl font-semibold text-default mb-1">Setup a New Server</h3>
+                    <p class="text-sm text-muted">
+                        Configure ZFS pools, Samba shares, and get your 45Drives hardware up and running
+                        with our best-practice storage architecture.
                     </p>
-
                 </div>
-                <template #footer>
-                    <p class="mt-4 text-sm italic text-gray-400">We will configure ZFS Pools and Samba
-                        Shares so you can use all of your drives that connect to your storage over the network.</p>
-                </template>
-            </CardContainer>
+            </button>
 
-            <CardContainer class="relative col-span-1 bg-accent border-default rounded-md">
-                <template #header>
-                    <button @click="goBackup()" class="btn btn-secondary w-full h-40 text-6xl">
-                        BACKUP MANAGER
-                    </button>
-                </template>
-                <div>
-                    <p class="text-lg font-medium">Want to keep your data safe?<br />Click <b>“BACKUP MANAGER”</b> to
-                        open our
-                        Backup module, which allows you to manage backups, create/schedule new ones, restore files, and
-                        view
-                        logs.</p>
+            <!-- Create / Manage Backups -->
+            <button @click="goBackup()"
+                class="group flex flex-col items-center gap-4 p-8 rounded-xl border border-default bg-accent
+                       hover:border-primary hover:shadow-lg transition-all text-left">
+                <div class="w-14 h-14 rounded-full bg-primary/10 flex items-center justify-center
+                            group-hover:bg-primary/20 transition-colors">
+                    <CircleStackIcon class="w-7 h-7 text-primary" />
                 </div>
-                <template #footer>
-                    <p class="mt-4 text-sm italic text-gray-400">You can backup from this computer to a 45Drives
-                        server, or from a 45Drives server to another server, or from a 45Drives server to a cloud
-                        provider! <br /></p>
-                </template>
-            </CardContainer>
+                <div class="text-center">
+                    <h3 class="text-xl font-semibold text-default mb-1">Create / Manage Backups</h3>
+                    <p class="text-sm text-muted">
+                        Schedule automated backups, manage existing backup tasks, restore files, and view
+                        backup logs — locally or on remote servers.
+                    </p>
+                </div>
+            </button>
+
+            <!-- View Logs -->
+            <button @click="openLogModal()"
+                class="group flex flex-col items-center gap-4 p-8 rounded-xl border border-default bg-accent
+                       hover:border-primary hover:shadow-lg transition-all text-left">
+                <div class="w-14 h-14 rounded-full bg-primary/10 flex items-center justify-center
+                            group-hover:bg-primary/20 transition-colors">
+                    <DocumentTextIcon class="w-7 h-7 text-primary" />
+                </div>
+                <div class="text-center">
+                    <h3 class="text-xl font-semibold text-default mb-1">View Logs</h3>
+                    <p class="text-sm text-muted">
+                        Browse client and server logs, filter by level, search events,
+                        and troubleshoot issues.
+                    </p>
+                </div>
+            </button>
+
+            <!-- Manage a Server (Coming Soon) -->
+            <div class="relative flex flex-col items-center gap-4 p-8 rounded-xl border border-default bg-accent
+                        opacity-50 cursor-not-allowed select-none">
+                <span class="absolute top-3 right-3 text-xs font-semibold text-muted bg-well px-2 py-0.5 rounded-full">
+                    Coming Soon
+                </span>
+                <div class="w-14 h-14 rounded-full bg-muted/10 flex items-center justify-center">
+                    <WrenchScrewdriverIcon class="w-7 h-7 text-muted" />
+                </div>
+                <div class="text-center">
+                    <h3 class="text-xl font-semibold text-default mb-1">Manage a Server</h3>
+                    <p class="text-sm text-muted">
+                        Modify storage configuration, update settings, and manage your
+                        45Drives server after initial setup.
+                    </p>
+                </div>
+            </div>
         </div>
     </div>
 </template>
 
 <script setup lang="ts">
 import { useRouter } from 'vue-router'
-import { CardContainer } from '@45drives/houston-common-ui'
+import { ServerIcon, CircleStackIcon, DocumentTextIcon, WrenchScrewdriverIcon } from '@heroicons/vue/24/outline'
 import { useHeader } from '../composables/useHeader'
+import { useLogModal } from '../composables/useLogModal'
+
 useHeader('45Drives Storage Wizard')
 
 const router = useRouter()
+const { openLogModal } = useLogModal()
 const goSetup = () => router.push({ name: 'setup' })
-const goBackup = () => router.push({ name: 'backup' })
-
-
+const goBackup = () => router.push({ name: 'backup-manage' })
 </script>

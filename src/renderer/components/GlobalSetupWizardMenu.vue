@@ -6,83 +6,80 @@
 
         <teleport to="body">
             <div v-if="show"
-                class="fixed z-50 right-0 mt-2 w-60 bg-well shadow-lg rounded-lg border p-4 text-left text-default"
+                class="fixed z-50 right-0 w-60 bg-well -mt-1 shadow-lg rounded-lg border border-default p-3 text-left text-default"
                 ref="menuRef" :style="{ top: `${menuPosition.top}px`, left: `${menuPosition.left}px` }">
+
                 <!-- Navigation -->
-                <div class="mb-2 text-center items-center">
-                    <p class="text-xs text-default mb-1">Navigation</p>
+                <p class="text-xs text-muted mb-2 px-1">Quick Navigation</p>
 
-                    <!-- Optional Dashboard -->
-                    <!-- <button class="btn btn-secondary wizard-btn w-full mb-1" :class="buttonClass('dashboard')"
-                        @click="goto('dashboard')">
-                        Dashboard
-                    </button> -->
+                <button class="menu-item" :class="{ 'menu-item-active': isActive('dashboard') }"
+                    @click="goto('dashboard')">
+                    <HomeIcon class="w-4 h-4" />
+                    Dashboard
+                </button>
+                <button class="menu-item" :class="{ 'menu-item-active': isActive('setup') }"
+                    @click="goto('setup')">
+                    <ServerIcon class="w-4 h-4" />
+                    Setup Wizard
+                </button>
+                <button class="menu-item" :class="{ 'menu-item-active': isActive('backup-manage') }"
+                    @click="goto('backup-manage')">
+                    <CircleStackIcon class="w-4 h-4" />
+                    Backup Manager
+                </button>
+                <button class="menu-item" @click="openLogs">
+                    <DocumentTextIcon class="w-4 h-4" />
+                    View Logs
+                </button>
 
-                    <button class="btn btn-secondary wizard-btn w-full mb-1" :class="buttonClass('setup')"
-                        @click="goto('setup')">
-                        Setup Wizard
-                    </button>
-                    <button class="btn btn-secondary wizard-btn w-full mb-1" :class="buttonClass('backup')"
-                        @click="goto('backup')">
-                        Backup Manager
-                    </button>
-                    <button class="btn btn-secondary wizard-btn w-full mb-1" :class="buttonClass('logs')"
-                        @click="goto('logs')">
-                        Log Viewer
-                    </button>
-                    <!-- <button class="btn btn-secondary wizard-btn w-full mb-1" :class="buttonClass('restore')"
-                        @click="goto('restore')">
-                        Restore Backup
-                    </button> -->
-                </div>
+                <hr class="my-2 border-default" />
 
                 <!-- Themes -->
-                <div class="mb-2 text-center items-center">
-                    <p class="text-xs text-default mb-1">Themes</p>
-                    <button class="btn theme-btn theme-btn-default w-full mb-1"
-                        @click="selectTheme('theme-default')">Default</button>
-                    <button class="btn theme-btn theme-btn-homelab w-full mb-1"
-                        @click="selectTheme('theme-homelab')">45Homelab</button>
-                    <button class="btn theme-btn theme-btn-professional w-full mb-1"
-                        @click="selectTheme('theme-professional')">45Pro</button>
-                    <button class="btn theme-btn theme-btn-studio w-full mb-1"
-                        @click="selectTheme('theme-studio')">45Studio</button>
+                <p class="text-xs text-muted mb-2 px-1">Theme</p>
+                <div class="grid grid-cols-2 gap-1.5 px-1 mb-2">
+                    <button v-for="t in themes" :key="t.value"
+                        class="px-2 py-1.5 rounded text-xs font-semibold text-white transition-all"
+                        :class="currentTheme === t.value ? 'ring-2 ring-offset-1 ring-primary' : 'opacity-75 hover:opacity-100'"
+                        :style="{ backgroundColor: t.color }"
+                        @click="selectTheme(t.value)">
+                        {{ t.label }}
+                    </button>
                 </div>
 
                 <!-- Dark mode -->
-                <div class="mb-2 items-center">
-                    <button
-                        class="theme-btn text-xs w-full mb-1 flex flex-row items-center text-center justify-center space-x-2 text-white rounded-md"
-                        @click="toggleDarkMode()" :class="darkModeButtonClass">
-                        <transition name="fade" mode="out-in">
-                            <component :is="darkMode ? SunIcon : MoonIcon" class="w-6 h-6" />
-                        </transition>
-                        <span class="mb-0.5 font-semibold" :class="darkMode ? 'ml-5' : 'ml-4'">{{ darkModeLabel
-                            }}</span>
-                    </button>
-                </div>
+                <button class="menu-item justify-center gap-2" @click="toggleDarkMode()">
+                    <component :is="darkMode ? SunIcon : MoonIcon" class="w-4 h-4" />
+                    {{ darkMode ? 'Light Mode' : 'Dark Mode' }}
+                </button>
             </div>
         </teleport>
     </div>
 </template>
 
-
 <script setup lang="ts">
 import { computed, ref, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { Bars3Icon, MoonIcon, SunIcon } from '@heroicons/vue/24/outline'
+import {
+    Bars3Icon, HomeIcon, ServerIcon, CircleStackIcon,
+    DocumentTextIcon, MoonIcon, SunIcon
+} from '@heroicons/vue/24/outline'
 import { toggleDarkMode, useDarkModeState } from '@45drives/houston-common-ui'
 import { useThemeFromAlias } from '../composables/useThemeFromAlias'
-
-interface GlobalSetupWizardMenuProps {
-    server?: boolean;
-}
-defineProps<GlobalSetupWizardMenuProps>()
+import { useLogModal } from '../composables/useLogModal'
 
 const router = useRouter()
 const route = useRoute()
+const darkMode = useDarkModeState()
+const { setTheme, currentTheme } = useThemeFromAlias()
+const { openLogModal } = useLogModal()
 
-// --- Popover state & positioning ---
+const themes = [
+    { value: 'theme-default' as const, label: 'Default', color: '#D92B2F' },
+    { value: 'theme-homelab' as const, label: '45Homelab', color: '#2563EB' },
+    { value: 'theme-professional' as const, label: '45Pro', color: '#65A443' },
+    { value: 'theme-studio' as const, label: '45Studio', color: '#6557A5' },
+]
+
 const show = ref(false)
 const menuRef = ref<HTMLElement | null>(null)
 const menuButton = ref<HTMLElement | null>(null)
@@ -114,141 +111,40 @@ onBeforeUnmount(() => {
     document.removeEventListener('keydown', handleKeydown)
 })
 
-// --- Dark mode + theme buttons ---
-const darkMode = useDarkModeState()
-const darkModeLabel = computed(() => (darkMode.value ? 'Light Mode' : 'Dark Mode'))
-const darkModeButtonClass = computed(() => (darkMode.value ? 'btn-sun' : 'btn-moon'))
-
-// function setTheme(theme: 'theme-default' | 'theme-homelab' | 'theme-professional') {
-//     const root = document.documentElement
-//     root.classList.remove('theme-default', 'theme-homelab', 'theme-professional')
-//     root.classList.add(theme)
-// }
-const { setTheme, currentTheme } = useThemeFromAlias()
-
-function selectTheme(theme: 'theme-default' | 'theme-homelab' | 'theme-professional' | 'theme-studio') {
-   setTheme(theme) // updates currentTheme, which updates currentDivision, which updates the logo
-}
-
-// --- Router navigation (new format) ---
-function goto(name: 'dashboard' | 'setup' | 'backup' | 'restore' | 'logs') {
+function goto(name: string) {
     router.push({ name })
     show.value = false
 }
 
+function openLogs() {
+    openLogModal()
+    show.value = false
+}
+
+function selectTheme(theme: 'theme-default' | 'theme-homelab' | 'theme-professional' | 'theme-studio') {
+    setTheme(theme)
+}
+
 const isActive = (name: string) => route.name === name
-const buttonClass = (name: 'setup' | 'backup' | 'restore' | 'dashboard' | 'logs') =>
-    ['wizard-btn', isActive(name) ? 'animate-glow' : ''].join(' ')
 </script>
 
 <style scoped>
-.btn-moon {
-    background-color: #374151;
-    border: 1px solid #1f2937;
-    color: #e5e7eb;
-    transition: all 0.2s ease-in-out;
-}
-
-.btn-moon:hover {
-    background-color: #1f2937;
-    border-color: #111827;
-    color: #ffffff;
-}
-
-.btn-sun {
-    background-color: #fef9c3;
-    border: 1px solid #fcd34d;
-    color: #1f2937;
-    transition: all 0.2s ease-in-out;
-}
-
-.btn-sun:hover {
-    background-color: #fde68a;
-    border-color: #fbbf24;
-    color: #111827;
-}
-
-.btn-sun,
-.btn-moon {
-    padding: 0.5rem 1rem;
+.menu-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    width: 100%;
+    padding: 0.5rem 0.75rem;
     border-radius: 0.375rem;
-    /* rounded-md */
+    font-size: 0.875rem;
     font-weight: 500;
+    transition: background-color 0.15s ease;
 }
-
-.fade-enter-active,
-.fade-leave-active {
-    transition: opacity 0.2s ease;
+.menu-item:hover {
+    background-color: var(--color-accent, rgba(0,0,0,0.05));
 }
-
-.fade-enter-from,
-.fade-leave-to {
-    opacity: 0;
-}
-
-
-
-/* THEME BUTTONS: Theme Color Swatches */
-
-.theme-btn-default {
-    background-color: #D92B2F;
-    border: 1px solid #D92B2F;
-    color: white;
-    transition: all 0.2s ease-in-out;
-}
-
-.theme-btn-default:hover {
-    background-color: #b02428;
-    border-color: #b02428;
-}
-
-.theme-btn-homelab {
-    background-color: #2563EB;
-    border: 1px solid #2563EB;
-    color: white;
-    transition: all 0.2s ease-in-out;
-}
-
-.theme-btn-homelab:hover {
-    background-color: #1E4FCB;
-    border-color: #1E4FCB;
-}
-
-.theme-btn-professional {
-    background-color: #65A443;
-    border: 1px solid #65A443;
-    color: white;
-    transition: all 0.2s ease-in-out;
-}
-
-.theme-btn-professional:hover {
-    background-color: #4F8F37;
-    border-color: #4F8F37;
-}
-
-.theme-btn-studio {
-    background-color: #6557A5;
-    border: 1px solid #6557A5;
-    color: white;
-    transition: all 0.2s ease-in-out;
-}
-
-.theme-btn-studio:hover {
-    background-color: #504584;
-    border-color: #504584;
-}
-
-.theme-btn {
-    font-size: 0.75rem;
-    font-weight: bold;
-    padding: 0.3rem 0.5rem;
-    border-radius: 0.25rem;
-    opacity: 0.8;
-    transition: all 0.2s ease-in-out;
-}
-
-.theme-btn:hover {
-    opacity: 1;
-    transform: scale(1.02);
+.menu-item-active {
+    background-color: var(--color-accent, rgba(0,0,0,0.08));
+    font-weight: 600;
 }
 </style>

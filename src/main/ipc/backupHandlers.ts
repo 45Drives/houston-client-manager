@@ -6,6 +6,8 @@ import fetchBackups from '../backup/FetchBackups';
 import fetchFilesInBackup from '../backup/FetchFilesFromBackup';
 import restoreBackups from '../backup/RestoreBackups';
 import { checkBackupTaskStatus } from '../backup/CheckSmbStatus';
+import mountSmbPopup from '../smbMountPopup';
+import { getOS, extractJsonFromOutput } from '../utils';
 import fs from 'fs';
 import path from 'path';
 import { app } from 'electron';
@@ -52,6 +54,19 @@ export async function handleBackupMessage(message: any, ctx: IPCHandlerContext):
 
     case 'fetchFilesFromBackup': {
       try {
+        // Mount the share before listing files (it may not be mounted yet)
+        const { smb_host, smb_share, smb_user, smb_pass } = message.data;
+        if (smb_host && smb_share) {
+          try {
+            const raw = await mountSmbPopup(smb_host, smb_share, smb_user || '', smb_pass || '', ctx.mainWindow, 'silent');
+            const mountResult = extractJsonFromOutput(raw);
+            if (mountResult.MountPoint) {
+              message.data.mountPoint = mountResult.MountPoint;
+            }
+          } catch (mountErr) {
+            console.warn('fetchFilesFromBackup: mount attempt failed (share may already be mounted):', mountErr);
+          }
+        }
         router.send('renderer', 'action', JSON.stringify({
           type: 'fetchFilesFromBackupResult',
           result: await fetchFilesInBackup(message.data),
@@ -66,6 +81,19 @@ export async function handleBackupMessage(message: any, ctx: IPCHandlerContext):
     }
 
     case 'restoreBackups': {
+      // Ensure the share is mounted before restoring files
+      const { smb_host: rHost, smb_share: rShare, smb_user: rUser, smb_pass: rPass } = message.data;
+      if (rHost && rShare) {
+        try {
+          const raw = await mountSmbPopup(rHost, rShare, rUser || '', rPass || '', ctx.mainWindow, 'silent');
+          const mountResult = extractJsonFromOutput(raw);
+          if (mountResult.MountPoint) {
+            message.data.mountPoint = mountResult.MountPoint;
+          }
+        } catch (mountErr) {
+          console.warn('restoreBackups: mount attempt failed:', mountErr);
+        }
+      }
       await restoreBackups(message.data, router);
       return true;
     }
@@ -180,7 +208,7 @@ export async function handleBackupMessage(message: any, ctx: IPCHandlerContext):
 
         console.debug('runNow completed:', result);
         ctx.jsonLogger.info({ event: 'runBackUpTaskNow_success', taskUuid: task.uuid, stderr: result.stderr || null });
-        ctx.notify(`Backup task "${task.description}" started successfully.`);
+        ctx.notify(`Backup task "${task.description}" completed successfully.`);
 
         setTimeout(async () => {
           try {
@@ -195,6 +223,37 @@ export async function handleBackupMessage(message: any, ctx: IPCHandlerContext):
         const msg = (err instanceof Error ? err.message : '') || (typeof err === 'object' && err !== null && 'stderr' in err ? String((err as Record<string, unknown>).stderr) : '') || JSON.stringify(err);
         ctx.jsonLogger.error({ event: 'runBackUpTaskNow_error', taskUuid: task.uuid, error: msg });
         ctx.notify(`Backup task "${task.description}" failed to run: ${msg}`);
+      }
+      return true;
+    }
+
+    case 'openBackupFolder': {
+      const { smb_host, smb_share, smb_user, smb_pass, uuid } = message.data;
+      try {
+        const raw = await mountSmbPopup(smb_host, smb_share, smb_user, smb_pass, ctx.mainWindow, 'silent');
+        const mountResult = extractJsonFromOutput(raw);
+
+        let folderPath: string;
+        if (getOS() === 'win') {
+          folderPath = path.join(mountResult.MountPoint, uuid);
+        } else if (getOS() === 'mac') {
+          folderPath = path.join('/Volumes', smb_share, uuid);
+        } else {
+          folderPath = path.join(`/mnt/houston-mounts/${smb_share}`, uuid);
+        }
+
+        if (!fs.existsSync(folderPath)) {
+          ctx.notify(`Backup folder does not exist: ${folderPath}`);
+          return true;
+        }
+
+        const openErr = await shell.openPath(folderPath);
+        if (openErr) {
+          ctx.notify(`Error opening folder: ${openErr}`);
+        }
+      } catch (err: unknown) {
+        ctx.notify(`Failed to open backup folder: ${errMsg(err)}`);
+        console.error('openBackupFolder failed:', err);
       }
       return true;
     }

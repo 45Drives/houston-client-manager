@@ -1,36 +1,27 @@
 <template>
-  <div class="flex flex-col gap-3">
+  <div class="flex flex-col gap-3 p-3">
     <!-- Toolbar -->
-    <div class="flex flex-row items-center justify-between font-bold">
-      <div class="flex items-center justify-start">
-        <button class="btn btn-primary text-sm mr-3" @click.stop="newBackupTask">
-          <PlusIcon class="w-5 h-5 text-white" />
-        </button>
-        Schedule New Backup
-      </div>
-      <div class="flex items-center justify-end">
-        Refresh Backup List
-        <button class="btn btn-secondary text-sm ml-3" @click.stop="fetchBackupTasks">
-          <ArrowPathIcon class="w-5 h-5 text-white" />
-        </button>
-      </div>
+    <div class="flex flex-row items-center justify-end">
+      <button class="btn btn-secondary text-sm h-8 flex items-center gap-1.5" @click.stop="fetchBackupTasks">
+        <ArrowPathIcon class="w-4 h-4" />
+        Refresh
+      </button>
     </div>
-
 
     <!-- Loading / Empty States -->
     <div v-if="isLoading" class="w-full h-[200px] flex justify-center items-center">
       <div class="spinner" />
     </div>
-    <div v-else-if="backUpTasks.length === 0" class="flex flex-col items-center text-center py-4">
-      <span class="text-muted italic text-xl">No Tasks Found</span>
-      <button @click.stop="newBackupTask" class="btn btn-primary px-5 w-80 h-20 mt-2 text-2xl font-bold">Schedule First
-        Backup</button>
+    <div v-else-if="backUpTasks.length === 0" class="flex flex-col items-center justify-center text-center py-12 gap-3">
+      <CircleStackIcon class="w-12 h-12 text-muted opacity-30" />
+      <span class="text-muted text-lg">No backup tasks found</span>
+      <p class="text-sm text-muted">Click <b>New Backup</b> above to create your first backup task.</p>
     </div>
 
     <!-- Table -->
     <div v-else class="overflow-x-auto">
-      <table class="min-w-full text-sm">
-        <thead class="text-left sticky top-0 bg-accent">
+      <table class="min-w-full text-sm text-left">
+        <thead class="sticky top-0 bg-accent">
           <tr class="border-b border-default">
             <th class="px-3 py-2 w-10">
               <input type="checkbox" class="input-checkbox" :checked="allSelected" @change="toggleSelectAll"
@@ -71,7 +62,7 @@
     <!-- Calendar Modal for editing a single task schedule -->
     <Modal :show="showCalendar" class="-mt-10" @clickOutside="">
       <div class="w-full max-w-xl mx-auto">
-        <SimpleCalendar title="Edit Backup Schedule" :taskSchedule="selectedTaskSchedule"
+        <SimpleCalendar v-if="selectedTaskSchedule" title="Edit Backup Schedule" :taskSchedule="selectedTaskSchedule"
           @close="handleCalendarClose(false)" @save="handleCalendarClose(true)"
           class="border-2 border-default rounded-md w-full" />
       </div>
@@ -89,6 +80,7 @@ import { formatFrequency } from "./utils";
 import { SimpleCalendar } from "../../components/calendar";
 import { thisOsInjectionKey } from '../../keys/injection-keys';
 import { ArrowPathIcon, PlusIcon } from '@heroicons/vue/24/outline';
+import { CircleStackIcon } from '@heroicons/vue/24/outline';
 import { useRouter } from 'vue-router';
 
 const router = useRouter();
@@ -172,7 +164,8 @@ function formatDateTime(dt?: Date | string | number | null) {
 }
 
 function getLastRunAt(task: BackUpTask): Date | null {
-  const cand = (task as Record<string, unknown>).lastRunAt ?? (task as Record<string, unknown>).lastRun ?? null;
+  const t = task as unknown as Record<string, unknown>;
+  const cand = t.lastRunAt ?? t.lastRun ?? null;
   return cand ? new Date(cand as string | number) : null;
 }
 
