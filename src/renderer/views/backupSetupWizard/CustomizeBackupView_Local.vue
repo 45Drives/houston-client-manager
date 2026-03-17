@@ -20,13 +20,22 @@
 								<CommanderToolTip
 									:message="`This is the designated backup storage location you set up earlier.`" />
 							</div>
-							<select v-model="selectedServerIp"
-								class="bg-default h-[3rem] text-default rounded-lg px-4 flex-1 border border-default">
-								<option v-for="item in servers" :key="item.ip" :value="item.ip">
-									{{ `\\\\${item.name}\\${item.shareName}` }}
-								</option>
-							</select>
-
+							<div class="flex items-center flex-1 gap-2">
+								<select v-model="selectedServerIp"
+									class="bg-default h-[3rem] text-default rounded-lg px-4 flex-1 border border-default"
+									:disabled="discoveryState.loading && servers.length === 0">
+									<option v-if="discoveryState.loading && servers.length === 0" value="" disabled>
+										Discovering servers…
+									</option>
+									<option v-for="item in servers" :key="item.ip" :value="item.ip">
+										{{ `\\\\${item.name}\\${item.shareName}` }}
+									</option>
+								</select>
+								<div v-if="discoveryState.loading" class="spinner-sm shrink-0" title="Discovering servers…"></div>
+								<button v-else @click="rescan" class="btn btn-secondary h-[3rem] w-[3rem] shrink-0 flex items-center justify-center" title="Re-discover servers">
+									<ArrowPathIcon class="w-5 h-5 text-white" />
+								</button>
+							</div>
 						</div>
 
 						<!-- Folder Selection Button -->
@@ -103,15 +112,15 @@
 <script setup lang="ts">
 import { CardContainer, CommanderToolTip, Modal, useEnterToAdvance, WizardState } from "@45drives/houston-common-ui";
 import { useWizardSteps, DynamicBrandingLogo } from '@45drives/houston-common-ui';
-import { inject, ref, reactive, watch, nextTick, computed, InjectionKey, onMounted, onBeforeUnmount } from "vue";
+import { inject, ref, reactive, watch, nextTick, computed, InjectionKey, onMounted } from "vue";
 import { PlusIcon, MinusIcon } from "@heroicons/vue/20/solid";
 import { backUpSetupConfigKey } from "../../keys/injection-keys";
 import MessageDialog from '../../components/MessageDialog.vue';
-import { CalendarIcon } from "@heroicons/vue/24/outline";
+import { CalendarIcon, ArrowPathIcon } from "@heroicons/vue/24/outline";
 import { BackUpTask, IPCRouter, TaskSchedule } from "@45drives/houston-common-lib";
 import { Server, DiscoveryState } from '../../types'
 import { SimpleCalendar } from "../../components/calendar";
-import { divisionCodeInjectionKey, discoveryStateInjectionKey } from '../../keys/injection-keys';
+import { divisionCodeInjectionKey, discoveryStateInjectionKey, discoveryRescanInjectionKey } from '../../keys/injection-keys';
 import { sanitizeFilePath } from "./utils";
 import { useHeader } from '../../composables/useHeader'
 useHeader('Customize Your Local Backup Plan')
@@ -128,6 +137,7 @@ const messageParentFolderAlreadyAdded = ref<InstanceType<typeof MessageDialog> |
 
 // const servers = ref<Server[]>([]);
 const discoveryState = inject<DiscoveryState>(discoveryStateInjectionKey)!
+const rescan = inject(discoveryRescanInjectionKey, () => {})
 // const servers = computed(() => discoveryState.servers)
 
 const servers = computed(() =>
@@ -208,15 +218,6 @@ watch(
   },
   { immediate: true } // triggers on mount too
 )
-
-
-onMounted(() => {
-	window.electron?.ipcRenderer.invoke('discovery:setEnabled', true);
-});
-
-onBeforeUnmount(() => {
-	window.electron?.ipcRenderer.invoke('discovery:setEnabled', false);
-});
 
 
 // Folder Selection
@@ -380,3 +381,20 @@ useEnterToAdvance(
 );
 
 </script>
+
+<style scoped>
+.spinner-sm {
+  border: 3px solid rgba(0, 0, 0, 0.1);
+  border-left-color: #2c3e50;
+  border-radius: 50%;
+  width: 24px;
+  height: 24px;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+</style>

@@ -85,6 +85,7 @@ import { getCredentialManager } from './credentialManager';
 import { assertSafeHost, assertSafeShare, assertSafeUsername } from './security';
 import { handleBackupMessage } from './ipc/backupHandlers';
 import { handleDiscoveryMessage } from './ipc/discoveryHandlers';
+import { registerLogHandlers } from './ipc/logHandlers';
 import type { IPCHandlerContext } from './ipc/types';
 
 let discoveredServers: Server[] = [];
@@ -1000,6 +1001,8 @@ app.whenReady().then(() => {
     const cred = cm.findByHostAndShare(safeHost, safeShare);
     return cred ? { host: cred.host, share: cred.share, username: cred.username, found: true } : { found: false };
   });
+
+  registerLogHandlers(assertMainWindowSender);
 
   createWindow();
   app.on('activate', function () {

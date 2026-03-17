@@ -16,6 +16,7 @@ const INVOKE_CHANNELS = new Set([
   'discovery:setEnabled',
   'is-dev',
   'dialog:openFolder',
+  'logs:read-client',
   'credentials:store',
   'credentials:list',
   'credentials:remove',

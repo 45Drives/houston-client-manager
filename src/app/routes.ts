@@ -7,6 +7,7 @@ export const router = createRouter({
     { path: '/setup', name: 'setup', component: () => import('../renderer/views/SetupWizardView.vue') },
     { path: '/backup', name: 'backup', component: () => import('../renderer/views/BackupWizardView.vue') },
     { path: '/backup/manage', name: 'backup-manage', component: () => import('../renderer/views/BackupManageView.vue') },
+    { path: '/logs', name: 'logs', component: () => import('../renderer/views/LogView.vue') },
     {
       path: '/houston',
       name: 'houston',

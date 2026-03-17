@@ -23,6 +23,7 @@ export type DivisionType = 'default' | 'enterprise' | 'homelab' | 'professional'
 export interface DiscoveryState {
   servers: Server[]
   fallbackTriggered: boolean
+  loading: boolean
 }
 
 export type SavedServer = {

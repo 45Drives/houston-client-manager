@@ -43,7 +43,7 @@
                   class="btn btn-primary px-4 py-1 text-sm whitespace-nowrap">
                   Rescan Servers
                 </button>
-                <a href="#" @click.prevent="onRestartSetup" class="text-sm text-blue-600 hover:underline ml-2">
+                <a href="#" @click.prevent="onRestartSetup" class="text-sm text-blue-400 hover:underline ml-2">
                   Start Over
                 </a>
               </div>
@@ -352,12 +352,4 @@ useEnterToAdvance(
     goBackStep();
   }
 );
-
-onMounted(() => {
-  window.electron?.ipcRenderer.invoke('discovery:setEnabled', true);
-});
-
-onBeforeUnmount(() => {
-  window.electron?.ipcRenderer.invoke('discovery:setEnabled', false);
-});
 </script>

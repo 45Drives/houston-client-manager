@@ -22,9 +22,9 @@ vi.mock("./utils", async () => {
 
 import mountSmbPopup from "./smbMountPopup";
 
-const smb_host = "192.168.207.75";
-const smb_share = "greenBackup2";
-const smb_user = "greentest";
+const smb_host = "192.168.207.209";
+const smb_share = "backupz";
+const smb_user = "keo";
 const smb_pass = "Pr0t0case!";
 
 const exec = promisify(execCb);

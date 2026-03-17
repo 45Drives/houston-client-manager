@@ -26,6 +26,10 @@
                         @click="goto('backup')">
                         Backup Manager
                     </button>
+                    <button class="btn btn-secondary wizard-btn w-full mb-1" :class="buttonClass('logs')"
+                        @click="goto('logs')">
+                        Log Viewer
+                    </button>
                     <!-- <button class="btn btn-secondary wizard-btn w-full mb-1" :class="buttonClass('restore')"
                         @click="goto('restore')">
                         Restore Backup
@@ -127,13 +131,13 @@ function selectTheme(theme: 'theme-default' | 'theme-homelab' | 'theme-professio
 }
 
 // --- Router navigation (new format) ---
-function goto(name: 'dashboard' | 'setup' | 'backup' | 'restore') {
+function goto(name: 'dashboard' | 'setup' | 'backup' | 'restore' | 'logs') {
     router.push({ name })
     show.value = false
 }
 
 const isActive = (name: string) => route.name === name
-const buttonClass = (name: 'setup' | 'backup' | 'restore' | 'dashboard') =>
+const buttonClass = (name: 'setup' | 'backup' | 'restore' | 'dashboard' | 'logs') =>
     ['wizard-btn', isActive(name) ? 'animate-glow' : ''].join(' ')
 </script>
 

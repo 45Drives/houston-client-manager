@@ -30,7 +30,7 @@
 import { ref, provide, onMounted, onBeforeUnmount, watch, computed } from 'vue'
 import { DynamicBrandingLogo, GlobalModalConfirm, NotificationView, reportError, reportSuccess } from '@45drives/houston-common-ui'
 import GlobalSetupWizardMenu from '../renderer/components/GlobalSetupWizardMenu.vue'
-import { divisionCodeInjectionKey, currentServerInjectionKey, discoveryStateInjectionKey, thisOsInjectionKey } from '../renderer/keys/injection-keys'
+import { divisionCodeInjectionKey, currentServerInjectionKey, discoveryStateInjectionKey, discoveryRescanInjectionKey, thisOsInjectionKey } from '../renderer/keys/injection-keys'
 import type { Server, DivisionType, DiscoveryState } from '../renderer/types'
 import { useServerDiscovery } from '../renderer/composables/useServerDiscovery'
 import { useIpcActions } from '../renderer/composables/useIpcActions'
@@ -53,8 +53,9 @@ provide(divisionCodeInjectionKey, divisionCode)
 provide(thisOsInjectionKey, thisOS)
 
 // discovery (optional to provide globally)
-const { discoveryState } = useServerDiscovery()
+const { discoveryState, rescan } = useServerDiscovery()
 provide(discoveryStateInjectionKey, discoveryState as DiscoveryState)
+provide(discoveryRescanInjectionKey, rescan)
 
 
 // THEME: hook composable and reflect division into provided ref

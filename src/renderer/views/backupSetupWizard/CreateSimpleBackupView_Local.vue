@@ -21,12 +21,22 @@
 								<CommanderToolTip
 									:message="`This is the designated backup storage location you set up earlier.`" />
 							</div>
-							<select v-model="selectedServerIp"
-								class="bg-default h-[3rem] text-default rounded-lg px-4 flex-1 border border-default">>
-								<option v-for="item in servers" :key="item.ip" :value="item.ip">
-									{{ `\\\\${item.name}\\${item.shareName}` }}
-								</option>
-							</select>
+							<div class="flex items-center flex-1 gap-2">
+								<select v-model="selectedServerIp"
+									class="bg-default h-[3rem] text-default rounded-lg px-4 flex-1 border border-default"
+									:disabled="discoveryState.loading && servers.length === 0">
+									<option v-if="discoveryState.loading && servers.length === 0" value="" disabled>
+										Discovering servers…
+									</option>
+									<option v-for="item in servers" :key="item.ip" :value="item.ip">
+										{{ `\\\\${item.name}\\${item.shareName}` }}
+									</option>
+								</select>
+								<div v-if="discoveryState.loading" class="spinner-sm shrink-0" title="Discovering servers…"></div>
+								<button v-else @click="rescan" class="btn btn-secondary h-[3rem] w-[3rem] shrink-0 flex items-center justify-center" title="Re-discover servers">
+									<ArrowPathIcon class="w-5 h-5 text-white" />
+								</button>
+							</div>
 						</div>
 
 						<!-- Backup Frequency -->
@@ -99,11 +109,12 @@
 
 <script setup lang="ts">
 import { CardContainer, CommanderToolTip, confirm, useEnterToAdvance, WizardState } from "@45drives/houston-common-ui";
-import { computed, inject, InjectionKey, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { computed, inject, InjectionKey, onMounted, ref, watch } from "vue";
 import { PlusIcon, MinusIcon } from "@heroicons/vue/20/solid";
+import { ArrowPathIcon } from "@heroicons/vue/24/outline";
 import { useWizardSteps } from '@45drives/houston-common-ui';
 import { Server, DiscoveryState } from '../../types'
-import { backUpSetupConfigKey, divisionCodeInjectionKey, discoveryStateInjectionKey } from "../../keys/injection-keys";
+import { backUpSetupConfigKey, divisionCodeInjectionKey, discoveryStateInjectionKey, discoveryRescanInjectionKey } from "../../keys/injection-keys";
 import MessageDialog from '../../components/MessageDialog.vue';
 import { BackUpTask, IPCMessageRouter, IPCRouter, server, unwrap } from "@45drives/houston-common-lib";
 import { sanitizeFilePath } from "./utils";
@@ -120,6 +131,7 @@ const scheduleFrequency = ref<"hour" | "day" | "week" | "month">("hour");
 
 // const servers = ref<Server[]>([]);
 const discoveryState = inject<DiscoveryState>(discoveryStateInjectionKey)!
+const rescan = inject(discoveryRescanInjectionKey, () => {})
 // const servers = computed(() => discoveryState.servers)
 
 const servers = computed(() =>
@@ -186,14 +198,6 @@ const loadExistingFolders = () => {
 	}));
 };
 onMounted(loadExistingFolders);
-
-onMounted(() => {
-	window.electron?.ipcRenderer.invoke('discovery:setEnabled', true);
-});
-
-onBeforeUnmount(() => {
-	window.electron?.ipcRenderer.invoke('discovery:setEnabled', false);
-});
 
 // Normalize path function for cross-platform compatibility
 const normalizePath = (path: string) =>
@@ -375,3 +379,20 @@ useEnterToAdvance(
 	}
 );
 </script>
+
+<style scoped>
+.spinner-sm {
+  border: 3px solid rgba(0, 0, 0, 0.1);
+  border-left-color: #2c3e50;
+  border-radius: 50%;
+  width: 24px;
+  height: 24px;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+</style>

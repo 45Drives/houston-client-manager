@@ -13,4 +13,6 @@ export const currentWizardInjectionKey: InjectionKey<Ref<'storage' | 'backup' | 
 export const thisOsInjectionKey: InjectionKey<Ref<string>> = Symbol('this-os');
 export const discoveryStateInjectionKey: InjectionKey<DiscoveryState> =
     Symbol('discovery-state')
+export const discoveryRescanInjectionKey: InjectionKey<() => void> =
+    Symbol('discovery-rescan')
 export const reviewBackUpSetupKey: InjectionKey<ReviewBackupSetupData> = Symbol('backup-setup-config');

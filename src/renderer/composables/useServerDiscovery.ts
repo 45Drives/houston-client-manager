@@ -3,9 +3,10 @@ import { reactive, onMounted, onBeforeUnmount } from 'vue'
 import type { Server } from '../types'
 
 export function useServerDiscovery() {
-  const discoveryState = reactive<{ servers: Server[]; fallbackTriggered: boolean }>({
+  const discoveryState = reactive<{ servers: Server[]; fallbackTriggered: boolean; loading: boolean }>({
     servers: [],
     fallbackTriggered: false,
+    loading: true,
   })
 
   function onDiscovered(_evt:any, mdnsList: Server[]) {
@@ -29,6 +30,7 @@ export function useServerDiscovery() {
       if (a.name !== a.ip && b.name === b.ip) return -1
       return 0
     })
+    discoveryState.loading = false
   }
 
   async function runFallbackScanOnce() {
@@ -39,21 +41,34 @@ export function useServerDiscovery() {
       const toAdd = fallback.filter(fb => !discoveryState.servers.some(existing => existing.ip === fb.ip))
       if (toAdd.length) {
         discoveryState.servers.push(...toAdd)
-        // toast is optional
       }
     } catch (err) {
       console.error('Fallback scan failed:', err)
+    } finally {
+      discoveryState.loading = false
     }
+  }
+
+  function rescan() {
+    discoveryState.loading = true
+    discoveryState.fallbackTriggered = false
+    discoveryState.servers.splice(0)
+    window.electron?.ipcRenderer.invoke('discovery:setEnabled', false).then(() => {
+      window.electron?.ipcRenderer.invoke('discovery:setEnabled', true)
+    })
+    setTimeout(runFallbackScanOnce, 3000)
   }
 
   onMounted(() => {
     window.electron?.ipcRenderer.on('discovered-servers', onDiscovered)
-    setTimeout(runFallbackScanOnce, 1200)
+    window.electron?.ipcRenderer.invoke('discovery:setEnabled', true)
+    setTimeout(runFallbackScanOnce, 3000)
   })
 
   onBeforeUnmount(() => {
     window.electron?.ipcRenderer.removeListener?.('discovered-servers', onDiscovered)
+    window.electron?.ipcRenderer.invoke('discovery:setEnabled', false)
   })
 
-  return { discoveryState }
+  return { discoveryState, rescan }
 }
