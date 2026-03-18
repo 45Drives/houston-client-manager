@@ -628,9 +628,12 @@ exit /b !RC!
     const taskName = `${TASK_ID}_${task.uuid}`;
 
     const ps = `
+$ErrorActionPreference = 'Stop'
+
 # 1) Unregister the scheduled task if it exists
-if (Get-ScheduledTask -TaskName "${taskName}" -ErrorAction SilentlyContinue) {
-  Unregister-ScheduledTask -TaskName "${taskName}" -Confirm:$false
+$t = Get-ScheduledTask -TaskName "${taskName}" -ErrorAction SilentlyContinue
+if ($t) {
+  Unregister-ScheduledTask -TaskName "${taskName}" -Confirm:$false -ErrorAction Stop
 }
 
 # 2) Remove the BAT script for this task
@@ -658,7 +661,19 @@ if (-not $credInUse) {
     try {
       await this.runScript(ps, `unschedule_and_cleanup_${task.uuid}_user`);
     } catch {
-      await this.runScriptAdmin(ps, `unschedule_and_cleanup_${task.uuid}_admin`);
+      try {
+        await this.runScriptAdmin(ps, `unschedule_and_cleanup_${task.uuid}_admin`);
+      } catch (adminErr) {
+        console.warn(`unschedule: both user and admin PS failed for ${task.uuid}`, adminErr);
+      }
+    }
+
+    // Fallback: ensure the BAT file is removed from disk even if PS failed.
+    // This guarantees the task won't reappear in queryTasks.
+    try {
+      if (fs.existsSync(bat)) fs.unlinkSync(bat);
+    } catch (e) {
+      console.warn(`unschedule: failed to remove BAT file: ${bat}`, e);
     }
   }
 
@@ -693,18 +708,19 @@ $task | Set-ScheduledTask
     const psCreds = creds.map(p => `"${p.replace(/\\/g, '\\\\')}"`).join(', ');
 
     const ps = `
+$ErrorActionPreference = 'Stop'
+
 # Inputs
 $TaskNames = @(${psTaskNames})
 $BatPaths  = @(${psBats})
 $CredPaths = @(${psCreds})
 
-# 1) Unregister all selected tasks (ignore if missing)
+# 1) Unregister all selected tasks
 foreach ($tn in $TaskNames) {
-  try {
-    if (Get-ScheduledTask -TaskName $tn -ErrorAction SilentlyContinue) {
-      Unregister-ScheduledTask -TaskName $tn -Confirm:$false
-    }
-  } catch {}
+  $t = Get-ScheduledTask -TaskName $tn -ErrorAction SilentlyContinue
+  if ($t) {
+    Unregister-ScheduledTask -TaskName $tn -Confirm:$false -ErrorAction Stop
+  }
 }
 
 # 2) Delete their BAT scripts
@@ -737,7 +753,21 @@ try {
     try {
       await this.runScript(ps, 'bulk_unschedule_and_cleanup_user');
     } catch {
-      await this.runScriptAdmin(ps, 'bulk_unschedule_and_cleanup_admin');
+      try {
+        await this.runScriptAdmin(ps, 'bulk_unschedule_and_cleanup_admin');
+      } catch (adminErr) {
+        console.warn(`unscheduleSelectedTasks: both user and admin PS failed`, adminErr);
+      }
+    }
+
+    // Fallback: ensure BAT files are removed from disk even if PS failed.
+    // This guarantees the tasks won't reappear in queryTasks.
+    for (const bat of bats) {
+      try {
+        if (fs.existsSync(bat)) fs.unlinkSync(bat);
+      } catch (e) {
+        console.warn(`unscheduleSelectedTasks: failed to remove BAT file: ${bat}`, e);
+      }
     }
   }
 
