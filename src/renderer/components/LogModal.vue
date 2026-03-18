@@ -324,16 +324,17 @@ const filteredEntries = computed(() => {
     if (levelFilter.value && entry.level !== levelFilter.value) return false
     if (errorsOnly.value && !['error', 'warn'].includes(entry.level)) return false
     if (!q) return true
-    return entry.event.toLowerCase().includes(q) || entry.summary.toLowerCase().includes(q) || String(entry.details || '').toLowerCase().includes(q)
+    return String(entry.event ?? '').toLowerCase().includes(q) || String(entry.summary ?? '').toLowerCase().includes(q) || String(entry.details || '').toLowerCase().includes(q)
   })
 })
 
 function eventRoot(event: string) {
+  const e = String(event ?? '')
   for (const s of ['requested', 'succeeded', 'failed', 'start', 'done', 'completed']) {
     const tail = `.${s}`
-    if (event.endsWith(tail)) return event.slice(0, -tail.length)
+    if (e.endsWith(tail)) return e.slice(0, -tail.length)
   }
-  return event
+  return e
 }
 
 function severityRank(level: string) { return level === 'error' ? 3 : level === 'warn' ? 2 : level === 'info' ? 1 : 0 }
