@@ -133,9 +133,24 @@ function listLogDates(): { date: string; file: string }[] {
     .sort((a, b) => b.date.localeCompare(a.date));
 }
 
-/** Try to extract a short event name from a log message */
+/**
+ * Normalize a Winston NDJSON entry. When `message` is an object
+ * (e.g. `jsonLogger.info({ event: '...', tasks })`) Winston stores
+ * the entire arg as `{ message: { event, tasks } }`. Flatten it so
+ * downstream helpers always see top-level `event`, `message` (string), etc.
+ */
+function normalizeEntry(raw: Record<string, any>): Record<string, any> {
+  if (raw.message && typeof raw.message === 'object' && !Array.isArray(raw.message)) {
+    // Spread the nested message fields to top-level; keep originals for `data`.
+    const { message: inner, ...rest } = raw;
+    return { ...rest, ...inner, _raw: raw };
+  }
+  return raw;
+}
+
+/** Try to extract a short event name from a log entry */
 function extractEvent(obj: Record<string, any>): string {
-  // Direct event field
+  // Direct event field (works after normalizeEntry flattening)
   if (obj.event && typeof obj.event === 'string') return obj.event;
   // Message might be JSON-serialized with an event field
   if (typeof obj.message === 'string' && obj.message.startsWith('{')) {
@@ -190,7 +205,8 @@ function readLogFile(filePath: string, limit: number): ParsedLogEntry[] {
 
   for (let i = 0; i < lines.length && entries.length < limit; i++) {
     try {
-      const obj = JSON.parse(lines[i]);
+      const raw = JSON.parse(lines[i]);
+      const obj = normalizeEntry(raw);
       const msg = typeof obj.message === 'string' ? obj.message : '';
 
       // Filter out noisy entries
@@ -206,7 +222,7 @@ function readLogFile(filePath: string, limit: number): ParsedLogEntry[] {
         event,
         summary,
         details: obj.stack || obj.error || undefined,
-        data: obj,
+        data: raw,
         source: fileName,
       });
     } catch {
