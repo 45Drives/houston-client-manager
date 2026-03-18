@@ -42,7 +42,7 @@ export class BackUpManagerMac implements BackUpManager {
       let host = '', share = '', source = '', target = '';
       let mirror = false;
       let smb_user = '';
-      let isFile = false;
+
 
       let txt = '';
       if (fs.existsSync(scriptPath)) {
@@ -55,7 +55,7 @@ export class BackUpManagerMac implements BackUpManager {
         source = grab(/#\s*TASK_SOURCE="([^"]+)"/);
         target = grab(/#\s*TASK_TARGET="([^"]+)"/);
         mirror = /#\s*TASK_MIRROR="true"/i.test(txt);
-        isFile = /#\s*TASK_IS_FILE="true"/i.test(txt);
+
 
         // Prefer comment tag, fall back to shell var
         smb_user = grab(/#\s*TASK_SMB_USER="([^"]+)"/)
@@ -84,7 +84,6 @@ export class BackUpManagerMac implements BackUpManager {
         source, target, host, share, mirror,
         status: 'checking',
         smb_user,
-        isFile,
       });
     }
 
@@ -473,9 +472,7 @@ EOF_${uuid}
     const dir = `${mountPoint}/${rel}`;
     const svc = `houston-smb-${task.host}-${task.share}-${username}`;
     const target = getSmbTargetFromSmbTarget(task.target);
-    const rsyncCmd = task.isFile
-      ? `COPYFILE_DISABLE=1 ${getRsync()} -a ${shellQuote(task.source)} ${shellQuote(dir)}`
-      : `COPYFILE_DISABLE=1 ${getRsync()} -a${task.mirror ? ' --delete' : ''} ${shellQuote(`${task.source}/`)} ${shellQuote(`${dir}/`)}`;
+    const rsyncCmd = `COPYFILE_DISABLE=1 ${getRsync()} -a${task.mirror ? ' --delete' : ''} ${shellQuote(`${task.source}/`)} ${shellQuote(`${dir}/`)}`;
 
     return (`
 #!/bin/bash
@@ -500,7 +497,6 @@ SMB_USER='${username}'
 # TASK_SOURCE="${task.source}"
 # TASK_TARGET="${getSmbTargetFromSmbTarget(task.target)}"
 # TASK_MIRROR="${task.mirror}"
-# TASK_IS_FILE="${task.isFile ? 'true' : 'false'}"
 # TASK_SMB_USER="${username}"
 
 mkdir -p "$(dirname "$LOG")"
@@ -544,7 +540,7 @@ printf '{"install_id":"%s","smb_user":"%s","source":"%s","user":"%s","host":"%s"
   "$INSTALL_ID" "$SMB_USER" "$SOURCE" "$(id -un)" "$(hostname -s)" > "$marker_dir/client.json"
 
 # ---------- copy -------------------------------------------------------------
-${task.isFile ? `mkdir -p "$(dirname '${dir}')"` : `mkdir -p "${dir}"`}
+mkdir -p "${dir}"
 echo "[INFO] rsync to ${dir}"
 ${rsyncCmd}
 ST=$?

@@ -42,8 +42,6 @@ export class BackUpManagerLin implements BackUpManager {
         const startDate = startDateMatch ? new Date(startDateMatch[1]) : new Date();
         const descMatch = content.match(/^DESC='([^']*)'/m);
         const mirror = content.includes("--delete");
-        const isFileMatch = content.match(/IS_FILE='([^']*)'/);
-        const isFile = isFileMatch?.[1] === 'true';
 
         if (!uuidMatch || !sourceMatch || !targetMatch || !smbHostMatch || !smbShareMatch || !smbUserMatch) continue;
 
@@ -62,7 +60,6 @@ export class BackUpManagerLin implements BackUpManager {
           schedule: parsedSchedule ?? { repeatFrequency: "day", startDate },
           status: "checking",
           smb_user: smbUserMatch[1],
-          isFile,
         };
 
         tasks.push(task);
@@ -399,14 +396,12 @@ EVENT_LOG=${shellQuote(path.join(LOG_DIR, "45drives_backup_events.json"))}
 SMB_HOST=${shellQuote(smbHost)}
 SMB_SHARE=${shellQuote(smbShare)}
 SMB_USER=${shellQuote(username)}
-SOURCE=${shellQuote(task.isFile ? task.source : `${task.source}/`)}
+SOURCE=${shellQuote(`${task.source}/`)}
 TARGET=${shellQuote(target)}
 LOG_FILE=${shellQuote(logPath)}
 MOUNT_DIR=${shellQuote(mountDir)}
 START_DATE=${shellQuote(String(task.schedule.startDate))}
 DESC=${shellQuote(task.description)}
-IS_FILE='${task.isFile ? 'true' : 'false'}'
-
 CLIENT_ID_FILE=${shellQuote(path.join(app.getPath("userData"), "client-id.txt"))}
 INSTALL_ID="$(cat "$CLIENT_ID_FILE" 2>/dev/null || true)"
 
@@ -454,11 +449,9 @@ mkdir -p "$MARKER_DIR"
 printf '{"install_id":"%s","smb_user":"%s","source":"%s","user":"%s","host":"%s","platform":"linux"}\n' \
 "$INSTALL_ID" "$SMB_USER" "$SOURCE" "$(id -un)" "$(hostname -s)" > "$MARKER_FILE"
 
-${task.isFile ? `mkdir -p "$(dirname "$MOUNT_DIR/$TARGET")"
-echo "[INFO] Running rsync (single file)..."
-rsync -a "$SOURCE" "$MOUNT_DIR/$TARGET"` : `mkdir -p "$MOUNT_DIR/$TARGET"
+mkdir -p "$MOUNT_DIR/$TARGET"
 echo "[INFO] Running rsync..."
-rsync -a${task.mirror ? ' --delete' : ''} "$SOURCE" "$MOUNT_DIR/$TARGET"`}
+rsync -a${task.mirror ? ' --delete' : ''} "$SOURCE" "$MOUNT_DIR/$TARGET"
 RSYNC_STATUS=$?
 
 if [ $RSYNC_STATUS -ne 0 ]; then

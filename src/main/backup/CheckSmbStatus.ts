@@ -16,16 +16,22 @@ export async function checkBackupTaskStatus(task: BackUpTask): Promise<BackUpTas
     const smbUser = task.smb_user || '';
     const credKey = `${safe(smbHost)}_${safe(smbShare)}_${safe(smbUser)}`;
 
-    // Mac uses the system Keychain, not .cred files
+    // Mac: check credential file first (new user-space path), then keychain (legacy)
     if (os === 'mac') {
-        try {
-            execSync(
-                `security find-generic-password -s ${JSON.stringify(`houston-smb-${smbHost}-${smbShare}-${smbUser}`)} -a ${JSON.stringify(smbUser)} -w`,
-                { stdio: 'pipe' }
-            );
-        } catch {
-            console.warn(`[SMB Check] Missing keychain credentials for ${task.uuid}: houston-smb-${smbHost}-${smbShare}-${smbUser} / ${smbUser}`);
-            return 'offline_invalid_credentials';
+        const macCredPath = path.join(
+            process.env.HOME || path.join('/Users', process.env.USER || ''),
+            'Library', 'Application Support', 'Houston', 'credentials', `${credKey}.cred`);
+        const hasCredFile = fs.existsSync(macCredPath);
+        if (!hasCredFile) {
+            try {
+                execSync(
+                    `security find-generic-password -s ${JSON.stringify(`houston-smb-${smbHost}-${smbShare}-${smbUser}`)} -a ${JSON.stringify(smbUser)} -w`,
+                    { stdio: 'pipe' }
+                );
+            } catch {
+                console.warn(`[SMB Check] Missing credentials for ${task.uuid}: no cred file at ${macCredPath} and no keychain entry`);
+                return 'offline_invalid_credentials';
+            }
         }
     }
 

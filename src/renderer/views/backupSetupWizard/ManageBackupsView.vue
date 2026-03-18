@@ -76,7 +76,7 @@
                 </button>
 
                 <button class="btn btn-secondary text-sm h-8 flex items-center gap-1.5"
-                    :disabled="selectedBackUpTasks.length !== 1" @click="viewSelected">
+                    :disabled="selectedBackUpTasks.length < 1" @click="viewSelected">
                     <EyeIcon class="w-4 h-4" />
                     View
                 </button>
@@ -88,7 +88,7 @@
                 </button>
 
                 <button class="btn btn-secondary text-sm h-8 flex items-center gap-1.5"
-                    :disabled="selectedBackUpTasks.length !== 1" @click="viewSelectedLog">
+                    :disabled="selectedBackUpTasks.length < 1" @click="viewSelectedLog">
                     <DocumentTextIcon class="w-4 h-4" />
                     Logs
                 </button>
@@ -310,7 +310,7 @@ function viewSelected() {
 }
 
 function viewSelectedLog() {
-    if (selectedBackUpTasks.value.length !== 1) return;
+    if (selectedBackUpTasks.value.length < 1) return;
     const task = selectedBackUpTasks.value[0];
     openLogModal({ uuid: task.uuid, description: task.description || task.target || task.uuid });
 }

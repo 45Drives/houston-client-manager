@@ -930,15 +930,6 @@ app.whenReady().then(() => {
     return result.canceled ? null : result.filePaths[0]; // Return full folder path
   });
 
-  ipcMain.handle('dialog:openFile', async (event) => {
-    assertMainWindowSender(event);
-    const result = await dialog.showOpenDialog({
-      properties: ['openFile', 'multiSelections'],
-    });
-
-    return result.canceled ? null : result.filePaths;
-  });
-
   // ── Server Credential IPC (replaces keytar-based creds.ipc) ────────
   ipcMain.handle('cred:list-servers', (event) => {
     assertMainWindowSender(event);

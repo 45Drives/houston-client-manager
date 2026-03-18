@@ -155,7 +155,6 @@ export class BackUpManagerWin implements BackUpManager {
               share: actionDetails.SMB_SHARE,
               status: "checking",
               smb_user: actionDetails.SMB_USER,
-              isFile: actionDetails.IS_FILE === 'true',
             };
 
             if (actionDetails.START_DATE) {
@@ -348,30 +347,15 @@ if (-not $hasBatchLogon -or -not $hasServiceLogon) {
     onProgress?: (done: number, total: number, msg: string) => void
   ): Promise<void> {
 
-    // We still elevate this whole function (task creation needs S4U + registration),
-    // but we write to per-user dirs so future reads/writes don't need admin.
-    const scriptsDir = SCRIPTS_DIR.replace(/\\/g, '\\\\');
-    const credDir = CREDS_DIR.replace(/\\/g, '\\\\');
-
     const safeUser = assertSafeUsername(username);
-    const userB64 = toBase64(safeUser);
-    const passB64 = toBase64(password);
 
-    const psLines: string[] = [
-      `# Backup-Operators membership & rights`,
-      `$user = "$env:USERNAME"`,
-      `$userVal = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String("${userB64}"))`,
-      `$passVal = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String("${passB64}"))`,
-      `${this.addUserToBackupOperatorsGroup()}`,
-      `${this.getAddBackupGroupsToLogOnBatchAndService()}`,
-      `New-Item -ItemType Directory -Force -Path "${scriptsDir}" | Out-Null`,
-      `New-Item -ItemType Directory -Force -Path "${credDir}"   | Out-Null`,
-      `icacls "${credDir}" /inheritance:r /grant "$env:USERNAME:(OI)(CI)F" /grant "SYSTEM:(OI)(CI)F" /grant "Administrators:(OI)(CI)F" /T`
-    ];
+    /* ── Phase 1: User-level file I/O (no admin needed) ─────────────── */
+    fs.mkdirSync(SCRIPTS_DIR, { recursive: true });
+    fs.mkdirSync(CREDS_DIR,   { recursive: true });
 
-    tasks.forEach((t, idx) => {
-      console.debug(t)
+    const batPaths: string[] = [];
 
+    tasks.forEach((t) => {
       const [smbHostRaw, smbSharePath] = t.target.split(':');
       const smbHost = assertSafeHost(smbHostRaw);
       const smbShare = assertSafeShare(smbSharePath.split('/')[0]);
@@ -381,20 +365,35 @@ if (-not $hasBatchLogon -or -not $hasServiceLogon) {
       // Store credential in encrypted vault
       getCredentialManager().store(smbHost, smbShare, username, password);
 
+      // Write cred file (user-level %LOCALAPPDATA%)
       const safe = (s: string) => s.replace(/[^A-Za-z0-9_.-]/g, '_');
       const credKey = `${safe(smbHost)}_${safe(smbShare)}_${safe(safeUser)}`;
-      const credFile = path.join(credDir, `${credKey}.cred`).replace(/\\/g, '\\\\');
+      const credFile = path.join(CREDS_DIR, `${credKey}.cred`);
+      fs.writeFileSync(credFile, `username=${safeUser}\npassword=${password}\n`);
+
+      // Write BAT file (user-level %LOCALAPPDATA%)
+      const batPath = this.scriptPath(t.uuid);
+      fs.writeFileSync(batPath, this.buildActionBat(t, username));
+      batPaths.push(batPath);
+    });
+
+    /* ── Phase 2: Admin-only (group/policy setup + task registration) ── */
+    const userB64 = toBase64(safeUser);
+    const passB64 = toBase64(password);
+
+    const psLines: string[] = [
+      `# Backup-Operators membership & rights`,
+      `$user = "$env:USERNAME"`,
+      `$userVal = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String("${userB64}"))`,
+      `$passVal = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String("${passB64}"))`,
+      `${this.addUserToBackupOperatorsGroup()}`,
+      `${this.getAddBackupGroupsToLogOnBatchAndService()}`
+    ];
+
+    tasks.forEach((t, idx) => {
       const batPathEsc = this.scriptPath(t.uuid).replace(/\\/g, '\\\\');
 
-      /* cred file (idempotent) — use base64-decoded values */
-      psLines.push(`"username=$userVal\n` + `" | Out-File -Encoding ascii -NoNewline -Force "${credFile}"`);
-      psLines.push(`"password=$passVal` + `" | Out-File -Append  -Encoding ascii "${credFile}"`);
-
-      /* BAT file */
-      const batTxt = this.buildActionBat(t, username);
-      psLines.push(`[IO.File]::WriteAllText("${batPathEsc}", @'\n${batTxt}\n'@)`);
-
-      /* ScheduledTask */
+      /* ScheduledTask registration (requires admin for S4U) */
       psLines.push(this.scheduleToTaskTrigger(t.schedule));
 
       if (t.schedule.repeatFrequency == 'month'){
@@ -444,7 +443,7 @@ if (-not $hasBatchLogon -or -not $hasServiceLogon) {
             $null,
             $TASK_LOGON_S4U
           )
-          `)
+          `);
       } else {
         psLines.push(`
           $act  = New-ScheduledTaskAction -Execute 'cmd.exe' -Argument ('/C "{0}"' -f "${batPathEsc}")
@@ -501,7 +500,6 @@ setlocal enabledelayedexpansion
 :: SMB_HOST    = ${task.host}
 :: SMB_SHARE   = ${task.share}
 :: SMB_USER    = ${smbUser}
-:: IS_FILE     = ${task.isFile ? 'true' : 'false'}
 
 :: identities and constants
 set "CRED_FILE=${credFile.replace(/\\/g, '\\\\')}"
@@ -582,18 +580,9 @@ set "JSON_SOURCE=!SOURCE:\=\\!"
 > "!MARKER_DIR!\\client.json" echo {"install_id":"!INSTALL_ID!","smb_user":"!SMB_USER!","source":"!JSON_SOURCE!","user":"%USERNAME%","host":"%COMPUTERNAME%","platform":"win"}
 
 :: --- copy payload ----------------------------------------------------------
-${task.isFile ? `:: Single file backup
-for %%F in ("!SOURCE!") do (
-  set "SRC_DIR=%%~dpF"
-  set "SRC_FILE=%%~nxF"
-)
-:: For a single file, DEST is target path including filename — create its parent
-for %%D in ("!DEST!") do set "DEST_DIR=%%~dpD"
-mkdir "!DEST_DIR!" 2>nul
-echo [INFO] Running robocopy (single file) ...
-robocopy "!SRC_DIR!" "!DEST_DIR!" "!SRC_FILE!" /Z /FFT /R:2 /W:5 /V /NP` : `mkdir "!DEST!" 2>nul
+mkdir "!DEST!" 2>nul
 echo [INFO] Running robocopy ...
-robocopy "!SOURCE!" "!DEST!" /E /Z /FFT /R:2 /W:5 /V /NP`}
+robocopy "!SOURCE!" "!DEST!" /E /Z /FFT /R:2 /W:5 /V /NP
 set "RC=!errorlevel!"
 
 :_finish
@@ -802,19 +791,24 @@ $taskTrigger = New-ScheduledTaskTrigger -At $startTime -Daily -DaysInterval 7
     const taskName = `${TASK_ID}_${task.uuid}`;
 
     const deleteScript = `
+$ErrorActionPreference = 'Stop'
 if (Get-ScheduledTask -TaskName "${taskName}" -ErrorAction SilentlyContinue) {
-  Unregister-ScheduledTask -TaskName "${taskName}" -Confirm:$false
+  Unregister-ScheduledTask -TaskName "${taskName}" -Confirm:$false -ErrorAction Stop
 } else {
   Write-Host "Task '${taskName}' not found - skipping delete"
 }
 `;
 
     try {
-      // Step 1: Remove old version
-      await this.runScriptAdmin(deleteScript, `delete_${task.uuid}`);
+      // Step 1: Remove old version (try user-level first, fallback to admin)
+      try {
+        await this.runScript(deleteScript, `delete_${task.uuid}_user`);
+      } catch {
+        await this.runScriptAdmin(deleteScript, `delete_${task.uuid}_admin`);
+      }
 
       // Step 2: Recreate with new schedule
-      await this.schedule(task, username, password); // Provide actual username/password if required
+      await this.schedule(task, username, password);
     } catch (err) {
       console.error(` Failed to update schedule for ${taskName}:`, err);
       throw new Error(`Failed to update task: ${err instanceof Error ? err.message : String(err)}`);
