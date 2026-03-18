@@ -895,6 +895,8 @@ app.whenReady().then(() => {
     if (!args || !Array.isArray(args)) return;
     const mapped = level === 'log' ? 'info' : (level || 'info');
     const message = scrubString(args.map(String).join(' '));
+    // Filter out webview console output and other noise
+    if (message.startsWith('[webview:') || message.includes('ZFS Notification DBus')) return;
     if (['error', 'warn', 'info', 'debug'].includes(mapped)) {
       (jsonLogger as any)[mapped]({ message, source: 'renderer' });
     } else {

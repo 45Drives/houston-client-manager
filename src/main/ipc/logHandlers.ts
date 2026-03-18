@@ -133,6 +133,53 @@ function listLogDates(): { date: string; file: string }[] {
     .sort((a, b) => b.date.localeCompare(a.date));
 }
 
+/** Try to extract a short event name from a log message */
+function extractEvent(obj: Record<string, any>): string {
+  // Direct event field
+  if (obj.event && typeof obj.event === 'string') return obj.event;
+  // Message might be JSON-serialized with an event field
+  if (typeof obj.message === 'string' && obj.message.startsWith('{')) {
+    try {
+      const inner = JSON.parse(obj.message);
+      if (inner.event) return inner.event;
+    } catch { /* not JSON */ }
+  }
+  // Derive short event from message (first phrase before colon/period)
+  if (typeof obj.message === 'string') {
+    const short = obj.message.replace(/[:.].*/, '').trim().slice(0, 60);
+    if (short) return short;
+  }
+  return '';
+}
+
+/** Build a human-readable summary from a log entry */
+function extractSummary(obj: Record<string, any>): string {
+  // If there's a direct event field, build summary from the structured data
+  if (obj.event && typeof obj.event === 'string') {
+    const parts = [obj.event];
+    if (obj.taskUuid) parts.push(`uuid=${obj.taskUuid}`);
+    else if (obj.uuid) parts.push(`uuid=${obj.uuid}`);
+    if (obj.host) parts.push(`host=${obj.host}`);
+    if (obj.share) parts.push(`share=${obj.share}`);
+    if (obj.error) parts.push(`error=${String(obj.error).slice(0, 100)}`);
+    if (obj.tasks && Array.isArray(obj.tasks)) parts.push(`(${obj.tasks.length} task(s))`);
+    return parts.join(' ');
+  }
+  // Plain message
+  const msg = obj.message || '';
+  return typeof msg === 'string' ? msg.slice(0, 200) : String(msg).slice(0, 200);
+}
+
+/** Messages to filter out of client log display */
+const CLIENT_LOG_SKIP_PATTERNS = [
+  /^\[webview:/i,
+  /^ZFS Notification DBus/i,
+];
+
+function shouldSkipClientEntry(msg: string): boolean {
+  return CLIENT_LOG_SKIP_PATTERNS.some(rx => rx.test(msg));
+}
+
 /** Read entries from a single NDJSON log file */
 function readLogFile(filePath: string, limit: number): ParsedLogEntry[] {
   if (!fs.existsSync(filePath)) return [];
@@ -144,12 +191,20 @@ function readLogFile(filePath: string, limit: number): ParsedLogEntry[] {
   for (let i = 0; i < lines.length && entries.length < limit; i++) {
     try {
       const obj = JSON.parse(lines[i]);
+      const msg = typeof obj.message === 'string' ? obj.message : '';
+
+      // Filter out noisy entries
+      if (shouldSkipClientEntry(msg)) continue;
+
+      const event = extractEvent(obj);
+      const summary = extractSummary(obj);
+
       entries.push({
         id: `${fileName}-${i}`,
         timestamp: obj.timestamp || '',
         level: normalizeLevel(obj.level),
-        event: obj.event || obj.message || '',
-        summary: obj.message || obj.event || '',
+        event,
+        summary,
         details: obj.stack || obj.error || undefined,
         data: obj,
         source: fileName,
@@ -397,6 +452,17 @@ export function registerLogHandlers(
         for (let i = 0; i < lines.length && entries.length < limit; i++) {
           const parsed = parseTextLogLine(lines[i], i, fileName);
           if (parsed) entries.push(parsed);
+        }
+
+        // Propagate timestamps from banner lines to subsequent detail lines
+        // so that detail entries sort together with their parent run.
+        let currentTimestamp = '';
+        for (const entry of entries) {
+          if (entry.timestamp) {
+            currentTimestamp = entry.timestamp;
+          } else if (currentTimestamp) {
+            entry.timestamp = currentTimestamp;
+          }
         }
 
         // newest first
