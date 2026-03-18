@@ -164,7 +164,7 @@ import { backUpSetupConfigKey, discoveryStateInjectionKey, discoveryRescanInject
 import MessageDialog from '../../components/MessageDialog.vue';
 import { BackUpTask, IPCRouter, TaskSchedule } from "@45drives/houston-common-lib";
 import { DiscoveryState } from '../../types';
-+import { useRouter } from 'vue-router';
+import { useRouter } from 'vue-router';
 import { SimpleCalendar } from "../../components/calendar";
 import { sanitizeFilePath } from "./utils";
 import { useHeader } from '../../composables/useHeader';
