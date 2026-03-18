@@ -5,10 +5,10 @@
 				<div class="flex flex-col flex-1 min-h-0 overflow-hidden w-9/12 mx-auto text-left space-y-2">
 					<div class="text-center shrink-0">
 						<p class="mb-2 text-2xl">
-							Choose the folders you want to back up, pick a schedule, and we'll handle the rest.
+							Choose the folders or files you want to back up, pick a schedule, and we'll handle the rest.
 						</p>
 						<p class="mb-2 text-sm text-muted">
-							File explorer may open on a different screen when you click the add folder button.
+							File explorer may open on a different screen when you click the add button.
 						</p>
 					</div>
 
@@ -90,10 +90,22 @@
 								<PlusIcon class="w-6 h-6 text-white" />
 							</button>
 							<p class="text-start ml-2 font-semibold text-lg">
-								Select a folder to back up to the designated location.
+								Select a folder to back up.
 							</p>
 							<CommanderToolTip class="ml-4"
 								:message="`Click the plus icon to select a folder for backup. You can add multiple locations by selecting them one at a time.`" />
+						</div>
+
+						<!-- File Selection Button -->
+						<div class="flex flex-row items-center mt-2">
+							<button @click="handleFileSelect" class="btn btn-secondary h-10 w-15">
+								<PlusIcon class="w-6 h-6 text-white" />
+							</button>
+							<p class="text-start ml-2 font-semibold text-lg">
+								Select individual files to back up.
+							</p>
+							<CommanderToolTip class="ml-4"
+								:message="`Click the plus icon to select one or more individual files for backup.`" />
 						</div>
 
 						<!-- Selected Folders List -->
@@ -146,7 +158,7 @@
 			</div>
 		</template>
 
-		<MessageDialog ref="messageFolderAlreadyAdded" message="Folder is already added." />
+		<MessageDialog ref="messageFolderAlreadyAdded" message="This path is already added." />
 		<MessageDialog ref="messageSubFolderAlreadyAdded"
 			message="A subfolder of this folder is already added. Please remove it first." />
 		<MessageDialog ref="messageParentFolderAlreadyAdded"
@@ -346,6 +358,80 @@ const handleFolderSelect = async () => {
 		}
 	} catch (error) {
 		console.error("Error selecting folder:", error);
+	} finally {
+		isSelectingFolder.value = false;
+	}
+};
+
+// File selection
+const handleFileSelect = async () => {
+	if (isSelectingFolder.value) return;
+	isSelectingFolder.value = true;
+
+	if (!window.electron?.selectFiles) {
+		console.error("Electron API not available! Ensure preload script is loaded.");
+		isSelectingFolder.value = false;
+		return;
+	}
+
+	try {
+		const filePaths = await window.electron.selectFiles();
+		if (!filePaths || filePaths.length === 0) return;
+
+		for (const filePath of filePaths) {
+			const normalizedFilePath = normalizePath(filePath);
+			const fileName = normalizedFilePath.split("/").pop() ?? "Unknown File";
+
+			if (backUpSetupConfig?.backUpTasks) {
+				const existingPaths = backUpSetupConfig.backUpTasks.map(task =>
+					normalizePath(task.source.trim())
+				);
+
+				if (existingPaths.includes(normalizedFilePath)) {
+					messageFolderAlreadyAdded.value?.show();
+					continue;
+				}
+
+				if (existingPaths.some(existingPath =>
+					normalizedFilePath.startsWith(existingPath + "/") || normalizedFilePath.startsWith(existingPath + "\\")
+				)) {
+					messageParentFolderAlreadyAdded.value?.show();
+					continue;
+				}
+
+				let taskSchedule: TaskSchedule;
+
+				if (scheduleMode.value === 'custom') {
+					selectedTaskSchedule.value = reactive<TaskSchedule>({
+						repeatFrequency: 'day',
+						startDate: new Date()
+					});
+					const scheduleConfirmed = await toggleCalendarComponent();
+					if (!scheduleConfirmed) continue;
+					taskSchedule = selectedTaskSchedule.value;
+				} else {
+					taskSchedule = {
+						startDate: getNextScheduleDate(scheduleFrequency.value),
+						repeatFrequency: scheduleFrequency.value
+					};
+				}
+
+				const newTask: BackUpTask = {
+					schedule: taskSchedule,
+					description: `Backup task for ${fileName}`,
+					source: filePath,
+					target: `\\\\${selectedServer.value?.name}\\${selectedServer.value?.shareName}`,
+					mirror: false,
+					uuid: crypto.randomUUID(),
+					isFile: true,
+				};
+
+				backUpSetupConfig.backUpTasks.push(newTask);
+				selectedFolders.value.push({ name: fileName, path: filePath });
+			}
+		}
+	} catch (error) {
+		console.error("Error selecting files:", error);
 	} finally {
 		isSelectingFolder.value = false;
 	}

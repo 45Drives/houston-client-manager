@@ -20,11 +20,11 @@ export async function checkBackupTaskStatus(task: BackUpTask): Promise<BackUpTas
     if (os === 'mac') {
         try {
             execSync(
-                `security find-generic-password -s ${JSON.stringify(`houston-smb-${smbHost}-${smbShare}`)} -a ${JSON.stringify(smbUser)} -w`,
+                `security find-generic-password -s ${JSON.stringify(`houston-smb-${smbHost}-${smbShare}-${smbUser}`)} -a ${JSON.stringify(smbUser)} -w`,
                 { stdio: 'pipe' }
             );
         } catch {
-            console.warn(`[SMB Check] Missing keychain credentials for ${task.uuid}: houston-smb-${smbHost}-${smbShare} / ${smbUser}`);
+            console.warn(`[SMB Check] Missing keychain credentials for ${task.uuid}: houston-smb-${smbHost}-${smbShare}-${smbUser} / ${smbUser}`);
             return 'offline_invalid_credentials';
         }
     }
@@ -89,11 +89,11 @@ export async function checkBackupTaskStatus(task: BackUpTask): Promise<BackUpTas
         if (os === 'mac') {
             try {
                 const pw = execSync(
-                    `security find-generic-password -s ${JSON.stringify(`houston-smb-${smbHost}-${smbShare}`)} -a ${JSON.stringify(smbUser)} -w`,
+                    `security find-generic-password -s ${JSON.stringify(`houston-smb-${smbHost}-${smbShare}-${smbUser}`)} -a ${JSON.stringify(smbUser)} -w`,
                     { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }
                 ).trim();
                 const tmpCred = path.join(osDir.tmpdir(), `houston-smb-check-${task.uuid}.cred`);
-                fs.writeFileSync(tmpCred, `user=${smbUser}\npassword=${pw}\n`, { mode: 0o600 });
+                fs.writeFileSync(tmpCred, `username=${smbUser}\npassword=${pw}\n`, { mode: 0o600 });
                 effectiveCredPath = tmpCred;
             } catch {
                 return 'offline_invalid_credentials';

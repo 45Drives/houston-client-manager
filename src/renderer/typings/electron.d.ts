@@ -8,6 +8,7 @@ export interface ElectronApi {  //  Use named export
     invoke: <T = any>(channel: string, ...args: any[]) => Promise<T>; 
   };
   selectFolder?: () => Promise<string>;
+  selectFiles?: () => Promise<string[]>;
   getOS: () => Promise<string>;
 }
 

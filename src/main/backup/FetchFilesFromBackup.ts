@@ -22,9 +22,17 @@ export default async function fetchFilesFromBackup(data: FetchFilesFromBackupDat
       basePath = `\\\\${data.smb_host}\\${data.smb_share}`;
     }
   } else if (getOS() === "mac") {
-    basePath = path.join("/Volumes", data.smb_share);
+    if (data.mountPoint) {
+      basePath = data.mountPoint;
+    } else {
+      basePath = path.join("/Volumes", data.smb_share);
+    }
   } else {
-    basePath = `/mnt/houston-mounts/${data.smb_share}`;
+    if (data.mountPoint) {
+      basePath = data.mountPoint;
+    } else {
+      basePath = `/mnt/houston-mounts/${data.smb_share}`;
+    }
   }
 
   const folderPath = path.join(basePath, data.uuid);

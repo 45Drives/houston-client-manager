@@ -42,6 +42,8 @@ export class BackUpManagerLin implements BackUpManager {
         const startDate = startDateMatch ? new Date(startDateMatch[1]) : new Date();
         const descMatch = content.match(/^DESC='([^']*)'/m);
         const mirror = content.includes("--delete");
+        const isFileMatch = content.match(/IS_FILE='([^']*)'/);
+        const isFile = isFileMatch?.[1] === 'true';
 
         if (!uuidMatch || !sourceMatch || !targetMatch || !smbHostMatch || !smbShareMatch || !smbUserMatch) continue;
 
@@ -59,7 +61,8 @@ export class BackUpManagerLin implements BackUpManager {
           description: descMatch ? descMatch[1] : "Unnamed",
           schedule: parsedSchedule ?? { repeatFrequency: "day", startDate },
           status: "checking",
-          smb_user: smbUserMatch[1]
+          smb_user: smbUserMatch[1],
+          isFile,
         };
 
         tasks.push(task);
@@ -396,12 +399,13 @@ EVENT_LOG=${shellQuote(path.join(LOG_DIR, "45drives_backup_events.json"))}
 SMB_HOST=${shellQuote(smbHost)}
 SMB_SHARE=${shellQuote(smbShare)}
 SMB_USER=${shellQuote(username)}
-SOURCE=${shellQuote(`${task.source}/`)}
+SOURCE=${shellQuote(task.isFile ? task.source : `${task.source}/`)}
 TARGET=${shellQuote(target)}
 LOG_FILE=${shellQuote(logPath)}
 MOUNT_DIR=${shellQuote(mountDir)}
 START_DATE=${shellQuote(String(task.schedule.startDate))}
 DESC=${shellQuote(task.description)}
+IS_FILE='${task.isFile ? 'true' : 'false'}'
 
 CLIENT_ID_FILE=${shellQuote(path.join(app.getPath("userData"), "client-id.txt"))}
 INSTALL_ID="$(cat "$CLIENT_ID_FILE" 2>/dev/null || true)"
@@ -429,10 +433,14 @@ echo "[INFO] Mount directory: $MOUNT_DIR"
 
 mkdir -p "$MOUNT_DIR"
 
-# This relies on /etc/fstab having a matching entry for $MOUNT_DIR
-mount "$MOUNT_DIR"
+# Mount if not already mounted (fstab entry must exist for $MOUNT_DIR)
+if mountpoint -q "$MOUNT_DIR"; then
+  echo "[INFO] Already mounted at $MOUNT_DIR"
+else
+  mount "$MOUNT_DIR"
+fi
 
-# With -e, this will exit non-zero if not mounted
+# Verify mount succeeded
 mountpoint -q "$MOUNT_DIR"
 
 echo "[SUCCESS] SMB share mounted at $MOUNT_DIR"
@@ -446,9 +454,11 @@ mkdir -p "$MARKER_DIR"
 printf '{"install_id":"%s","smb_user":"%s","source":"%s","user":"%s","host":"%s","platform":"linux"}\n' \
 "$INSTALL_ID" "$SMB_USER" "$SOURCE" "$(id -un)" "$(hostname -s)" > "$MARKER_FILE"
 
-mkdir -p "$MOUNT_DIR/$TARGET"
+${task.isFile ? `mkdir -p "$(dirname "$MOUNT_DIR/$TARGET")"
+echo "[INFO] Running rsync (single file)..."
+rsync -a "$SOURCE" "$MOUNT_DIR/$TARGET"` : `mkdir -p "$MOUNT_DIR/$TARGET"
 echo "[INFO] Running rsync..."
-rsync -a${task.mirror ? ' --delete' : ''} "$SOURCE" "$MOUNT_DIR/$TARGET"
+rsync -a${task.mirror ? ' --delete' : ''} "$SOURCE" "$MOUNT_DIR/$TARGET"`}
 RSYNC_STATUS=$?
 
 if [ $RSYNC_STATUS -ne 0 ]; then

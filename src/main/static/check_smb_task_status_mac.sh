@@ -25,8 +25,8 @@ if [[ ! -f "$CRED_FILE" ]]; then
   json "offline_missing_credentials" 1
 fi
 
-# Extract user and password from cred file
-USERNAME=$(grep '^user=' "$CRED_FILE" | cut -d'=' -f2-)
+# Extract user and password from cred file (supports both 'username=' and 'user=' formats)
+USERNAME=$(grep -E '^(username|user)=' "$CRED_FILE" | head -1 | cut -d'=' -f2-)
 PASSWORD=$(grep '^password=' "$CRED_FILE" | cut -d'=' -f2-)
 
 # Validate extracted credentials

@@ -543,7 +543,7 @@ chmod 600 ${shellQuote(credFile)}
 
   private exportMacKeychain(cred: PlaintextCredential): void {
 
-    const svc = `houston-smb-${cred.host}-${cred.share}`;
+    const svc = `houston-smb-${cred.host}-${cred.share}-${cred.username}`;
 
     // Remove old entry if present, then add new
     execSync(

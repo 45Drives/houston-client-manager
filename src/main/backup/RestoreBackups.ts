@@ -27,9 +27,9 @@ export default async function restoreBackups(
   if (os === "win") {
     basePath = data.mountPoint ?? `\\\\${data.smb_host}\\${data.smb_share}`;
   } else if (os === "mac") {
-    basePath = path.join("/Volumes", data.smb_share);
+    basePath = data.mountPoint ?? path.join("/Volumes", data.smb_share);
   } else {
-    basePath = `/mnt/houston-mounts/${data.smb_share}`;
+    basePath = data.mountPoint ?? `/mnt/houston-mounts/${data.smb_share}`;
   }
 
   // const { uuid, client } = data;

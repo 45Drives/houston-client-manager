@@ -393,6 +393,7 @@ function createWindow() {
 
   ipcMain.handle('install-cockpit-module', async (event, { host, username, password }) => {
     assertMainWindowSender(event);
+    jsonLogger.info({ event: 'install-cockpit-module', host });
     // 4. Store manual creds for login UI (if needed)
     mainWindow!.webContents.send('store-manual-creds', {
       ip: host,
@@ -403,8 +404,10 @@ function createWindow() {
     try {
       const res = await installServerDepsRemotely({ host, username, password });
       console.debug(" install-cockpit-module →", res);
+      jsonLogger.info({ event: 'install-cockpit-module_success', host });
       return res;
     } catch (err) {
+      jsonLogger.error({ event: 'install-cockpit-module_error', host, error: String(err) });
       console.error(" install-cockpit-module error:", err);
       throw err;            // so the renderer gets the real stack
     }
@@ -903,6 +906,7 @@ app.whenReady().then(() => {
   initAutoUpdates(() => mainWindow);
 
   ipcMain.handle('session:clear-origin', async (_event, origin: string) => {
+    jsonLogger.info({ event: 'session:clear-origin', origin });
     try {
       const sess = session.fromPartition('persist:authSession');
       await sess.clearStorageData({
@@ -910,6 +914,7 @@ app.whenReady().then(() => {
         storages: ['cookies', 'localstorage', 'indexdb', 'cachestorage', 'serviceworkers'],
       });
     } catch (e) {
+      jsonLogger.error({ event: 'session:clear-origin_error', origin, error: String(e) });
       console.error('session:clear-origin error:', e);
     }
   });
@@ -923,6 +928,15 @@ app.whenReady().then(() => {
     });
 
     return result.canceled ? null : result.filePaths[0]; // Return full folder path
+  });
+
+  ipcMain.handle('dialog:openFile', async (event) => {
+    assertMainWindowSender(event);
+    const result = await dialog.showOpenDialog({
+      properties: ['openFile', 'multiSelections'],
+    });
+
+    return result.canceled ? null : result.filePaths;
   });
 
   // ── Server Credential IPC (replaces keytar-based creds.ipc) ────────
@@ -944,11 +958,13 @@ app.whenReady().then(() => {
       p.password,
       { name: p.name, favorite: p.favorite }
     );
+    jsonLogger.info({ event: 'cred:save', host: p.host, username: p.username });
     return { ok: true, id };
   });
 
   ipcMain.handle('cred:remove', (event, id: string) => {
     assertMainWindowSender(event);
+    jsonLogger.info({ event: 'cred:remove', credentialId: id });
     getCredentialManager().removeById(id);
     return { ok: true };
   });
@@ -972,6 +988,7 @@ app.whenReady().then(() => {
     const safeShare = assertSafeShare(share);
     const safeUser = assertSafeUsername(username);
     getCredentialManager().store(safeHost, safeShare, safeUser, password);
+    jsonLogger.info({ event: 'credentials:store', host: safeHost, share: safeShare, username: safeUser });
     return { success: true };
   });
 
@@ -988,6 +1005,7 @@ app.whenReady().then(() => {
       assertSafeShare(share),
       assertSafeUsername(username)
     );
+    jsonLogger.info({ event: 'credentials:remove', host, share, username, removed });
     return { success: removed };
   });
 

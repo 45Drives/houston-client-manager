@@ -42,6 +42,7 @@ export class BackUpManagerMac implements BackUpManager {
       let host = '', share = '', source = '', target = '';
       let mirror = false;
       let smb_user = '';
+      let isFile = false;
 
       let txt = '';
       if (fs.existsSync(scriptPath)) {
@@ -54,6 +55,7 @@ export class BackUpManagerMac implements BackUpManager {
         source = grab(/#\s*TASK_SOURCE="([^"]+)"/);
         target = grab(/#\s*TASK_TARGET="([^"]+)"/);
         mirror = /#\s*TASK_MIRROR="true"/i.test(txt);
+        isFile = /#\s*TASK_IS_FILE="true"/i.test(txt);
 
         // Prefer comment tag, fall back to shell var
         smb_user = grab(/#\s*TASK_SMB_USER="([^"]+)"/)
@@ -81,7 +83,8 @@ export class BackUpManagerMac implements BackUpManager {
         schedule,
         source, target, host, share, mirror,
         status: 'checking',
-        smb_user
+        smb_user,
+        isFile,
       });
     }
 
@@ -120,7 +123,7 @@ export class BackUpManagerMac implements BackUpManager {
     const homeDir = os.homedir();
     const currentUser = os.userInfo().username;
     const userGroup = require("child_process").execSync(`id -gn ${currentUser}`).toString().trim();
-    const service = `houston-smb-${safeHost}-${safeShare}`;
+    const service = `houston-smb-${safeHost}-${safeShare}-${safeUser}`;
     const installer = `#!/bin/bash
     set -e
     PASSWORD=${shellQuote(password)}
@@ -197,7 +200,7 @@ EOF_${uuid}
       `chmod 750 "${logDir}"`
     ];
 
-    /* 1a ─ System-keychain credentials (once per host+share) */
+    /* 1a ─ System-keychain credentials (once per host+share+user) */
     const uniqueHostShares = new Set<string>();
     for (const t of tasks) {
       const host = assertSafeHost(t.host || t.target.split(':')[0]);
@@ -206,7 +209,7 @@ EOF_${uuid}
     }
     for (const key of uniqueHostShares) {
       const [host, share] = key.split('\0');
-      const svc = `${servicePrefix}${host}-${share}`;
+      const svc = `${servicePrefix}${host}-${share}-${safeUser}`;
 
       installerLines.push(
         `security delete-generic-password -s "${svc}" -a "${safeUser}" 2>/dev/null || true`,
@@ -468,9 +471,11 @@ EOF_${uuid}
     const volumesMount = `/Volumes/${task.share}`;
     const rel = task.target!.split('/').slice(1).join('/'); // strip leading /
     const dir = `${mountPoint}/${rel}`;
-    const svc = `houston-smb-${task.host}-${task.share}`;
+    const svc = `houston-smb-${task.host}-${task.share}-${username}`;
     const target = getSmbTargetFromSmbTarget(task.target);
-    const rsyncCmd = `COPYFILE_DISABLE=1 ${getRsync()} -a${task.mirror ? ' --delete' : ''} ${shellQuote(`${task.source}/`)} ${shellQuote(`${dir}/`)}`;
+    const rsyncCmd = task.isFile
+      ? `COPYFILE_DISABLE=1 ${getRsync()} -a ${shellQuote(task.source)} ${shellQuote(dir)}`
+      : `COPYFILE_DISABLE=1 ${getRsync()} -a${task.mirror ? ' --delete' : ''} ${shellQuote(`${task.source}/`)} ${shellQuote(`${dir}/`)}`;
 
     return (`
 #!/bin/bash
@@ -495,6 +500,7 @@ SMB_USER='${username}'
 # TASK_SOURCE="${task.source}"
 # TASK_TARGET="${getSmbTargetFromSmbTarget(task.target)}"
 # TASK_MIRROR="${task.mirror}"
+# TASK_IS_FILE="${task.isFile ? 'true' : 'false'}"
 # TASK_SMB_USER="${username}"
 
 mkdir -p "$(dirname "$LOG")"
@@ -538,7 +544,7 @@ printf '{"install_id":"%s","smb_user":"%s","source":"%s","user":"%s","host":"%s"
   "$INSTALL_ID" "$SMB_USER" "$SOURCE" "$(id -un)" "$(hostname -s)" > "$marker_dir/client.json"
 
 # ---------- copy -------------------------------------------------------------
-mkdir -p "${dir}"
+${task.isFile ? `mkdir -p "$(dirname '${dir}')"` : `mkdir -p "${dir}"`}
 echo "[INFO] rsync to ${dir}"
 ${rsyncCmd}
 ST=$?

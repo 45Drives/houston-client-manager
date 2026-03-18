@@ -11,7 +11,43 @@ import { getOS, extractJsonFromOutput } from '../utils';
 import fs from 'fs';
 import path from 'path';
 import { app } from 'electron';
+import { execFileSync } from 'child_process';
 import type { IPCHandlerContext } from './types';
+import { getCredentialManager } from '../credentialManager';
+
+/** Resolve SMB password: use provided password, or look it up from the credential vault */
+function resolvePassword(host: string, share: string, user: string, pass: string): string {
+  if (pass) return pass;
+  const cm = getCredentialManager();
+  const cred = user
+    ? cm.retrieve(host, share, user)
+    : cm.findByHostAndShare(host, share);
+  return cred?.password ?? '';
+}
+
+/**
+ * Try to mount an SMB share using the fstab entry created during backup setup.
+ * Returns the mount point path on success, or null on failure.
+ */
+function tryFstabMount(host: string, share: string, user: string): string | null {
+  const safe = (s: string) => s.replace(/[^A-Za-z0-9_.-]/g, '_');
+  const key = `${safe(host)}_${safe(share)}_${safe(user)}`;
+  const mountPoint = `/mnt/houston-mounts/${key}`;
+
+  // Already mounted?
+  try {
+    execFileSync('mountpoint', ['-q', mountPoint]);
+    return mountPoint;
+  } catch { /* not mounted */ }
+
+  // Try fstab-based mount (uses credential file from backup setup)
+  try {
+    execFileSync('mount', [mountPoint], { timeout: 15000 });
+    return mountPoint;
+  } catch { /* fstab mount failed */ }
+
+  return null;
+}
 
 function errMsg(err: unknown): string {
   if (err instanceof Error) return err.message;
@@ -28,6 +64,7 @@ export async function handleBackupMessage(message: any, ctx: IPCHandlerContext):
         backUpTask.schedule.startDate = new Date(backUpTask.schedule.startDate);
       });
       const config: BackUpSetupConfig = message.config;
+      ctx.jsonLogger.info({ event: 'configureBackUp', taskCount: config.backUpTasks.length });
       new BackUpSetupConfigurator().applyConfig(config, (progress) => {
         router.send('renderer', 'action', JSON.stringify({
           type: 'backUpSetupStatus',
@@ -56,9 +93,20 @@ export async function handleBackupMessage(message: any, ctx: IPCHandlerContext):
       try {
         // Mount the share before listing files (it may not be mounted yet)
         const { smb_host, smb_share, smb_user, smb_pass } = message.data;
-        if (smb_host && smb_share) {
+
+        // On Linux, try the fstab-based mount first (uses credential file, same path as backup script)
+        if (getOS() !== 'mac' && getOS() !== 'win' && smb_host && smb_share && smb_user) {
+          const fstabMount = tryFstabMount(smb_host, smb_share, smb_user);
+          if (fstabMount) {
+            message.data.mountPoint = fstabMount;
+          }
+        }
+
+        // Fall back to mountSmbPopup if fstab didn't work
+        if (!message.data.mountPoint && smb_host && smb_share) {
+          const resolvedPass = resolvePassword(smb_host, smb_share, smb_user, smb_pass);
           try {
-            const raw = await mountSmbPopup(smb_host, smb_share, smb_user || '', smb_pass || '', ctx.mainWindow, 'silent');
+            const raw = await mountSmbPopup(smb_host, smb_share, smb_user || '', resolvedPass, ctx.mainWindow, 'silent');
             const mountResult = extractJsonFromOutput(raw);
             if (mountResult.MountPoint) {
               message.data.mountPoint = mountResult.MountPoint;
@@ -81,11 +129,23 @@ export async function handleBackupMessage(message: any, ctx: IPCHandlerContext):
     }
 
     case 'restoreBackups': {
+      ctx.jsonLogger.info({ event: 'restoreBackups_start', host: message.data?.smb_host, share: message.data?.smb_share });
       // Ensure the share is mounted before restoring files
       const { smb_host: rHost, smb_share: rShare, smb_user: rUser, smb_pass: rPass } = message.data;
-      if (rHost && rShare) {
+
+      // On Linux, try the fstab-based mount first
+      if (getOS() !== 'mac' && getOS() !== 'win' && rHost && rShare && rUser) {
+        const fstabMount = tryFstabMount(rHost, rShare, rUser);
+        if (fstabMount) {
+          message.data.mountPoint = fstabMount;
+        }
+      }
+
+      // Fall back to mountSmbPopup if fstab didn't work
+      if (!message.data.mountPoint && rHost && rShare) {
+        const resolvedRestorePass = resolvePassword(rHost, rShare, rUser, rPass);
         try {
-          const raw = await mountSmbPopup(rHost, rShare, rUser || '', rPass || '', ctx.mainWindow, 'silent');
+          const raw = await mountSmbPopup(rHost, rShare, rUser || '', resolvedRestorePass, ctx.mainWindow, 'silent');
           const mountResult = extractJsonFromOutput(raw);
           if (mountResult.MountPoint) {
             message.data.mountPoint = mountResult.MountPoint;
@@ -95,6 +155,7 @@ export async function handleBackupMessage(message: any, ctx: IPCHandlerContext):
         }
       }
       await restoreBackups(message.data, router);
+      ctx.jsonLogger.info({ event: 'restoreBackups_complete', host: rHost, share: rShare });
       return true;
     }
 
@@ -105,8 +166,10 @@ export async function handleBackupMessage(message: any, ctx: IPCHandlerContext):
 
       try {
         await backupManager.unschedule(task);
+        ctx.jsonLogger.info({ event: 'removeBackUpTask_success', taskUuid: task.uuid, source: task.source, target: task.target });
         ctx.notify(`Successfully removed ${task.source} → ${task.target}`);
       } catch (err: unknown) {
+        ctx.jsonLogger.error({ event: 'removeBackUpTask_error', taskUuid: task.uuid, error: errMsg(err) });
         ctx.notify(`Error deleting task: ${errMsg(err)}`);
         console.error('removeBackUpTask failed:', err);
       }
@@ -124,11 +187,13 @@ export async function handleBackupMessage(message: any, ctx: IPCHandlerContext):
       try {
         if (backupManager.unscheduleSelectedTasks) {
           await backupManager.unscheduleSelectedTasks(tasks);
+          ctx.jsonLogger.info({ event: 'removeMultipleBackUpTasks_success', count: tasks.length, taskUuids: tasks.map(t => t.uuid) });
           ctx.notify(`Successfully removed ${tasks.length} backup task(s)!`);
         } else {
           ctx.notify('Error: Backup Manager does not support bulk deletion.');
         }
       } catch (err: unknown) {
+        ctx.jsonLogger.error({ event: 'removeMultipleBackUpTasks_error', count: tasks.length, error: errMsg(err) });
         ctx.notify(`Error: ${errMsg(err)}`);
         console.error('removeMultipleBackUpTasks failed:', err);
       }
@@ -200,15 +265,34 @@ export async function handleBackupMessage(message: any, ctx: IPCHandlerContext):
 
       try {
         console.debug('Attempting to run backup:', task.description);
+        ctx.notify(`Running backup task "${task.description}"...`);
         const result = await backupManager.runNow(task);
+
+        // Check stdout/stderr for actual failure indicators even if exit code was "non-fatal"
+        const output = `${result.stdout}\n${result.stderr}`;
+        const hasMountError = /mount error\(\d+\)/i.test(output);
+        const hasExplicitError = /\[ERROR\]/i.test(output);
+        const hasRsyncSuccess = /\[SUCCESS\] rsync completed/i.test(output);
+        const failed = hasMountError || hasExplicitError || (!hasRsyncSuccess && output.includes('Backup task'));
 
         if (result.stderr && result.stderr.trim() !== '') {
           console.warn('Backup completed with warnings/errors in stderr:', result.stderr);
         }
 
         console.debug('runNow completed:', result);
-        ctx.jsonLogger.info({ event: 'runBackUpTaskNow_success', taskUuid: task.uuid, stderr: result.stderr || null });
-        ctx.notify(`Backup task "${task.description}" completed successfully.`);
+
+        if (failed) {
+          // Extract a useful error message from the output
+          const errorLines = output.split('\n').filter(l =>
+            /mount error|ERROR|failed/i.test(l)
+          ).map(l => l.trim()).filter(Boolean);
+          const detail = errorLines.join('; ') || 'Check task log for details';
+          ctx.jsonLogger.error({ event: 'runBackUpTaskNow_error', taskUuid: task.uuid, error: detail });
+          ctx.notify(`Backup task "${task.description}" failed: ${detail}`);
+        } else {
+          ctx.jsonLogger.info({ event: 'runBackUpTaskNow_success', taskUuid: task.uuid, stderr: result.stderr || null });
+          ctx.notify(`Backup task "${task.description}" completed successfully.`);
+        }
 
         setTimeout(async () => {
           try {
@@ -230,16 +314,35 @@ export async function handleBackupMessage(message: any, ctx: IPCHandlerContext):
     case 'openBackupFolder': {
       const { smb_host, smb_share, smb_user, smb_pass, uuid } = message.data;
       try {
-        const raw = await mountSmbPopup(smb_host, smb_share, smb_user, smb_pass, ctx.mainWindow, 'silent');
-        const mountResult = extractJsonFromOutput(raw);
-
         let folderPath: string;
         if (getOS() === 'win') {
+          const resolvedOpenPass = resolvePassword(smb_host, smb_share, smb_user, smb_pass);
+          const raw = await mountSmbPopup(smb_host, smb_share, smb_user, resolvedOpenPass, ctx.mainWindow, 'silent');
+          const mountResult = extractJsonFromOutput(raw);
           folderPath = path.join(mountResult.MountPoint, uuid);
         } else if (getOS() === 'mac') {
-          folderPath = path.join('/Volumes', smb_share, uuid);
+          // Try mountSmbPopup to get actual mount point, fall back to /Volumes/{share}
+          try {
+            const raw = await mountSmbPopup(smb_host, smb_share, smb_user, '', ctx.mainWindow, 'silent');
+            const mountResult = extractJsonFromOutput(raw);
+            folderPath = path.join(mountResult.MountPoint || `/Volumes/${smb_share}`, uuid);
+          } catch {
+            folderPath = path.join(`/Volumes/${smb_share}`, uuid);
+          }
         } else {
-          folderPath = path.join(`/mnt/houston-mounts/${smb_share}`, uuid);
+          // On Linux, try the fstab-based mount first (same path the backup script uses)
+          let mountBase = '';
+          if (smb_host && smb_share && smb_user) {
+            mountBase = tryFstabMount(smb_host, smb_share, smb_user) ?? '';
+          }
+          if (!mountBase) {
+            // Fall back to mountSmbPopup
+            const resolvedOpenPass = resolvePassword(smb_host, smb_share, smb_user, smb_pass);
+            const raw = await mountSmbPopup(smb_host, smb_share, smb_user, resolvedOpenPass, ctx.mainWindow, 'silent');
+            const mountResult = extractJsonFromOutput(raw);
+            mountBase = (mountResult.MountPoint as string) || `/mnt/houston-mounts/${smb_share}`;
+          }
+          folderPath = path.join(mountBase, uuid);
         }
 
         if (!fs.existsSync(folderPath)) {

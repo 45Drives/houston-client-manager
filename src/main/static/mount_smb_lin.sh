@@ -16,9 +16,13 @@ PASSWORD="$4"
 if [[ ! "$SMB_HOST" =~ ^[A-Za-z0-9.-]+$ ]]; then echo '{"error": "Invalid host"}'; exit 1; fi
 if [[ "$SMB_SHARE" == *"/"* || "$SMB_SHARE" == *\\* || "$SMB_SHARE" == *".."* ]]; then echo '{"error": "Invalid share"}'; exit 1; fi
 SMB_PATH="//$SMB_HOST/$SMB_SHARE"
-MOUNT_POINT="/mnt/houston-mounts/$SMB_SHARE"
+
+# --- Key uses host_share_user convention (same as backup scripts/fstab entries) ---
+safe() { echo "$1" | sed 's/[^A-Za-z0-9_.-]/_/g'; }
+KEY="$(safe "$SMB_HOST")_$(safe "$SMB_SHARE")_$(safe "$USERNAME")"
+MOUNT_POINT="/mnt/houston-mounts/$KEY"
 CRED_DIR="/run/houston-credentials"
-CREDENTIALS_FILE="$CRED_DIR/$SMB_HOST.cred"
+CREDENTIALS_FILE="$CRED_DIR/$KEY.cred"
 
 # --- Debug Output (sanitized) ---
 # echo "[INFO] Mounting $SMB_PATH to $MOUNT_POINT"

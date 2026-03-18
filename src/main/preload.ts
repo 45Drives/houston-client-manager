@@ -78,6 +78,7 @@ contextBridge.exposeInMainWorld('electron', {
     },
   },
   selectFolder: () => ipcRenderer.invoke('dialog:openFolder'),
+  selectFiles: () => ipcRenderer.invoke('dialog:openFile'),
   getOS: () => ipcRenderer.invoke('get-os'),
   isFirstRunNeeded: (host: string, share: string, smbUser: string) =>
     ipcRenderer.invoke("backup:isFirstRunNeeded", host, share, smbUser),

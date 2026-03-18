@@ -21,7 +21,8 @@ if [[ ! -f "$CRED_FILE" ]]; then
 fi
 
 # Extract credentials
-USERNAME=$(grep '^user=' "$CRED_FILE" | cut -d'=' -f2-)
+# Support both 'username=' (fstab cred format) and 'user=' (legacy format)
+USERNAME=$(grep -E '^(username|user)=' "$CRED_FILE" | head -1 | cut -d'=' -f2-)
 PASSWORD=$(grep '^password=' "$CRED_FILE" | cut -d'=' -f2-)
 
 # Validate extracted credentials

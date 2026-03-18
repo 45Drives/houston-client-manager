@@ -27,6 +27,47 @@ function parseTextLogLine(line: string, index: number, source: string): ParsedLo
   if (!line || !line.trim()) return null;
   const trimmed = line.trim();
 
+  // Backup script banner: ===== [timestamp] message =====
+  const bannerMatch = trimmed.match(
+    /^=+\s*\[(\d{4}-\d{2}-\d{2}[\sT]\d{2}:\d{2}:\d{2}[^\]]*)\]\s*(.*?)\s*=*$/,
+  );
+  if (bannerMatch) {
+    const msg = bannerMatch[2];
+    const isComplete = /completed/i.test(msg);
+    return {
+      id: `${source}-${index}`,
+      timestamp: bannerMatch[1],
+      level: 'info',
+      event: isComplete ? 'Backup Completed' : 'Backup Started',
+      summary: msg,
+      source,
+    };
+  }
+
+  // Backup script tagged lines: [SUCCESS], [INFO], [ERROR], [WARN], [CLEANUP]
+  const tagMatch = trimmed.match(/^\[(SUCCESS|INFO|ERROR|WARN|CLEANUP)\]\s*(.*)/);
+  if (tagMatch) {
+    const tag = tagMatch[1];
+    const msg = tagMatch[2];
+    const level = tag === 'SUCCESS' ? 'info'
+               : tag === 'ERROR' ? 'error'
+               : tag === 'WARN' ? 'warn'
+               : tag === 'CLEANUP' ? 'debug'
+               : 'info';
+    // Derive a short event from the message (first meaningful phrase)
+    const event = msg.replace(/[:.].*/, '').trim() || tag;
+    return {
+      id: `${source}-${index}`,
+      timestamp: '',
+      level,
+      event,
+      summary: msg.slice(0, 200),
+      details: msg.length > 200 ? msg : undefined,
+      source,
+    };
+  }
+
+  // Standard bracket format: [timestamp][LEVEL] message
   const bracketMatch = trimmed.match(
     /^\[(\d{4}-\d{2}-\d{2}[\sT]\d{2}:\d{2}:\d{2}[^\]]*)\]\s*\[(\w+)\]\s*(.*)/,
   );
@@ -35,13 +76,14 @@ function parseTextLogLine(line: string, index: number, source: string): ParsedLo
       id: `${source}-${index}`,
       timestamp: bracketMatch[1],
       level: normalizeLevel(bracketMatch[2]),
-      event: source,
+      event: bracketMatch[3].replace(/[:.].*/, '').trim() || bracketMatch[2],
       summary: bracketMatch[3].slice(0, 200),
       details: bracketMatch[3].length > 200 ? bracketMatch[3] : undefined,
       source,
     };
   }
 
+  // ISO timestamp format: timestamp LEVEL: message
   const isoMatch = trimmed.match(
     /^(\d{4}-\d{2}-\d{2}[\sT]\d{2}:\d{2}:\d{2}[^\s]*)\s+(\w+)[:\s]\s*(.*)/,
   );
@@ -50,7 +92,7 @@ function parseTextLogLine(line: string, index: number, source: string): ParsedLo
       id: `${source}-${index}`,
       timestamp: isoMatch[1],
       level: normalizeLevel(isoMatch[2]),
-      event: source,
+      event: isoMatch[3].replace(/[:.].*/, '').trim() || isoMatch[2],
       summary: isoMatch[3].slice(0, 200),
       details: isoMatch[3].length > 200 ? isoMatch[3] : undefined,
       source,
@@ -61,7 +103,7 @@ function parseTextLogLine(line: string, index: number, source: string): ParsedLo
     id: `${source}-${index}`,
     timestamp: '',
     level: 'info',
-    event: source,
+    event: trimmed.replace(/[:.].*/, '').trim().slice(0, 60) || source,
     summary: trimmed.slice(0, 200),
     details: trimmed.length > 200 ? trimmed : undefined,
     source,

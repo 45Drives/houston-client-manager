@@ -84,6 +84,7 @@ export function initAutoUpdates(getMainWindow: () => BrowserWindow | null) {
     })
 
     ipcMain.handle('update:install', async () => {
+        console.info('update:install — quitting and installing update');
         autoUpdater.quitAndInstall(false, true)
         return { ok: true }
     })

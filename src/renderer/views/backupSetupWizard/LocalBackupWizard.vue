@@ -6,7 +6,7 @@
 </template>
 <script setup lang="ts">
 import { Wizard, WizardStep } from '@45drives/houston-common-ui'
-import CreateBackupTaskView from './CreateBackupTaskView.vue'
+import CreateLocalBackupTaskView from './CreateLocalBackupTaskView.vue'
 import EnterSmbCredBackUpSetupView from './EnterSmbCredBackUpSetupView.vue'
 import SummaryView from './SummaryView.vue'
 import CompleteBackUpCreationView from './CompleteBackUpCreationView.vue'
@@ -31,7 +31,7 @@ const wizardId = 'backup-new'
 const steps: WizardStep[] = [
     {
         label: 'Create Backup Task',
-        component: CreateBackupTaskView,
+        component: CreateLocalBackupTaskView,
         nextStep: () => 1,
     },
     {

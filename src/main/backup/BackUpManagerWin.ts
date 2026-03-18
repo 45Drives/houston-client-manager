@@ -154,7 +154,8 @@ export class BackUpManagerWin implements BackUpManager {
               host: actionDetails.SMB_HOST,
               share: actionDetails.SMB_SHARE,
               status: "checking",
-              smb_user: actionDetails.SMB_USER   
+              smb_user: actionDetails.SMB_USER,
+              isFile: actionDetails.IS_FILE === 'true',
             };
 
             if (actionDetails.START_DATE) {
@@ -192,16 +193,19 @@ export class BackUpManagerWin implements BackUpManager {
 
   async runNow(task: BackUpTask): Promise<{ stdout: string; stderr: string }> {
     const taskName = `${TASK_ID}_${task.uuid}`;
+    const logFile = path.join(logPath, `Houston_Backup_Task_${task.uuid}.log`);
     const ps = `Start-ScheduledTask -TaskName "${taskName}"`;
+
+    // Record log file size before running so we can read only new content
+    let logSizeBefore = 0;
+    try { logSizeBefore = fs.statSync(logFile).size; } catch {}
 
     // 1) Try without elevation first
     try {
       const res = await this.runScript(ps, `run_task_${task.uuid}_user`);
       if (res.stderr && res.stderr.trim() !== "") {
-        // treat noisy stderr as failure to trigger fallback
         throw Object.assign(new Error(`User-mode start produced stderr`), { res });
       }
-      return res;
     } catch (e: any) {
       // 2) Fallback to admin
       try {
@@ -209,7 +213,6 @@ export class BackUpManagerWin implements BackUpManager {
         if (adminRes.stderr && adminRes.stderr.trim() !== "") {
           throw Object.assign(new Error(`Admin start produced stderr`), { res: adminRes });
         }
-        return adminRes;
       } catch (adminErr: any) {
         // 3) Bubble a clear error if both paths fail
         const u = (e && e.res) ? e.res : { stdout: "", stderr: "", code: "unknown" };
@@ -224,6 +227,61 @@ export class BackUpManagerWin implements BackUpManager {
         };
       }
     }
+
+    // 4) Poll for task completion (Start-ScheduledTask is fire-and-forget)
+    const pollPs = `(Get-ScheduledTask -TaskName "${taskName}").State`;
+    const maxWaitMs = 30 * 60 * 1000; // 30 minutes
+    const pollIntervalMs = 3000;
+    const startTime = Date.now();
+    let timedOut = false;
+
+    while (Date.now() - startTime < maxWaitMs) {
+      await new Promise(r => setTimeout(r, pollIntervalMs));
+      try {
+        const stateRes = await this.runScript(pollPs, `poll_task_${task.uuid}`);
+        const state = stateRes.stdout.trim();
+        if (state !== 'Running' && state !== '4') {
+          break;
+        }
+      } catch {
+        break;
+      }
+    }
+    if (Date.now() - startTime >= maxWaitMs) {
+      timedOut = true;
+    }
+
+    // 5) Read new log content written during this run
+    let logContent = '';
+    try {
+      const fullSize = fs.statSync(logFile).size;
+      const newBytes = fullSize - logSizeBefore;
+      if (newBytes > 0) {
+        const buf = Buffer.alloc(newBytes);
+        const fd = fs.openSync(logFile, 'r');
+        fs.readSync(fd, buf, 0, newBytes, logSizeBefore);
+        fs.closeSync(fd);
+        logContent = buf.toString('utf8');
+      }
+    } catch {}
+
+    if (timedOut) {
+      return { stdout: logContent, stderr: '[ERROR] Backup task still running after 30 minutes' };
+    }
+
+    // 6) Check LastTaskResult (robocopy: 0-7 = success, 8+ = error)
+    const resultPs = `(Get-ScheduledTaskInfo -TaskName "${taskName}").LastTaskResult`;
+    let lastResult = 0;
+    try {
+      const resultRes = await this.runScript(resultPs, `result_task_${task.uuid}`);
+      lastResult = parseInt(resultRes.stdout.trim(), 10) || 0;
+    } catch {}
+
+    if (lastResult >= 8) {
+      return { stdout: logContent, stderr: `[ERROR] Task exited with code ${lastResult}` };
+    }
+
+    return { stdout: logContent, stderr: '' };
   }
 
   addUserToBackupOperatorsGroup() {
@@ -443,6 +501,7 @@ setlocal enabledelayedexpansion
 :: SMB_HOST    = ${task.host}
 :: SMB_SHARE   = ${task.share}
 :: SMB_USER    = ${smbUser}
+:: IS_FILE     = ${task.isFile ? 'true' : 'false'}
 
 :: identities and constants
 set "CRED_FILE=${credFile.replace(/\\/g, '\\\\')}"
@@ -523,9 +582,18 @@ set "JSON_SOURCE=!SOURCE:\=\\!"
 > "!MARKER_DIR!\\client.json" echo {"install_id":"!INSTALL_ID!","smb_user":"!SMB_USER!","source":"!JSON_SOURCE!","user":"%USERNAME%","host":"%COMPUTERNAME%","platform":"win"}
 
 :: --- copy payload ----------------------------------------------------------
-mkdir "!DEST!" 2>nul
+${task.isFile ? `:: Single file backup
+for %%F in ("!SOURCE!") do (
+  set "SRC_DIR=%%~dpF"
+  set "SRC_FILE=%%~nxF"
+)
+:: For a single file, DEST is target path including filename — create its parent
+for %%D in ("!DEST!") do set "DEST_DIR=%%~dpD"
+mkdir "!DEST_DIR!" 2>nul
+echo [INFO] Running robocopy (single file) ...
+robocopy "!SRC_DIR!" "!DEST_DIR!" "!SRC_FILE!" /Z /FFT /R:2 /W:5 /V /NP` : `mkdir "!DEST!" 2>nul
 echo [INFO] Running robocopy ...
-robocopy "!SOURCE!" "!DEST!" /E /Z /FFT /R:2 /W:5 /V /NP
+robocopy "!SOURCE!" "!DEST!" /E /Z /FFT /R:2 /W:5 /V /NP`}
 set "RC=!errorlevel!"
 
 :_finish

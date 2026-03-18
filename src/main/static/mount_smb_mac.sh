@@ -14,7 +14,7 @@ MODE="$4" # "popup" or "silent"
 
 SERVER="smb://${HOST}/${SHARE}"
 MOUNT_POINT="/Volumes/${SHARE}"
-KEYCHAIN_SERVICE="houston-smb-${HOST}-${SHARE}"
+KEYCHAIN_SERVICE="houston-smb-${HOST}-${SHARE}-${USERNAME}"
 
 json_error() {
   local msg="$1"
