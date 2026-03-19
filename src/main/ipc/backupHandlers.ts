@@ -205,18 +205,22 @@ export async function handleBackupMessage(message: any, ctx: IPCHandlerContext):
 
     case 'updateBackUpTask': {
       const task: BackUpTask = message.task;
-      const username: string = message.username;
-      const password: string = message.password;
+      const username: string = message.username || '';
+      const password: string = message.password || '';
       const backupManager = ctx.getBackUpManager();
       if (!backupManager) { ctx.notify('Error: No Backup Manager available.'); return true; }
 
       try {
         await backupManager.updateSchedule(task, username, password);
         ctx.jsonLogger.info({ event: 'updateBackUpTask_success', taskUuid: task.uuid });
+        const label = task.name || task.description;
         const date = new Date(task.schedule.startDate);
         const minute = date.getMinutes().toString().padStart(2, '0');
         const hour = date.getHours();
-        ctx.notify(`Updated task schedule for ${task.description} to ${hour}:${minute}`);
+        ctx.notify(`Updated backup task "${label}" (schedule: ${hour}:${minute})`);
+        // Refresh task list in UI
+        const updatedTasks = await backupManager.queryTasks();
+        router.send('renderer', 'action', JSON.stringify({ type: 'sendBackupTasks', tasks: updatedTasks }));
       } catch (err: unknown) {
         ctx.notify(`Error: ${errMsg(err)}`);
         ctx.jsonLogger.error({ event: 'updateBackUpTask_error', taskUuid: task.uuid, error: errMsg(err) });
@@ -294,7 +298,8 @@ export async function handleBackupMessage(message: any, ctx: IPCHandlerContext):
           ctx.notify(`Backup task "${task.description}" completed successfully.`);
         }
 
-        setTimeout(async () => {
+        // Immediately send updated status and events so UI refreshes right away
+        const sendStatusAndEvents = async () => {
           try {
             task.status = await checkBackupTaskStatus(task);
             router.send('renderer', 'action', JSON.stringify({ type: 'backUpStatusesUpdated', tasks: [task] }));
@@ -312,7 +317,12 @@ export async function handleBackupMessage(message: any, ctx: IPCHandlerContext):
           } catch (err) {
             console.warn(`Post-runNow status update failed for ${task.description}`, err);
           }
-        }, 5000);
+        };
+
+        // Send immediately (event log should be written by the script at this point)
+        await sendStatusAndEvents();
+        // Also send again after a short delay as a safety net
+        setTimeout(sendStatusAndEvents, 3000);
       } catch (err: unknown) {
         console.error('runNow failed:', err);
         const msg = (err instanceof Error ? err.message : '') || (typeof err === 'object' && err !== null && 'stderr' in err ? String((err as Record<string, unknown>).stderr) : '') || JSON.stringify(err);

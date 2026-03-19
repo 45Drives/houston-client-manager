@@ -41,6 +41,7 @@ export class BackUpManagerLin implements BackUpManager {
         const startDateMatch = content.match(/START_DATE='([^']+)'/);
         const startDate = startDateMatch ? new Date(startDateMatch[1]) : new Date();
         const descMatch = content.match(/^DESC='([^']*)'/m);
+        const nameMatch = content.match(/^BACKUP_NAME='([^']*)'/m);
         const mirror = content.includes("--delete");
 
         if (!uuidMatch || !sourceMatch || !targetMatch || !smbHostMatch || !smbShareMatch || !smbUserMatch) continue;
@@ -57,6 +58,7 @@ export class BackUpManagerLin implements BackUpManager {
           share: smbShareMatch[1],
           mirror,
           description: descMatch ? descMatch[1] : "Unnamed",
+          name: nameMatch ? nameMatch[1] : undefined,
           schedule: parsedSchedule ?? { repeatFrequency: "day", startDate },
           status: "checking",
           smb_user: smbUserMatch[1],
@@ -224,7 +226,7 @@ export class BackUpManagerLin implements BackUpManager {
   }
   
   
-  async updateSchedule(task: BackUpTask, _username: string, _password: string): Promise<void> {
+  async updateSchedule(task: BackUpTask, username: string, password: string): Promise<void> {
     const crontabLines = execSync("crontab -l 2>/dev/null || true").toString().split("\n");
     const updated = [...crontabLines]; // Copy
 
@@ -233,6 +235,24 @@ export class BackUpManagerLin implements BackUpManager {
 
     const scriptPath = path.join(os.homedir(), ".local", "share", "houston-backups", `Houston_Backup_Task_${task.uuid}.sh`);
     if (!fs.existsSync(scriptPath)) throw new Error(`Script not found at expected path: ${scriptPath}`);
+
+    // Regenerate the backup script with updated task fields (name, source, etc.)
+    // Resolve credentials: use provided ones, or fall back to existing script values
+    let resolvedUser = username;
+    let resolvedPass = password;
+    if (!resolvedUser || !resolvedPass) {
+      const content = fs.readFileSync(scriptPath, "utf-8");
+      const smbUserMatch = content.match(/SMB_USER='([^']+)'/);
+      if (smbUserMatch && !resolvedUser) resolvedUser = smbUserMatch[1];
+      if (!resolvedPass) {
+        // Try credential vault
+        const [smbHostRaw, smbSharePart] = task.target.split(":");
+        const smbShare = smbSharePart?.split("/")[0] || '';
+        const stored = getCredentialManager().retrieve(smbHostRaw, smbShare, resolvedUser);
+        if (stored) resolvedPass = stored.password;
+      }
+    }
+    this.generateBackupScript(task, resolvedUser, resolvedPass, scriptPath);
 
     const newTiming = (() => {
       const date = new Date(task.schedule.startDate);
@@ -402,6 +422,7 @@ LOG_FILE=${shellQuote(logPath)}
 MOUNT_DIR=${shellQuote(mountDir)}
 START_DATE=${shellQuote(String(task.schedule.startDate))}
 DESC=${shellQuote(task.description)}
+BACKUP_NAME=${shellQuote(task.name || '')}
 CLIENT_ID_FILE=${shellQuote(path.join(app.getPath("userData"), "client-id.txt"))}
 INSTALL_ID="$(cat "$CLIENT_ID_FILE" 2>/dev/null || true)"
 

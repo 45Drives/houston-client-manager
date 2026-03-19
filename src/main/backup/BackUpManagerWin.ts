@@ -147,6 +147,7 @@ export class BackUpManagerWin implements BackUpManager {
             const backUpTask: BackUpTask = {
               uuid: actionDetails.uuid!,
               description: actionDetails.description!,
+              name: actionDetails.name as string || undefined,
               schedule: trigger!,
               source: actionDetails.source!,
               target: actionDetails.target!,
@@ -493,6 +494,7 @@ setlocal enabledelayedexpansion
 :: --- Houston backup task metadata (for queryTasks) -------------------------
 :: uuid        = ${task.uuid}
 :: description = ${task.description}
+:: name        = ${task.name || ''}
 :: source      = ${task.source}
 :: target      = ${rawDst}
 :: mirror      = ${task.mirror}

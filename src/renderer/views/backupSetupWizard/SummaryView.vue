@@ -35,7 +35,7 @@
           class="overflow-y-auto max-h-[40vh] space-y-4">
           <div v-for="(task, index) in backUpSetupConfig?.backUpTasks" :key="index" class="flex items-center">
             <div class="text-start w-[50%]">
-              <text class="text-default font-semibold text-left">Folder:</text>
+              <text class="text-default font-semibold text-left">{{ task.name || 'Folder' }}:</text>
 
               <text class="text-default font-semibold text-left px-4">{{ task.source }}</text>
             </div>

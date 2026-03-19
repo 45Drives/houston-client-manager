@@ -80,6 +80,7 @@ export class BackUpManagerMac implements BackUpManager {
       tasks.push({
         uuid,
         description: `Backup ${source || '(unknown)'} → ${target || '(unknown)'}`,
+        name: txt ? (/#\s*TASK_NAME="([^"]*)"/i.exec(txt)?.[1] || undefined) : undefined,
         schedule,
         source, target, host, share, mirror,
         status: 'checking',
@@ -498,6 +499,7 @@ SMB_USER='${username}'
 # TASK_TARGET="${getSmbTargetFromSmbTarget(task.target)}"
 # TASK_MIRROR="${task.mirror}"
 # TASK_SMB_USER="${username}"
+# TASK_NAME="${(task.name || '').replace(/"/g, '')}"
 
 mkdir -p "$(dirname "$LOG")"
 exec >>"$LOG" 2>&1

@@ -101,11 +101,14 @@
 							class="overflow-y-auto max-h-[40vh] border border-default rounded-lg shadow-inner bg-well p-2 space-y-4">
 							<div v-for="(folder, index) in selectedFolders" :key="folder.path"
 								class="flex items-center p-2">
-								<div class="w-[25%] flex-shrink-0 space-x-2 flex items-center">
-									<label class="text-default font-semibold text-left">{{ folder.name }}</label>
+								<div class="w-[25%] flex-shrink-0 space-y-1">
+									<input v-model="folder.name"
+										class="bg-default h-[2.5rem] text-default rounded-lg px-3 w-full border border-default text-sm"
+										placeholder="Backup name (optional)"
+										@input="syncFolderName(index, folder.name)" />
 								</div>
 								<input disabled :value="folder.path"
-									class="bg-default h-[3rem] mr-4 text-default rounded-lg px-4 flex-1 border border-default" />
+									class="bg-default h-[3rem] mr-4 ml-2 text-default rounded-lg px-4 flex-1 border border-default" />
 								<div class="flex space-x-2">
 									<button v-if="scheduleMode === 'custom'"
 										@click="editSchedule(backUpSetupConfig!.backUpTasks[index].schedule)"
@@ -247,7 +250,7 @@ watch(scheduleFrequency, (newSchedule) => {
 // Sync selectedFolders with backUpSetupConfig
 const loadExistingFolders = () => {
 	selectedFolders.value = (backUpSetupConfig?.backUpTasks ?? []).map(task => ({
-		name: task.source?.split("/").pop() ?? "Unknown Folder",
+		name: task.name || task.source?.split("/").pop() ?? "Unknown Folder",
 		path: task.source
 	}));
 };
@@ -261,7 +264,7 @@ watch(
 	(newLength, oldLength) => {
 		if (newLength !== oldLength) {
 			selectedFolders.value = (backUpSetupConfig?.backUpTasks || []).map(task => ({
-				name: task.description,
+				name: task.name || task.description,
 				path: task.source
 			}));
 		}
@@ -334,6 +337,7 @@ const handleFolderSelect = async () => {
 			const newTask: BackUpTask = {
 				schedule: taskSchedule,
 				description: `Backup task for ${folderName}`,
+				name: folderName,
 				source: folderPath,
 				target: `\\\\${selectedServer.value?.name}\\${selectedServer.value?.shareName}`,
 				mirror: false,
@@ -353,6 +357,13 @@ const handleFolderSelect = async () => {
 		isSelectingFolder.value = false;
 	}
 };
+
+// Sync folder name changes back to the backup task
+function syncFolderName(index: number, newName: string) {
+	if (backUpSetupConfig?.backUpTasks[index]) {
+		backUpSetupConfig.backUpTasks[index].name = newName;
+	}
+}
 
 // Edit schedule for a specific folder (custom mode)
 async function editSchedule(taskSchedule: TaskSchedule) {

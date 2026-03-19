@@ -56,7 +56,7 @@
 
         <!-- LOCAL tab content -->
         <div v-if="activeTab === 'local'" class="flex-1 min-h-0 flex flex-col">
-            <div class="flex-1 min-h-0 bg-well rounded-lg border border-default overflow-hidden">
+            <div class="flex-1 min-h-0 bg-well rounded-lg border border-default overflow-hidden bg-default">
                 <BackUpListView ref="backUpListRef" class="h-full"
                     @backUpTaskSelected="handleBackUpTaskSelected" />
             </div>
@@ -84,7 +84,7 @@
                 <button class="btn btn-secondary text-sm h-8 flex items-center gap-1.5"
                     :disabled="selectedBackUpTasks.length !== 1" @click="editSelected">
                     <PencilSquareIcon class="w-4 h-4" />
-                    Edit Schedule
+                    Edit
                 </button>
 
                 <button class="btn btn-secondary text-sm h-8 flex items-center gap-1.5"

@@ -20,20 +20,41 @@
 
     <!-- Table -->
     <div v-else class="overflow-x-auto">
-      <table class="min-w-full text-sm text-left">
+      <table ref="tableRef" class="min-w-full text-sm text-left table-fixed" style="table-layout: fixed;">
         <thead class="sticky top-0 bg-accent">
           <tr class="border-b border-default">
-            <th class="px-3 py-2 w-10">
+            <th class="px-3 py-2 relative" :style="{ width: colWidths[0] + 'px' }">
               <input type="checkbox" class="input-checkbox" :checked="allSelected" @change="toggleSelectAll"
                 :aria-checked="allSelected" />
+              <div class="col-resize-handle" @mousedown.prevent="startResize($event, 0)"></div>
             </th>
-            <th class="px-3 py-2">ID</th>
-            <th class="px-3 py-2">Samba User</th>
-            <th class="px-3 py-2">Source</th>
-            <th class="px-3 py-2">Destination</th>
-            <th class="px-3 py-2">Frequency</th>
-            <th class="px-3 py-2">Last Run at</th>
-            <th class="px-3 py-2">Next Run at</th>
+            <th class="px-3 py-2 relative" :style="{ width: colWidths[1] + 'px' }">
+              Name
+              <div class="col-resize-handle" @mousedown.prevent="startResize($event, 1)"></div>
+            </th>
+            <th class="px-3 py-2 relative" :style="{ width: colWidths[2] + 'px' }">
+              Samba User
+              <div class="col-resize-handle" @mousedown.prevent="startResize($event, 2)"></div>
+            </th>
+            <th class="px-3 py-2 relative" :style="{ width: colWidths[3] + 'px' }">
+              Source
+              <div class="col-resize-handle" @mousedown.prevent="startResize($event, 3)"></div>
+            </th>
+            <th class="px-3 py-2 relative" :style="{ width: colWidths[4] + 'px' }">
+              Destination
+              <div class="col-resize-handle" @mousedown.prevent="startResize($event, 4)"></div>
+            </th>
+            <th class="px-3 py-2 relative" :style="{ width: colWidths[5] + 'px' }">
+              Frequency
+              <div class="col-resize-handle" @mousedown.prevent="startResize($event, 5)"></div>
+            </th>
+            <th class="px-3 py-2 relative" :style="{ width: colWidths[6] + 'px' }">
+              Last Run at
+              <div class="col-resize-handle" @mousedown.prevent="startResize($event, 6)"></div>
+            </th>
+            <th class="px-3 py-2 relative" :style="{ width: colWidths[7] + 'px' }">
+              Next Run at
+            </th>
           </tr>
         </thead>
         <tbody>
@@ -43,7 +64,7 @@
               <input type="checkbox" class="input-checkbox" :checked="isSelected(task)"
                 @change.stop="toggleSelection(task)" :aria-checked="isSelected(task)" />
             </td>
-            <td class="px-3 py-2 font-mono text-xs truncate max-w-[16ch]" :title="task.uuid">{{ task.uuid }}</td>
+            <td class="px-3 py-2 truncate" :title="taskDisplayName(task)">{{ taskDisplayName(task) }}</td>
             <td class="px-3 py-2" :title="task.smb_user">{{ task.smb_user }}</td>
             <td class="px-3 py-2 truncate" :title="sourceText(task)">{{ sourceText(task) }}</td>
             <td class="px-3 py-2 truncate" :title="fullDestPath(task)">{{ destinationText(task) }}</td>
@@ -59,7 +80,104 @@
       </table>
     </div>
 
-    <!-- Calendar Modal for editing a single task schedule -->
+    <!-- Edit Backup Task Modal -->
+    <Modal :show="showEditModal" @clickOutside="">
+      <div class="w-full max-w-2xl mx-auto bg-default border-2 border-default rounded-lg p-6 shadow-xl">
+        <h2 class="text-xl font-semibold mb-4">Edit Backup Task</h2>
+
+        <div v-if="editTask" class="space-y-4">
+          <!-- Name -->
+          <div class="flex items-center gap-3">
+            <label class="w-[140px] font-semibold text-sm shrink-0">Backup Name</label>
+            <input v-model="editTask.name" type="text"
+              class="input-textlike flex-1 rounded-lg px-3 py-2 border border-default"
+              placeholder="Enter a name for this backup" />
+          </div>
+
+          <!-- Source folder -->
+          <div class="flex items-center gap-3">
+            <label class="w-[140px] font-semibold text-sm shrink-0">Source Folder</label>
+            <input :value="editTask.source" disabled
+              class="bg-well flex-1 rounded-lg px-3 py-2 border border-default text-muted" />
+            <button class="btn btn-secondary text-sm h-9 px-3" @click="changeEditSource">Browse…</button>
+          </div>
+
+          <!-- Schedule mode toggle -->
+          <div class="flex items-center gap-3">
+            <label class="w-[140px] font-semibold text-sm shrink-0">Schedule Type</label>
+            <div class="inline-flex rounded-lg border border-default overflow-hidden">
+              <button class="px-4 py-2 text-sm font-medium transition-colors"
+                :class="editScheduleMode === 'interval' ? 'bg-primary text-primary-foreground' : 'bg-well hover:bg-accent text-default'"
+                @click="editScheduleMode = 'interval'">Simple</button>
+              <button class="px-4 py-2 text-sm font-medium border-l border-default transition-colors"
+                :class="editScheduleMode === 'custom' ? 'bg-primary text-primary-foreground' : 'bg-well hover:bg-accent text-default'"
+                @click="editScheduleMode = 'custom'">Custom</button>
+            </div>
+          </div>
+
+          <!-- Simple interval -->
+          <div v-if="editScheduleMode === 'interval'" class="flex items-center gap-3">
+            <label class="w-[140px] font-semibold text-sm shrink-0">
+              Backup Interval
+              <span v-if="editFrequency !== 'hour'" class="font-normal text-muted text-xs block">Starts at 12:00 AM</span>
+            </label>
+            <select v-model="editFrequency"
+              class="bg-default h-[2.5rem] text-default rounded-lg px-4 flex-1 border border-default">
+              <option value="hour">Hourly</option>
+              <option value="day">Daily</option>
+              <option value="week">Weekly</option>
+              <option value="month">Monthly</option>
+            </select>
+          </div>
+
+          <!-- Custom schedule -->
+          <div v-if="editScheduleMode === 'custom'" class="flex items-center gap-3">
+            <label class="w-[140px] font-semibold text-sm shrink-0">Custom Schedule</label>
+            <button class="btn btn-secondary text-sm h-9 flex items-center gap-1.5 px-3"
+              @click="openEditCalendar">
+              <CalendarIcon class="w-4 h-4" />
+              Set Schedule
+            </button>
+            <span v-if="editTask.schedule" class="text-sm text-muted">
+              {{ formatFrequency(editTask.schedule.repeatFrequency) }} starting
+              {{ new Date(editTask.schedule.startDate).toLocaleDateString() }}
+            </span>
+          </div>
+
+          <!-- Credentials -->
+          <div class="border-t border-default pt-4 mt-4">
+            <p class="text-sm text-muted mb-3">Leave blank to keep existing credentials.</p>
+            <div class="flex items-center gap-3 mb-3">
+              <label class="w-[140px] font-semibold text-sm shrink-0">SMB Username</label>
+              <input v-model="editUsername" type="text"
+                class="input-textlike flex-1 rounded-lg px-3 py-2 border border-default"
+                :placeholder="editTask.smb_user || 'Username'" />
+            </div>
+            <div class="flex items-center gap-3">
+              <label class="w-[140px] font-semibold text-sm shrink-0">SMB Password</label>
+              <div class="flex-1 relative">
+                <input v-model="editPassword" :type="showEditPassword ? 'text' : 'password'"
+                  class="input-textlike w-full rounded-lg px-3 py-2 border border-default pr-10"
+                  placeholder="Password" />
+                <button type="button" @click="showEditPassword = !showEditPassword"
+                  class="absolute right-3 top-1/2 -translate-y-1/2 text-muted">
+                  <EyeIcon v-if="!showEditPassword" class="w-4 h-4" />
+                  <EyeSlashIcon v-else class="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Buttons -->
+        <div class="flex justify-end gap-2 mt-6">
+          <button class="btn btn-secondary w-fit" @click="cancelEdit">Cancel</button>
+          <button class="btn btn-primary w-fit" @click="saveEdit">Save Changes</button>
+        </div>
+      </div>
+    </Modal>
+
+    <!-- Calendar Modal — rendered after edit modal so it stacks on top when both open -->
     <Modal :show="showCalendar" class="-mt-10" @clickOutside="">
       <div class="w-full max-w-xl mx-auto">
         <SimpleCalendar v-if="selectedTaskSchedule" title="Edit Backup Schedule" :taskSchedule="selectedTaskSchedule"
@@ -67,6 +185,7 @@
           class="border-2 border-default rounded-md w-full" />
       </div>
     </Modal>
+
     <CredentialsModal ref="credsModalRef" />
   </div>
 </template>
@@ -79,7 +198,8 @@ import CredentialsModal from "../../components/CredentialsModal.vue";
 import { formatFrequency } from "./utils";
 import { SimpleCalendar } from "../../components/calendar";
 import { thisOsInjectionKey } from '../../keys/injection-keys';
-import { ArrowPathIcon, PlusIcon } from '@heroicons/vue/24/outline';
+import { ArrowPathIcon, PlusIcon, CalendarIcon } from '@heroicons/vue/24/outline';
+import { EyeIcon, EyeSlashIcon } from '@heroicons/vue/20/solid';
 import { CircleStackIcon } from '@heroicons/vue/24/outline';
 import { useRouter } from 'vue-router';
 
@@ -96,6 +216,35 @@ const credsModalRef = ref<InstanceType<typeof CredentialsModal> | null>(null);
 const selectedTaskSchedule = ref<TaskSchedule | undefined>();
 const showCalendar = ref(false);
 let resolveCalendarPromise: ((value: boolean) => void) | null = null;
+
+// --- Resizable columns ---
+const tableRef = ref<HTMLTableElement | null>(null);
+const colWidths = ref<number[]>([40, 160, 120, 200, 200, 100, 180, 180]);
+let resizingCol = -1;
+let resizeStartX = 0;
+let resizeStartW = 0;
+
+function startResize(e: MouseEvent, colIndex: number) {
+  resizingCol = colIndex;
+  resizeStartX = e.clientX;
+  resizeStartW = colWidths.value[colIndex];
+  document.addEventListener('mousemove', onResizeMove);
+  document.addEventListener('mouseup', onResizeEnd);
+  document.body.style.cursor = 'col-resize';
+  document.body.style.userSelect = 'none';
+}
+function onResizeMove(e: MouseEvent) {
+  if (resizingCol < 0) return;
+  const diff = e.clientX - resizeStartX;
+  colWidths.value[resizingCol] = Math.max(40, resizeStartW + diff);
+}
+function onResizeEnd() {
+  resizingCol = -1;
+  document.removeEventListener('mousemove', onResizeMove);
+  document.removeEventListener('mouseup', onResizeEnd);
+  document.body.style.cursor = '';
+  document.body.style.userSelect = '';
+}
 
 function isSelected(task: BackUpTask) {
   return selectedBackUps.value.some(t => t.uuid === task.uuid);
@@ -154,6 +303,14 @@ function sourceText(task: BackUpTask) {
   return `${base}${folder ? '/' + folder : ''}` || '-';
 }
 
+function taskDisplayName(task: BackUpTask): string {
+  if (task.name) return task.name;
+  // Fall back to folder name from source
+  const src = task.source || '';
+  const folderName = src.replace(/\\/g, '/').replace(/\/+$/, '').split('/').pop();
+  return folderName || task.uuid.slice(0, 8);
+}
+
 function formatDateTime(dt?: Date | string | number | null) {
   if (!dt) return '—';
   const d = dt instanceof Date ? dt : new Date(dt);
@@ -185,25 +342,108 @@ function getNextBackupDate(startDate: Date, repeatFrequency: string): Date {
 }
 
 // Exposed hooks for parent actions
+// -- Edit modal state --
+const showEditModal = ref(false);
+const editTask = ref<BackUpTask | null>(null);
+const editScheduleMode = ref<'interval' | 'custom'>('interval');
+const editFrequency = ref<'hour' | 'day' | 'week' | 'month'>('day');
+const editUsername = ref('');
+const editPassword = ref('');
+const showEditPassword = ref(false);
+
 async function editSelectedSchedules() {
-  if (selectedBackUps.value.length !== 1) return; // simple single-edit for now
-  const selectedBackUp = selectedBackUps.value[0];
+  if (selectedBackUps.value.length !== 1) return;
+  const task = selectedBackUps.value[0];
+  editTask.value = JSON.parse(JSON.stringify(task));
+  editTask.value!.schedule.startDate = new Date(task.schedule.startDate);
+  editScheduleMode.value = 'interval';
+  editFrequency.value = task.schedule.repeatFrequency;
+  editUsername.value = '';
+  editPassword.value = '';
+  showEditPassword.value = false;
+  showEditModal.value = true;
+}
+
+async function changeEditSource() {
+  if (!window.electron?.selectFolder) return;
+  const folderPath = await window.electron.selectFolder();
+  if (folderPath && editTask.value) {
+    editTask.value.source = folderPath;
+    // Update name if it was auto-derived from old source
+    if (!editTask.value.name) {
+      editTask.value.name = folderPath.replace(/\\/g, '/').replace(/\/+$/, '').split('/').pop() || '';
+    }
+  }
+}
+
+async function openEditCalendar() {
+  if (!editTask.value) return;
   selectedTaskSchedule.value = reactive({
-    repeatFrequency: selectedBackUp.schedule.repeatFrequency,
-    startDate: new Date(selectedBackUp.schedule.startDate),
+    repeatFrequency: editTask.value.schedule.repeatFrequency,
+    startDate: new Date(editTask.value.schedule.startDate),
   });
   await nextTick();
   const confirmed = await toggleCalendarComponent();
-  if (confirmed) {
-    selectedBackUp.schedule.repeatFrequency = selectedTaskSchedule.value.repeatFrequency;
-    selectedBackUp.schedule.startDate = selectedTaskSchedule.value.startDate;
-    IPCRouter.getInstance().send("backend", "action", JSON.stringify({
-      type: "updateBackUpTask",
-      task: selectedBackUp,
-      username: "",
-      password: ""
-    }));
+  if (confirmed && editTask.value) {
+    editTask.value.schedule.repeatFrequency = selectedTaskSchedule.value!.repeatFrequency;
+    editTask.value.schedule.startDate = selectedTaskSchedule.value!.startDate;
   }
+}
+
+function cancelEdit() {
+  showEditModal.value = false;
+  editTask.value = null;
+}
+
+function saveEdit() {
+  if (!editTask.value) return;
+
+  // Apply simple interval schedule if in interval mode
+  if (editScheduleMode.value === 'interval') {
+    editTask.value.schedule.repeatFrequency = editFrequency.value;
+    const now = new Date();
+    const nextDate = new Date(now);
+    switch (editFrequency.value) {
+      case 'hour':
+        nextDate.setMinutes(0, 0, 0);
+        nextDate.setHours(now.getHours() + 1);
+        break;
+      case 'day':
+        nextDate.setHours(0, 0, 0, 0);
+        if (now >= nextDate) nextDate.setDate(nextDate.getDate() + 1);
+        break;
+      case 'week':
+        nextDate.setHours(0, 0, 0, 0);
+        nextDate.setDate(now.getDate() + 7);
+        break;
+      case 'month':
+        nextDate.setHours(0, 0, 0, 0);
+        nextDate.setMonth(now.getMonth() + 1);
+        break;
+    }
+    editTask.value.schedule.startDate = nextDate;
+  }
+
+  // Update the local task in the list
+  const idx = backUpTasks.value.findIndex(t => t.uuid === editTask.value!.uuid);
+  if (idx !== -1) {
+    backUpTasks.value[idx] = { ...backUpTasks.value[idx], ...editTask.value };
+  }
+
+  // Send update to backend
+  IPCRouter.getInstance().send("backend", "action", JSON.stringify({
+    type: "updateBackUpTask",
+    task: editTask.value,
+    username: editUsername.value,
+    password: editPassword.value
+  }));
+
+  showEditModal.value = false;
+  editTask.value = null;
+
+  // Update selection to reflect changes
+  selectedBackUps.value = [];
+  emit('backUpTaskSelected', []);
 }
 
 function runSelectedNow() {
@@ -271,6 +511,8 @@ onMounted(() => {
           const i = backUpTasks.value.findIndex(t => t.uuid === updated.uuid);
           if (i !== -1) backUpTasks.value[i].status = updated.status;
         });
+        // Also refresh events to pick up any new Last Run timestamps
+        fetchBackupEvents();
       } else if (msg.type === 'sendBackupEvents') {
         const latest: Record<string, Date> = {};
         for (const ev of (msg.events ?? [])) {
@@ -299,6 +541,8 @@ onActivated(() => { fetchBackupTasks(); });
 onUnmounted(() => {
   if (ipcActionHandler) IPCRouter.getInstance().removeEventListener('action', ipcActionHandler);
   clearInterval(pollingInterval);
+  document.removeEventListener('mousemove', onResizeMove);
+  document.removeEventListener('mouseup', onResizeEnd);
 });
 
 // Deletions (used by parent)
@@ -366,5 +610,20 @@ defineExpose({ deleteSelectedTasks, editSelectedSchedules, runSelectedNow });
   to {
     transform: rotate(360deg)
   }
+}
+
+.col-resize-handle {
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: 6px;
+  cursor: col-resize;
+  user-select: none;
+  z-index: 1;
+}
+
+.col-resize-handle:hover {
+  background: rgba(128, 128, 128, 0.3);
 }
 </style>

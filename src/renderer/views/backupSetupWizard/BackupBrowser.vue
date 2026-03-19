@@ -9,67 +9,30 @@
                 </button>
                 <h2 class="text-lg font-semibold text-default">Backup Browser</h2>
             </div>
-            <div class="flex items-center gap-2">
-                <button class="btn btn-secondary text-sm h-8 flex items-center gap-1.5"
-                    :disabled="!selectedBackup"
-                    @click="openSelectedBackupFolder">
-                    <FolderOpenIcon class="w-4 h-4" />
-                    Open Folder
-                </button>
-                <button class="btn btn-danger text-sm h-8 flex items-center gap-1.5"
-                    :disabled="multiSelectedUuids.length === 0"
-                    @click="deleteSelectedBackups">
-                    <TrashIcon class="w-4 h-4" />
-                    Delete
-                </button>
+            <!-- Backup selector (multi-backup mode) -->
+            <div v-if="!singleMode" class="flex items-center gap-2">
+                <label class="text-sm text-muted">Backup:</label>
+                <select
+                    class="bg-well border border-default rounded px-2 py-1 text-sm text-default min-w-[200px]"
+                    :value="selectedBackup?.uuid ?? ''"
+                    @change="onBackupDropdownChange($event)">
+                    <option value="" disabled>Select a backup…</option>
+                    <option v-for="b in filteredBackups" :key="b.uuid" :value="b.uuid">
+                        {{ b.folder }} ({{ b.client }} → {{ b.server }})
+                    </option>
+                </select>
+                <div class="flex items-center gap-1 ml-2">
+                    <MagnifyingGlassIcon class="w-4 h-4 text-muted shrink-0" />
+                    <input v-model="search" type="text" placeholder="Filter…"
+                        class="w-32 bg-well border border-default rounded px-2 py-1 text-sm text-default placeholder:text-muted outline-none" />
+                </div>
             </div>
         </div>
 
-        <!-- Main content -->
+        <!-- Main two-column content -->
         <div class="flex-1 min-h-0 flex gap-4">
-            <!-- LEFT: Backup tasks list (hidden in single-backup mode) -->
-            <div v-if="!singleMode" class="w-2/5 flex flex-col min-h-0 bg-well rounded-lg border border-default overflow-hidden">
-                <div class="px-3 py-2 border-b border-default shrink-0">
-                    <div class="flex items-center gap-2">
-                        <MagnifyingGlassIcon class="w-4 h-4 text-muted shrink-0" />
-                        <input v-model="search" type="text" placeholder="Search backups…"
-                            class="w-full bg-transparent text-sm text-default placeholder:text-muted outline-none" />
-                    </div>
-                </div>
-
-                <div v-if="loading" class="flex-1 flex items-center justify-center">
-                    <div class="spinner"></div>
-                </div>
-                <div v-else-if="filteredBackups.length === 0" class="flex-1 flex flex-col items-center justify-center text-muted gap-2 p-4">
-                    <CircleStackIcon class="w-10 h-10 opacity-30" />
-                    <p class="text-sm">No backups found.</p>
-                </div>
-                <div v-else class="flex-1 overflow-y-auto">
-                    <div v-for="backup in filteredBackups" :key="backup.uuid"
-                        class="flex items-start gap-3 px-3 py-2.5 border-b border-default cursor-pointer transition-colors border-l-2"
-                        :class="selectedBackup?.uuid === backup.uuid
-                            ? 'bg-primary/15 border-l-primary text-default'
-                            : 'border-l-transparent hover:bg-accent'"
-                        @click="onBackupRowClick(backup)">
-                        <input type="checkbox" v-model="multiSelectedMap[backup.uuid]"
-                            class="mt-1 shrink-0" @click.stop />
-                        <div class="min-w-0 flex-1">
-                            <p class="text-sm font-medium text-default truncate" :title="backup.folder">
-                                {{ backup.folder }}
-                            </p>
-                            <p class="text-xs text-muted truncate">
-                                {{ backup.client }} &rarr; {{ backup.server }}
-                            </p>
-                            <p v-if="backup.lastBackup" class="text-xs text-muted mt-0.5">
-                                Last: {{ backup.lastBackup }}
-                            </p>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- RIGHT: Files in selected backup -->
-            <div :class="singleMode ? 'w-full' : 'w-3/5'" class="flex flex-col min-h-0 bg-well rounded-lg border border-default overflow-hidden">
+            <!-- LEFT: Files in backup -->
+            <div class="w-3/5 flex flex-col min-h-0 bg-well rounded-lg border border-default overflow-hidden">
                 <!-- File panel header -->
                 <div class="px-3 py-2 border-b border-default flex items-center justify-between shrink-0">
                     <span class="text-sm font-medium text-default">
@@ -93,7 +56,7 @@
                 <!-- No backup selected -->
                 <div v-if="!selectedBackup" class="flex-1 flex flex-col items-center justify-center text-muted gap-2 p-4">
                     <DocumentMagnifyingGlassIcon class="w-10 h-10 opacity-30" />
-                    <p class="text-sm">{{ singleMode ? 'Loading backup…' : 'Click a backup on the left to view its files.' }}</p>
+                    <p class="text-sm">{{ singleMode ? 'Loading backup…' : 'Select a backup above to view its files.' }}</p>
                 </div>
 
                 <!-- Loading files -->
@@ -112,57 +75,167 @@
                 <div v-else class="flex-1 overflow-y-auto">
                     <div v-for="(file, index) in selectedBackup.files" :key="index"
                         class="flex items-center gap-3 px-3 py-2 border-b border-default cursor-pointer transition-colors"
-                        :class="file?.selected ? 'bg-primary/10' : 'hover:bg-accent'"
-                        @click="toggleFileSelection(file)">
+                        :class="[
+                            file?.selected ? 'bg-primary/10' : 'hover:bg-accent',
+                            focusedFile === file ? 'ring-1 ring-inset ring-primary' : ''
+                        ]"
+                        @click="onFileClick(file)">
                         <input type="checkbox" v-model="file.selected" class="shrink-0" @click.stop />
                         <DocumentIcon class="w-4 h-4 text-muted shrink-0" />
                         <span class="text-sm text-default truncate" :title="file.path">{{ file.path }}</span>
+                        <span v-if="file.size != null" class="ml-auto text-xs text-muted shrink-0">{{ formatFileSize(file.size) }}</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- RIGHT: Info & restore controls -->
+            <div class="w-2/5 flex flex-col min-h-0 gap-4">
+                <!-- Backup info card -->
+                <div v-if="selectedBackup" class="bg-well rounded-lg border border-default overflow-hidden shrink-0">
+                    <div class="px-3 py-2 border-b border-default">
+                        <span class="text-sm font-medium text-default">Backup Info</span>
+                    </div>
+                    <div class="px-3 py-2 space-y-2 text-sm">
+                        <div class="flex justify-between gap-2">
+                            <span class="text-muted shrink-0">Server</span>
+                            <span class="text-default text-right truncate" :title="selectedBackup.server">{{ selectedBackup.server || '—' }}</span>
+                        </div>
+                        <div class="flex justify-between gap-2">
+                            <span class="text-muted shrink-0">Source (Client)</span>
+                            <span class="text-default text-right truncate" :title="selectedBackup.client">{{ selectedBackup.client || '—' }}</span>
+                        </div>
+                        <div class="flex justify-between gap-2">
+                            <span class="text-muted shrink-0">Destination</span>
+                            <span class="text-default text-right truncate" :title="selectedBackup.folder">{{ selectedBackup.folder || '—' }}</span>
+                        </div>
+                        <div v-if="selectedBackup.__task?.smb_user" class="flex justify-between gap-2">
+                            <span class="text-muted shrink-0">SMB User</span>
+                            <span class="text-default text-right truncate">{{ selectedBackup.__task.smb_user }}</span>
+                        </div>
+                        <div v-if="selectedBackup.__task?.share" class="flex justify-between gap-2">
+                            <span class="text-muted shrink-0">Share</span>
+                            <span class="text-default text-right truncate">{{ selectedBackup.__task.share }}</span>
+                        </div>
+                        <div v-if="selectedBackup.lastBackup" class="flex justify-between gap-2">
+                            <span class="text-muted shrink-0">Last Backup</span>
+                            <span class="text-default text-right">{{ selectedBackup.lastBackup }}</span>
+                        </div>
+                        <div v-if="selectedBackup.__task?.status" class="flex justify-between gap-2">
+                            <span class="text-muted shrink-0">Status</span>
+                            <span class="text-right text-xs px-1.5 py-0.5 rounded"
+                                :class="selectedBackup.__task.status === 'online' ? 'bg-green-500/20 text-green-400' : 'bg-yellow-500/20 text-yellow-400'">
+                                {{ selectedBackup.__task.status }}
+                            </span>
+                        </div>
+                        <div class="flex justify-between gap-2">
+                            <span class="text-muted shrink-0">Total Files</span>
+                            <span class="text-default text-right">{{ selectedBackup.files?.length ?? 0 }}</span>
+                        </div>
                     </div>
                 </div>
 
-                <!-- Restore action bar -->
-                <div v-if="selectedBackup && selectedFilesCount > 0"
-                    class="px-3 py-2.5 border-t border-default bg-accent shrink-0 flex items-center justify-between">
-                    <span class="text-sm text-muted">{{ selectedFilesCount }} file{{ selectedFilesCount !== 1 ? 's' : '' }} selected</span>
-                    <button class="btn btn-primary text-sm h-8 flex items-center gap-1.5" @click="restoreSelected">
-                        <ArrowDownTrayIcon class="w-4 h-4" />
-                        Restore Selected
-                    </button>
+                <!-- Selected file details card -->
+                <div v-if="focusedFile" class="bg-well rounded-lg border border-default overflow-hidden shrink-0">
+                    <div class="px-3 py-2 border-b border-default">
+                        <span class="text-sm font-medium text-default">File Details</span>
+                    </div>
+                    <div class="px-3 py-2 space-y-2 text-sm">
+                        <div>
+                            <span class="text-muted text-xs">File Path</span>
+                            <p class="text-default break-all">{{ focusedFile.path }}</p>
+                        </div>
+                        <div>
+                            <span class="text-muted text-xs">Backup Location</span>
+                            <p class="text-default break-all text-xs">{{ selectedBackup?.folder }}/{{ focusedFile.path }}</p>
+                        </div>
+                        <div>
+                            <span class="text-muted text-xs">Restores To</span>
+                            <p class="text-default break-all text-xs">{{ resolveRestorePath(focusedFile.path) }}</p>
+                        </div>
+                        <div v-if="focusedFile.size != null" class="flex justify-between gap-2">
+                            <span class="text-muted">Size</span>
+                            <span class="text-default">{{ formatFileSize(focusedFile.size) }}</span>
+                        </div>
+                        <div v-if="focusedFile.mtime" class="flex justify-between gap-2">
+                            <span class="text-muted">Last Modified</span>
+                            <span class="text-default text-right">{{ formatTimestamp(focusedFile.mtime) }}</span>
+                        </div>
+                        <div v-if="focusedFile.atime" class="flex justify-between gap-2">
+                            <span class="text-muted">Last Accessed</span>
+                            <span class="text-default text-right">{{ formatTimestamp(focusedFile.atime) }}</span>
+                        </div>
+                        <div v-if="focusedFile.birthtime" class="flex justify-between gap-2">
+                            <span class="text-muted">Created</span>
+                            <span class="text-default text-right">{{ formatTimestamp(focusedFile.birthtime) }}</span>
+                        </div>
+                    </div>
                 </div>
-            </div>
-        </div>
 
-        <!-- Restore progress -->
-        <div v-if="restoreProgress.total > 0 && restoreProgress.current < restoreProgress.total"
-            class="mt-4 p-3 rounded-lg border border-default bg-accent shrink-0">
-            <div class="flex items-center justify-between text-sm mb-2">
-                <span class="text-default">Restoring file {{ restoreProgress.current }} of {{ restoreProgress.total }}…</span>
-                <span class="text-muted font-mono text-xs truncate ml-4 max-w-[50%]">{{ restoreProgress.lastFile }}</span>
-            </div>
-            <div class="w-full h-2 bg-well rounded-full overflow-hidden">
-                <div class="h-full bg-primary rounded-full transition-all"
-                    :style="{ width: `${(restoreProgress.current / restoreProgress.total) * 100}%` }" />
-            </div>
-        </div>
+                <!-- No file focused placeholder -->
+                <div v-else-if="selectedBackup && !filesLoading && selectedBackup.files?.length"
+                    class="bg-well rounded-lg border border-default p-4 flex flex-col items-center justify-center text-muted gap-2">
+                    <InformationCircleIcon class="w-8 h-8 opacity-30" />
+                    <p class="text-sm text-center">Click a file to view its details</p>
+                </div>
 
-        <!-- Restore complete -->
-        <div v-if="restoreProgress.total > 0 && restoreProgress.current === restoreProgress.total"
-            class="mt-4 p-3 rounded-lg border border-default bg-accent shrink-0 text-sm text-default">
-            Restored {{ restoreProgress.current }} of {{ restoreProgress.total }} file(s).
-        </div>
+                <!-- Spacer to push actions to bottom -->
+                <div class="flex-1 min-h-0"></div>
 
-        <!-- Open restored folders prompt -->
-        <div v-if="showOpenFolderPrompt"
-            class="mt-4 p-3 rounded-lg border border-default bg-accent shrink-0 flex items-center justify-between">
-            <span class="text-sm text-default">
-                Restore complete. Open the restored folder{{ restoredFolders.length > 1 ? 's' : '' }}?
-            </span>
-            <div class="flex items-center gap-2">
-                <button class="btn btn-primary text-sm h-8 flex items-center gap-1.5" @click="openRestoredFolders">
-                    <FolderOpenIcon class="w-4 h-4" />
-                    Open {{ restoredFolders.length > 1 ? 'All' : 'Folder' }}
-                </button>
-                <button class="btn btn-secondary text-sm h-8" @click="showOpenFolderPrompt = false">Dismiss</button>
+                <!-- Restore progress -->
+                <div v-if="restoreProgress.total > 0 && restoreProgress.current < restoreProgress.total"
+                    class="p-3 rounded-lg border border-default bg-accent shrink-0">
+                    <div class="flex items-center justify-between text-sm mb-2">
+                        <span class="text-default">Restoring {{ restoreProgress.current }}/{{ restoreProgress.total }}…</span>
+                        <span class="text-muted font-mono text-xs truncate ml-2 max-w-[60%]">{{ restoreProgress.lastFile }}</span>
+                    </div>
+                    <div class="w-full h-2 bg-well rounded-full overflow-hidden">
+                        <div class="h-full bg-primary rounded-full transition-all"
+                            :style="{ width: `${(restoreProgress.current / restoreProgress.total) * 100}%` }" />
+                    </div>
+                </div>
+
+                <!-- Restore complete -->
+                <div v-if="restoreProgress.total > 0 && restoreProgress.current === restoreProgress.total"
+                    class="p-3 rounded-lg border border-default bg-accent shrink-0 text-sm text-default">
+                    Restored {{ restoreProgress.current }} of {{ restoreProgress.total }} file(s).
+                </div>
+
+                <!-- Open restored folders prompt -->
+                <div v-if="showOpenFolderPrompt"
+                    class="p-3 rounded-lg border border-default bg-accent shrink-0">
+                    <p class="text-sm text-default mb-2">
+                        Restore complete. Open the restored folder{{ restoredFolders.length > 1 ? 's' : '' }}?
+                    </p>
+                    <div class="flex items-center gap-2">
+                        <button class="btn btn-primary text-sm h-8 flex items-center gap-1.5" @click="openRestoredFolders">
+                            <FolderOpenIcon class="w-4 h-4" />
+                            Open {{ restoredFolders.length > 1 ? 'All' : 'Folder' }}
+                        </button>
+                        <button class="btn btn-secondary text-sm h-8" @click="showOpenFolderPrompt = false">Dismiss</button>
+                    </div>
+                </div>
+
+                <!-- Action buttons -->
+                <div v-if="selectedBackup" class="shrink-0 flex flex-col gap-2">
+                    <button class="btn btn-primary w-full text-sm h-9 flex items-center justify-center gap-1.5"
+                        :disabled="selectedFilesCount === 0"
+                        @click="restoreSelected">
+                        <ArrowDownTrayIcon class="w-4 h-4" />
+                        Restore Selected ({{ selectedFilesCount }})
+                    </button>
+                    <div class="flex gap-2">
+                        <button class="btn btn-secondary flex-1 text-sm h-8 flex items-center justify-center gap-1.5"
+                            @click="openSelectedBackupFolder">
+                            <FolderOpenIcon class="w-4 h-4" />
+                            Open Folder
+                        </button>
+                        <button class="btn btn-danger flex-1 text-sm h-8 flex items-center justify-center gap-1.5"
+                            @click="deleteSingleBackup">
+                            <TrashIcon class="w-4 h-4" />
+                            Delete
+                        </button>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -176,15 +249,23 @@ import { useRouter } from 'vue-router'
 import { useHeader } from '../../composables/useHeader'
 import {
     ArrowLeftIcon, FolderOpenIcon, TrashIcon, ArrowDownTrayIcon,
-    MagnifyingGlassIcon, CircleStackIcon, DocumentIcon, DocumentMagnifyingGlassIcon
+    MagnifyingGlassIcon, DocumentIcon, DocumentMagnifyingGlassIcon,
+    InformationCircleIcon
 } from '@heroicons/vue/24/outline'
 useHeader('View Selected Backups')
 const router = useRouter();
-/**
- * Props: a list of tasks. The component ONLY shows these.
- * Expect each task to contain enough info to resolve SMB host/share and client path.
- * If your BackUpTask fields differ, adjust resolveConnForTask() below.
- */
+
+// Extended file entry with metadata from the backend
+interface RichFileEntry extends FileEntry {
+    size?: number;
+    mtime?: string;
+    atime?: string;
+    birthtime?: string;
+}
+
+// Extended BackupEntry using rich files
+type RichBackupEntry = Omit<BackupEntry, 'files'> & { files: RichFileEntry[]; __task?: BackUpTask }
+
 const props = defineProps<{
     ids?: string[];
     tasks?: BackUpTask[];
@@ -197,10 +278,11 @@ const proceedToPreviousStep = () => router.push({ name: 'backup-manage' })
 const loading = ref<boolean>(false)
 const filesLoading = ref<boolean>(false)
 const search = ref('')
+const focusedFile = ref<RichFileEntry | null>(null)
 
 // Backups (derived from the provided tasks), plus runtime fields
-const backups = ref<(BackupEntry & { __task?: BackUpTask })[]>([])
-const selectedBackup = ref<(BackupEntry & { __task?: BackUpTask }) | null>(null)
+const backups = ref<RichBackupEntry[]>([])
+const selectedBackup = ref<RichBackupEntry | null>(null)
 
 // Multi-select map for delete
 const multiSelectedMap = ref<Record<string, boolean>>({})
@@ -215,14 +297,41 @@ const filteredBackups = computed(() => {
 
 const selectedFilesCount = computed(() => selectedBackup.value?.files?.filter(f => f.selected).length ?? 0)
 
-// Single-backup mode: skip the left panel entirely
+// Single-backup mode: skip the backup dropdown
 const singleMode = computed(() => backups.value.length === 1)
 
-function toggleFileSelection(file: FileEntry) {
+function onFileClick(file: RichFileEntry) {
+    focusedFile.value = file
     file.selected = !file.selected
 }
 
-function taskToBackupEntry(task: BackUpTask): BackupEntry & { __task: BackUpTask } {
+function onBackupDropdownChange(event: Event) {
+    const uuid = (event.target as HTMLSelectElement).value
+    const backup = backups.value.find(b => b.uuid === uuid)
+    if (backup) selectBackup(backup)
+}
+
+function formatFileSize(bytes: number): string {
+    if (bytes < 1024) return `${bytes} B`
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+    if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+    return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`
+}
+
+function formatTimestamp(iso: string): string {
+    try {
+        return new Date(iso).toLocaleString()
+    } catch {
+        return iso
+    }
+}
+
+function resolveRestorePath(filePath: string): string {
+    if (!selectedBackup.value) return filePath
+    return filePath
+}
+
+function taskToBackupEntry(task: BackUpTask): RichBackupEntry {
     return {
         uuid: task.uuid,
         server: task.host ?? '',
@@ -249,7 +358,7 @@ function applyTasks(tasks: BackUpTask[]) {
     if (selectedBackup.value) fetchBackupFiles(selectedBackup.value)
 }
 
-function onBackupRowClick(backup: BackupEntry & { __task?: BackUpTask }) {
+function onBackupRowClick(backup: RichBackupEntry) {
     selectBackup(backup)
 }
 
@@ -297,11 +406,27 @@ const ipcActionHandler = (raw: string) => {
         const response = JSON.parse(raw)
 
         if (response.type === 'fetchFilesFromBackupResult' && selectedBackup.value) {
-            const files = (response.result || []).map((file: string) => ({
-                path: file.replace(`${selectedBackup.value!.client}/`, '').replace(/^\/+/, ''),
-                selected: false
-            })) as FileEntry[]
+            const rawResult = response.result || []
+            const files: RichFileEntry[] = rawResult.map((file: any) => {
+                if (typeof file === 'string') {
+                    // Legacy: backend returned plain strings
+                    return {
+                        path: file.replace(`${selectedBackup.value!.client}/`, '').replace(/^\/+/, ''),
+                        selected: false
+                    }
+                }
+                // New format: objects with metadata
+                return {
+                    path: (file.path || '').replace(`${selectedBackup.value!.client}/`, '').replace(/^\/+/, ''),
+                    selected: false,
+                    size: file.size,
+                    mtime: file.mtime,
+                    atime: file.atime,
+                    birthtime: file.birthtime,
+                }
+            })
             selectedBackup.value.files = files
+            focusedFile.value = null
             filesLoading.value = false
         } else if (response.type === 'restoreBackupsResult') {
             restoreProgress.value.current++
@@ -327,18 +452,20 @@ onUnmounted(() => {
     IPCRouter.getInstance().removeEventListener('action', ipcActionHandler)
     backups.value = []
     selectedBackup.value = null
+    focusedFile.value = null
     restoreProgress.value = { current: 0, total: 0, lastFile: '' }
     restoredFolders.value = []
     showOpenFolderPrompt.value = false
     multiSelectedMap.value = {}
 })
 
-async function selectBackup(backup: BackupEntry & { __task?: BackUpTask }) {
+async function selectBackup(backup: RichBackupEntry) {
     selectedBackup.value = { ...backup, files: backup.files || [], __task: backup.__task }
+    focusedFile.value = null
     await fetchBackupFiles(backup)
 }
 
-async function fetchBackupFiles(backup: BackupEntry & { __task?: BackUpTask }) {
+async function fetchBackupFiles(backup: RichBackupEntry) {
     const task = backup.__task
     if (!task) return
     const { smb_host, smb_share, smb_user, smb_pass } = resolveConnForTask(task)
@@ -415,32 +542,22 @@ function openSelectedBackupFolder() {
     }))
 }
 
-async function deleteSelectedBackups() {
-    if (multiSelectedUuids.value.length === 0) return
+async function deleteSingleBackup() {
+    if (!selectedBackup.value || !selectedBackup.value.__task) return
     const confirmed = await confirm({
-        header: 'Permanently Delete Selected Backups?',
-        body: 'This will permanently delete the backed up directory (or directories) on the server. This cannot be undone.',
+        header: 'Permanently Delete This Backup?',
+        body: 'This will permanently delete the backed up directory on the server. This cannot be undone.',
         dangerous: true,
-        confirmButtonText: 'Delete Backups'
+        confirmButtonText: 'Delete Backup'
     }).unwrapOr(false)
     if (!confirmed) return
 
-    // We may have mixed tasks from different servers/shares. Group by connection for backend efficiency.
-    const byConn: Record<string, { conn: any; uuids: string[] }> = {}
-    for (const b of backups.value) {
-        if (!multiSelectedMap.value[b.uuid] || !b.__task) continue
-        const conn = resolveConnForTask(b.__task)
-        const key = JSON.stringify(conn)
-        if (!byConn[key]) byConn[key] = { conn, uuids: [] }
-        byConn[key].uuids.push(b.uuid)
-    }
-
-    for (const { conn, uuids } of Object.values(byConn)) {
-        IPCRouter.getInstance().send('backend', 'action', JSON.stringify({
-            type: 'deleteBackups',
-            data: { ...conn, uuids }
-        }))
-    }
+    const conn = resolveConnForTask(selectedBackup.value.__task)
+    multiSelectedMap.value[selectedBackup.value.uuid] = true
+    IPCRouter.getInstance().send('backend', 'action', JSON.stringify({
+        type: 'deleteBackups',
+        data: { ...conn, uuids: [selectedBackup.value.uuid] }
+    }))
 }
 
 useEnterToAdvance(

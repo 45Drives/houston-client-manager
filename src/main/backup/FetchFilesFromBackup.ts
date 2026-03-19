@@ -2,6 +2,14 @@ import { getOS } from "../utils";
 import path from "path";
 import fs from "fs";
 
+export type FileMetadata = {
+  path: string;
+  size: number;
+  mtime: string;
+  atime: string;
+  birthtime: string;
+};
+
 type FetchFilesFromBackupData = {
   smb_host?: string;
   smb_share: string;
@@ -12,7 +20,7 @@ type FetchFilesFromBackupData = {
   includeHidden?: boolean;
 };
 
-export default async function fetchFilesFromBackup(data: FetchFilesFromBackupData): Promise<string[]> {
+export default async function fetchFilesFromBackup(data: FetchFilesFromBackupData): Promise<FileMetadata[]> {
   let basePath: string;
 
   if (getOS() === "win") {
@@ -42,19 +50,17 @@ export default async function fetchFilesFromBackup(data: FetchFilesFromBackupDat
 
     if (data.includeHidden) return files;
 
-    return files.filter((rel) => !isHiddenRelPath(rel));
+    return files.filter((f) => !isHiddenRelPath(f.path));
   } catch (err) {
     console.error(`Could not list files under ${folderPath}:`, err);
     return [];
   }
 }
 
-// recursively build an array of paths _relative_ to the uuid folder
-function listFiles(dir: string, relPath = ""): string[] {
-  const out: string[] = [];
+// recursively build an array of file metadata objects _relative_ to the uuid folder
+function listFiles(dir: string, relPath = ""): FileMetadata[] {
+  const out: FileMetadata[] = [];
 
-  // To skip dot-directories early for speed:
-  // for (const entry of fs.readdirSync(dir, { withFileTypes: true })) { ... }
   for (const entry of fs.readdirSync(dir)) {
     const full = path.join(dir, entry);
     const nextRel = path.join(relPath, entry);
@@ -63,7 +69,13 @@ function listFiles(dir: string, relPath = ""): string[] {
     if (stat.isDirectory()) {
       out.push(...listFiles(full, nextRel));
     } else {
-      out.push(nextRel);
+      out.push({
+        path: nextRel,
+        size: stat.size,
+        mtime: stat.mtime.toISOString(),
+        atime: stat.atime.toISOString(),
+        birthtime: stat.birthtime.toISOString(),
+      });
     }
   }
 
