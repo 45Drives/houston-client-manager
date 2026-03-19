@@ -298,6 +298,17 @@ export async function handleBackupMessage(message: any, ctx: IPCHandlerContext):
           try {
             task.status = await checkBackupTaskStatus(task);
             router.send('renderer', 'action', JSON.stringify({ type: 'backUpStatusesUpdated', tasks: [task] }));
+
+            // Re-send backup events so Last Run At updates in the UI
+            const eventsLogPath = path.join(app.getPath('userData'), 'logs', '45drives_backup_events.json');
+            if (fs.existsSync(eventsLogPath)) {
+              const evLines = fs.readFileSync(eventsLogPath, 'utf8').split(/\r?\n/).filter(l => l.trim());
+              const events: Array<{ uuid: string; host: string; share: string; source: string; timestamp: string; status: string }> = [];
+              for (const l of evLines) {
+                try { const ev = JSON.parse(l); if (ev.event === 'backup_end') events.push({ uuid: ev.uuid, host: ev.host, share: ev.share, source: ev.source, timestamp: ev.timestamp, status: ev.status }); } catch {}
+              }
+              router.send('renderer', 'action', JSON.stringify({ type: 'sendBackupEvents', events }));
+            }
           } catch (err) {
             console.warn(`Post-runNow status update failed for ${task.description}`, err);
           }

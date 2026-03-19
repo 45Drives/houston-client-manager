@@ -141,10 +141,16 @@ const isActive = (name: string) => route.name === name
     transition: background-color 0.15s ease;
 }
 .menu-item:hover {
-    background-color: var(--color-accent, rgba(0,0,0,0.05));
+    background-color: rgba(0,0,0,0.05);
+}
+:root.dark .menu-item:hover {
+    background-color: rgba(255,255,255,0.08);
 }
 .menu-item-active {
-    background-color: var(--color-accent, rgba(0,0,0,0.08));
+    background-color: rgba(0,0,0,0.08);
     font-weight: 600;
+}
+:root.dark .menu-item-active {
+    background-color: rgba(255,255,255,0.1);
 }
 </style>

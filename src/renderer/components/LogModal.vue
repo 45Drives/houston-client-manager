@@ -28,12 +28,12 @@
             <!-- Tab bar -->
             <div class="flex border-b border-default mb-4">
               <button
-                v-if="logTaskContext"
+                v-if="logTaskContexts.length > 0"
                 class="px-4 py-2 text-sm font-medium border-b-2 transition-colors"
                 :class="activeTab === 'task' ? 'border-blue-500 text-blue-400' : 'border-transparent text-muted hover:text-default'"
                 @click="switchTab('task')"
               >
-                Task Log
+                Task Log{{ logTaskContexts.length > 1 ? 's' : '' }}
               </button>
               <button
                 class="px-4 py-2 text-sm font-medium border-b-2 transition-colors"
@@ -53,8 +53,17 @@
 
             <!-- Task info banner -->
             <div v-if="activeTab === 'task' && logTaskContext" class="mb-4 p-3 rounded-lg border border-default bg-accent">
-              <span class="text-xs text-muted">Backup Task:</span>
-              <span class="ml-2 text-sm font-medium">{{ logTaskContext.description || logTaskContext.uuid }}</span>
+              <div class="flex items-center gap-3">
+                <span class="text-xs text-muted">Backup Task:</span>
+                <select v-if="logTaskContexts.length > 1" v-model.number="selectedTaskIndex"
+                        class="px-3 py-1.5 border border-default rounded-lg bg-default text-default text-sm min-w-[280px]"
+                        @change="fetchTaskLog">
+                  <option v-for="(ctx, idx) in logTaskContexts" :key="ctx.uuid" :value="idx">
+                    {{ ctx.description || ctx.uuid }}
+                  </option>
+                </select>
+                <span v-else class="text-sm font-medium">{{ logTaskContext.description || logTaskContext.uuid }}</span>
+              </div>
             </div>
 
             <!-- Client date selector -->
@@ -101,7 +110,10 @@
               </div>
               <div class="rounded-md border border-default p-3 bg-accent">
                 <div class="text-xs text-muted">{{ activeTab === 'client' ? 'Directory' : activeTab === 'server' ? 'Files read' : 'Directory' }}</div>
-                <div class="text-sm font-mono break-all">{{ activeMeta.logDir || 'n/a' }}</div>
+                <div v-if="activeTab === 'server' && serverFiles.length" class="mt-1 grid grid-cols-1 gap-0.5">
+                  <div v-for="f in serverFiles" :key="f" class="text-xs font-mono truncate" :title="f">{{ f }}</div>
+                </div>
+                <div v-else class="text-sm font-mono break-all">{{ activeMeta.logDir || 'n/a' }}</div>
               </div>
               <div class="rounded-md border border-default p-3 bg-accent">
                 <div class="text-xs text-muted">Entries loaded</div>
@@ -211,7 +223,7 @@ import { useLogModal } from '../composables/useLogModal'
 import { discoveryStateInjectionKey } from '../keys/injection-keys'
 import type { DiscoveryState } from '../types'
 
-const { logModalOpen, logTaskContext, closeLogModal } = useLogModal()
+const { logModalOpen, logTaskContext, logTaskContexts, selectedTaskIndex, closeLogModal } = useLogModal()
 const discoveryState = inject<DiscoveryState>(discoveryStateInjectionKey) ?? { servers: [], fallbackTriggered: false, loading: false } as DiscoveryState
 
 // ─── Types ───────────────────────────────────────────────────────────────
@@ -258,13 +270,26 @@ const taskError = ref<string | null>(null)
 const taskEntries = ref<ParsedLogEntry[]>([])
 const taskMeta = ref<{ file: string; logDir: string }>({ file: '', logDir: '' })
 
-const serverOptions = computed(() =>
-  discoveryState.servers.map(s => ({ ip: s.ip, label: s.name && s.name !== s.ip ? `${s.name} (${s.ip})` : s.ip }))
+const setupServers = computed(() =>
+  discoveryState.servers.filter(s => s.setupComplete === true)
 )
 
-watch(() => discoveryState.servers.length, (len) => {
-  if (len > 0 && !serverIp.value) serverIp.value = discoveryState.servers[0].ip
+const serverOptions = computed(() =>
+  setupServers.value.map(s => ({ ip: s.ip, label: s.name && s.name !== s.ip ? `${s.name} (${s.ip})` : s.ip }))
+)
+
+watch(() => setupServers.value.length, (len) => {
+  if (len > 0 && !serverIp.value) serverIp.value = setupServers.value[0].ip
 }, { immediate: true })
+
+// Auto-fetch when the user picks a different server
+watch(serverIp, (ip) => {
+  if (ip && activeTab.value === 'server') {
+    serverEntries.value = []
+    serverMeta.value = { file: '', logDir: '' }
+    fetchServerLogs()
+  }
+})
 
 // Explicit tab switch (fixes the bug where tabs were unclickable)
 function switchTab(tab: 'client' | 'server' | 'task') {
@@ -344,21 +369,25 @@ function groupedRows(items: ParsedLogEntry[]): DisplayRow[] {
   const maxGapMs = 30_000
   for (const entry of items) {
     const root = eventRoot(entry.event)
-    const entity = entry.data?.id ?? entry.data?.jobId ?? entry.data?.taskUuid ?? entry.data?.name ?? 'na'
-    const key = `${root}::${entity}`
+    // For server logs the event is always the source file — use summary to distinguish entries.
+    // For client/backup logs, use the structured data fields as before.
+    const entity = entry.data?.id ?? entry.data?.jobId ?? entry.data?.taskUuid ?? entry.data?.name ?? null
+    const groupKey = entity
+      ? `${root}::${entity}`
+      : `${root}::${(entry.summary || '').replace(/\s*\(.*/, '').trim()}`
     const prev = out[out.length - 1]
     const prevTs = prev ? new Date(prev.timestamp).getTime() : 0
     const curTs = new Date(entry.timestamp).getTime()
     const near = Number.isFinite(prevTs) && Number.isFinite(curTs) ? Math.abs(curTs - prevTs) <= maxGapMs : false
-    if (prev && prev.id.startsWith(`group:${key}:`) && near) {
+    if (prev && prev.id.startsWith(`group:${groupKey}:`) && near) {
       const allChildren = [...(prev.children || []), entry]
       prev.children = allChildren
       prev.level = allChildren.reduce((acc, c) => severityRank(c.level) > severityRank(acc) ? c.level : acc, prev.level)
       prev.timestamp = allChildren[0].timestamp
-      prev.summary = `${root} (${allChildren.length} events)`
+      prev.summary = `${prev.children[0]?.summary ?? root} (${allChildren.length}x)`
       continue
     }
-    out.push({ id: `group:${key}:${entry.id}`, timestamp: entry.timestamp, level: entry.level, event: root, summary: entry.summary, details: entry.details, source: entry.source, children: [entry] })
+    out.push({ id: `group:${groupKey}:${entry.id}`, timestamp: entry.timestamp, level: entry.level, event: root, summary: entry.summary, details: entry.details, source: entry.source, children: [entry] })
   }
   return out.map(r => {
     if (!r.children || r.children.length <= 1) {
@@ -448,6 +477,12 @@ async function fetchServerLogs() {
   } catch (e: any) { serverError.value = e?.message || String(e); serverEntries.value = [] }
   finally { serverLoading.value = false }
 }
+
+const serverFiles = computed(() => {
+  const raw = serverMeta.value.logDir
+  if (!raw) return []
+  return raw.split(',').map(s => s.trim()).filter(Boolean)
+})
 </script>
 
 <style scoped>

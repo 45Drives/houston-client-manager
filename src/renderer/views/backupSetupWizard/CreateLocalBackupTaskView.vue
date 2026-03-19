@@ -285,7 +285,8 @@ const handleFolderSelect = async () => {
 		if (!folderPath) return;
 
 		const normalizedFolderPath = normalizePath(folderPath);
-		const folderName = normalizedFolderPath.split("/").pop() ?? "Unknown Folder";
+		// Use the original path (not lowercased) for the display name
+		const folderName = folderPath.replace(/\\/g, '/').replace(/\/+$/, '').split('/').pop() ?? "Unknown Folder";
 
 		if (backUpSetupConfig?.backUpTasks) {
 			const existingFolders = backUpSetupConfig.backUpTasks.map(task =>

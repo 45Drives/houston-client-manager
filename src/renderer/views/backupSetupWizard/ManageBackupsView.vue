@@ -156,10 +156,12 @@ const currentServer = inject<Ref<ServerType | null>>(currentServerInjectionKey, 
 const discoveryState = inject<DiscoveryState>(discoveryStateInjectionKey)!
 const selectedIp = ref<string>('')
 const serversForDropdown = computed(() =>
-    discoveryState.servers.map(s => ({
-        ip: s.ip,
-        label: s.name && s.name !== s.ip ? `${s.name} (${s.ip})` : s.ip
-    }))
+    discoveryState.servers
+        .filter(s => s.setupComplete === true)
+        .map(s => ({
+            ip: s.ip,
+            label: s.name && s.name !== s.ip ? `${s.name} (${s.ip})` : s.ip
+        }))
 )
 
 const cockpitRef = ref<InstanceType<typeof CockpitWebview> | null>(null);
@@ -311,8 +313,11 @@ function viewSelected() {
 
 function viewSelectedLog() {
     if (selectedBackUpTasks.value.length < 1) return;
-    const task = selectedBackUpTasks.value[0];
-    openLogModal({ uuid: task.uuid, description: task.description || task.target || task.uuid });
+    const tasks = selectedBackUpTasks.value.map(t => ({
+        uuid: t.uuid,
+        description: t.description || t.target || t.uuid,
+    }));
+    openLogModal(tasks);
 }
 
 const isRunningNow = ref(false);
