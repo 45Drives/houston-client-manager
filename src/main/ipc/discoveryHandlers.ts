@@ -1,6 +1,7 @@
 import type { BrowserWindow } from 'electron';
 import { checkSSH } from '../setupSsh';
 import type { Server } from '../types';
+import { loadSettings } from '../settingsStore';
 
 export interface DiscoveryContext {
   discoveredServers: Server[];
@@ -82,7 +83,7 @@ export async function handleDiscoveryMessage(message: any, ctx: DiscoveryContext
       ctx.mDNSClient.query({ questions: [{ name: ctx.serviceType, type: 'PTR' }] });
 
       setTimeout(async () => {
-        if (ctx.discoveredServers.length === 0) {
+        if (ctx.discoveredServers.length === 0 && loadSettings().discoveryFallbackEnabled) {
           const fallback = await ctx.doFallbackScan();
           if (fallback.length) {
             ctx.mainWindow.webContents.send('discovered-servers', fallback);

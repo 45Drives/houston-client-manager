@@ -1,0 +1,104 @@
+/**
+ * SettingsStore — Simple JSON-backed app preferences.
+ *
+ * Stored at: <userData>/settings.json
+ * All values have sensible defaults so the file can be absent or partial.
+ */
+
+import { app } from 'electron';
+import * as fs from 'fs';
+import * as path from 'path';
+
+// ── Schema ─────────────────────────────────────────────────────────────────
+
+export interface AppSettings {
+  /** How to display servers: 'hostname', 'ip', 'both' */
+  serverDisplayFormat: 'hostname' | 'ip' | 'both';
+
+  /** Auto-connect to favorite servers when selected */
+  autoConnectFavorites: boolean;
+
+  /** Discovery scan interval in ms (min 2000) */
+  discoveryScanIntervalMs: number;
+
+  /** How long to keep offline servers visible, in ms */
+  discoveryInactivityTimeoutMs: number;
+
+  /** Whether to run fallback subnet scan when mDNS fails */
+  discoveryFallbackEnabled: boolean;
+
+  /** Default SSH connection timeout in ms */
+  sshTimeoutMs: number;
+
+  /** Log retention in days */
+  logRetentionDays: number;
+
+  /** Show notification toasts in-app */
+  showNotifications: boolean;
+}
+
+export const DEFAULT_SETTINGS: AppSettings = {
+  serverDisplayFormat: 'both',
+  autoConnectFavorites: true,
+  discoveryScanIntervalMs: 5000,
+  discoveryInactivityTimeoutMs: 60000,
+  discoveryFallbackEnabled: true,
+  sshTimeoutMs: 20000,
+  logRetentionDays: 14,
+  showNotifications: true,
+};
+
+// ── Store ──────────────────────────────────────────────────────────────────
+
+const SETTINGS_FILENAME = 'settings.json';
+
+function filePath(): string {
+  return path.join(app.getPath('userData'), SETTINGS_FILENAME);
+}
+
+let cached: AppSettings | null = null;
+
+export function loadSettings(): AppSettings {
+  if (cached) return cached;
+  try {
+    if (fs.existsSync(filePath())) {
+      const raw = fs.readFileSync(filePath(), 'utf-8');
+      const parsed = JSON.parse(raw);
+      // Merge with defaults so missing keys get default values
+      cached = { ...DEFAULT_SETTINGS, ...parsed };
+      return cached!;
+    }
+  } catch {
+    // corrupt file — use defaults
+  }
+  cached = { ...DEFAULT_SETTINGS };
+  return cached;
+}
+
+export function saveSettings(partial: Partial<AppSettings>): AppSettings {
+  const current = loadSettings();
+  const merged = { ...current, ...partial };
+
+  // Enforce minimums
+  if (merged.discoveryScanIntervalMs < 2000) merged.discoveryScanIntervalMs = 2000;
+  if (merged.discoveryInactivityTimeoutMs < 10000) merged.discoveryInactivityTimeoutMs = 10000;
+  if (merged.sshTimeoutMs < 5000) merged.sshTimeoutMs = 5000;
+  if (merged.logRetentionDays < 1) merged.logRetentionDays = 1;
+
+  const dir = path.dirname(filePath());
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  const tmp = filePath() + '.tmp';
+  fs.writeFileSync(tmp, JSON.stringify(merged, null, 2), 'utf-8');
+  fs.renameSync(tmp, filePath());
+
+  cached = merged;
+  return merged;
+}
+
+export function resetSettings(): AppSettings {
+  cached = null;
+  try {
+    if (fs.existsSync(filePath())) fs.unlinkSync(filePath());
+  } catch { /* ignore */ }
+  return loadSettings();
+}

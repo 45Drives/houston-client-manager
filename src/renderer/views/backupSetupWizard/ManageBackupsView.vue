@@ -1,36 +1,56 @@
 <template>
     <div class="h-full flex flex-col min-h-0 overflow-hidden p-4">
         <!-- Tab bar + actions header -->
-        <div class="relative flex items-center justify-between mb-4 shrink-0 h-10">
+        <div class="grid grid-cols-[auto_1fr_auto] items-center gap-3 mb-4 shrink-0">
             <!-- Back to Dashboard -->
-            <div class="flex items-center min-w-0">
-                <button class="btn btn-secondary text-sm h-8 flex items-center gap-1.5" @click="router.push({ name: 'dashboard' })">
+            <div class="flex items-center gap-2 min-w-0">
+                <button class="btn btn-secondary text-sm h-fit flex items-center gap-1.5" @click="router.push({ name: 'dashboard' })">
                     <ArrowLeftIcon class="w-4 h-4" />
                     Dashboard
                 </button>
             </div>
 
             <!-- Centered tab toggle -->
-            <div class="absolute left-1/2 -translate-x-1/2 inline-flex rounded-lg border border-default overflow-hidden">
-                <button class="px-5 py-2 text-sm font-medium flex items-center gap-2 transition-colors"
-                    :class="activeTab === 'local' ? 'bg-primary text-primary-foreground' : 'bg-well hover:bg-accent text-default'"
-                    @click="activeTab = 'local'">
-                    <ComputerDesktopIcon class="w-4 h-4" />
-                    Local Backups
-                </button>
-                <button class="px-5 py-2 text-sm font-medium border-l border-default flex items-center gap-2 transition-colors"
-                    :class="activeTab === 'remote' ? 'bg-primary text-primary-foreground' : 'bg-well hover:bg-accent text-default'"
-                    @click="activeTab = 'remote'">
-                    <GlobeAltIcon class="w-4 h-4" />
-                    Remote Backups
+            <div class="flex justify-start min-w-0 gap-2 items-center">
+                <div class="inline-flex rounded-lg border border-default overflow-hidden shrink-0">
+                    <button class="px-5 py-2 text-sm font-medium flex items-center gap-2 transition-colors"
+                        :class="activeTab === 'local' ? 'bg-primary text-primary-foreground' : 'bg-well hover:bg-accent text-default'"
+                        @click="activeTab = 'local'; showRestoreView = false">
+                        <ComputerDesktopIcon class="w-4 h-4" />
+                        Local Backups
+                    </button>
+                    <button class="px-5 py-2 text-sm font-medium border-l border-default flex items-center gap-2 transition-colors"
+                        :class="activeTab === 'remote' ? 'bg-primary text-primary-foreground' : 'bg-well hover:bg-accent text-default'"
+                        @click="activeTab = 'remote'">
+                        <GlobeAltIcon class="w-4 h-4" />
+                        Remote Backups
+                    </button>
+                </div>
+                <button class="btn btn-secondary text-sm h-fit p-1.5" title="Settings" @click="settingsOpen = true">
+                    <Cog6ToothIcon class="w-5 h-5" />
                 </button>
             </div>
 
             <!-- Right side actions -->
-            <div class="flex items-center gap-2 justify-end min-w-0">
+            <div class="flex items-center gap-2 justify-end min-w-0 overflow-hidden">
                 <template v-if="activeTab === 'remote'">
+                    <!-- Restore toggle -->
+
+                    <button class="btn text-sm h-fit flex items-center gap-1.5"
+                        :class="showRestoreView ? 'btn-secondary' : 'btn-primary'" :disabled="!restoreConnected"
+                        @click="showRestoreView = !showRestoreView">
+                        <template v-if="showRestoreView">
+                            <ArrowLeftIcon class="w-4 h-fit" />
+                            Return to Backups
+                        </template>
+                        <template v-else>
+                            <ArrowDownTrayIcon class="w-4 h-fit" />
+                            Restore
+                        </template>
+                    </button>
+                    <div class="w-px h-6 bg-default mx-1" />
                     <select v-model="selectedIp" :title="selectedIp"
-                        class="input-textlike border border-default rounded-lg px-3 py-1.5 min-w-56 text-sm">
+                        class="input-textlike border border-default rounded-lg px-3 py-1.5 text-sm min-w-0 max-w-56 truncate">
                         <option value="">Select Server…</option>
                         <optgroup v-if="favoriteServers.length" label="Favorites">
                             <option v-for="opt in favoriteServers" :key="'fav-' + opt.ip" :value="opt.ip">{{ opt.label }}</option>
@@ -39,15 +59,17 @@
                             <option v-for="opt in serversForDropdown" :key="opt.ip" :value="opt.ip">{{ opt.label }}</option>
                         </optgroup>
                     </select>
-                    <button class="btn btn-primary text-sm h-8" :disabled="!selectedIp" @click="openLogin">Connect</button>
-                    <button v-if="currentServer" class="btn btn-secondary text-sm h-8"
-                        @click="cockpitRef?.logoutFromCurrentServer()">Log out</button>
-                    <button v-if="activeCredId && currentServer" class="btn btn-danger text-sm h-8"
+                    <button class="btn btn-primary text-sm h-fit" :disabled="!selectedIp" @click="openLogin">Connect</button>
+                    <button v-if="currentServer" class="btn btn-secondary text-sm h-fit"
+                        @click="showRestoreView ? disconnectRestore() : cockpitRef?.logoutFromCurrentServer()">Log out</button>
+                    <button v-if="activeCredId && currentServer" class="btn btn-danger text-sm h-fit"
                         @click="forgetActive">Forget</button>
+
+                   
                 </template>
                 <template v-else>
-                    <button class="btn btn-primary text-sm h-8 flex items-center gap-1.5" @click="newBackupTask">
-                        <PlusIcon class="w-4 h-4" />
+                    <button class="btn btn-primary text-sm h-fit flex items-center gap-1.5" @click="newBackupTask">
+                        <PlusIcon class="w-4 h-fit" />
                         New Backup
                     </button>
                 </template>
@@ -68,26 +90,26 @@
                     {{ selectedBackUpTasks.length }} selected
                 </span>
 
-                <button class="btn btn-primary text-sm h-8 flex items-center gap-1.5"
+                <button class="btn btn-primary text-sm h-fit flex items-center gap-1.5"
                     :disabled="isRunningNow" @click="runSelected">
                     <PlayIcon class="w-4 h-4" />
                     <template v-if="!isRunningNow">Run Now</template>
                     <template v-else>Starting…</template>
                 </button>
 
-                <button class="btn btn-secondary text-sm h-8 flex items-center gap-1.5"
+                <button class="btn btn-secondary text-sm h-fit flex items-center gap-1.5"
                     :disabled="selectedBackUpTasks.length < 1" @click="viewSelected">
                     <EyeIcon class="w-4 h-4" />
                     View
                 </button>
 
-                <button class="btn btn-secondary text-sm h-8 flex items-center gap-1.5"
+                <button class="btn btn-secondary text-sm h-fit flex items-center gap-1.5"
                     :disabled="selectedBackUpTasks.length !== 1" @click="editSelected">
                     <PencilSquareIcon class="w-4 h-4" />
                     Edit
                 </button>
 
-                <button class="btn btn-secondary text-sm h-8 flex items-center gap-1.5"
+                <button class="btn btn-secondary text-sm h-fit flex items-center gap-1.5"
                     :disabled="selectedBackUpTasks.length < 1" @click="viewSelectedLog">
                     <DocumentTextIcon class="w-4 h-4" />
                     Logs
@@ -95,7 +117,7 @@
 
                 <div class="flex-1" />
 
-                <button class="btn btn-danger text-sm h-8 flex items-center gap-1.5"
+                <button class="btn btn-danger text-sm h-fit flex items-center gap-1.5"
                     @click="deleteSelectedTasks">
                     <TrashIcon class="w-4 h-4" />
                     Delete
@@ -104,10 +126,16 @@
         </div>
 
         <!-- REMOTE tab content -->
-        <div v-else class="flex-1 min-h-0 bg-well rounded-lg border border-default overflow-hidden">
-            <CockpitWebview v-if="currentServer" :key="currentServer.ip" ref="cockpitRef"
+        <div v-else-if="activeTab === 'remote'" class="flex-1 min-h-0 bg-well rounded-lg border border-default overflow-hidden">
+            <!-- Restore view (toggled via Restore button) -->
+            <RestoreBrowser v-if="showRestoreView && restoreConnected && restoreUsername"
+                :serverIp="selectedIp" :username="restoreUsername" />
+
+            <!-- Scheduler webview (default remote view) -->
+            <CockpitWebview v-else-if="currentServer && !showRestoreView" :key="currentServer.ip" ref="cockpitRef"
                 routePath="/scheduler-test" hash="simple" wrapperClass="h-full rounded-lg"
                 heightClass="h-full" :openDevtoolsInDev="true" class="p-2"/>
+
             <div v-else class="h-full flex flex-col items-center justify-center text-muted gap-4">
                 <GlobeAltIcon class="w-12 h-12 opacity-30" />
                 <p>Select a server above to view remote backups.</p>
@@ -117,12 +145,17 @@
 
     <ServerLoginModal :open="loginOpen" :host="selectedIp || null" :displayName="selectedOptionLabel"
         :presetUsername="prefillUsername" @cancel="closeLogin" @submit="onLoginSubmit" />
+
+    <SettingsModal :open="settingsOpen" @close="settingsOpen = false" @saved="onSettingsSaved"
+        @serversChanged="loadSavedServers" />
 </template>
 
 <script setup lang="ts">
 import { BackUpTask, IPCRouter } from '@45drives/houston-common-lib';
 import CockpitWebview from '../../components/CockpitWebview.vue';
+import RestoreBrowser from './RestoreBrowser.vue';
 import ServerLoginModal from './ServerLoginModal.vue';
+import SettingsModal from './SettingsModal.vue';
 import { useEnterToAdvance } from '@45drives/houston-common-ui';
 import BackUpListView from './BackUpListView.vue';
 import { computed, inject, Ref, ref, watch, onMounted, onBeforeUnmount } from 'vue';
@@ -131,10 +164,11 @@ import { useRouter } from 'vue-router';
 import { useHeader } from '../../composables/useHeader';
 import { useLogModal } from '../../composables/useLogModal';
 import { DiscoveryState, type Server as ServerType } from '../../types';
+import { useSettings } from '../../composables/useSettings';
 import {
     ComputerDesktopIcon, GlobeAltIcon, PlusIcon, PlayIcon,
     EyeIcon, PencilSquareIcon, DocumentTextIcon, TrashIcon,
-    ArrowLeftIcon
+    ArrowLeftIcon, ArrowDownTrayIcon, Cog6ToothIcon
 } from '@heroicons/vue/24/outline';
 
 useHeader('Backup Manager');
@@ -144,6 +178,20 @@ const reviewBackup = inject(reviewBackUpSetupKey);
 const router = useRouter();
 const selectedBackUpTasks = ref<BackUpTask[]>([]);
 const activeTab = ref<'local' | 'remote'>('local');
+const settingsOpen = ref(false);
+const { settings } = useSettings();
+
+// ── Restore view state (within Remote tab) ─────────────────────────────────
+const showRestoreView = ref(false);
+const restoreConnected = ref(false);
+const restoreUsername = ref('');
+
+function disconnectRestore() {
+    showRestoreView.value = false;
+    restoreConnected.value = false;
+    restoreUsername.value = '';
+    if (currentServer) currentServer.value = null;
+}
 
 const handleBackUpTaskSelected = (tasks: BackUpTask[]) => {
     selectedBackUpTasks.value = tasks;
@@ -155,14 +203,19 @@ const backUpListRef = ref<InstanceType<typeof BackUpListView> | null>(null);
 const currentServer = inject<Ref<ServerType | null>>(currentServerInjectionKey, ref<ServerType | null>(null))
 const discoveryState = inject<DiscoveryState>(discoveryStateInjectionKey)!
 const selectedIp = ref<string>('')
-const serversForDropdown = computed(() =>
-    discoveryState.servers
+const serversForDropdown = computed(() => {
+    const fmt = settings.value?.serverDisplayFormat ?? 'both';
+    return discoveryState.servers
         .filter(s => s.setupComplete === true)
-        .map(s => ({
-            ip: s.ip,
-            label: s.name && s.name !== s.ip ? `${s.name} (${s.ip})` : s.ip
-        }))
-)
+        .map(s => {
+            const hasName = s.name && s.name !== s.ip;
+            let label: string;
+            if (fmt === 'ip') label = s.ip;
+            else if (fmt === 'hostname' && hasName) label = s.name;
+            else label = hasName ? `${s.name} (${s.ip})` : s.ip;
+            return { ip: s.ip, label };
+        });
+})
 
 const cockpitRef = ref<InstanceType<typeof CockpitWebview> | null>(null);
 
@@ -182,16 +235,28 @@ const selectedOptionLabel = computed(() => {
     return disc?.label || ip;
 });
 
-const favoriteServers = computed(() =>
-    savedServers.value
+const favoriteServers = computed(() => {
+    const fmt = settings.value?.serverDisplayFormat ?? 'both';
+    return savedServers.value
         .filter(s => s.favorite)
-        .map(s => ({ ip: s.host, label: `${s.name || s.host} (${s.username})` }))
-);
+        .map(s => {
+            let label: string;
+            if (fmt === 'ip') label = `${s.host} (${s.username})`;
+            else if (fmt === 'hostname' && s.name) label = `${s.name} (${s.username})`;
+            else label = `${s.name || s.host} (${s.username})`;
+            return { ip: s.host, label };
+        });
+});
 
 async function loadSavedServers() {
     savedServers.value = await window.electron?.ipcRenderer.invoke('cred:list-servers') ?? [];
 }
 onMounted(loadSavedServers);
+
+async function onSettingsSaved() {
+    // Reload server list in case names/favorites changed
+    await loadSavedServers();
+}
 
 function openLogin() {
     maybeAutoConnect(true);
@@ -215,7 +280,13 @@ async function onLoginSubmit({ username, password, remember }:
         activeCredId.value = res?.id ?? null;
         await loadSavedServers();
     }
-    sendCredsToWebview(ip, username, password);
+    // For the remote tab, send creds to webview for cockpit login
+    if (activeTab.value === 'remote') {
+        sendCredsToWebview(ip, username, password);
+        // Also enable restore (lives inside remote tab)
+        restoreUsername.value = username;
+        restoreConnected.value = true;
+    }
     const srv = discoveryState.servers.find(s => s.ip === ip) || null;
     if (srv) currentServer!.value = srv;
     prefillUsername.value = null;
@@ -237,7 +308,11 @@ async function maybeAutoConnect(forceModalIfNoSaved = false) {
     const saved = await window.electron?.ipcRenderer.invoke('cred:get-for', ip);
     if (saved?.username && saved?.password) {
         activeCredId.value = saved.id;
-        sendCredsToWebview(ip, saved.username, saved.password);
+        if (activeTab.value === 'remote') {
+            sendCredsToWebview(ip, saved.username, saved.password);
+            restoreUsername.value = saved.username;
+            restoreConnected.value = true;
+        }
         const srv = discoveryState.servers.find(s => s.ip === ip) || null;
         if (srv) currentServer!.value = srv;
         return;
@@ -248,13 +323,20 @@ async function maybeAutoConnect(forceModalIfNoSaved = false) {
 
 watch(selectedIp, async (ip) => {
     activeCredId.value = null;
+    restoreConnected.value = false;
+    restoreUsername.value = '';
+    showRestoreView.value = false;
     if (!ip) return;
     const fav = savedServers.value.find(s => s.host === ip && s.favorite);
-    if (fav) {
+    if (fav && settings.value?.autoConnectFavorites !== false) {
         const saved = await window.electron?.ipcRenderer.invoke('cred:get-for', ip);
         if (saved?.username && saved?.password) {
             activeCredId.value = saved.id;
-            sendCredsToWebview(ip, saved.username, saved.password);
+            if (activeTab.value === 'remote') {
+                sendCredsToWebview(ip, saved.username, saved.password);
+                restoreUsername.value = saved.username;
+                restoreConnected.value = true;
+            }
             const srv = discoveryState.servers.find(s => s.ip === ip) || null;
             if (srv) currentServer!.value = srv;
             return;

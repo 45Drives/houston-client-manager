@@ -29,10 +29,27 @@ const INVOKE_CHANNELS = new Set([
   'cred:save',
   'cred:remove',
   'cred:set-favorite',
+  'cred:set-name',
   'cred:touch',
   'get-client-ident',
   'session:clear-origin',
   'oauth:open',
+  // Settings
+  'settings:get',
+  'settings:set',
+  'settings:reset',
+  // Restore operations
+  'restore:list-remotes',
+  'restore:browse-remote',
+  'restore:browse-server',
+  'restore:list-s2s-tasks',
+  'restore:browse-s2s-remote',
+  'restore:start',
+  'restore:cancel',
+  // Snapshot operations
+  'snapshot:list-datasets',
+  'snapshot:list-snapshots',
+  'snapshot:rollback',
 ]);
 
 const RECEIVE_CHANNELS = new Set([

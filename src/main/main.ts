@@ -76,20 +76,17 @@ import mountSmbPopup from './smbMountPopup';
 import { IPCRouter } from '../../houston-common/houston-common-lib/lib/electronIPC/IPCRouter';
 import { getOS } from './utils';
 import { v4 as uuidv4 } from 'uuid';
-import { BackUpManager, BackUpManagerLin, BackUpManagerMac, BackUpManagerWin, BackUpSetupConfigurator } from './backup';
-import { BackUpSetupConfig, BackUpTask, server, unwrap } from '@45drives/houston-common-lib';
-import fetchBackups from './backup/FetchBackups';
-import fetchFilesInBackup from './backup/FetchFilesFromBackup';
-import restoreBackups from './backup/RestoreBackups';
-import { checkBackupTaskStatus } from './backup/CheckSmbStatus';
+import { BackUpManager, BackUpManagerLin, BackUpManagerMac, BackUpManagerWin } from './backup';
+import { server, unwrap } from '@45drives/houston-common-lib';
 import { installServerDepsRemotely } from './installServerDeps';
-import { checkSSH } from './setupSsh';
-import { getPin, isHostPinned, rememberPin } from './certPins'
+import { getPin, rememberPin } from './certPins'
 import { getCredentialManager } from './credentialManager';
 import { assertSafeHost, assertSafeShare, assertSafeUsername } from './security';
+import { loadSettings, saveSettings, resetSettings } from './settingsStore';
 import { handleBackupMessage } from './ipc/backupHandlers';
 import { handleDiscoveryMessage } from './ipc/discoveryHandlers';
 import { registerLogHandlers } from './ipc/logHandlers';
+import { registerRestoreHandlers } from './ipc/restoreHandlers';
 import type { IPCHandlerContext } from './ipc/types';
 
 let discoveredServers: Server[] = [];
@@ -243,8 +240,8 @@ function isPortOpen(ip: string, port: number, timeout = 2000): Promise<boolean> 
   });
 }
 
-// Timeout duration in milliseconds (e.g., 60 seconds)
-const TIMEOUT_DURATION = 60_000;
+// Discovery timeout — read from settings (default 60s)
+const TIMEOUT_DURATION = () => loadSettings().discoveryInactivityTimeoutMs;
 const serviceType = '_houstonserver_legacy._tcp.local';
 
 const isPrivateV4 = (ip: string) =>
@@ -442,22 +439,24 @@ function createWindow() {
     if (discoveryEnabled) return;
     discoveryEnabled = true;
 
+    const scanInterval = loadSettings().discoveryScanIntervalMs;
+
     mdnsInterval = setInterval(() => {
       mDNSClient.query({ questions: [{ name: serviceType, type: 'PTR' }] });
-    }, 5000);
+    }, scanInterval);
 
     clearInactiveServerInterval = setInterval(() => {
       const now = Date.now();
       const before = discoveredServers.length;
 
       discoveredServers = discoveredServers.filter(srv =>
-        now - srv.lastSeen <= TIMEOUT_DURATION || srv.manuallyAdded === true
+        now - srv.lastSeen <= TIMEOUT_DURATION() || srv.manuallyAdded === true
       );
 
       if (discoveredServers.length !== before) {
         mainWindow!.webContents.send('discovered-servers', discoveredServers);
       }
-    }, 5000);
+    }, scanInterval);
 
     pollActionInterval = setInterval(() => {
       const servers = discoveredServers.filter(s =>
@@ -468,7 +467,7 @@ function createWindow() {
 
       // run in parallel so one slow/offline host doesn't stall the whole loop
       void Promise.allSettled(servers.map(s => pollActions(s)));
-    }, 5000);
+    }, scanInterval);
   }
 
   function stopDiscoveryLoops() {
@@ -489,6 +488,7 @@ function createWindow() {
 
   function notify(message: string) {
     if (!mainWindow || mainWindow.webContents?.isDestroyed()) return;
+    if (!loadSettings().showNotifications) return;
 
     if (rendererIsReady) {
       mainWindow.webContents.send("notification", message);
@@ -502,6 +502,8 @@ function createWindow() {
     jsonLogger,
     mainWindow: mainWindow!,
   };
+
+  registerRestoreHandlers(handlerCtx);
 
   IPCRouter.getInstance().addEventListener('action', async (data) => {
     if (data === "requestBackUpTasks") {
@@ -541,7 +543,7 @@ function createWindow() {
           notify,
           mDNSClient,
           serviceType,
-          TIMEOUT_DURATION,
+          TIMEOUT_DURATION: TIMEOUT_DURATION(),
           doFallbackScan,
           setDiscoveredServers: (servers: Server[]) => { discoveredServers = servers; },
         };
@@ -810,7 +812,7 @@ app.whenReady().then(() => {
         dirname: resolvedLogDir,
         filename: '45drives-storage-wizard-%DATE%.json',
         datePattern: 'YYYY-MM-DD',
-        maxFiles: '14d',
+        maxFiles: `${loadSettings().logRetentionDays}d`,
         zippedArchive: true,
       })
     ]
@@ -968,10 +970,32 @@ app.whenReady().then(() => {
     return { ok: true };
   });
 
+  ipcMain.handle('cred:set-name', (event, id: string, name: string) => {
+    assertMainWindowSender(event);
+    getCredentialManager().setName(id, name);
+    return { ok: true };
+  });
+
   ipcMain.handle('cred:touch', (event, id: string) => {
     assertMainWindowSender(event);
     getCredentialManager().touch(id);
     return { ok: true };
+  });
+
+  // ── App Settings IPC ──────────────────────────────────────────────────
+  ipcMain.handle('settings:get', (event) => {
+    assertMainWindowSender(event);
+    return loadSettings();
+  });
+
+  ipcMain.handle('settings:set', (event, partial: Record<string, unknown>) => {
+    assertMainWindowSender(event);
+    return saveSettings(partial as any);
+  });
+
+  ipcMain.handle('settings:reset', (event) => {
+    assertMainWindowSender(event);
+    return resetSettings();
   });
 
   // ── Credential Manager IPC (encrypted vault) ──────────────────────────

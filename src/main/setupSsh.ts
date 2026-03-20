@@ -4,6 +4,7 @@ import { getAsset } from "./utils";
 import { getKeyDir, ensureKeyPair } from "./crossPlatformSsh";
 import { NodeSSH } from 'node-ssh';
 import net from 'net';
+import { loadSettings } from './settingsStore';
 
 export function checkSSH(host: string, timeout = 3000): Promise<boolean> {
   return new Promise((resolve) => {
@@ -70,7 +71,7 @@ async function connectWithPassword({
       // answer every prompt with the same password
       finish(prompts.map(() => password));
     },
-    readyTimeout: 20_000,
+    readyTimeout: loadSettings().sshTimeoutMs,
   });
   return ssh;
 }
@@ -86,7 +87,7 @@ export async function checkRemoteDeps(
     host,
     username,
     privateKey: fs.readFileSync(privateKeyPath, "utf8"),
-    readyTimeout: 20_000,
+    readyTimeout: loadSettings().sshTimeoutMs,
   });
 
   const script = `
@@ -172,7 +173,7 @@ export async function runBootstrapScript(
     host,
     username,
     privateKey: fs.readFileSync(privateKeyPath, "utf8"),
-    readyTimeout: 20_000,
+    readyTimeout: loadSettings().sshTimeoutMs,
   });
 
   await ssh.putFile(scriptLocalPath, scriptRemotePath);

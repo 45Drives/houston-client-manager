@@ -1,6 +1,6 @@
 <template>
     <div class="h-full flex flex-col items-center justify-center px-6">
-        <p class="text-lg text-muted mb-8 max-w-2xl text-center">
+        <p class="text-lg text-muted mb-8 max-w-2xl text-center -mt-20">
             Welcome to the 45Drives Storage Wizard. Choose an option below to get started.
         </p>
 

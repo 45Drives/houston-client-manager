@@ -333,6 +333,20 @@ export class CredentialManager {
   }
 
   /**
+   * Set display name for a server credential.
+   */
+  setName(id: string, name: string): void {
+    const [host, username] = id.split('|');
+    if (!host || !username) return;
+    const key = makeKey(host, '*', username);
+    const entry = this.vault.credentials[key];
+    if (entry) {
+      entry.name = name || undefined;
+      this.save();
+    }
+  }
+
+  /**
    * Touch lastUsedAt timestamp for a server credential.
    */
   touch(id: string): void {
