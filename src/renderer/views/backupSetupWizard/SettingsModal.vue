@@ -1,7 +1,7 @@
 <template>
     <div v-if="open" class="fixed inset-0 z-[1000] flex items-center justify-center bg-black/40"
         @keydown.esc="close" tabindex="-1" ref="overlayRef">
-        <div class="bg-well border border-default rounded-lg shadow-xl w-[40rem] max-h-[80vh] flex flex-col"
+        <div class="bg-well border border-default rounded-lg shadow-xl w-full sm:w-[40rem] max-w-[calc(100vw-2rem)] max-h-[80vh] flex flex-col"
             @click.stop>
             <!-- Header -->
             <div class="flex items-center justify-between px-5 py-3 border-b border-default shrink-0">
@@ -358,7 +358,7 @@ const ToggleSwitch = defineComponent({
         }, [
             h('span', {
                 class: [
-                    'pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition-transform',
+                    'pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white dark:bg-gray-200 shadow ring-0 transition-transform',
                     props.modelValue ? 'translate-x-4' : 'translate-x-0',
                 ],
             }),

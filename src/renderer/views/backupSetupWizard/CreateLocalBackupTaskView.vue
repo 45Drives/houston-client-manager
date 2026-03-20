@@ -2,7 +2,7 @@
 	<CardContainer class="overflow-y-auto min-h-0">
 		<div class="flex flex-col max-h-[calc(100vh-12rem)] min-h-0 flex-1 overflow-hidden">
 			<div class="flex flex-col h-full min-h-0">
-				<div class="flex flex-col flex-1 min-h-0 overflow-hidden w-9/12 mx-auto text-left space-y-2">
+				<div class="flex flex-col flex-1 min-h-0 overflow-hidden w-full sm:w-9/12 mx-auto px-2 sm:px-0 text-left space-y-2">
 					<div class="text-center shrink-0">
 						<p class="mb-2 text-2xl">
 							Choose the folders or files you want to back up, pick a schedule, and we'll handle the rest.
@@ -103,7 +103,7 @@
 								class="flex items-center p-2">
 								<div class="w-[25%] flex-shrink-0 space-y-1">
 									<input v-model="folder.name"
-										class="bg-default h-[2.5rem] text-default rounded-lg px-3 w-full border border-default text-sm"
+										class="bg-default h-[3rem] text-default rounded-lg px-3 w-full border border-default text-sm"
 										placeholder="Backup name (optional)"
 										@input="syncFolderName(index, folder.name)" />
 								</div>
@@ -250,7 +250,7 @@ watch(scheduleFrequency, (newSchedule) => {
 // Sync selectedFolders with backUpSetupConfig
 const loadExistingFolders = () => {
 	selectedFolders.value = (backUpSetupConfig?.backUpTasks ?? []).map(task => ({
-		name: task.name || task.source?.split("/").pop() ?? "Unknown Folder",
+		name: task.name || (task.source?.split("/").pop() ?? "Unknown Folder"),
 		path: task.source
 	}));
 };
@@ -463,8 +463,8 @@ useEnterToAdvance(
 
 <style scoped>
 .spinner-sm {
-  border: 3px solid rgba(0, 0, 0, 0.1);
-  border-left-color: #2c3e50;
+  border: 3px solid rgba(128, 128, 128, 0.2);
+  border-left-color: currentColor;
   border-radius: 50%;
   width: 24px;
   height: 24px;

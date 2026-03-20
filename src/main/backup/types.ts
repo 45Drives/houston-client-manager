@@ -1,5 +1,7 @@
 import { BackUpTask } from "@45drives/houston-common-lib"
 
+export type BackupProgressCallback = (percent: number | null, message?: string) => void;
+
 export interface BackUpManager {
   queryTasks(): Promise<BackUpTask[]>
   unschedule(task: BackUpTask): Promise<void>
@@ -13,7 +15,7 @@ export interface BackUpManager {
     password: string,
     onProgress?: (step: number, total: number, message: string) => void
   ): Promise<void>;
-  runNow?(task: BackUpTask): Promise<{ stdout: string; stderr: string }>;
+  runNow?(task: BackUpTask, onProgress?: BackupProgressCallback): Promise<{ stdout: string; stderr: string }>;
 }
 
 export const backupTaskTag = "45drives-setup-wizard-backup-task"

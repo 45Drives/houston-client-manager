@@ -1,127 +1,119 @@
 <template>
     <div class="h-full flex flex-col min-h-0 overflow-hidden p-4">
         <!-- Tab bar + actions header -->
-        <div class="grid grid-cols-[auto_1fr_auto] items-center gap-3 mb-4 shrink-0">
-            <!-- Back to Dashboard -->
-            <div class="flex items-center gap-2 min-w-0">
-                <button class="btn btn-secondary text-sm h-fit flex items-center gap-1.5" @click="router.push({ name: 'dashboard' })">
-                    <ArrowLeftIcon class="w-4 h-4" />
-                    Dashboard
+        <div class="flex flex-wrap items-center gap-3 mb-4 shrink-0">
+            <!-- Left-aligned group -->
+            <button class="btn btn-secondary text-sm h-fit flex items-center gap-1.5 shrink-0" @click="router.push({ name: 'dashboard' })">
+                <ArrowLeftIcon class="w-4 h-4" />
+                Dashboard
+            </button>
+
+            <div class="inline-flex rounded-lg border border-default overflow-hidden shrink-0">
+                <button class="px-3 sm:px-5 py-1.5 sm:py-2 text-sm font-medium flex items-center gap-2 transition-colors"
+                    :class="activeTab === 'local' ? 'bg-accent text-default shadow-[inset_0_-2px_0_var(--btn-primary-bg)]' : 'bg-well hover:bg-accent text-muted'"
+                    @click="activeTab = 'local'; showRestoreView = false">
+                    <ComputerDesktopIcon class="w-4 h-4" />
+                    Local Backups
+                </button>
+                <button class="px-3 sm:px-5 py-1.5 sm:py-2 text-sm font-medium border-l border-default flex items-center gap-2 transition-colors"
+                    :class="activeTab === 'remote' ? 'bg-accent text-default shadow-[inset_0_-2px_0_var(--btn-primary-bg)]' : 'bg-well hover:bg-accent text-muted'"
+                    @click="activeTab = 'remote'">
+                    <GlobeAltIcon class="w-4 h-4" />
+                    Remote Backups
                 </button>
             </div>
 
-            <!-- Centered tab toggle -->
-            <div class="flex justify-start min-w-0 gap-2 items-center">
-                <div class="inline-flex rounded-lg border border-default overflow-hidden shrink-0">
-                    <button class="px-5 py-2 text-sm font-medium flex items-center gap-2 transition-colors"
-                        :class="activeTab === 'local' ? 'bg-primary text-primary-foreground' : 'bg-well hover:bg-accent text-default'"
-                        @click="activeTab = 'local'; showRestoreView = false">
-                        <ComputerDesktopIcon class="w-4 h-4" />
-                        Local Backups
-                    </button>
-                    <button class="px-5 py-2 text-sm font-medium border-l border-default flex items-center gap-2 transition-colors"
-                        :class="activeTab === 'remote' ? 'bg-primary text-primary-foreground' : 'bg-well hover:bg-accent text-default'"
-                        @click="activeTab = 'remote'">
-                        <GlobeAltIcon class="w-4 h-4" />
-                        Remote Backups
-                    </button>
-                </div>
-                <button class="btn btn-secondary text-sm h-fit p-1.5" title="Settings" @click="settingsOpen = true">
-                    <Cog6ToothIcon class="w-5 h-5" />
+            <!-- Remote: server dropdown + action buttons (left-aligned) -->
+            <template v-if="activeTab === 'remote'">
+                <select v-model="selectedIp" :title="selectedIp"
+                    class="input-textlike border border-default rounded-lg px-3 py-1.5 text-sm min-w-0 max-w-full sm:max-w-56 truncate">
+                    <option value="">Select Server…</option>
+                    <optgroup v-if="favoriteServers.length" label="Favorites">
+                        <option v-for="opt in favoriteServers" :key="'fav-' + opt.ip" :value="opt.ip">{{ opt.label }}</option>
+                    </optgroup>
+                    <optgroup label="Discovered">
+                        <option v-for="opt in serversForDropdown" :key="opt.ip" :value="opt.ip">{{ opt.label }}</option>
+                    </optgroup>
+                </select>
+                <button class="btn btn-primary text-sm h-fit" :disabled="!selectedIp" @click="openLogin">Connect</button>
+                <button v-if="currentServer" class="btn btn-secondary text-sm h-fit"
+                    @click="showRestoreView ? disconnectRestore() : cockpitRef?.logoutFromCurrentServer()">Log out</button>
+                <button v-if="activeCredId && currentServer" class="btn btn-danger text-sm h-fit"
+                    @click="forgetActive">Forget</button>
+            </template>
+
+            <!-- Spacer pushes right-side items to far right -->
+            <div class="flex-1" />
+
+            <!-- Right-aligned group -->
+            <template v-if="activeTab === 'remote'">
+                <button class="btn text-sm h-fit flex items-center gap-1.5"
+                    :class="showRestoreView ? 'btn-secondary' : 'btn-primary'" :disabled="!restoreConnected"
+                    @click="showRestoreView = !showRestoreView">
+                    <template v-if="showRestoreView">
+                        <ArrowLeftIcon class="w-4 h-fit" />
+                        Return to Backups
+                    </template>
+                    <template v-else>
+                        <ArrowDownTrayIcon class="w-4 h-fit" />
+                        Restore
+                    </template>
                 </button>
-            </div>
+            </template>
+            <template v-else>
+                <button class="btn btn-primary text-sm h-fit flex items-center gap-1.5" @click="newBackupTask">
+                    <PlusIcon class="w-4 h-fit" />
+                    New Backup
+                </button>
+            </template>
 
-            <!-- Right side actions -->
-            <div class="flex items-center gap-2 justify-end min-w-0 overflow-hidden">
-                <template v-if="activeTab === 'remote'">
-                    <!-- Restore toggle -->
-
-                    <button class="btn text-sm h-fit flex items-center gap-1.5"
-                        :class="showRestoreView ? 'btn-secondary' : 'btn-primary'" :disabled="!restoreConnected"
-                        @click="showRestoreView = !showRestoreView">
-                        <template v-if="showRestoreView">
-                            <ArrowLeftIcon class="w-4 h-fit" />
-                            Return to Backups
-                        </template>
-                        <template v-else>
-                            <ArrowDownTrayIcon class="w-4 h-fit" />
-                            Restore
-                        </template>
-                    </button>
-                    <div class="w-px h-6 bg-default mx-1" />
-                    <select v-model="selectedIp" :title="selectedIp"
-                        class="input-textlike border border-default rounded-lg px-3 py-1.5 text-sm min-w-0 max-w-56 truncate">
-                        <option value="">Select Server…</option>
-                        <optgroup v-if="favoriteServers.length" label="Favorites">
-                            <option v-for="opt in favoriteServers" :key="'fav-' + opt.ip" :value="opt.ip">{{ opt.label }}</option>
-                        </optgroup>
-                        <optgroup label="Discovered">
-                            <option v-for="opt in serversForDropdown" :key="opt.ip" :value="opt.ip">{{ opt.label }}</option>
-                        </optgroup>
-                    </select>
-                    <button class="btn btn-primary text-sm h-fit" :disabled="!selectedIp" @click="openLogin">Connect</button>
-                    <button v-if="currentServer" class="btn btn-secondary text-sm h-fit"
-                        @click="showRestoreView ? disconnectRestore() : cockpitRef?.logoutFromCurrentServer()">Log out</button>
-                    <button v-if="activeCredId && currentServer" class="btn btn-danger text-sm h-fit"
-                        @click="forgetActive">Forget</button>
-
-                   
-                </template>
-                <template v-else>
-                    <button class="btn btn-primary text-sm h-fit flex items-center gap-1.5" @click="newBackupTask">
-                        <PlusIcon class="w-4 h-fit" />
-                        New Backup
-                    </button>
-                </template>
-            </div>
+            <button class="btn btn-secondary text-sm h-fit p-1.5" title="Settings" @click="settingsOpen = true">
+                <Cog6ToothIcon class="w-5 h-5" />
+            </button>
         </div>
 
         <!-- LOCAL tab content -->
         <div v-if="activeTab === 'local'" class="flex-1 min-h-0 flex flex-col">
             <div class="flex-1 min-h-0 bg-well rounded-lg border border-default overflow-hidden bg-default">
                 <BackUpListView ref="backUpListRef" class="h-full"
-                    @backUpTaskSelected="handleBackUpTaskSelected" />
+                    :selectedCount="selectedBackUpTasks.length"
+                    :isRunningNow="isRunningNow"
+                    :runningTaskIds="runningTaskIds"
+                    @backUpTaskSelected="handleBackUpTaskSelected"
+                    @run="runSelected"
+                    @view="viewSelected"
+                    @edit="editSelected"
+                    @viewLog="viewSelectedLog"
+                    @delete="deleteSelectedTasks" />
             </div>
 
-            <!-- Contextual action toolbar (appears when tasks selected) -->
-            <div v-if="selectedBackUpTasks.length > 0"
-                class="mt-3 flex items-center gap-2 p-3 bg-accent rounded-lg border border-default shrink-0">
-                <span class="text-sm text-muted mr-2">
-                    {{ selectedBackUpTasks.length }} selected
-                </span>
-
-                <button class="btn btn-primary text-sm h-fit flex items-center gap-1.5"
-                    :disabled="isRunningNow" @click="runSelected">
-                    <PlayIcon class="w-4 h-4" />
-                    <template v-if="!isRunningNow">Run Now</template>
-                    <template v-else>Starting…</template>
-                </button>
-
-                <button class="btn btn-secondary text-sm h-fit flex items-center gap-1.5"
-                    :disabled="selectedBackUpTasks.length < 1" @click="viewSelected">
-                    <EyeIcon class="w-4 h-4" />
-                    View
-                </button>
-
-                <button class="btn btn-secondary text-sm h-fit flex items-center gap-1.5"
-                    :disabled="selectedBackUpTasks.length !== 1" @click="editSelected">
-                    <PencilSquareIcon class="w-4 h-4" />
-                    Edit
-                </button>
-
-                <button class="btn btn-secondary text-sm h-fit flex items-center gap-1.5"
-                    :disabled="selectedBackUpTasks.length < 1" @click="viewSelectedLog">
-                    <DocumentTextIcon class="w-4 h-4" />
-                    Logs
-                </button>
-
-                <div class="flex-1" />
-
-                <button class="btn btn-danger text-sm h-fit flex items-center gap-1.5"
-                    @click="deleteSelectedTasks">
-                    <TrashIcon class="w-4 h-4" />
-                    Delete
-                </button>
+            <!-- Bottom progress panel (visible while any backup is in progress) -->
+            <div v-if="runningTaskCount > 0"
+                class="mt-3 bg-accent rounded-lg border border-default shrink-0 flex flex-col">
+                <div class="px-3 pt-3 pb-1.5 text-xs font-semibold text-muted uppercase tracking-wide">
+                    {{ runningTaskCount }} backup{{ runningTaskCount > 1 ? 's' : '' }} in progress
+                </div>
+                <div class="overflow-y-auto max-h-[220px] px-3 pb-3 space-y-2">
+                    <div v-for="(info, uuid) in taskProgressMap" :key="uuid"
+                        class="flex items-center gap-3 py-1.5">
+                        <span class="text-sm font-medium text-default truncate min-w-[120px] max-w-[240px]"
+                            :title="info.name">{{ info.name }}</span>
+                        <div class="flex-1 h-2.5 bg-default rounded-full overflow-hidden">
+                            <div v-if="info.percent != null"
+                                class="h-full bg-primary rounded-full transition-all duration-300"
+                                :style="{ width: info.percent + '%' }" />
+                            <div v-else
+                                class="h-full bg-primary rounded-full animate-pulse w-full" />
+                        </div>
+                        <span class="text-sm text-muted whitespace-nowrap min-w-[80px] text-right">
+                            {{ info.percent != null ? info.percent + '%' : info.message || 'Working…' }}
+                        </span>
+                        <button class="text-muted hover:text-default ml-1 shrink-0" title="Dismiss"
+                            @click="removeFinishedTask(uuid as string)">
+                            <XMarkIcon class="w-4 h-4" />
+                        </button>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -166,9 +158,8 @@ import { useLogModal } from '../../composables/useLogModal';
 import { DiscoveryState, type Server as ServerType } from '../../types';
 import { useSettings } from '../../composables/useSettings';
 import {
-    ComputerDesktopIcon, GlobeAltIcon, PlusIcon, PlayIcon,
-    EyeIcon, PencilSquareIcon, DocumentTextIcon, TrashIcon,
-    ArrowLeftIcon, ArrowDownTrayIcon, Cog6ToothIcon
+    ComputerDesktopIcon, GlobeAltIcon, PlusIcon,
+    ArrowLeftIcon, ArrowDownTrayIcon, Cog6ToothIcon, XMarkIcon
 } from '@heroicons/vue/24/outline';
 
 useHeader('Backup Manager');
@@ -356,6 +347,10 @@ function newBackupTask() {
 }
 
 const deleteSelectedTasks = () => {
+    // Clear progress entries for tasks being deleted
+    for (const t of selectedBackUpTasks.value) {
+        removeFinishedTask(t.uuid);
+    }
     backUpListRef.value?.deleteSelectedTasks?.();
 };
 
@@ -364,8 +359,11 @@ async function runSelected() {
     isRunningNow.value = true;
     runningTaskIds.value = selectedBackUpTasks.value.map(t => t.uuid);
     runningTaskNames.value = selectedBackUpTasks.value.map(t => (t.description || '').trim());
-    if (clearSpinnerTimer) window.clearTimeout(clearSpinnerTimer);
-    clearSpinnerTimer = window.setTimeout(stopRunningUi, 20000);
+    // Seed per-task progress entries
+    for (const t of selectedBackUpTasks.value) {
+        const name = t.name || t.description || t.source?.split('/').pop() || t.uuid.slice(0, 8);
+        taskProgressMap.value[t.uuid] = { name, percent: null, message: 'Starting…' };
+    }
     try {
         await backUpListRef.value?.runSelectedNow?.();
     } catch {
@@ -376,8 +374,15 @@ async function runSelected() {
 function maybeClearFromNotification(message: string) {
     if (!isRunningNow.value) return;
     const m = message.match(/Backup task "(.+?)"/i);
-    if (m && runningTaskNames.value.includes(m[1].trim())) {
-        stopRunningUi();
+    if (m) {
+        const name = m[1].trim();
+        // Find and remove the matching task by description
+        const matchUuid = Object.entries(taskProgressMap.value)
+            .find(([, info]) => info.name === name)?.[0]
+            ?? runningTaskIds.value.find((id, i) => runningTaskNames.value[i] === name);
+        if (matchUuid) {
+            removeFinishedTask(matchUuid);
+        }
         IPCRouter.getInstance().send('backend', 'action',
             JSON.stringify({ type: 'fetchBackupEvents' })
         );
@@ -405,14 +410,40 @@ function viewSelectedLog() {
 const isRunningNow = ref(false);
 const runningTaskIds = ref<string[]>([]);
 const runningTaskNames = ref<string[]>([]);
-let clearSpinnerTimer: number | null = null;
+
+// ── Per-task progress tracking ──────────────────────────────────────────────
+const taskProgressMap = ref<Record<string, { name: string; percent: number | null; message: string }>>({});
+const runningTaskCount = computed(() => Object.keys(taskProgressMap.value).length);
 
 function stopRunningUi() {
     isRunningNow.value = false;
     runningTaskIds.value = [];
     runningTaskNames.value = [];
-    if (clearSpinnerTimer) { window.clearTimeout(clearSpinnerTimer); clearSpinnerTimer = null; }
+    taskProgressMap.value = {};
 }
+
+function removeFinishedTask(uuid: string) {
+    delete taskProgressMap.value[uuid];
+    runningTaskIds.value = runningTaskIds.value.filter(id => id !== uuid);
+    if (Object.keys(taskProgressMap.value).length === 0) {
+        stopRunningUi();
+    }
+}
+
+const backupProgressHandler = (data: { taskUuid: string; percent: number | null; message?: string }) => {
+    if (!runningTaskIds.value.includes(data.taskUuid)) {
+        // Accept progress for tasks we didn't explicitly start (detected from event log)
+        runningTaskIds.value.push(data.taskUuid);
+        isRunningNow.value = true;
+    }
+    const existing = taskProgressMap.value[data.taskUuid];
+    const name = existing?.name || backUpListRef.value?.getTaskName?.(data.taskUuid) || data.taskUuid.slice(0, 8);
+    taskProgressMap.value[data.taskUuid] = {
+        name,
+        percent: data.percent,
+        message: data.message ?? '',
+    };
+};
 
 const actionHandler = (raw: string) => {
     try {
@@ -421,19 +452,32 @@ const actionHandler = (raw: string) => {
             maybeClearFromNotification(msg.message);
         }
         if (msg?.type === 'backUpStatusesUpdated') {
-            const containsRanTask = (msg.tasks || []).some((t: { uuid: string }) =>
-                runningTaskIds.value.includes(t.uuid)
-            );
-            if (containsRanTask) stopRunningUi();
+            // Status polling completed — individual task completion is handled
+            // by the notification handler (maybeClearFromNotification)
+        }
+        // Restore running state from event log (backup_start without backup_end)
+        if (msg?.type === 'sendBackupEvents' && Array.isArray(msg.runningUuids) && msg.runningUuids.length > 0) {
+            for (const uuid of msg.runningUuids) {
+                if (!runningTaskIds.value.includes(uuid)) {
+                    runningTaskIds.value.push(uuid);
+                }
+                if (!taskProgressMap.value[uuid]) {
+                    const resolvedName = backUpListRef.value?.getTaskName?.(uuid) || uuid.slice(0, 8);
+                    taskProgressMap.value[uuid] = { name: resolvedName, percent: null, message: 'In progress…' };
+                }
+            }
+            isRunningNow.value = true;
         }
     } catch (e) { console.debug('actionHandler parse error:', e); }
 };
 
 onMounted(() => {
     IPCRouter.getInstance().addEventListener('action', actionHandler);
+    IPCRouter.getInstance().addEventListener('backupProgress', backupProgressHandler);
 });
 
 onBeforeUnmount(() => {
     try { IPCRouter.getInstance().removeEventListener?.('action', actionHandler); } catch { }
+    try { IPCRouter.getInstance().removeEventListener?.('backupProgress', backupProgressHandler); } catch { }
 });
 </script>

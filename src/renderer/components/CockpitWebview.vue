@@ -116,6 +116,12 @@ watch(webview, (wv) => {
     wv.addEventListener('dom-ready', () => {
         console.debug('cockpit webview dom-ready')
         injectChromeCSS(wv)
+        // Sync client dark mode into the webview's localStorage so the
+        // server-side plugin (useDarkModeState) picks it up on init.
+        const darkStyle = dark.value ? 'dark' : 'light'
+        wv.executeJavaScript(`
+            localStorage.setItem('shell:style', '${darkStyle}');
+        `).catch((err: any) => console.error('Dark mode sync failed:', err))
         // Inject a postMessage relay so scheduler iframe can request OAuth
         // and receive tokens back. The scheduler cannot call window.open()
         // from within its Cockpit iframe, so it posts a message upward.
@@ -231,6 +237,18 @@ const onWebViewLoaded = async () => {
 
 }
 
+// Push dark mode changes to the webview in real-time.
+// Setting localStorage from the top frame fires a 'storage' event in the
+// plugin iframe (same origin), where useDarkModeState listens for it.
+watch(dark, (isDark) => {
+    const wv = webview.value
+    if (!wv) return
+    const style = isDark ? 'dark' : 'light'
+    wv.executeJavaScript(`
+        localStorage.setItem('shell:style', '${style}');
+    `).catch(() => {})
+})
+
 // When URL changes (server or flags), show loader again
 watch(currentUrl, (url) => {
     loadingWebview.value = url !== 'about:blank'
@@ -311,8 +329,8 @@ defineExpose({ logoutFromCurrentServer });
 
 <style scoped>
 .spinner {
-    border: 4px solid rgba(0, 0, 0, 0.1);
-    border-left-color: #2c3e50;
+    border: 4px solid rgba(128, 128, 128, 0.2);
+    border-left-color: currentColor;
     border-radius: 50%;
     width: 40px;
     height: 40px;

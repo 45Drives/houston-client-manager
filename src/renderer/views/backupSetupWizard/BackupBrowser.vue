@@ -120,11 +120,11 @@
                             <span class="text-muted shrink-0">Last Backup</span>
                             <span class="text-default text-right">{{ selectedBackup.lastBackup }}</span>
                         </div>
-                        <div v-if="selectedBackup.__task?.status" class="flex justify-between gap-2">
+                        <div class="flex justify-between gap-2">
                             <span class="text-muted shrink-0">Status</span>
-                            <span class="text-right text-xs px-1.5 py-0.5 rounded"
-                                :class="selectedBackup.__task.status === 'online' ? 'bg-green-500/20 text-green-400' : 'bg-yellow-500/20 text-yellow-400'">
-                                {{ selectedBackup.__task.status }}
+                            <span class="text-right text-xs font-medium px-1.5 py-0.5 rounded"
+                                :class="backupStatusClass">
+                                {{ backupStatusLabel }}
                             </span>
                         </div>
                         <div class="flex justify-between gap-2">
@@ -134,8 +134,25 @@
                     </div>
                 </div>
 
-                <!-- Selected file details card -->
-                <div v-if="focusedFile" class="bg-well rounded-lg border border-default overflow-hidden shrink-0">
+                <!-- Multi-file selection summary -->
+                <div v-if="selectedFilesCount > 1" class="bg-well rounded-lg border border-default overflow-hidden shrink-0">
+                    <div class="px-3 py-2 border-b border-default">
+                        <span class="text-sm font-medium text-default">Selection Summary</span>
+                    </div>
+                    <div class="px-3 py-2 space-y-2 text-sm">
+                        <div class="flex justify-between gap-2">
+                            <span class="text-muted">Files Selected</span>
+                            <span class="text-default font-medium">{{ selectedFilesCount }}</span>
+                        </div>
+                        <div class="flex justify-between gap-2">
+                            <span class="text-muted">Total Size</span>
+                            <span class="text-default font-medium">{{ formatFileSize(selectedTotalSize) }}</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Single file details card -->
+                <div v-if="focusedFile && selectedFilesCount <= 1" class="bg-well rounded-lg border border-default overflow-hidden shrink-0">
                     <div class="px-3 py-2 border-b border-default">
                         <span class="text-sm font-medium text-default">File Details</span>
                     </div>
@@ -172,7 +189,7 @@
                 </div>
 
                 <!-- No file focused placeholder -->
-                <div v-else-if="selectedBackup && !filesLoading && selectedBackup.files?.length"
+                <div v-else-if="selectedFilesCount === 0 && selectedBackup && !filesLoading && selectedBackup.files?.length"
                     class="bg-well rounded-lg border border-default p-4 flex flex-col items-center justify-center text-muted gap-2">
                     <InformationCircleIcon class="w-8 h-8 opacity-30" />
                     <p class="text-sm text-center">Click a file to view its details</p>
@@ -297,6 +314,47 @@ const filteredBackups = computed(() => {
 
 const selectedFilesCount = computed(() => selectedBackup.value?.files?.filter(f => f.selected).length ?? 0)
 
+const selectedTotalSize = computed(() => {
+    if (!selectedBackup.value) return 0
+    return selectedBackup.value.files
+        .filter(f => f.selected)
+        .reduce((sum, f) => sum + (f.size ?? 0), 0)
+})
+
+// Derive a meaningful status label — if files loaded successfully, the connection is working
+const backupStatusLabel = computed(() => {
+    const task = selectedBackup.value?.__task
+    if (!task) return '—'
+    const s = task.status
+    if (!s || s === 'checking') {
+        // If we already have files, the connection clearly worked
+        if (selectedBackup.value?.files?.length) return 'Connected'
+        if (filesLoading.value) return 'Connecting…'
+        return 'Unknown'
+    }
+    const labels: Record<string, string> = {
+        online: 'Online',
+        offline_unreachable: 'Unreachable',
+        offline_invalid_credentials: 'Invalid Credentials',
+        offline_connection_error: 'Connection Error',
+        missing_folder: 'Missing Folder',
+        offline_insufficient_permissions: 'Insufficient Permissions',
+    }
+    return labels[s] ?? s
+})
+
+const backupStatusClass = computed(() => {
+    const task = selectedBackup.value?.__task
+    const s = task?.status
+    if (!s || s === 'checking') {
+        if (selectedBackup.value?.files?.length) return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400'
+        if (filesLoading.value) return 'bg-sky-100 text-sky-700 dark:bg-sky-500/20 dark:text-sky-400'
+        return 'bg-neutral-100 text-neutral-600 dark:bg-neutral-500/20 dark:text-neutral-400'
+    }
+    if (s === 'online') return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400'
+    return 'bg-red-100 text-red-700 dark:bg-red-500/20 dark:text-red-400'
+})
+
 // Single-backup mode: skip the backup dropdown
 const singleMode = computed(() => backups.value.length === 1)
 
@@ -326,8 +384,38 @@ function formatTimestamp(iso: string): string {
     }
 }
 
+/**
+ * Strip the hostname prefix from a backup file path.
+ * Backend returns paths relative to the UUID folder: "hostname/actual/path/file.ext"
+ * We want to display just the actual path portion.
+ * The client source (e.g. "/home/user/Pictures") tells us what the real path looks like.
+ */
+function stripHostnamePrefix(rawPath: string, clientSource: string): string {
+    // Normalise separators
+    const p = rawPath.replace(/\\/g, '/')
+    const parts = p.split('/').filter(Boolean)
+    if (parts.length < 2) return p
+
+    // The first segment is the hostname directory.
+    // Everything after that is the absolute source path + filename.
+    // Strip the hostname prefix to get the real file path.
+    const withoutHost = parts.slice(1).join('/')
+
+    // If clientSource is present, also strip it to show only the relative part
+    const normClient = clientSource.replace(/\\/g, '/').replace(/^\/+/, '').replace(/\/+$/, '')
+    if (normClient && withoutHost.startsWith(normClient)) {
+        const rel = withoutHost.slice(normClient.length).replace(/^\/+/, '')
+        return rel || withoutHost
+    }
+
+    return withoutHost
+}
+
 function resolveRestorePath(filePath: string): string {
     if (!selectedBackup.value) return filePath
+    // The file will be restored to its original absolute location (client source + relative path)
+    const client = selectedBackup.value.client?.replace(/\/+$/, '') ?? ''
+    if (client) return `${client}/${filePath}`
     return filePath
 }
 
@@ -407,23 +495,27 @@ const ipcActionHandler = (raw: string) => {
 
         if (response.type === 'fetchFilesFromBackupResult' && selectedBackup.value) {
             const rawResult = response.result || []
+            // The client field is the source path (e.g. "/home/user/Pictures").
+            // Files from the backend are relative to the UUID folder and include
+            // the hostname directory prefix (e.g. "keo-pc/home/user/Pictures/file.png").
+            // We need to strip the hostname prefix from the path but NOT from the filename.
+            const clientDir = selectedBackup.value.client
             const files: RichFileEntry[] = rawResult.map((file: any) => {
-                if (typeof file === 'string') {
-                    // Legacy: backend returned plain strings
-                    return {
-                        path: file.replace(`${selectedBackup.value!.client}/`, '').replace(/^\/+/, ''),
-                        selected: false
-                    }
-                }
-                // New format: objects with metadata
-                return {
-                    path: (file.path || '').replace(`${selectedBackup.value!.client}/`, '').replace(/^\/+/, ''),
+                const rawPath = typeof file === 'string' ? file : (file.path || '')
+                // Strip leading hostname directory: paths look like "hostname/actual/path/file.ext"
+                // The hostname is the first path segment, and the rest should start with the client source path
+                const cleanPath = stripHostnamePrefix(rawPath, clientDir)
+                const entry: RichFileEntry = {
+                    path: cleanPath,
                     selected: false,
-                    size: file.size,
-                    mtime: file.mtime,
-                    atime: file.atime,
-                    birthtime: file.birthtime,
                 }
+                if (typeof file !== 'string') {
+                    entry.size = file.size
+                    entry.mtime = file.mtime
+                    entry.atime = file.atime
+                    entry.birthtime = file.birthtime
+                }
+                return entry
             })
             selectedBackup.value.files = files
             focusedFile.value = null
@@ -529,7 +621,6 @@ const restoreSelected = async () => {
 function openSelectedBackupFolder() {
     if (!selectedBackup.value || !selectedBackup.value.__task) return
     const { smb_host, smb_share, smb_user, smb_pass } = resolveConnForTask(selectedBackup.value.__task)
-    // Backend should ensure mount & open behavior for this backup root folder
     IPCRouter.getInstance().send('backend', 'action', JSON.stringify({
         type: 'openBackupFolder',
         data: {
@@ -537,7 +628,8 @@ function openSelectedBackupFolder() {
             smb_share,
             smb_user,
             smb_pass,
-            uuid: selectedBackup.value.uuid
+            uuid: selectedBackup.value.uuid,
+            client: selectedBackup.value.client
         }
     }))
 }

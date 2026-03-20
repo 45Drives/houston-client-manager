@@ -156,10 +156,28 @@ ipcMain.handle('oauth:open', async (_event, url: string) => {
     }
   }
 
-  // Polyfill window.opener on every page load in the main OAuth window
-  win.webContents.on('dom-ready', () => {
-    win.webContents.executeJavaScript(OPENER_POLYFILL).catch(() => {});
-  });
+  // Re-run the callback page's inline script after polyfilling window.opener.
+  // The server callback page is just a <script> that checks window.opener and
+  // calls postMessage.  It runs during HTML parsing (before dom-ready), so the
+  // polyfill isn't in place yet.  On dom-ready we inject the polyfill and then
+  // re-execute the inline script — this time window.opener exists and the token
+  // is sent via console.log for our listener to pick up.
+  async function rerunCallbackScript(wc: Electron.WebContents) {
+    await wc.executeJavaScript(OPENER_POLYFILL).catch(() => {});
+    const currentUrl = wc.getURL();
+    if (!resolved && currentUrl.includes('/callback')) {
+      try {
+        const script = await wc.executeJavaScript(
+          'document.querySelector("script") ? document.querySelector("script").textContent : ""'
+        );
+        if (script && script.includes('postMessage')) {
+          await wc.executeJavaScript(script);
+        }
+      } catch { /* ignore — token may already have been captured */ }
+    }
+  }
+
+  win.webContents.on('dom-ready', () => { rerunCallbackScript(win.webContents); });
   win.webContents.on('console-message', handleTokenMessage);
   win.on('closed', () => { if (!resolved) resolvePromise({ success: false }); });
 
@@ -176,9 +194,7 @@ ipcMain.handle('oauth:open', async (_event, url: string) => {
       },
     });
     child.loadURL(popupUrl);
-    child.webContents.on('dom-ready', () => {
-      child.webContents.executeJavaScript(OPENER_POLYFILL).catch(() => {});
-    });
+    child.webContents.on('dom-ready', () => { rerunCallbackScript(child.webContents); });
     child.webContents.on('console-message', (_e: any, _level: any, msg: string) => {
       if (resolved) return;
       if (typeof msg === 'string' && msg.startsWith('__OAUTH_TOKEN__:')) {

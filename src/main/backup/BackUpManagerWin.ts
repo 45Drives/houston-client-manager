@@ -1,5 +1,5 @@
 import { jsonLogger } from '../main';
-import { BackUpManager } from "./types";
+import { BackUpManager, BackupProgressCallback } from "./types";
 import { BackUpTask, TaskSchedule } from "@45drives/houston-common-lib";
 import { formatDateForTask, getAppPath, getMountSmbScript, getSmbTargetFromSmbTarget } from "../utils";
 import sudo from 'sudo-prompt';
@@ -191,7 +191,7 @@ export class BackUpManagerWin implements BackUpManager {
     return Promise.resolve({stdout: "", stderr: ""})
   }
 
-  async runNow(task: BackUpTask): Promise<{ stdout: string; stderr: string }> {
+  async runNow(task: BackUpTask, onProgress?: BackupProgressCallback): Promise<{ stdout: string; stderr: string }> {
     const taskName = `${TASK_ID}_${task.uuid}`;
     const logFile = path.join(logPath, `Houston_Backup_Task_${task.uuid}.log`);
     const ps = `Start-ScheduledTask -TaskName "${taskName}"`;
@@ -199,6 +199,8 @@ export class BackUpManagerWin implements BackUpManager {
     // Record log file size before running so we can read only new content
     let logSizeBefore = 0;
     try { logSizeBefore = fs.statSync(logFile).size; } catch {}
+
+    onProgress?.(null, 'Starting scheduled task...');
 
     // 1) Try without elevation first
     try {
@@ -237,6 +239,39 @@ export class BackUpManagerWin implements BackUpManager {
 
     while (Date.now() - startTime < maxWaitMs) {
       await new Promise(r => setTimeout(r, pollIntervalMs));
+
+      // Emit progress based on latest log content
+      if (onProgress) {
+        try {
+          const currentSize = fs.statSync(logFile).size;
+          if (currentSize > logSizeBefore) {
+            const buf = Buffer.alloc(currentSize - logSizeBefore);
+            const fd = fs.openSync(logFile, 'r');
+            fs.readSync(fd, buf, 0, buf.length, logSizeBefore);
+            fs.closeSync(fd);
+            const newContent = buf.toString('utf8');
+            if (newContent.includes('Running robocopy')) {
+              onProgress(null, 'Copying files...');
+            } else if (newContent.includes('Mapping')) {
+              onProgress(null, 'Mounting share...');
+            }
+            // Parse robocopy /bytes output for file-level progress
+            // Lines look like: \t   New File  \t\t  1234567 \t filename.ext
+            // Or percentage lines:    42.3%
+            const pctMatches = [...newContent.matchAll(/(\d+(?:\.\d+)?)%/g)];
+            if (pctMatches.length > 0) {
+              onProgress(Math.round(parseFloat(pctMatches[pctMatches.length - 1][1])), 'Copying files...');
+            } else {
+              // Count files processed for a rough indicator
+              const fileLines = newContent.split('\n').filter(l => /^\t/.test(l) && !l.includes('---'));
+              if (fileLines.length > 0) {
+                onProgress(null, `Copied ${fileLines.length} files...`);
+              }
+            }
+          }
+        } catch { /* log file not yet written */ }
+      }
+
       try {
         const stateRes = await this.runScript(pollPs, `poll_task_${task.uuid}`);
         const state = stateRes.stdout.trim();
@@ -584,7 +619,7 @@ set "JSON_SOURCE=!SOURCE:\=\\!"
 :: --- copy payload ----------------------------------------------------------
 mkdir "!DEST!" 2>nul
 echo [INFO] Running robocopy ...
-robocopy "!SOURCE!" "!DEST!" /E /Z /FFT /R:2 /W:5 /V /NP
+robocopy "!SOURCE!" "!DEST!" /E /Z /FFT /R:2 /W:5 /V /NJH /bytes
 set "RC=!errorlevel!"
 
 :_finish

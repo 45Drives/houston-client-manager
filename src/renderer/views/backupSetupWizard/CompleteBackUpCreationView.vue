@@ -187,7 +187,7 @@ useEnterToAdvance(
 
 .progress {
   width: 100%;
-  background: #ddd;
+  @apply bg-accent;
   border-radius: 4px;
   overflow: hidden;
   height: 20px;
@@ -196,7 +196,7 @@ useEnterToAdvance(
 
 .progress-bar {
   height: 100%;
-  background: #4caf50;
+  background: var(--btn-success-bg, #22C55E);
   transition: width 0.4s ease;
 }
 
@@ -207,21 +207,19 @@ useEnterToAdvance(
 
 .checkmark {
   font-size: 3rem;
-  color: #4caf50;
+  color: var(--btn-success-bg, #22C55E);
   margin: 1rem 0;
 }
 
 .smallcheckmark {
-  /* font-size: 5rem; */
-  color: #4caf50;
-  /* margin: 1rem 0; */
+  color: var(--btn-success-bg, #22C55E);
 }
 
 /* Network Storage Section */
 .network-section {
   margin-top: 2rem;
   text-align: left;
-  border-top: 1px solid #ccc;
+  @apply border-t border-default;
   padding-top: 1rem;
 }
 
@@ -251,7 +249,7 @@ useEnterToAdvance(
 /* Small info text */
 .small-info {
   font-size: 0.9rem;
-  color: #555;
+  @apply text-muted;
   margin-top: 0.5rem;
 }
 </style>

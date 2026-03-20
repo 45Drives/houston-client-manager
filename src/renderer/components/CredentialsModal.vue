@@ -78,7 +78,7 @@ defineExpose({ open });
 }
 
 .text-label {
-    @apply text-sm font-medium text-gray-600 mb-1;
+    @apply text-sm font-medium text-gray-600 dark:text-gray-300 mb-1;
 }
 </style>
   

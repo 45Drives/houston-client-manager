@@ -82,7 +82,7 @@
                     </div>
                     <div class="grid grid-cols-7 gap-1 w-full grid-rows-6 auto-rows-fr">
                         <div v-for="day in days" :key="day.id"
-                            :class="[ day.isPadding ? 'bg-accent text-muted cursor-default' : 'cursor-pointer hover:bg-gray-700',
+                            :class="[ day.isPadding ? 'bg-accent text-muted cursor-default' : 'cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-700',
                             day.isMarked && !day.isPadding ? 'bg-green-600 dark:bg-green-800 text-white' : 'bg-default' ]"
                             class="p-2 text-default text-center border border-default rounded"
                             @click="!day.isPadding && selectDay(Number(day.date))">

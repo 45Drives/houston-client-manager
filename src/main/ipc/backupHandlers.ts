@@ -270,7 +270,21 @@ export async function handleBackupMessage(message: any, ctx: IPCHandlerContext):
       try {
         console.debug('Attempting to run backup:', task.description);
         ctx.notify(`Running backup task "${task.description}"...`);
-        const result = await backupManager.runNow(task);
+
+        // Progress callback: emit backupProgress over the IPC bus
+        const onProgress = (percent: number | null, progressMsg?: string) => {
+          router.send('renderer', 'backupProgress', {
+            taskUuid: task.uuid,
+            percent,
+            message: progressMsg,
+          });
+        };
+        onProgress(null, 'Starting backup...');
+
+        const result = await backupManager.runNow(task, onProgress);
+
+        // Signal completion
+        onProgress(100, 'Complete');
 
         // Check stdout/stderr for actual failure indicators even if exit code was "non-fatal"
         const output = `${result.stdout}\n${result.stderr}`;
@@ -333,7 +347,7 @@ export async function handleBackupMessage(message: any, ctx: IPCHandlerContext):
     }
 
     case 'openBackupFolder': {
-      const { smb_host, smb_share, smb_user, smb_pass, uuid } = message.data;
+      const { smb_host, smb_share, smb_user, smb_pass, uuid, client } = message.data;
       try {
         let folderPath: string;
         if (getOS() === 'win') {
@@ -364,6 +378,26 @@ export async function handleBackupMessage(message: any, ctx: IPCHandlerContext):
             mountBase = (mountResult.MountPoint as string) || `/mnt/houston-mounts/${smb_share}`;
           }
           folderPath = path.join(mountBase, uuid);
+        }
+
+        // Navigate into the hostname/client subfolder inside the UUID directory
+        // The backup structure is: {mountpoint}/{uuid}/{hostname}/{source_path}/
+        // Try to find the actual content directory by looking for the hostname folder
+        if (client && fs.existsSync(folderPath)) {
+          try {
+            const entries = fs.readdirSync(folderPath);
+            if (entries.length === 1 && fs.statSync(path.join(folderPath, entries[0])).isDirectory()) {
+              // Single subfolder (the hostname) — descend into it, then into the client source path
+              const hostDir = path.join(folderPath, entries[0]);
+              const clientSubPath = client.replace(/^\/+/, '');
+              const deepPath = path.join(hostDir, clientSubPath);
+              if (fs.existsSync(deepPath)) {
+                folderPath = deepPath;
+              } else {
+                folderPath = hostDir;
+              }
+            }
+          } catch { /* fall through to default folderPath */ }
         }
 
         if (!fs.existsSync(folderPath)) {
@@ -407,6 +441,8 @@ export async function handleBackupMessage(message: any, ctx: IPCHandlerContext):
     case 'fetchBackupEvents': {
       const logPath = path.join(app.getPath('userData'), 'logs', '45drives_backup_events.json');
       let events: Array<{ uuid: string; host: string; share: string; source: string; timestamp: string; status: string }> = [];
+      // Track which UUIDs have started but not ended (still running)
+      const startedUuids = new Set<string>();
 
       if (fs.existsSync(logPath)) {
         const lines = fs.readFileSync(logPath, 'utf8')
@@ -415,13 +451,38 @@ export async function handleBackupMessage(message: any, ctx: IPCHandlerContext):
         for (const line of lines) {
           try {
             const ev = JSON.parse(line);
+            if (ev.event === 'backup_start' && ev.uuid) {
+              startedUuids.add(ev.uuid);
+            }
             if (ev.event === 'backup_end') {
+              startedUuids.delete(ev.uuid);
               events.push({ uuid: ev.uuid, host: ev.host, share: ev.share, source: ev.source, timestamp: ev.timestamp, status: ev.status });
             }
           } catch { /* skip invalid JSON */ }
         }
       }
-      router.send('renderer', 'action', JSON.stringify({ type: 'sendBackupEvents', events }));
+
+      // Filter out UUIDs whose tasks no longer exist (deleted tasks)
+      if (startedUuids.size > 0) {
+        const backupManager = ctx.getBackUpManager();
+        if (backupManager) {
+          try {
+            const existingTasks = await backupManager.queryTasks();
+            const existingUuids = new Set(existingTasks.map(t => t.uuid));
+            for (const uuid of startedUuids) {
+              if (!existingUuids.has(uuid)) {
+                startedUuids.delete(uuid);
+              }
+            }
+          } catch { /* if queryTasks fails, keep startedUuids as-is */ }
+        }
+      }
+
+      router.send('renderer', 'action', JSON.stringify({
+        type: 'sendBackupEvents',
+        events,
+        runningUuids: Array.from(startedUuids),
+      }));
       return true;
     }
 

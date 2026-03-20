@@ -13,7 +13,7 @@
       </div>
 
       <!-- Center (title) -->
-      <div id="app-header-title" class="text-3xl font-semibold text-center">
+      <div id="app-header-title" class="text-xl sm:text-3xl font-semibold text-center">
          {{ headerTitle || (route.meta.title as string) || '45Drives Storage Wizard' }}
       </div>
 

@@ -1,9 +1,9 @@
 import { jsonLogger } from '../main';
-import { BackUpManager } from "./types";
+import { BackUpManager, BackupProgressCallback } from "./types";
 import { BackUpTask, TaskSchedule } from "@45drives/houston-common-lib";
 import * as fs from "fs";
 import * as os from "os";
-import { execSync } from "child_process";
+import { execSync, spawn } from "child_process";
 import * as path from "path";
 import { app } from 'electron';
 import { getRsync, getSmbTargetFromSmbTarget } from "../utils";
@@ -278,26 +278,91 @@ EOF_${uuid}
   }
 
   /** Immediately execute the real task script (no tmp wrapper) */
-  runNow(task: BackUpTask): Promise<{ stdout: string; stderr: string }> {
+  runNow(task: BackUpTask, onProgress?: BackupProgressCallback): Promise<{ stdout: string; stderr: string }> {
     const scriptPath = path.join(
       this.scriptDir,
       `houston-backup-task-${task.uuid}.sh`
     );
 
+    // Patch existing script to ensure progress flags are present
+    this.ensureProgressFlags(scriptPath);
+
+    return new Promise((resolve, reject) => {
+      const child = spawn('/bin/bash', [scriptPath], {
+        env: process.env,
+      });
+
+      let stdout = '';
+      let stderr = '';
+
+      child.stdout.on('data', (data) => {
+        const chunk = data.toString();
+        stdout += chunk;
+        if (onProgress) {
+          if (chunk.includes('[INFO] rsync to')) {
+            onProgress(null, 'Running rsync...');
+          } else if (chunk.includes('mount volume')) {
+            onProgress(null, 'Mounting share...');
+          }
+          const matches = [...chunk.matchAll(/(\d+)%/g)];
+          if (matches.length > 0) {
+            onProgress(parseInt(matches[matches.length - 1][1], 10), 'Transferring files...');
+          }
+        }
+      });
+
+      child.stderr.on('data', (data) => {
+        stderr += data.toString();
+      });
+
+      child.on('close', (code) => {
+        if (code === 0) {
+          resolve({ stdout, stderr });
+        } else {
+          reject({
+            message: `Backup task failed with exit code ${code}`,
+            stdout,
+            stderr,
+            code,
+          });
+        }
+      });
+
+      child.on('error', (err) => {
+        reject({
+          message: `Failed to spawn backup task process: ${err.message}`,
+          stdout,
+          stderr,
+        });
+      });
+    });
+  }
+
+  /** Patch an existing on-disk script to add progress flags if missing */
+  protected ensureProgressFlags(scriptPath: string): void {
     try {
-      const stdout = execSync(`/bin/bash "${scriptPath}"`, {
-        encoding: "utf8",
-        stdio: ['ignore', 'pipe', 'pipe'], // Explicitly capture stdout and stderr
-      });
-      return Promise.resolve({ stdout, stderr: "" });
-    } catch (err: any) {
-      return Promise.reject({
-        message: `Backup task failed: ${err.message}`,
-        stdout: err.stdout?.toString?.() ?? "",
-        stderr: err.stderr?.toString?.() ?? "",
-        code: err.status ?? err.code ?? "unknown",
-      });
-    }
+      let script = fs.readFileSync(scriptPath, 'utf8');
+      let changed = false;
+
+      // Add --info=progress2 --no-inc-recursive to rsync if missing
+      if (script.includes('rsync ') && !script.includes('--info=progress2')) {
+        script = script.replace(/(rsync\b.*?)-a\b/, '$1-a --info=progress2 --no-inc-recursive');
+        changed = true;
+      }
+
+      // Upgrade exec >>LOG to unbuffered tee if still using old direct redirect
+      if (script.includes('exec >>"$LOG"') || script.includes("exec >>\"$LOG\"")) {
+        script = script.replace(
+          /exec >>"?\$LOG"? 2>&1/,
+          'exec > >(stdbuf -o0 tee -a "$LOG" 2>/dev/null || tee -a "$LOG") 2>&1'
+        );
+        changed = true;
+      }
+
+      if (changed) {
+        fs.writeFileSync(scriptPath, script, { mode: 0o700 });
+      }
+    } catch { /* script doesn't exist yet or can't be read */ }
   }
 
   /** Remove one cron + script */
@@ -473,7 +538,7 @@ EOF_${uuid}
     const dir = `${mountPoint}/${rel}`;
     const svc = `houston-smb-${task.host}-${task.share}-${username}`;
     const target = getSmbTargetFromSmbTarget(task.target);
-    const rsyncCmd = `COPYFILE_DISABLE=1 ${getRsync()} -a${task.mirror ? ' --delete' : ''} ${shellQuote(`${task.source}/`)} ${shellQuote(`${dir}/`)}`;
+    const rsyncCmd = `COPYFILE_DISABLE=1 ${getRsync()} -a --info=progress2 --no-inc-recursive${task.mirror ? ' --delete' : ''} ${shellQuote(`${task.source}/`)} ${shellQuote(`${dir}/`)}`;
 
     return (`
 #!/bin/bash
@@ -502,7 +567,14 @@ SMB_USER='${username}'
 # TASK_NAME="${(task.name || '').replace(/"/g, '')}"
 
 mkdir -p "$(dirname "$LOG")"
-exec >>"$LOG" 2>&1
+# Use unbuffered tee for real-time progress; fall back to regular tee if stdbuf unavailable
+if command -v stdbuf &>/dev/null; then
+  exec > >(stdbuf -o0 tee -a "$LOG") 2>&1
+elif command -v gstdbuf &>/dev/null; then
+  exec > >(gstdbuf -o0 tee -a "$LOG") 2>&1
+else
+  exec > >(tee -a "$LOG") 2>&1
+fi
 
 echo "===== $(/bin/date -u '+%Y-%m-%dT%H:%M:%SZ') START ${task.uuid} ====="
 

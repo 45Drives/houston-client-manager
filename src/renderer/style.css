@@ -59,6 +59,13 @@
   opacity: 0.65;
 }
 
+.dark .btn-success:disabled,
+.dark .btn-success.disabled {
+  background-color: #4a4a4a !important;
+  border-color: #4a4a4a !important;
+  color: #9ca3af !important;
+}
+
 /* Helpers (to match your bg/border helpers) */
 .bg-success {
   background-color: var(--btn-success-bg) !important;
@@ -117,6 +124,7 @@
 .dark {
   --outline-color: white;
   --row-hover-bg: rgba(255, 255, 255, 0.06);
+  --checkbox-border: #9ca3af;
 }
 
 /* =====================
@@ -154,6 +162,15 @@
   color: #6c757d !important;
   cursor: not-allowed;
   opacity: 0.65;
+}
+
+.dark .btn-secondary:disabled,
+.dark .btn-primary:disabled,
+.dark .btn-secondary.disabled,
+.dark .btn-primary.disabled {
+  background-color: #4a4a4a !important;
+  border-color: #4a4a4a !important;
+  color: #9ca3af !important;
 }
 
 /* Helpers */
@@ -235,6 +252,11 @@ tbody tr.row-selected>td {
   box-shadow: 0 0 0 2px transparent;
   cursor: pointer;
   transition: background-color .2s, border-color .2s;
+}
+
+.dark .input-checkbox {
+  background-color: var(--checkbox-bg, #374151);
+  border-color: var(--checkbox-border, #6b7280);
 }
 
 .input-checkbox:focus-visible {

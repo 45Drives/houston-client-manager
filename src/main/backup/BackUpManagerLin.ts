@@ -1,5 +1,5 @@
 import { jsonLogger } from '../main'; 
-import { BackUpManager } from "./types";
+import { BackUpManager, BackupProgressCallback } from "./types";
 import { BackUpTask, backupTaskTag, TaskSchedule } from "@45drives/houston-common-lib";
 import * as fs from "fs";
 import * as os from "os";
@@ -275,8 +275,11 @@ export class BackUpManagerLin implements BackUpManager {
   }
   
 
-  runNow(task: BackUpTask): Promise<{ stdout: string; stderr: string }> {
+  runNow(task: BackUpTask, onProgress?: BackupProgressCallback): Promise<{ stdout: string; stderr: string }> {
     const scriptPath = path.join(SCRIPT_DIR, `Houston_Backup_Task_${task.uuid}.sh`);
+
+    // Patch existing script to ensure progress flags are present
+    this.ensureProgressFlags(scriptPath);
 
     return new Promise((resolve, reject) => {
       const child = spawn('bash', [scriptPath], {
@@ -287,7 +290,22 @@ export class BackUpManagerLin implements BackUpManager {
       let stderr = '';
 
       child.stdout.on('data', (data) => {
-        stdout += data.toString();
+        const chunk = data.toString();
+        stdout += chunk;
+        if (onProgress) {
+          // Parse phase markers from script echo lines
+          if (chunk.includes('[INFO] Running rsync')) {
+            onProgress(null, 'Running rsync...');
+          } else if (chunk.includes('mount')) {
+            onProgress(null, 'Mounting share...');
+          }
+          // rsync --info=progress2 outputs: 1,234,567  42%  10.50MB/s  0:01:23\r
+          // Grab the LAST percentage in the chunk (multiple may arrive batched)
+          const matches = [...chunk.matchAll(/(\d+)%/g)];
+          if (matches.length > 0) {
+            onProgress(parseInt(matches[matches.length - 1][1], 10), 'Transferring files...');
+          }
+        }
       });
 
       child.stderr.on('data', (data) => {
@@ -317,6 +335,30 @@ export class BackUpManagerLin implements BackUpManager {
         });
       });
     });
+  }
+
+  /** Patch an existing on-disk script to add progress flags if missing */
+  protected ensureProgressFlags(scriptPath: string): void {
+    try {
+      let script = fs.readFileSync(scriptPath, 'utf8');
+      let changed = false;
+
+      // Add --info=progress2 --no-inc-recursive to rsync if missing
+      if (script.includes('rsync ') && !script.includes('--info=progress2')) {
+        script = script.replace(/rsync -a\b/, 'rsync -a --info=progress2 --no-inc-recursive');
+        changed = true;
+      }
+
+      // Upgrade tee to unbuffered if not already
+      if (script.includes('>(tee -a') && !script.includes('stdbuf')) {
+        script = script.replace(/>\(tee -a/, '>(stdbuf -o0 tee -a');
+        changed = true;
+      }
+
+      if (changed) {
+        fs.writeFileSync(scriptPath, script, { mode: 0o700 });
+      }
+    } catch { /* script doesn't exist yet or can't be read */ }
   }
 
 
@@ -428,8 +470,8 @@ INSTALL_ID="$(cat "$CLIENT_ID_FILE" 2>/dev/null || true)"
 
 mkdir -p "$(dirname "$LOG_FILE")"
 
-# Send ALL stdout/stderr to both console and the log file, without a pipeline
-exec > >(tee -a "$LOG_FILE") 2>&1
+# Send ALL stdout/stderr to both console and the log file (unbuffered for real-time progress)
+exec > >(stdbuf -o0 tee -a "$LOG_FILE") 2>&1
 
 echo '{"event":"backup_start","timestamp":"'$(date -Iseconds)'","uuid":"'"${task.uuid}"'","host":"'"$SMB_HOST"'","share":"'"$SMB_SHARE"'","source":"'"$SOURCE"'","target":"'"$TARGET"'","install_id":"'"$INSTALL_ID"'","smb_user":"'"$SMB_USER"'"}' >> "$EVENT_LOG"
 
@@ -472,7 +514,7 @@ printf '{"install_id":"%s","smb_user":"%s","source":"%s","user":"%s","host":"%s"
 
 mkdir -p "$MOUNT_DIR/$TARGET"
 echo "[INFO] Running rsync..."
-rsync -a${task.mirror ? ' --delete' : ''} "$SOURCE" "$MOUNT_DIR/$TARGET"
+rsync -a --info=progress2 --no-inc-recursive${task.mirror ? ' --delete' : ''} "$SOURCE" "$MOUNT_DIR/$TARGET"
 RSYNC_STATUS=$?
 
 if [ $RSYNC_STATUS -ne 0 ]; then

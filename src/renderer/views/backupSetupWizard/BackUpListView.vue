@@ -1,7 +1,45 @@
 <template>
   <div class="flex flex-col gap-3 p-3">
-    <!-- Toolbar -->
-    <div class="flex flex-row items-center justify-end">
+    <!-- Toolbar: actions + refresh -->
+    <div class="flex flex-wrap items-center gap-2">
+      <!-- Action buttons (visible when tasks selected) -->
+      <template v-if="selectedBackUps.length > 0">
+        <span class="text-sm text-muted mr-1">{{ selectedBackUps.length }} selected</span>
+
+        <button class="btn btn-primary text-sm h-fit flex items-center gap-1.5"
+          :disabled="isRunningNow" @click="$emit('run')">
+          <PlayIcon class="w-4 h-4" />
+          <template v-if="!isRunningNow">Run Now</template>
+          <template v-else>Running…</template>
+        </button>
+
+        <button class="btn btn-secondary text-sm h-fit flex items-center gap-1.5"
+          :disabled="selectedBackUps.length < 1" @click="$emit('view')">
+          <EyeIcon24 class="w-4 h-4" />
+          View
+        </button>
+
+        <button class="btn btn-secondary text-sm h-fit flex items-center gap-1.5"
+          :disabled="selectedBackUps.length !== 1" @click="$emit('edit')">
+          <PencilSquareIcon class="w-4 h-4" />
+          Edit
+        </button>
+
+        <button class="btn btn-secondary text-sm h-fit flex items-center gap-1.5"
+          :disabled="selectedBackUps.length < 1" @click="$emit('viewLog')">
+          <DocumentTextIcon class="w-4 h-4" />
+          Logs
+        </button>
+
+        <button class="btn btn-danger text-sm h-fit flex items-center gap-1.5"
+          @click="$emit('delete')">
+          <TrashIcon class="w-4 h-4" />
+          Delete
+        </button>
+      </template>
+
+      <div class="flex-1" />
+
       <button class="btn btn-secondary text-sm h-8 flex items-center gap-1.5" @click.stop="fetchBackupTasks">
         <ArrowPathIcon class="w-4 h-4" />
         Refresh
@@ -49,10 +87,14 @@
               <div class="col-resize-handle" @mousedown.prevent="startResize($event, 5)"></div>
             </th>
             <th class="px-3 py-2 relative" :style="{ width: colWidths[6] + 'px' }">
-              Last Run at
+              Status
               <div class="col-resize-handle" @mousedown.prevent="startResize($event, 6)"></div>
             </th>
             <th class="px-3 py-2 relative" :style="{ width: colWidths[7] + 'px' }">
+              Last Run at
+              <div class="col-resize-handle" @mousedown.prevent="startResize($event, 7)"></div>
+            </th>
+            <th class="px-3 py-2 relative" :style="{ width: colWidths[8] + 'px' }">
               Next Run at
             </th>
           </tr>
@@ -69,6 +111,13 @@
             <td class="px-3 py-2 truncate" :title="sourceText(task)">{{ sourceText(task) }}</td>
             <td class="px-3 py-2 truncate" :title="fullDestPath(task)">{{ destinationText(task) }}</td>
             <td class="px-3 py-2 capitalize">{{ formatFrequency(task.schedule?.repeatFrequency) }}</td>
+            <td class="px-3 py-2">
+              <span class="inline-flex items-center gap-1.5 text-xs font-medium px-2 py-0.5 rounded-full"
+                :class="taskStatusClass(task)">
+                <span class="w-1.5 h-1.5 rounded-full" :class="taskStatusDotClass(task)" />
+                {{ taskStatusLabel(task) }}
+              </span>
+            </td>
             <td class="px-3 py-2" :title="formatDateTime(getLastRunAt(task))">{{ formatDateTime(getLastRunAt(task)) }}
             </td>
             <td class="px-3 py-2"
@@ -198,13 +247,26 @@ import CredentialsModal from "../../components/CredentialsModal.vue";
 import { formatFrequency } from "./utils";
 import { SimpleCalendar } from "../../components/calendar";
 import { thisOsInjectionKey } from '../../keys/injection-keys';
-import { ArrowPathIcon, PlusIcon, CalendarIcon } from '@heroicons/vue/24/outline';
+import { ArrowPathIcon, PlusIcon, CalendarIcon, PlayIcon, EyeIcon as EyeIcon24, PencilSquareIcon, DocumentTextIcon, TrashIcon } from '@heroicons/vue/24/outline';
 import { EyeIcon, EyeSlashIcon } from '@heroicons/vue/20/solid';
 import { CircleStackIcon } from '@heroicons/vue/24/outline';
 import { useRouter } from 'vue-router';
 
+const props = defineProps<{
+  selectedCount: number;
+  isRunningNow: boolean;
+  runningTaskIds: string[];
+}>();
+
 const router = useRouter();
-const emit = defineEmits<{ (event: 'backUpTaskSelected', tasks: BackUpTask[]): void }>();
+const emit = defineEmits<{
+  (event: 'backUpTaskSelected', tasks: BackUpTask[]): void;
+  (event: 'run'): void;
+  (event: 'view'): void;
+  (event: 'edit'): void;
+  (event: 'viewLog'): void;
+  (event: 'delete'): void;
+}>();
 
 const backUpTasks = ref<BackUpTask[]>([]);
 const selectedBackUps = ref<BackUpTask[]>([]);
@@ -219,7 +281,7 @@ let resolveCalendarPromise: ((value: boolean) => void) | null = null;
 
 // --- Resizable columns ---
 const tableRef = ref<HTMLTableElement | null>(null);
-const colWidths = ref<number[]>([40, 160, 120, 200, 200, 100, 180, 180]);
+const colWidths = ref<number[]>([40, 140, 100, 160, 160, 90, 100, 150, 150]);
 let resizingCol = -1;
 let resizeStartX = 0;
 let resizeStartW = 0;
@@ -339,6 +401,56 @@ function getNextBackupDate(startDate: Date, repeatFrequency: string): Date {
     }
   }
   return nextDate;
+}
+
+// ── Task status helpers ─────────────────────────────────────────────────────
+// Track UUIDs that the backend reported as "still running" (backup_start without backup_end)
+const eventRunningUuids = ref<string[]>([]);
+// Track last known event status per UUID
+const lastEventStatus = ref<Record<string, string>>({});
+
+function taskStatus(task: BackUpTask): 'running' | 'failed' | 'online' | 'offline' | 'idle' {
+  // Check if currently running (from props OR event log detection)
+  if (props.runningTaskIds.includes(task.uuid) || eventRunningUuids.value.includes(task.uuid)) {
+    return 'running';
+  }
+  // Check last event log status
+  const evStatus = lastEventStatus.value[task.uuid];
+  if (evStatus === 'failure') return 'failed';
+  // Check SMB connectivity status
+  if (task.status === 'online') return 'online';
+  if (task.status?.startsWith('offline') || task.status === 'missing_folder') return 'offline';
+  return 'idle';
+}
+
+function taskStatusLabel(task: BackUpTask): string {
+  switch (taskStatus(task)) {
+    case 'running': return 'Running';
+    case 'failed': return 'Failed';
+    case 'online': return 'Online';
+    case 'offline': return 'Offline';
+    default: return 'Idle';
+  }
+}
+
+function taskStatusClass(task: BackUpTask): string {
+  switch (taskStatus(task)) {
+    case 'running': return 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300';
+    case 'failed': return 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300';
+    case 'online': return 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300';
+    case 'offline': return 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300';
+    default: return 'bg-neutral-100 text-neutral-500 dark:bg-neutral-800 dark:text-neutral-400';
+  }
+}
+
+function taskStatusDotClass(task: BackUpTask): string {
+  switch (taskStatus(task)) {
+    case 'running': return 'bg-blue-500 animate-pulse';
+    case 'failed': return 'bg-red-500';
+    case 'online': return 'bg-green-500';
+    case 'offline': return 'bg-yellow-500';
+    default: return 'bg-neutral-400';
+  }
 }
 
 // Exposed hooks for parent actions
@@ -515,14 +627,23 @@ onMounted(() => {
         fetchBackupEvents();
       } else if (msg.type === 'sendBackupEvents') {
         const latest: Record<string, Date> = {};
+        const statuses: Record<string, string> = {};
         for (const ev of (msg.events ?? [])) {
           if (ev?.uuid && ev?.timestamp) {
             const ts = new Date(ev.timestamp);
             if (!Number.isNaN(ts.getTime())) {
               const prev = latest[ev.uuid];
-              if (!prev || ts > prev) latest[ev.uuid] = ts;
+              if (!prev || ts > prev) {
+                latest[ev.uuid] = ts;
+                statuses[ev.uuid] = ev.status ?? '';
+              }
             }
           }
+        }
+        lastEventStatus.value = statuses;
+        // Track running tasks from event log (backup_start without backup_end)
+        if (Array.isArray(msg.runningUuids)) {
+          eventRunningUuids.value = msg.runningUuids;
         }
         // merge into tasks
         backUpTasks.value = backUpTasks.value.map(t =>
@@ -591,14 +712,19 @@ async function deleteSelectedTasks() {
 //   shortPollingUntil = Date.now() + 30000; setTimeout(() => { pollingSuspended = false; }, 8000);
 // }
 
+function getTaskName(uuid: string): string | undefined {
+  const task = backUpTasks.value.find(t => t.uuid === uuid);
+  return task ? taskDisplayName(task) : undefined;
+}
+
 // expose to parent
-defineExpose({ deleteSelectedTasks, editSelectedSchedules, runSelectedNow });
+defineExpose({ deleteSelectedTasks, editSelectedSchedules, runSelectedNow, getTaskName });
 </script>
 
 <style scoped>
 .spinner {
-  border: 4px solid rgba(0, 0, 0, 0.1);
-  border-left-color: #2c3e50;
+  border: 4px solid rgba(128, 128, 128, 0.2);
+  border-left-color: currentColor;
   border-radius: 50%;
   width: 40px;
   height: 40px;
