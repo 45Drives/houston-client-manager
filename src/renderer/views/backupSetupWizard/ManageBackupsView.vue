@@ -258,7 +258,13 @@ const favoriteServers = computed(() => {
 async function loadSavedServers() {
     savedServers.value = await window.electron?.ipcRenderer.invoke('cred:list-servers') ?? [];
 }
-onMounted(loadSavedServers);
+onMounted(async () => {
+    await loadSavedServers();
+    // Restore dropdown selection if already connected (e.g. navigating back to this view)
+    if (currentServer?.value?.ip && !selectedIp.value) {
+        selectedIp.value = currentServer.value.ip;
+    }
+});
 
 async function onSettingsSaved() {
     // Reload server list in case names/favorites changed
@@ -335,14 +341,15 @@ watch(selectedIp, async (ip) => {
     showRestoreView.value = false;
     if (!ip) return;
     const fav = savedServers.value.find(s => s.host === ip && s.favorite);
-    if (fav && settings.value?.autoConnectFavorites !== false) {
+    const alreadyConnected = currentServer?.value?.ip === ip;
+    if ((fav && settings.value?.autoConnectFavorites !== false) || alreadyConnected) {
         const saved = await window.electron?.ipcRenderer.invoke('cred:get-for', ip);
         if (saved?.username && saved?.password) {
             activeCredId.value = saved.id;
+            restoreUsername.value = saved.username;
+            restoreConnected.value = true;
             if (activeTab.value === 'remote') {
                 sendCredsToWebview(ip, saved.username, saved.password);
-                restoreUsername.value = saved.username;
-                restoreConnected.value = true;
             }
             const srv = discoveryState.servers.find(s => s.ip === ip) || null;
             if (srv) currentServer!.value = srv;

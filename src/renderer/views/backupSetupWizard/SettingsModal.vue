@@ -1,7 +1,7 @@
 <template>
     <div v-if="open" class="fixed inset-0 z-[1000] flex items-center justify-center bg-black/40"
-        @keydown.esc="close" tabindex="-1" ref="overlayRef">
-        <div class="bg-well border border-default rounded-lg shadow-xl w-full sm:w-[40rem] max-w-[calc(100vw-2rem)] max-h-[80vh] flex flex-col"
+        @keydown.esc="close" @click.self="close" tabindex="-1" ref="overlayRef">
+        <div class="bg-well border border-default rounded-lg shadow-xl w-[32rem] max-w-[calc(100vw-2rem)] max-h-[80vh] flex flex-col text-left"
             @click.stop>
             <!-- Header -->
             <div class="flex items-center justify-between px-5 py-3 border-b border-default shrink-0">

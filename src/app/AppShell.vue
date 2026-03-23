@@ -1,7 +1,7 @@
 <template>
   <div
     class="w-screen h-screen overflow-hidden flex flex-col items-center justify-center text-default bg-default text-center">
-    <header v-if="!hideHeader" class="relative flex items-center justify-center h-18 w-full py-6 bg-accent">
+    <header v-if="!hideHeader" class="relative flex items-center justify-center h-18 w-full py-6 bg-plugin-header">
       <!-- Left (logo + breadcrumb) -->
       <div id="app-header-left" class="absolute left-0 p-1 px-4 rounded-l flex items-center gap-3">
         <button @click="router.push({ name: 'dashboard' })" class="hover:opacity-80 transition-opacity" title="Go to Dashboard">
@@ -14,7 +14,7 @@
 
       <!-- Center (title) -->
       <div id="app-header-title" class="text-xl sm:text-3xl font-semibold text-center">
-         {{ headerTitle || (route.meta.title as string) || '45Drives Storage Wizard' }}
+         {{ headerTitle || (route.meta.title as string) || 'Storage Wizard' }}
       </div>
 
       <!-- Right (menu) -->

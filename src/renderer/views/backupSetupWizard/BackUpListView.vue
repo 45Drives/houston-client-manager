@@ -17,7 +17,7 @@
         <button class="btn btn-secondary btn-with-icon text-sm h-fit"
           :disabled="selectedBackUps.length < 1" @click="$emit('view')">
           <EyeIcon24 class="w-4 h-4" />
-          View
+          View/Restore Files
         </button>
 
         <button class="btn btn-secondary btn-with-icon text-sm h-fit"

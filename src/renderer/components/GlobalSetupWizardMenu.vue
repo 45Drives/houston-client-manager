@@ -74,7 +74,7 @@ const { setTheme, currentTheme } = useThemeFromAlias()
 const { openLogModal } = useLogModal()
 
 const themes = [
-    { value: 'theme-default' as const, label: 'Default', color: '#D92B2F' },
+    { value: 'theme-default' as const, label: '45Drives', color: '#D92B2F' },
     { value: 'theme-homelab' as const, label: '45Homelab', color: '#2563EB' },
     { value: 'theme-professional' as const, label: '45Pro', color: '#65A443' },
     { value: 'theme-studio' as const, label: '45Studio', color: '#6557A5' },

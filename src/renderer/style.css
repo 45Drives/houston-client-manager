@@ -264,6 +264,7 @@
   --ui-surface-texture-image: var(--ui-surface-tech-texture-image);
   --ui-surface-texture-size: var(--ui-surface-tech-texture-size);
   --ui-surface-bg: var(--ui-surface-tech-bg);
+  background-image: linear-gradient(color-mix(in srgb, var(--ui-surface-tint-light) 12%, transparent), color-mix(in srgb, var(--ui-surface-tint-light) 12%, transparent)), var(--ui-surface-texture-image);
 }
 
 .dark .ui-texture-surface--soft {
@@ -272,6 +273,7 @@
 
 .dark .ui-texture-surface--tech {
   --ui-surface-bg: var(--ui-surface-tech-bg-dark);
+  background-image: linear-gradient(color-mix(in srgb, var(--ui-surface-tint-dark) 48%, transparent), color-mix(in srgb, var(--ui-surface-tint-dark) 48%, transparent)), var(--ui-surface-texture-image);
 }
 
 /* =====================

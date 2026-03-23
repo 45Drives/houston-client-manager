@@ -18,7 +18,7 @@
           results, plug the server into a battery-backed UPS outlet, and plug the UPS into the wall.
           <!-- <CommanderToolTip
             :message="`An Uninterruptible Power Supply (UPS) keeps your server running during power outages or fluctuations. It provides temporary power to prevent unexpected shutdowns, allowing time for safe shutdown or switch to backup power — protecting data integrity and hardware.`" /> -->
-          <CommanderToolTip
+          <CommanderToolTip :width="1400"
             :message="`A UPS (Uninterruptible Power Supply) keeps your server running during power outages or surges. It gives you time to shut down safely or switch to another power source — protecting your data and hardware.
             - To use a UPS, connect the server's power cable to a battery-backed outlet on the UPS.
             - Then, plug the UPS into the wall. Some UPS models can also connect to your server via USB or Ethernet to trigger safe shutdown automatically.`" />

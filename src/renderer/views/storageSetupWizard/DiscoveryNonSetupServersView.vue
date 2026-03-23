@@ -13,75 +13,73 @@
           </p>
         </section>
 
-        <div class="rounded-lg shadow-lg border border-default bg-accent p-4">
-          <div class="grid grid-cols-1 md:grid-cols-[1fr_0.85fr] gap-3">
-            <!-- Server Selection Panel -->
-            <section class="min-w-0 p-3 border border-default rounded-xl bg-secondary">
-              <div class="text-sm tracking-wider uppercase opacity-85 font-bold mb-1">Server Selection</div>
+        <div class="grid grid-cols-2 gap-4">
+          <!-- Server Selection Panel -->
+          <section class="min-w-0 p-4 rounded-lg shadow-lg border border-default bg-accent">
+            <div class="text-sm tracking-wider uppercase opacity-85 font-bold mb-2">Server Selection</div>
 
-              <div class="flex flex-col text-left">
-                <span class="mb-1 text-sm font-semibold opacity-90">Select a server</span>
-                <select v-model="selectedServerIp" :disabled="isInstalling || manualIp !== ''"
-                  class="h-[2.9rem] text-default rounded-lg px-4 flex-1 border border-default w-full input-textlike">
-                  <option value="" disabled>— Choose a detected server —</option>
-                  <option v-for="srv in discoveryState.servers" :key="srv.ip" :value="srv.ip">
-                    {{ srv.name }} ({{ srv.ip }})
-                  </option>
-                </select>
-              </div>
+            <div class="flex flex-col text-left">
+              <span class="mb-1 text-sm font-semibold opacity-90">Select a server</span>
+              <select v-model="selectedServerIp" :disabled="isInstalling || manualIp !== ''"
+                class="h-[2.9rem] text-default rounded-lg px-4 flex-1 border border-default w-full input-textlike">
+                <option value="" disabled>— Choose a detected server —</option>
+                <option v-for="srv in discoveryState.servers" :key="srv.ip" :value="srv.ip">
+                  {{ srv.name }} ({{ srv.ip }})
+                </option>
+              </select>
+            </div>
 
-              <div class="text-center text-xs tracking-widest uppercase opacity-70 leading-none min-h-[1rem] mt-2">OR</div>
+            <div class="text-center text-xs tracking-widest uppercase opacity-70 leading-none min-h-[1rem] mt-2">OR</div>
 
-              <div class="flex flex-col text-left">
-                <span class="mb-1 text-sm font-semibold opacity-90">Connect manually via IP</span>
-                <input v-model="manualIp" type="text" placeholder="192.168.1.123" :disabled="isInstalling"
-                  class="h-[2.9rem] text-default input-textlike border px-4 rounded-lg text-lg w-full" />
-              </div>
+            <div class="flex flex-col text-left">
+              <span class="mb-1 text-sm font-semibold opacity-90">Connect manually via IP</span>
+              <input v-model="manualIp" type="text" placeholder="192.168.1.123" :disabled="isInstalling"
+                class="h-[2.9rem] text-default input-textlike border px-4 rounded-lg text-lg w-full" />
+            </div>
 
-              <div class="flex items-center gap-2 mt-3">
-                <button type="button" @click="onRescanServers" :disabled="isInstalling"
-                  class="btn btn-primary px-4 py-1 text-sm whitespace-nowrap">
-                  Rescan Servers
-                </button>
-                <a href="#" @click.prevent="onRestartSetup" class="text-sm text-blue-400 hover:underline ml-2">
-                  Start Over
-                </a>
-              </div>
-            </section>
+            <div class="flex items-center gap-2 mt-3">
+              <button type="button" @click="onRescanServers" :disabled="isInstalling"
+                class="btn btn-primary px-4 py-1 text-sm whitespace-nowrap">
+                Rescan Servers
+              </button>
+              <a href="#" @click.prevent="onRestartSetup" class="text-sm text-blue-400 hover:underline ml-2">
+                Start Over
+              </a>
+            </div>
+          </section>
 
-            <!-- Authentication Panel -->
-            <section class="min-w-0 p-3 border border-default rounded-xl bg-secondary">
-              <div class="text-sm tracking-wider uppercase opacity-85 font-bold mb-1">Authentication</div>
+          <!-- Authentication Panel -->
+          <section class="min-w-0 p-4 rounded-lg shadow-lg border border-default bg-accent">
+            <div class="text-sm tracking-wider uppercase opacity-85 font-bold mb-2">Authentication</div>
 
-              <label class="flex flex-col text-left">
-                <span class="mb-1 text-sm font-semibold opacity-90">Username</span>
-                <input v-model="username" type="text" placeholder="root" :disabled="isInstalling"
+            <label class="flex flex-col text-left">
+              <span class="mb-1 text-sm font-semibold opacity-90">Username</span>
+              <input v-model="username" type="text" placeholder="root" :disabled="isInstalling"
+                class="h-[2.9rem] text-default input-textlike px-4 py-2 rounded-lg text-lg w-full border" />
+            </label>
+
+            <div class="invisible text-center text-xs tracking-widest uppercase opacity-70 leading-none min-h-[1rem] mt-2" aria-hidden="true">&nbsp;</div>
+
+            <label class="flex flex-col text-left">
+              <span class="mb-1 text-sm font-semibold opacity-90">Password</span>
+              <div class="w-full relative">
+                <input v-model="password" v-enter-next :type="showPassword ? 'text' : 'password'"
+                  :disabled="isInstalling" placeholder="••••••••"
                   class="h-[2.9rem] text-default input-textlike px-4 py-2 rounded-lg text-lg w-full border" />
-              </label>
+                <button type="button" @click="togglePassword" :disabled="isInstalling"
+                  class="absolute right-3 top-1/2 transform -translate-y-1/2 text-muted">
+                  <EyeIcon v-if="!showPassword" class="w-5 h-5" />
+                  <EyeSlashIcon v-else class="w-5 h-5" />
+                </button>
+              </div>
+            </label>
 
-              <div class="invisible text-center text-xs tracking-widest uppercase opacity-70 leading-none min-h-[1rem] mt-2" aria-hidden="true">&nbsp;</div>
-
-              <label class="flex flex-col text-left">
-                <span class="mb-1 text-sm font-semibold opacity-90">Password</span>
-                <div class="w-full relative">
-                  <input v-model="password" v-enter-next :type="showPassword ? 'text' : 'password'"
-                    :disabled="isInstalling" placeholder="••••••••"
-                    class="h-[2.9rem] text-default input-textlike px-4 py-2 rounded-lg text-lg w-full border" />
-                  <button type="button" @click="togglePassword" :disabled="isInstalling"
-                    class="absolute right-3 top-1/2 transform -translate-y-1/2 text-muted">
-                    <EyeIcon v-if="!showPassword" class="w-5 h-5" />
-                    <EyeSlashIcon v-else class="w-5 h-5" />
-                  </button>
-                </div>
-              </label>
-
-              <p class="text-xs italic opacity-75 mt-2 text-center">
-                Credentials are used to copy a secure SSH key, install required tools
-                (<b>ZFS</b>, <b>Samba</b>, <b>Cockpit</b>, <b>45Drives Setup Module</b>), <br/>
-                and auto-login to the server's Cockpit UI.
-              </p>
-            </section>
-          </div>
+            <p class="text-xs italic opacity-75 mt-2 text-center">
+              Credentials are used to copy a secure SSH key, install required tools
+              (<b>ZFS</b>, <b>Samba</b>, <b>Cockpit</b>, <b>45Drives Setup Module</b>), <br/>
+              and auto-login to the server's Cockpit UI.
+            </p>
+          </section>
         </div>
 
         <!-- Status / Troubleshooting -->
