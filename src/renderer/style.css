@@ -222,7 +222,12 @@
    Table rows
    ===================== */
 tbody tr.row-hover:hover {
-  background-color: var(--row-hover-bg);
+  /* bg-well: neutral-200 light, neutral-900 dark */
+  background-color: rgb(229 229 229); /* neutral-200 */
+}
+
+.dark tbody tr.row-hover:hover {
+  background-color: rgb(23 23 23); /* neutral-900 */
 }
 
 tbody tr.row-selected {

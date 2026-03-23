@@ -32,7 +32,7 @@
         <!-- Main two-column content -->
         <div class="flex-1 min-h-0 flex gap-4">
             <!-- LEFT: Files in backup -->
-            <div class="w-3/5 flex flex-col min-h-0 bg-well rounded-lg border border-default overflow-hidden">
+            <div class="w-3/5 flex flex-col min-h-0 bg-accent rounded-lg border border-default overflow-hidden">
                 <!-- File panel header -->
                 <div class="px-3 py-2 border-b border-default flex items-center justify-between shrink-0">
                     <span class="text-sm font-medium text-default">
@@ -76,7 +76,7 @@
                     <div v-for="(file, index) in selectedBackup.files" :key="index"
                         class="flex items-center gap-3 px-3 py-2 border-b border-default cursor-pointer transition-colors"
                         :class="[
-                            file?.selected ? 'bg-primary/10' : 'hover:bg-accent',
+                            file?.selected ? 'bg-primary/10' : 'hover:bg-well',
                             focusedFile === file ? 'ring-1 ring-inset ring-primary' : ''
                         ]"
                         @click="onFileClick(file)">
@@ -91,7 +91,7 @@
             <!-- RIGHT: Info & restore controls -->
             <div class="w-2/5 flex flex-col min-h-0 gap-4">
                 <!-- Backup info card -->
-                <div v-if="selectedBackup" class="bg-well rounded-lg border border-default overflow-hidden shrink-0">
+                <div v-if="selectedBackup" class="bg-accent rounded-lg border border-default overflow-hidden shrink-0">
                     <div class="px-3 py-2 border-b border-default">
                         <span class="text-sm font-medium text-default">Backup Info</span>
                     </div>
@@ -135,7 +135,7 @@
                 </div>
 
                 <!-- Multi-file selection summary -->
-                <div v-if="selectedFilesCount > 1" class="bg-well rounded-lg border border-default overflow-hidden shrink-0">
+                <div v-if="selectedFilesCount > 1" class="bg-accent rounded-lg border border-default overflow-hidden shrink-0">
                     <div class="px-3 py-2 border-b border-default">
                         <span class="text-sm font-medium text-default">Selection Summary</span>
                     </div>
@@ -152,7 +152,7 @@
                 </div>
 
                 <!-- Single file details card -->
-                <div v-if="focusedFile && selectedFilesCount <= 1" class="bg-well rounded-lg border border-default overflow-hidden shrink-0">
+                <div v-if="focusedFile && selectedFilesCount <= 1" class="bg-accent rounded-lg border border-default overflow-hidden shrink-0">
                     <div class="px-3 py-2 border-b border-default">
                         <span class="text-sm font-medium text-default">File Details</span>
                     </div>

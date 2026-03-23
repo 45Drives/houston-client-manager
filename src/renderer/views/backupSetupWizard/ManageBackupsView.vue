@@ -443,6 +443,11 @@ const backupProgressHandler = (data: { taskUuid: string; percent: number | null;
         percent: data.percent,
         message: data.message ?? '',
     };
+
+    // Auto-clear completed tasks after a short delay so the user sees 100%
+    if (data.percent === 100) {
+        setTimeout(() => removeFinishedTask(data.taskUuid), 3000);
+    }
 };
 
 const actionHandler = (raw: string) => {

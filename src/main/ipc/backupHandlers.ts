@@ -382,10 +382,10 @@ export async function handleBackupMessage(message: any, ctx: IPCHandlerContext):
 
         // Navigate into the hostname/client subfolder inside the UUID directory
         // The backup structure is: {mountpoint}/{uuid}/{hostname}/{source_path}/
-        // Try to find the actual content directory by looking for the hostname folder
+        // Also contains .houston/ marker directory, so filter that out
         if (client && fs.existsSync(folderPath)) {
           try {
-            const entries = fs.readdirSync(folderPath);
+            const entries = fs.readdirSync(folderPath).filter(e => e !== '.houston');
             if (entries.length === 1 && fs.statSync(path.join(folderPath, entries[0])).isDirectory()) {
               // Single subfolder (the hostname) — descend into it, then into the client source path
               const hostDir = path.join(folderPath, entries[0]);

@@ -57,9 +57,9 @@
     </div>
 
     <!-- Table -->
-    <div v-else class="overflow-x-auto">
-      <table ref="tableRef" class="min-w-full text-sm text-left table-fixed" style="table-layout: fixed;">
-        <thead class="sticky top-0 bg-accent">
+    <div v-else class="overflow-x-auto rounded-md">
+      <table ref="tableRef" class="min-w-full text-sm text-left table-fixed  border border-default rounded-md" style="table-layout: fixed;">
+        <thead class="sticky top-0 bg-secondary">
           <tr class="border-b border-default">
             <th class="px-3 py-2 relative" :style="{ width: colWidths[0] + 'px' }">
               <input type="checkbox" class="input-checkbox" :checked="allSelected" @change="toggleSelectAll"
@@ -325,7 +325,7 @@ function toggleSelectAll() {
 
 function rowClass(task: BackUpTask) {
   return [
-    'border-b border-default cursor-pointer select-none transition-colors',
+    'border-b bg-accent border-default cursor-pointer select-none transition-colors',
     isSelected(task) ? 'row-selected' : 'row-hover'
   ];
 }
