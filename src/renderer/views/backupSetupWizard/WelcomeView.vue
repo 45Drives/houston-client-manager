@@ -1,5 +1,5 @@
 <template>
-  <CardContainer class="overflow-y-auto min-h-0">
+  <CardContainer class="overflow-y-auto min-h-0 ui-texture-surface ui-texture-surface--soft bg-transparent">
     <div class="flex flex-col h-full justify-center items-center">
       <p class="w-9/12 text-left text-2xl">
         Your data is precious—protect it with the power of backups! A backup ensures your files are safe from accidents,
@@ -40,11 +40,13 @@
     <!-- Buttons -->
     <template #footer>
       <div class="button-group-row w-full justify-between">
-        <button type="button" @click="goBack" class="btn btn-secondary w-40 h-20">
+        <button type="button" @click="goBack" class="btn btn-secondary btn-with-icon w-40 h-20">
+          <ArrowLeftIcon class="w-5 h-5" />
           Back
         </button>
-        <button type="button" @click="proceed" class="btn btn-primary w-40 h-20">
+        <button type="button" @click="proceed" class="btn btn-primary btn-with-icon w-40 h-20">
           Next
+          <ArrowRightIcon class="w-5 h-5" />
         </button>
       </div>
     </template>
@@ -56,6 +58,7 @@ import { CardContainer, useWizardSteps, useEnterToAdvance } from '@45drives/hous
 import { CommanderToolTip } from '../../components/commander'
 import { useRouter } from 'vue-router'
 import { useHeader } from '../../composables/useHeader'
+import { ArrowLeftIcon, ArrowRightIcon } from '@heroicons/vue/24/outline'
 
 useHeader('Welcome to the 45Drives Backup Wizard!')
 

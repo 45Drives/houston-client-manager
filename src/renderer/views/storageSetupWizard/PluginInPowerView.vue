@@ -1,5 +1,5 @@
 <template>
-  <CardContainer class="overflow-y-auto min-h-0">
+  <CardContainer class="overflow-y-auto min-h-0 ui-texture-surface ui-texture-surface--tech bg-transparent">
 
     <div class="flex flex-col justify-center items-center h-full">
       <div class="w-9/12 grid grid-cols-4 gap-x-6 gap-y-2 items-center">

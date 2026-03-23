@@ -1,7 +1,7 @@
 <template>
-    <div class="h-full flex flex-col items-center justify-center px-6">
-        <p class="text-lg text-muted mb-8 max-w-2xl text-center -mt-20">
-            Welcome to the 45Drives Storage Wizard. Choose an option below to get started.
+    <div class="h-full flex flex-col items-center justify-center px-6 ui-texture-surface ui-texture-surface--soft">
+        <p class="text-2xl text-default mb-8 max-w-2xl text-center -mt-20">
+            Welcome to the 45Drives Storage Wizard<br/> <span class="text-lg">Choose an option below to get started.</span>
         </p>
 
         <div class="grid grid-cols-2 gap-6 w-full max-w-4xl">

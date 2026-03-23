@@ -40,7 +40,6 @@ export class BackUpManagerMac implements BackUpManager {
 
       /* 3) parse metadata from script (if present) */
       let host = '', share = '', source = '', target = '';
-      let mirror = false;
       let smb_user = '';
 
 
@@ -54,7 +53,6 @@ export class BackUpManagerMac implements BackUpManager {
         share = grab(/#\s*TASK_SHARE="([^"]+)"/);
         source = grab(/#\s*TASK_SOURCE="([^"]+)"/);
         target = grab(/#\s*TASK_TARGET="([^"]+)"/);
-        mirror = /#\s*TASK_MIRROR="true"/i.test(txt);
 
 
         // Prefer comment tag, fall back to shell var
@@ -82,7 +80,7 @@ export class BackUpManagerMac implements BackUpManager {
         description: `Backup ${source || '(unknown)'} → ${target || '(unknown)'}`,
         name: txt ? (/#\s*TASK_NAME="([^"]*)"/i.exec(txt)?.[1] || undefined) : undefined,
         schedule,
-        source, target, host, share, mirror,
+        source, target, host, share,
         status: 'checking',
         smb_user,
       });
@@ -437,7 +435,6 @@ EOF_${uuid}
     const content = fs.existsSync(scriptPath) ? fs.readFileSync(scriptPath, 'utf8') : '';
     const hostMatch = content.match(/# TASK_HOST="(.+)"/);
     const shareMatch = content.match(/# TASK_SHARE="(.+)"/);
-    const mirror = content.includes('--delete');
     return {
       uuid,
       description: `Backup ${src} → ${tgt}`,
@@ -446,7 +443,6 @@ EOF_${uuid}
       target: tgt || '',
       host: hostMatch ? hostMatch[1] : '',
       share: shareMatch ? shareMatch[1] : '',
-      mirror,
       status: 'checking'
     };
   }
@@ -538,7 +534,7 @@ EOF_${uuid}
     const dir = `${mountPoint}/${rel}`;
     const svc = `houston-smb-${task.host}-${task.share}-${username}`;
     const target = getSmbTargetFromSmbTarget(task.target);
-    const rsyncCmd = `COPYFILE_DISABLE=1 ${getRsync()} -a --info=progress2 --no-inc-recursive${task.mirror ? ' --delete' : ''} ${shellQuote(`${task.source}/`)} ${shellQuote(`${dir}/`)}`;
+    const rsyncCmd = `COPYFILE_DISABLE=1 ${getRsync()} -a --compress-level=1 --info=progress2 --no-inc-recursive ${shellQuote(`${task.source}/`)} ${shellQuote(`${dir}/`)}`;
 
     return (`
 #!/bin/bash
@@ -562,7 +558,6 @@ SMB_USER='${username}'
 # TASK_SHARE="${task.share}"
 # TASK_SOURCE="${task.source}"
 # TASK_TARGET="${getSmbTargetFromSmbTarget(task.target)}"
-# TASK_MIRROR="${task.mirror}"
 # TASK_SMB_USER="${username}"
 # TASK_NAME="${(task.name || '').replace(/"/g, '')}"
 

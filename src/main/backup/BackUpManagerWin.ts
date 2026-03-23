@@ -26,7 +26,6 @@ interface TaskData {
   source?: string;
   target?: string;
   description?: string;
-  mirror?: boolean;
   schedule?: string;
   uuid?: string;
   SMB_HOST?: string;
@@ -151,7 +150,6 @@ export class BackUpManagerWin implements BackUpManager {
               schedule: trigger!,
               source: actionDetails.source!,
               target: actionDetails.target!,
-              mirror: actionDetails.mirror === true,
               host: actionDetails.SMB_HOST,
               share: actionDetails.SMB_SHARE,
               status: "checking",
@@ -532,7 +530,6 @@ setlocal enabledelayedexpansion
 :: name        = ${task.name || ''}
 :: source      = ${task.source}
 :: target      = ${rawDst}
-:: mirror      = ${task.mirror}
 :: START_DATE  = ${task.schedule.startDate.toISOString()}
 :: SMB_HOST    = ${task.host}
 :: SMB_SHARE   = ${task.share}
@@ -619,7 +616,7 @@ set "JSON_SOURCE=!SOURCE:\=\\!"
 :: --- copy payload ----------------------------------------------------------
 mkdir "!DEST!" 2>nul
 echo [INFO] Running robocopy ...
-robocopy "!SOURCE!" "!DEST!" /E /Z /FFT /R:2 /W:5 /V /NJH /bytes
+robocopy "!SOURCE!" "!DEST!" /E /Z /FFT /R:2 /W:5 /MT:8 /V /NJH /bytes
 set "RC=!errorlevel!"
 
 :_finish

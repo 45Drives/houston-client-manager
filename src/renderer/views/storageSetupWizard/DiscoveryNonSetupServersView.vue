@@ -1,5 +1,5 @@
 <template>
-  <CardContainer class="overflow-y-auto min-h-0 w-full">
+  <CardContainer class="overflow-y-auto min-h-0 w-full ui-texture-surface ui-texture-surface--tech bg-transparent">
     <form @submit.prevent="proceedToNextStep" class="flex flex-col justify-center items-center h-full w-full">
       <div class="grid gap-4 w-10/12 max-w-4xl">
 

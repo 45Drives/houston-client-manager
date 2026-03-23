@@ -1,46 +1,47 @@
 <template>
-  <div class="flex flex-col gap-3 p-3">
+  <div class="flex flex-col gap-3 p-3 bg-well">
     <!-- Toolbar: actions + refresh -->
-    <div class="flex flex-wrap items-center gap-2">
-      <!-- Action buttons (visible when tasks selected) -->
-      <template v-if="selectedBackUps.length > 0">
+    <div class="flex flex-wrap items-center gap-2 min-h-9">
+      <!-- Action buttons (space reserved so the table does not jump) -->
+      <div class="flex flex-wrap items-center gap-2"
+        :class="selectedBackUps.length > 0 ? '' : 'invisible pointer-events-none'">
         <span class="text-sm text-muted mr-1">{{ selectedBackUps.length }} selected</span>
 
-        <button class="btn btn-primary text-sm h-fit flex items-center gap-1.5"
-          :disabled="isRunningNow" @click="$emit('run')">
+        <button class="btn btn-primary btn-with-icon text-sm h-fit"
+          :disabled="isRunningNow || selectedBackUps.length < 1" @click="$emit('run')">
           <PlayIcon class="w-4 h-4" />
           <template v-if="!isRunningNow">Run Now</template>
           <template v-else>Running…</template>
         </button>
 
-        <button class="btn btn-secondary text-sm h-fit flex items-center gap-1.5"
+        <button class="btn btn-secondary btn-with-icon text-sm h-fit"
           :disabled="selectedBackUps.length < 1" @click="$emit('view')">
           <EyeIcon24 class="w-4 h-4" />
           View
         </button>
 
-        <button class="btn btn-secondary text-sm h-fit flex items-center gap-1.5"
+        <button class="btn btn-secondary btn-with-icon text-sm h-fit"
           :disabled="selectedBackUps.length !== 1" @click="$emit('edit')">
           <PencilSquareIcon class="w-4 h-4" />
           Edit
         </button>
 
-        <button class="btn btn-secondary text-sm h-fit flex items-center gap-1.5"
+        <button class="btn btn-secondary btn-with-icon text-sm h-fit"
           :disabled="selectedBackUps.length < 1" @click="$emit('viewLog')">
           <DocumentTextIcon class="w-4 h-4" />
           Logs
         </button>
 
-        <button class="btn btn-danger text-sm h-fit flex items-center gap-1.5"
-          @click="$emit('delete')">
+        <button class="btn btn-danger btn-with-icon text-sm h-fit"
+          :disabled="selectedBackUps.length < 1" @click="$emit('delete')">
           <TrashIcon class="w-4 h-4" />
           Delete
         </button>
-      </template>
+      </div>
 
       <div class="flex-1" />
 
-      <button class="btn btn-secondary text-sm h-8 flex items-center gap-1.5" @click.stop="fetchBackupTasks">
+      <button class="btn btn-secondary btn-with-icon text-sm h-8" @click.stop="fetchBackupTasks">
         <ArrowPathIcon class="w-4 h-4" />
         Refresh
       </button>
@@ -58,7 +59,7 @@
 
     <!-- Table -->
     <div v-else class="overflow-x-auto rounded-md">
-      <table ref="tableRef" class="min-w-full text-sm text-left table-fixed  border border-default rounded-md" style="table-layout: fixed;">
+      <table ref="tableRef" class="min-w-full text-sm text-left table-fixed border border-default rounded-md" style="table-layout: fixed;">
         <thead class="sticky top-0 bg-secondary">
           <tr class="border-b border-default">
             <th class="px-3 py-2 relative" :style="{ width: colWidths[0] + 'px' }">
@@ -148,7 +149,10 @@
             <label class="w-[140px] font-semibold text-sm shrink-0">Source Folder</label>
             <input :value="editTask.source" disabled
               class="bg-well flex-1 rounded-lg px-3 py-2 border border-default text-muted" />
-            <button class="btn btn-secondary text-sm h-9 px-3" @click="changeEditSource">Browse…</button>
+            <button class="btn btn-secondary btn-with-icon text-sm h-9 px-3" @click="changeEditSource">
+              <FolderOpenIcon class="w-4 h-4" />
+              Browse…
+            </button>
           </div>
 
           <!-- Schedule mode toggle -->
@@ -182,7 +186,7 @@
           <!-- Custom schedule -->
           <div v-if="editScheduleMode === 'custom'" class="flex items-center gap-3">
             <label class="w-[140px] font-semibold text-sm shrink-0">Custom Schedule</label>
-            <button class="btn btn-secondary text-sm h-9 flex items-center gap-1.5 px-3"
+            <button class="btn btn-secondary btn-with-icon text-sm h-9 px-3"
               @click="openEditCalendar">
               <CalendarIcon class="w-4 h-4" />
               Set Schedule
@@ -220,8 +224,14 @@
 
         <!-- Buttons -->
         <div class="flex justify-end gap-2 mt-6">
-          <button class="btn btn-secondary w-fit" @click="cancelEdit">Cancel</button>
-          <button class="btn btn-primary w-fit" @click="saveEdit">Save Changes</button>
+          <button class="btn btn-secondary btn-with-icon w-fit" @click="cancelEdit">
+            <XMarkIcon class="w-4 h-4" />
+            Cancel
+          </button>
+          <button class="btn btn-primary btn-with-icon w-fit" @click="saveEdit">
+            <CheckIcon class="w-4 h-4" />
+            Save Changes
+          </button>
         </div>
       </div>
     </Modal>
@@ -247,7 +257,7 @@ import CredentialsModal from "../../components/CredentialsModal.vue";
 import { formatFrequency } from "./utils";
 import { SimpleCalendar } from "../../components/calendar";
 import { thisOsInjectionKey } from '../../keys/injection-keys';
-import { ArrowPathIcon, PlusIcon, CalendarIcon, PlayIcon, EyeIcon as EyeIcon24, PencilSquareIcon, DocumentTextIcon, TrashIcon } from '@heroicons/vue/24/outline';
+import { ArrowPathIcon, CalendarIcon, PlayIcon, EyeIcon as EyeIcon24, PencilSquareIcon, DocumentTextIcon, TrashIcon, FolderOpenIcon, XMarkIcon, CheckIcon } from '@heroicons/vue/24/outline';
 import { EyeIcon, EyeSlashIcon } from '@heroicons/vue/20/solid';
 import { CircleStackIcon } from '@heroicons/vue/24/outline';
 import { useRouter } from 'vue-router';
@@ -325,8 +335,8 @@ function toggleSelectAll() {
 
 function rowClass(task: BackUpTask) {
   return [
-    'border-b bg-accent border-default cursor-pointer select-none transition-colors',
-    isSelected(task) ? 'row-selected' : 'row-hover'
+    'border-b border-default cursor-pointer select-none transition-colors row-hover',
+    isSelected(task) ? 'row-selected' : 'bg-default'
   ];
 }
 

@@ -1,9 +1,9 @@
 <template>
-    <div class="h-full flex flex-col min-h-0 overflow-hidden p-4">
+    <div class="h-full flex flex-col min-h-0 overflow-hidden p-4 ui-texture-surface ui-texture-surface--soft">
         <!-- Tab bar + actions header -->
         <div class="flex flex-wrap items-center gap-3 mb-4 shrink-0">
             <!-- Left-aligned group -->
-            <button class="btn btn-secondary text-sm h-fit flex items-center gap-1.5 shrink-0" @click="router.push({ name: 'dashboard' })">
+            <button class="btn btn-secondary btn-with-icon text-sm h-fit shrink-0" @click="router.push({ name: 'dashboard' })">
                 <ArrowLeftIcon class="w-4 h-4" />
                 Dashboard
             </button>
@@ -25,21 +25,36 @@
 
             <!-- Remote: server dropdown + action buttons (left-aligned) -->
             <template v-if="activeTab === 'remote'">
-                <select v-model="selectedIp" :title="selectedIp"
-                    class="input-textlike border border-default rounded-lg px-3 py-1.5 text-sm min-w-0 max-w-full sm:max-w-56 truncate">
-                    <option value="">Select Server…</option>
-                    <optgroup v-if="favoriteServers.length" label="Favorites">
-                        <option v-for="opt in favoriteServers" :key="'fav-' + opt.ip" :value="opt.ip">{{ opt.label }}</option>
-                    </optgroup>
-                    <optgroup label="Discovered">
-                        <option v-for="opt in serversForDropdown" :key="opt.ip" :value="opt.ip">{{ opt.label }}</option>
-                    </optgroup>
-                </select>
-                <button class="btn btn-primary text-sm h-fit" :disabled="!selectedIp" @click="openLogin">Connect</button>
-                <button v-if="currentServer" class="btn btn-secondary text-sm h-fit"
-                    @click="showRestoreView ? disconnectRestore() : cockpitRef?.logoutFromCurrentServer()">Log out</button>
-                <button v-if="activeCredId && currentServer" class="btn btn-danger text-sm h-fit"
-                    @click="forgetActive">Forget</button>
+                <div class="flex flex-wrap items-center gap-3 min-h-9">
+                    <select v-model="selectedIp" :title="selectedIp"
+                        class="input-textlike border border-default rounded-lg px-3 py-1.5 text-sm min-w-0 max-w-full sm:max-w-56 truncate">
+                        <option value="">Select Server…</option>
+                        <optgroup v-if="favoriteServers.length" label="Favorites">
+                            <option v-for="opt in favoriteServers" :key="'fav-' + opt.ip" :value="opt.ip">{{ opt.label }}</option>
+                        </optgroup>
+                        <optgroup label="Discovered">
+                            <option v-for="opt in serversForDropdown" :key="opt.ip" :value="opt.ip">{{ opt.label }}</option>
+                        </optgroup>
+                    </select>
+                    <button class="btn btn-primary btn-with-icon text-sm h-fit" :disabled="!selectedIp" @click="openLogin">
+                        <LinkIcon class="w-4 h-4" />
+                        Connect
+                    </button>
+                    <button class="btn btn-secondary btn-with-icon text-sm h-fit"
+                        :class="currentServer ? '' : 'invisible pointer-events-none'"
+                        :disabled="!currentServer"
+                        @click="showRestoreView ? disconnectRestore() : cockpitRef?.logoutFromCurrentServer()">
+                        <ArrowRightOnRectangleIcon class="w-4 h-4" />
+                        Disconnect
+                    </button>
+                    <button class="btn btn-danger btn-with-icon text-sm h-fit"
+                        :class="activeCredId && currentServer ? '' : 'invisible pointer-events-none'"
+                        :disabled="!(activeCredId && currentServer)"
+                        @click="forgetActive">
+                        <TrashIcon class="w-4 h-4" />
+                        Forget
+                    </button>
+                </div>
             </template>
 
             <!-- Spacer pushes right-side items to far right -->
@@ -47,7 +62,7 @@
 
             <!-- Right-aligned group -->
             <template v-if="activeTab === 'remote'">
-                <button class="btn text-sm h-fit flex items-center gap-1.5"
+                <button class="btn btn-with-icon text-sm h-fit"
                     :class="showRestoreView ? 'btn-secondary' : 'btn-primary'" :disabled="!restoreConnected"
                     @click="showRestoreView = !showRestoreView">
                     <template v-if="showRestoreView">
@@ -61,7 +76,7 @@
                 </button>
             </template>
             <template v-else>
-                <button class="btn btn-primary text-sm h-fit flex items-center gap-1.5" @click="newBackupTask">
+                <button class="btn btn-primary btn-with-icon text-sm h-fit" @click="newBackupTask">
                     <PlusIcon class="w-4 h-fit" />
                     New Backup
                 </button>
@@ -125,8 +140,8 @@
 
             <!-- Scheduler webview (default remote view) -->
             <CockpitWebview v-else-if="currentServer && !showRestoreView" :key="currentServer.ip" ref="cockpitRef"
-                routePath="/scheduler-test" hash="simple" wrapperClass="h-full rounded-lg"
-                heightClass="h-full" :openDevtoolsInDev="true" class="p-2"/>
+                routePath="/scheduler-test" hash="simple" wrapperClass="h-full overflow-hidden"
+                heightClass="h-full" :openDevtoolsInDev="true" />
 
             <div v-else class="h-full flex flex-col items-center justify-center text-muted gap-4">
                 <GlobeAltIcon class="w-12 h-12 opacity-30" />
@@ -159,7 +174,8 @@ import { DiscoveryState, type Server as ServerType } from '../../types';
 import { useSettings } from '../../composables/useSettings';
 import {
     ComputerDesktopIcon, GlobeAltIcon, PlusIcon,
-    ArrowLeftIcon, ArrowDownTrayIcon, Cog6ToothIcon, XMarkIcon
+    ArrowLeftIcon, ArrowDownTrayIcon, Cog6ToothIcon, XMarkIcon,
+    LinkIcon, ArrowRightOnRectangleIcon, TrashIcon
 } from '@heroicons/vue/24/outline';
 
 useHeader('Backup Manager');

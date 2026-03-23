@@ -42,8 +42,6 @@ export class BackUpManagerLin implements BackUpManager {
         const startDate = startDateMatch ? new Date(startDateMatch[1]) : new Date();
         const descMatch = content.match(/^DESC='([^']*)'/m);
         const nameMatch = content.match(/^BACKUP_NAME='([^']*)'/m);
-        const mirror = content.includes("--delete");
-
         if (!uuidMatch || !sourceMatch || !targetMatch || !smbHostMatch || !smbShareMatch || !smbUserMatch) continue;
 
         const cronLines = execSync("crontab -l 2>/dev/null || true").toString().split("\n");
@@ -56,7 +54,6 @@ export class BackUpManagerLin implements BackUpManager {
           target: targetMatch[1],
           host: smbHostMatch[1],
           share: smbShareMatch[1],
-          mirror,
           description: descMatch ? descMatch[1] : "Unnamed",
           name: nameMatch ? nameMatch[1] : undefined,
           schedule: parsedSchedule ?? { repeatFrequency: "day", startDate },
@@ -514,7 +511,7 @@ printf '{"install_id":"%s","smb_user":"%s","source":"%s","user":"%s","host":"%s"
 
 mkdir -p "$MOUNT_DIR/$TARGET"
 echo "[INFO] Running rsync..."
-rsync -a --info=progress2 --no-inc-recursive${task.mirror ? ' --delete' : ''} "$SOURCE" "$MOUNT_DIR/$TARGET"
+rsync -az --compress-level=1 --info=progress2 --no-inc-recursive "$SOURCE" "$MOUNT_DIR/$TARGET"
 RSYNC_STATUS=$?
 
 if [ $RSYNC_STATUS -ne 0 ]; then
@@ -563,7 +560,6 @@ echo "===== [$(date -Iseconds)] Backup task completed ====="
 
     return {
       schedule,
-      mirror: scriptContent.includes("--delete"),
       source: sourceMatch[1].replace(/\/+$/, ""), // remove trailing slash
       target: reconstructFullTarget(scriptPath),
       description,

@@ -58,7 +58,7 @@ describe('TaskData index signature', () => {
       description: actionDetails.description!,
       source: actionDetails.source!,
       target: actionDetails.target!,
-      mirror: actionDetails.mirror === true,
+      mirror: false,
       host: actionDetails.SMB_HOST,
       share: actionDetails.SMB_SHARE,
       smb_user: actionDetails.SMB_USER,
