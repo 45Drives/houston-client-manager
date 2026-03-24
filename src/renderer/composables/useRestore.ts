@@ -90,7 +90,7 @@ export function useRestore(serverIp: () => string, username: () => string) {
 
   const currentPath = ref<string[]>([]);
   const currentRemote = ref<string>('');
-  const sourceType = ref<SourceType>('cloud');
+  const sourceType = ref<SourceType>('s2s');
 
   // ── Derived state ──────────────────────────────────────────────────────
 
@@ -106,6 +106,19 @@ export function useRestore(serverIp: () => string, username: () => string) {
   const pathString = computed(() =>
     '/' + currentPath.value.join('/')
   );
+
+  /**
+   * The original local path on this server that the data was backed up from.
+   * For S2S tasks: task.localPath + navigation subpath.
+   * For cloud: not available (null).
+   */
+  const originalLocalPath = computed<string | null>(() => {
+    if (sourceType.value === 's2s' && selectedS2STask.value) {
+      const base = selectedS2STask.value.localPath.replace(/\/$/, '');
+      return base + pathString.value;
+    }
+    return null;
+  });
 
   // ── Progress listener ──────────────────────────────────────────────────
 
@@ -289,7 +302,6 @@ export function useRestore(serverIp: () => string, username: () => string) {
   async function startRestore(opts: {
     destPath: string;
     target: 'server' | 'client';
-    smbSharePath?: string;
   }) {
     restoring.value = true;
     error.value = null;
@@ -300,7 +312,29 @@ export function useRestore(serverIp: () => string, username: () => string) {
       : sourceType.value === 's2s' && selectedS2STask.value
         ? `s2s:${selectedS2STask.value.remoteUser}@${selectedS2STask.value.remoteHost}`
         : 'server';
-    const sourcePath = pathString.value;
+
+    // For S2S, build the full remote source path (base + navigation)
+    let sourcePath = pathString.value;
+    if (sourceType.value === 's2s' && selectedS2STask.value) {
+      const basePath = selectedS2STask.value.direction === 'push'
+        ? selectedS2STask.value.remotePath
+        : selectedS2STask.value.localPath;
+      sourcePath = basePath.replace(/\/$/, '') + pathString.value;
+    }
+
+    // Pass S2S task metadata so the backend uses rsync over SSH (not rclone)
+    const s2sTask = sourceType.value === 's2s' && selectedS2STask.value
+      ? {
+          remoteHost: selectedS2STask.value.remoteHost,
+          remotePort: selectedS2STask.value.remotePort,
+          remoteUser: selectedS2STask.value.remoteUser,
+        }
+      : undefined;
+
+    // Collect selected file names (empty = restore everything in current dir)
+    const selected = selectedFiles.value.map(f =>
+      'Name' in f ? f.Name : f.name
+    );
 
     try {
       const result = await window.electron.ipcRenderer.invoke('restore:start', {
@@ -310,7 +344,8 @@ export function useRestore(serverIp: () => string, username: () => string) {
         sourcePath,
         destPath: opts.destPath,
         target: opts.target,
-        smbSharePath: opts.smbSharePath,
+        s2sTask,
+        selectedFiles: selected,
       });
       if (!result.success) {
         error.value = result.error ?? 'Restore failed';
@@ -407,6 +442,64 @@ export function useRestore(serverIp: () => string, username: () => string) {
     files.value.forEach(f => (f.selected = false));
   }
 
+  // ── Destination path helpers ────────────────────────────────────────────
+
+  const destSuggestions = ref<string[]>([]);
+  let _suggestTimer: ReturnType<typeof setTimeout> | null = null;
+
+  function fetchDirSuggestions(inputPath: string) {
+    if (_suggestTimer) clearTimeout(_suggestTimer);
+    _suggestTimer = setTimeout(async () => {
+      if (!inputPath || inputPath.length < 2 || !inputPath.startsWith('/')) {
+        destSuggestions.value = [];
+        return;
+      }
+
+      const lastSlash = inputPath.lastIndexOf('/');
+      const parentDir = lastSlash > 0 ? inputPath.substring(0, lastSlash) : '/';
+      const prefix = inputPath.substring(lastSlash + 1).toLowerCase();
+
+      try {
+        const entries: ServerFileEntry[] = await window.electron.ipcRenderer.invoke('restore:browse-server', {
+          serverIp: serverIp(),
+          username: username(),
+          serverPath: parentDir,
+        });
+
+        destSuggestions.value = entries
+          .filter(e => e.isDir && (prefix === '' || e.name.toLowerCase().startsWith(prefix)))
+          .map(e => `${parentDir === '/' ? '' : parentDir}/${e.name}`);
+      } catch {
+        destSuggestions.value = [];
+      }
+    }, 300);
+  }
+
+  async function createDirectory(dirPath: string): Promise<{ success: boolean; error?: string }> {
+    try {
+      return await window.electron.ipcRenderer.invoke('restore:mkdir', {
+        serverIp: serverIp(),
+        username: username(),
+        dirPath,
+      });
+    } catch (e: any) {
+      return { success: false, error: e?.message ?? 'Failed to create directory' };
+    }
+  }
+
+  async function createZfsDataset(datasetName: string, mountpoint?: string): Promise<{ success: boolean; error?: string }> {
+    try {
+      return await window.electron.ipcRenderer.invoke('restore:create-zfs-dataset', {
+        serverIp: serverIp(),
+        username: username(),
+        datasetName,
+        mountpoint,
+      });
+    } catch (e: any) {
+      return { success: false, error: e?.message ?? 'Failed to create ZFS dataset' };
+    }
+  }
+
   return {
     // State
     remotes,
@@ -428,6 +521,7 @@ export function useRestore(serverIp: () => string, username: () => string) {
     breadcrumb,
     selectedFiles,
     pathString,
+    originalLocalPath,
 
     // Cloud
     loadRemotes,
@@ -459,5 +553,11 @@ export function useRestore(serverIp: () => string, username: () => string) {
     toggleFileSelection,
     selectAll,
     deselectAll,
+
+    // Destination helpers
+    destSuggestions,
+    fetchDirSuggestions,
+    createDirectory,
+    createZfsDataset,
   };
 }

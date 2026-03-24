@@ -1,10 +1,14 @@
 import { NodeSSH, SSHExecCommandResponse } from 'node-ssh';
 import path from 'path';
 import fs from 'fs';
+import os from 'os';
+import { spawn, execSync } from 'child_process';
 import { checkSSH } from './setupSsh';
 import { getAgentSocket, getKeyDir, ensureKeyPair } from './crossPlatformSsh';
 import { assertSafeHost, assertSafeUsername, shellQuote } from './security';
 import { loadSettings } from './settingsStore';
+import { getMountSmbScript } from './utils';
+import { getCredentialManager } from './credentialManager';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -86,6 +90,31 @@ export interface SnapshotRollbackResult {
   success: boolean;
   dataset: string;
   snapshot: string;
+  error?: string;
+}
+
+export interface SnapshotCreateResult {
+  success: boolean;
+  snapshotName?: string;
+  error?: string;
+}
+
+export interface SnapshotDestroyResult {
+  success: boolean;
+  error?: string;
+}
+
+export interface SnapshotFileEntry {
+  name: string;
+  path: string;
+  size: number;
+  isDir: boolean;
+  modTime: number;
+}
+
+export interface SnapshotRestoreResult {
+  success: boolean;
+  filesRestored?: number;
   error?: string;
 }
 
@@ -404,7 +433,107 @@ print(json.dumps(entries))
   }
 }
 
+// ── Progress parsing helpers ─────────────────────────────────────────────────
+
+/**
+ * Parse rsync --info=progress2 output lines.
+ * Example: "  1,234,567  45%   12.34MB/s    0:00:03"
+ */
+function parseRsyncProgress(
+  chunk: string,
+  opId: string,
+  onProgress?: RestoreProgressCallback,
+) {
+  // rsync --info=progress2 outputs lines like:
+  //   1,048,576 100%   10.00MB/s    0:00:00 (xfr#1, to-chk=2/5)
+  const match = chunk.match(/[\d,]+\s+(\d+)%\s+[\d.]+\w+\/s\s+[\d:]+/);
+  if (match) {
+    const pct = parseInt(match[1], 10);
+    onProgress?.({
+      operationId: opId,
+      phase: 'downloading',
+      bytesProcessed: pct,
+      bytesTotal: 100,
+      message: `${pct}% complete`,
+    });
+  }
+}
+
+/**
+ * Parse rclone --progress output.
+ * Example: "Transferred:   1.234 GBytes / 2.345 GBytes, 53%, 10.000 MBytes/s"
+ */
+function parseRcloneProgress(
+  chunk: string,
+  opId: string,
+  onProgress?: RestoreProgressCallback,
+) {
+  const match = chunk.match(/Transferred:\s+[\d.]+\s*\w+\s*\/\s*[\d.]+\s*\w+,\s*(\d+)%/);
+  if (match) {
+    const pct = parseInt(match[1], 10);
+    onProgress?.({
+      operationId: opId,
+      phase: 'downloading',
+      bytesProcessed: pct,
+      bytesTotal: 100,
+      message: `${pct}% transferred`,
+    });
+  }
+  // Also parse per-file lines: "* filename: 45% done, ..."
+  const fileMatch = chunk.match(/\*\s+(.+?):\s+\d+%/);
+  if (fileMatch) {
+    onProgress?.({
+      operationId: opId,
+      phase: 'downloading',
+      currentFile: fileMatch[1],
+    });
+  }
+}
+
+/**
+ * Build rsync file filter args for selected files.
+ * Returns an rsync filter string or empty string if no selection (restore all).
+ */
+function buildRsyncFileFilter(selectedFiles?: string[]): string {
+  if (!selectedFiles || selectedFiles.length === 0) return '';
+  // Include only selected files, exclude everything else
+  const includes = selectedFiles.map(f => `--include=${shellQuote(f)}`).join(' ');
+  return `${includes} --exclude='*'`;
+}
+
+/**
+ * Build rclone filter flags for selected files.
+ * Uses --filter instead of --include/--exclude to avoid parse order issues.
+ */
+function buildRcloneFilterFlags(selectedFiles?: string[]): string {
+  if (!selectedFiles || selectedFiles.length === 0) return '';
+  const filters = selectedFiles.map(f => `--filter '+ ${f}'`).join(' ');
+  return `${filters} --filter '- *'`;
+}
+
 // ── Restore operations ───────────────────────────────────────────────────────
+
+/**
+ * Find the best staging directory on the server — a ZFS pool mountpoint with
+ * the most available space.  Falls back to /tmp if no pools are found.
+ *
+ * Returns the full staging path (e.g. /tank/.houston-restore-staging/<opId>).
+ */
+async function pickStagingDir(ssh: NodeSSH, operationId: string): Promise<string> {
+  // Try to find a ZFS pool with the most free space
+  const result = await ssh.execCommand(
+    `zfs list -H -o mountpoint,avail -t filesystem -d 0 2>/dev/null | sort -t$'\\t' -k2 -h | tail -1`,
+  );
+  const line = result.stdout.trim();
+  if (line) {
+    const mountpoint = line.split(/\s+/)[0];
+    if (mountpoint && mountpoint.startsWith('/')) {
+      return `${mountpoint}/.houston-restore-staging/${operationId}`;
+    }
+  }
+  // Fallback to /tmp
+  return `/tmp/houston-restore-staging/${operationId}`;
+}
 
 /**
  * Restore files from an rclone remote or server path to the server.
@@ -417,6 +546,7 @@ export async function restoreToServer(
   destPath: string,
   onProgress?: RestoreProgressCallback,
   operationId?: string,
+  selectedFiles?: string[],
 ): Promise<RestoreResult> {
   const opId = operationId ?? crypto.randomUUID();
   const ssh = await connectSSH(serverIp, username);
@@ -427,20 +557,29 @@ export async function restoreToServer(
     // Ensure destination exists
     await ssh.execCommand(`mkdir -p ${shellQuote(destPath)}`);
 
-    let result: SSHExecCommandResponse;
+    let cmd: string;
 
     if (source === 'server') {
-      // Server-local restore via rsync
-      result = await ssh.execCommand(
-        `rsync -a --info=progress2 ${shellQuote(sourcePath)} ${shellQuote(destPath)} 2>&1`
-      );
+      const filter = buildRsyncFileFilter(selectedFiles);
+      cmd = `rsync -a --info=progress2 ${filter} ${shellQuote(sourcePath + '/')} ${shellQuote(destPath + '/')} 2>&1`;
     } else {
-      // rclone copy from remote
-      const fullSource = `${source}${sourcePath}`;
-      result = await ssh.execCommand(
-        `rclone copy --progress ${shellQuote(fullSource)} ${shellQuote(destPath)} 2>&1`
-      );
+      // Ensure sourcePath has at least a root slash for rclone
+      const safePath = sourcePath === '/' ? '' : sourcePath;
+      const fullSource = `${source}${safePath}`;
+      const filter = buildRcloneFilterFlags(selectedFiles);
+      cmd = `rclone copy --progress ${filter} ${shellQuote(fullSource)} ${shellQuote(destPath)} 2>&1`;
     }
+
+    const result = await ssh.execCommand(cmd, {
+      onStdout: (chunk) => {
+        const text = chunk.toString();
+        if (source === 'server') {
+          parseRsyncProgress(text, opId, onProgress);
+        } else {
+          parseRcloneProgress(text, opId, onProgress);
+        }
+      },
+    });
 
     if (result.code !== 0 && result.code !== null) {
       const error = (result.stderr || result.stdout || '').trim();
@@ -460,40 +599,116 @@ export async function restoreToServer(
 }
 
 /**
- * Stage files from an rclone remote or server path to an SMB share,
- * so the client can pull them via the existing SMB restore pipeline.
+ * Stage files from an rclone remote or server path to a temp dir on the server,
+ * then pull them to the client via rsync (Mac/Linux) or robocopy (Windows).
  */
-export async function stageForClientRestore(
+export async function restoreToClient(
   serverIp: string,
   username: string,
   source: string,
   sourcePath: string,
-  smbSharePath: string,
+  localDestPath: string,
   onProgress?: RestoreProgressCallback,
   operationId?: string,
+  selectedFiles?: string[],
 ): Promise<RestoreResult> {
   const opId = operationId ?? crypto.randomUUID();
   const ssh = await connectSSH(serverIp, username);
 
+  let stagingDir = '';
   try {
-    // Create a staging directory on the SMB share
-    const stagingDir = `${smbSharePath}/.houston-restore-staging/${opId}`;
+    stagingDir = await pickStagingDir(ssh, opId);
+
+    // Stage 1: Copy files to server staging dir
     await ssh.execCommand(`mkdir -p ${shellQuote(stagingDir)}`);
+    onProgress?.({ operationId: opId, phase: 'staging', message: `Staging files on server...` });
 
-    onProgress?.({ operationId: opId, phase: 'staging', message: `Staging files to ${stagingDir}...` });
-
-    let result: SSHExecCommandResponse;
-
+    let cmd: string;
     if (source === 'server') {
-      result = await ssh.execCommand(
-        `rsync -a --info=progress2 ${shellQuote(sourcePath)} ${shellQuote(stagingDir)} 2>&1`
-      );
+      const filter = buildRsyncFileFilter(selectedFiles);
+      cmd = `rsync -a --info=progress2 ${filter} ${shellQuote(sourcePath + '/')} ${shellQuote(stagingDir + '/')} 2>&1`;
     } else {
-      const fullSource = `${source}${sourcePath}`;
-      result = await ssh.execCommand(
-        `rclone copy --progress ${shellQuote(fullSource)} ${shellQuote(stagingDir)} 2>&1`
-      );
+      const safePath = sourcePath === '/' ? '' : sourcePath;
+      const fullSource = `${source}${safePath}`;
+      const filter = buildRcloneFilterFlags(selectedFiles);
+      cmd = `rclone copy --progress ${filter} ${shellQuote(fullSource)} ${shellQuote(stagingDir)} 2>&1`;
     }
+
+    const stageResult = await ssh.execCommand(cmd, {
+      onStdout: (chunk) => {
+        const text = chunk.toString();
+        if (source === 'server') {
+          parseRsyncProgress(text, opId, onProgress);
+        } else {
+          parseRcloneProgress(text, opId, onProgress);
+        }
+      },
+    });
+
+    if (stageResult.code !== 0 && stageResult.code !== null) {
+      const error = (stageResult.stderr || stageResult.stdout || '').trim();
+      onProgress?.({ operationId: opId, phase: 'error', error });
+      return { success: false, error };
+    }
+
+    // Stage 2: Pull from server to client
+    onProgress?.({ operationId: opId, phase: 'downloading', message: `Downloading to ${localDestPath}...` });
+    const dlResult = await downloadFromServer(serverIp, username, stagingDir, localDestPath, opId, onProgress);
+    if (!dlResult.success) return dlResult;
+
+    onProgress?.({ operationId: opId, phase: 'complete', message: 'Restore complete' });
+    return { success: true };
+  } catch (err: unknown) {
+    const error = err instanceof Error ? err.message : String(err);
+    onProgress?.({ operationId: opId, phase: 'error', error });
+    return { success: false, error };
+  } finally {
+    // Cleanup staging dir
+    if (stagingDir) await ssh.execCommand(`rm -rf ${shellQuote(stagingDir)}`).catch(() => {});
+    ssh.dispose();
+  }
+}
+
+// ── S2S restore operations ───────────────────────────────────────────────────
+
+/**
+ * Restore files from an S2S (server-to-server) remote via rsync over SSH hop.
+ * Connects to the houston server, then uses rsync with SSH to pull from the remote host.
+ */
+export async function restoreFromS2S(
+  serverIp: string,
+  username: string,
+  remoteHost: string,
+  remotePort: number,
+  remoteUser: string,
+  sourcePath: string,
+  destPath: string,
+  onProgress?: RestoreProgressCallback,
+  operationId?: string,
+  selectedFiles?: string[],
+): Promise<RestoreResult> {
+  const opId = operationId ?? crypto.randomUUID();
+  const safeRemoteHost = assertSafeHost(remoteHost);
+  const safeRemoteUser = assertSafeUsername(remoteUser);
+  const ssh = await connectSSH(serverIp, username);
+
+  try {
+    onProgress?.({ operationId: opId, phase: 'downloading', message: `Restoring from ${safeRemoteUser}@${safeRemoteHost}:${sourcePath} to ${destPath}...` });
+
+    // Ensure destination exists
+    await ssh.execCommand(`mkdir -p ${shellQuote(destPath)}`);
+
+    // rsync from remote host via SSH hop
+    const sshCmd = `ssh -p ${String(remotePort)} -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new`;
+    const sourceSpec = `${safeRemoteUser}@${safeRemoteHost}:${sourcePath}${sourcePath.endsWith('/') ? '' : '/'}`;
+    const filter = buildRsyncFileFilter(selectedFiles);
+
+    const result = await ssh.execCommand(
+      `rsync -a --info=progress2 ${filter} -e ${shellQuote(sshCmd)} ${shellQuote(sourceSpec)} ${shellQuote(destPath + '/')} 2>&1`,
+      {
+        onStdout: (chunk) => parseRsyncProgress(chunk.toString(), opId, onProgress),
+      },
+    );
 
     if (result.code !== 0 && result.code !== null) {
       const error = (result.stderr || result.stdout || '').trim();
@@ -501,12 +716,368 @@ export async function stageForClientRestore(
       return { success: false, error };
     }
 
-    onProgress?.({ operationId: opId, phase: 'complete', message: 'Files staged for client download' });
-    return { success: true, stagedPath: stagingDir };
+    onProgress?.({ operationId: opId, phase: 'complete', message: 'Restore complete' });
+    return { success: true };
   } catch (err: unknown) {
     const error = err instanceof Error ? err.message : String(err);
     onProgress?.({ operationId: opId, phase: 'error', error });
     return { success: false, error };
+  } finally {
+    ssh.dispose();
+  }
+}
+
+/**
+ * Restore S2S files to the client: stage on server via SSH hop, then pull to client.
+ */
+export async function restoreS2SToClient(
+  serverIp: string,
+  username: string,
+  remoteHost: string,
+  remotePort: number,
+  remoteUser: string,
+  sourcePath: string,
+  localDestPath: string,
+  onProgress?: RestoreProgressCallback,
+  operationId?: string,
+  selectedFiles?: string[],
+): Promise<RestoreResult> {
+  const opId = operationId ?? crypto.randomUUID();
+  const safeRemoteHost = assertSafeHost(remoteHost);
+  const safeRemoteUser = assertSafeUsername(remoteUser);
+  const ssh = await connectSSH(serverIp, username);
+
+  let stagingDir = '';
+  try {
+    stagingDir = await pickStagingDir(ssh, opId);
+
+    // Stage 1: rsync from remote host to server staging dir
+    await ssh.execCommand(`mkdir -p ${shellQuote(stagingDir)}`);
+    onProgress?.({ operationId: opId, phase: 'staging', message: `Staging files from ${safeRemoteUser}@${safeRemoteHost}:${sourcePath}...` });
+
+    const sshCmd = `ssh -p ${String(remotePort)} -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new`;
+    const sourceSpec = `${safeRemoteUser}@${safeRemoteHost}:${sourcePath}${sourcePath.endsWith('/') ? '' : '/'}`;
+    const filter = buildRsyncFileFilter(selectedFiles);
+
+    const stageResult = await ssh.execCommand(
+      `rsync -a --info=progress2 ${filter} -e ${shellQuote(sshCmd)} ${shellQuote(sourceSpec)} ${shellQuote(stagingDir + '/')} 2>&1`,
+      {
+        onStdout: (chunk) => parseRsyncProgress(chunk.toString(), opId, onProgress),
+      },
+    );
+
+    if (stageResult.code !== 0 && stageResult.code !== null) {
+      const error = (stageResult.stderr || stageResult.stdout || '').trim();
+      onProgress?.({ operationId: opId, phase: 'error', error });
+      return { success: false, error };
+    }
+
+    // Stage 2: Pull from server to client
+    onProgress?.({ operationId: opId, phase: 'downloading', message: `Downloading to ${localDestPath}...` });
+    const dlResult = await downloadFromServer(serverIp, username, stagingDir, localDestPath, opId, onProgress);
+    if (!dlResult.success) return dlResult;
+
+    onProgress?.({ operationId: opId, phase: 'complete', message: 'Restore complete' });
+    return { success: true };
+  } catch (err: unknown) {
+    const error = err instanceof Error ? err.message : String(err);
+    onProgress?.({ operationId: opId, phase: 'error', error });
+    return { success: false, error };
+  } finally {
+    // Cleanup staging dir
+    if (stagingDir) await ssh.execCommand(`rm -rf ${shellQuote(stagingDir)}`).catch(() => {});
+    ssh.dispose();
+  }
+}
+
+// ── Client download helper ───────────────────────────────────────────────────
+
+/**
+ * Download files from a server path to a local directory.
+ * Uses rsync over SSH on Mac/Linux, robocopy over UNC on Windows.
+ */
+async function downloadFromServer(
+  serverIp: string,
+  username: string,
+  serverPath: string,
+  localDestPath: string,
+  operationId: string,
+  onProgress?: RestoreProgressCallback,
+): Promise<RestoreResult> {
+  const safeHost = assertSafeHost(serverIp);
+  const safeUser = assertSafeUsername(username);
+
+  // Ensure local destination exists
+  await fs.promises.mkdir(localDestPath, { recursive: true });
+
+  if (process.platform === 'win32') {
+    return downloadViaRobocopy(safeHost, safeUser, serverPath, localDestPath, operationId, onProgress);
+  } else {
+    return downloadViaRsync(safeHost, safeUser, serverPath, localDestPath, operationId, onProgress);
+  }
+}
+
+/**
+ * rsync pull: local rsync -> server via SSH key
+ */
+function downloadViaRsync(
+  host: string,
+  username: string,
+  serverPath: string,
+  localDestPath: string,
+  operationId: string,
+  onProgress?: RestoreProgressCallback,
+): Promise<RestoreResult> {
+  return new Promise((resolve) => {
+    const keyDir = getKeyDir();
+    const privateKeyPath = path.join(keyDir, 'id_rsa');
+    const sshCmd = `ssh -i ${privateKeyPath} -o StrictHostKeyChecking=accept-new -o BatchMode=yes`;
+    const source = `${username}@${host}:${serverPath}/`;
+    const dest = localDestPath.endsWith('/') ? localDestPath : `${localDestPath}/`;
+
+    const proc = spawn('rsync', [
+      '-a', '--info=progress2',
+      '-e', sshCmd,
+      source,
+      dest,
+    ]);
+
+    proc.stdout.on('data', (chunk: Buffer) => {
+      parseRsyncProgress(chunk.toString(), operationId, onProgress);
+    });
+
+    let stderr = '';
+    proc.stderr.on('data', (chunk: Buffer) => {
+      stderr += chunk.toString();
+    });
+
+    proc.on('close', (code) => {
+      if (code === 0) {
+        resolve({ success: true });
+      } else {
+        resolve({ success: false, error: stderr.trim() || `rsync exited with code ${code}` });
+      }
+    });
+
+    proc.on('error', (err) => {
+      resolve({ success: false, error: `Failed to start rsync: ${err.message}` });
+    });
+  });
+}
+
+/**
+ * Windows download: mount SMB share via net use, robocopy from staged path, then unmount.
+ *
+ * Flow:
+ *   1. Look up SMB credentials from the credential vault for this server
+ *   2. Use existing mount_smb.bat to map a drive letter
+ *   3. robocopy from mapped_drive:\staging_path → localDestPath
+ *   4. net use /delete to unmount
+ */
+function downloadViaRobocopy(
+  host: string,
+  _username: string,
+  serverPath: string,
+  localDestPath: string,
+  operationId: string,
+  onProgress?: RestoreProgressCallback,
+): Promise<RestoreResult> {
+  return new Promise(async (resolve) => {
+    let driveLetter: string | null = null;
+
+    try {
+      // Find an SMB credential for this server
+      const creds = getCredentialManager().listForHost(host);
+      if (creds.length === 0) {
+        resolve({ success: false, error: `No SMB credentials found for ${host}. Set up a backup task first to store credentials.` });
+        return;
+      }
+
+      // Use the first share's credentials
+      const credEntry = creds[0];
+      const credential = getCredentialManager().findByHostAndShare(host, credEntry.share);
+      if (!credential) {
+        resolve({ success: false, error: `Could not decrypt SMB credentials for ${host}\\${credEntry.share}` });
+        return;
+      }
+
+      onProgress?.({ operationId, phase: 'downloading', message: `Mounting \\\\${host}\\${credential.share}...` });
+
+      // Write temp credential file
+      const tmpCredFile = path.join(os.tmpdir(), `houston-restore-${operationId}.cred`);
+      fs.writeFileSync(tmpCredFile, `username=${credential.username}\npassword=${credential.password}\n`, { mode: 0o600 });
+
+      try {
+        // Run mount_smb.bat to get a drive letter
+        const mountBat = getMountSmbScript();
+        const mountOutput = execSync(
+          `"${mountBat}" "${host}" "${credential.share}" "${tmpCredFile}"`,
+          { encoding: 'utf8', timeout: 30000 },
+        );
+
+        // Parse JSON response for DriveLetter
+        const driveMatch = mountOutput.match(/"DriveLetter"\s*:\s*"([A-Z])"/i);
+        if (!driveMatch) {
+          resolve({ success: false, error: `Failed to mount SMB share: ${mountOutput.trim()}` });
+          return;
+        }
+        driveLetter = driveMatch[1];
+
+        // The staging dir on the server is at serverPath (e.g. /tmp/houston-restore-staging/uuid)
+        // On the SMB share it appears as drive_letter:\tmp\houston-restore-staging\uuid
+        // But the staging dir is NOT on the SMB share — it's on /tmp.
+        // We need to first move files from /tmp staging to the SMB share, then robocopy locally.
+
+        // Actually: the server staging dir is at /tmp, which isn't on the SMB share.
+        // We need the server to move files from /tmp to the SMB share first.
+        // Let's rsync server-side: /tmp/staging → SMB share staging area, then robocopy from mounted share.
+
+        const ssh = await connectSSH(host, credential.username);
+        const smbMountPath = credential.share; // The share name on the server
+        try {
+          // Find where the SMB share is mounted on the server
+          const mountResult = await ssh.execCommand(
+            `net usershare info ${shellQuote(smbMountPath)} 2>/dev/null | head -2 | tail -1 || smbstatus --shares 2>/dev/null | grep -i ${shellQuote(smbMountPath)} | awk '{print $2}'`,
+          );
+
+          // Alternative: try to find it via testparm
+          const sharePathResult = await ssh.execCommand(
+            `testparm -s 2>/dev/null | grep -A5 "\\[${smbMountPath}\\]" | grep "path" | awk '{print $3}'`,
+          );
+
+          let shareMountPath = sharePathResult.stdout.trim();
+          if (!shareMountPath) {
+            // Try net usershare
+            const netResult = await ssh.execCommand(
+              `net usershare info ${shellQuote(smbMountPath)} 2>/dev/null | grep "^path=" | cut -d= -f2`,
+            );
+            shareMountPath = netResult.stdout.trim();
+          }
+
+          if (!shareMountPath) {
+            resolve({ success: false, error: `Could not determine mount path for SMB share "${smbMountPath}" on ${host}` });
+            return;
+          }
+
+          // Copy from /tmp staging to the SMB share on the server
+          const smbStagingDir = `${shareMountPath}/.houston-restore-staging/${operationId}`;
+          await ssh.execCommand(`mkdir -p ${shellQuote(smbStagingDir)}`);
+          const copyResult = await ssh.execCommand(
+            `rsync -a ${shellQuote(serverPath + '/')} ${shellQuote(smbStagingDir + '/')} 2>&1`,
+          );
+          if (copyResult.code !== 0 && copyResult.code !== null) {
+            resolve({ success: false, error: `Failed to copy to SMB staging: ${(copyResult.stderr || copyResult.stdout || '').trim()}` });
+            return;
+          }
+
+          // Now robocopy from the mapped drive to local dest
+          onProgress?.({ operationId, phase: 'downloading', message: `Copying files to ${localDestPath}...` });
+          const rcSource = `${driveLetter}:\\.houston-restore-staging\\${operationId}`;
+
+          const rc = await new Promise<RestoreResult>((rcResolve) => {
+            const proc = spawn('robocopy', [
+              rcSource, localDestPath,
+              '/E', '/Z', '/FFT', '/R:2', '/W:5', '/MT:8', '/NJH', '/bytes',
+            ], { shell: true });
+
+            let output = '';
+            proc.stdout.on('data', (chunk: Buffer) => {
+              const text = chunk.toString();
+              output += text;
+              // Parse robocopy progress (bytes count lines)
+              const pctMatch = text.match(/(\d+(?:\.\d+)?)%/);
+              if (pctMatch) {
+                onProgress?.({ operationId, phase: 'downloading', message: `${pctMatch[1]}% copied` });
+              }
+            });
+
+            let stderr = '';
+            proc.stderr.on('data', (chunk: Buffer) => { stderr += chunk.toString(); });
+
+            proc.on('close', (code) => {
+              // robocopy: 0-7 = success, 8+ = error
+              if (code !== null && code < 8) {
+                rcResolve({ success: true });
+              } else {
+                rcResolve({ success: false, error: stderr.trim() || `robocopy exited with code ${code}` });
+              }
+            });
+
+            proc.on('error', (err) => {
+              rcResolve({ success: false, error: `Failed to start robocopy: ${err.message}` });
+            });
+          });
+
+          // Clean up server-side SMB staging
+          await ssh.execCommand(`rm -rf ${shellQuote(smbStagingDir)}`).catch(() => {});
+
+          resolve(rc);
+        } finally {
+          ssh.dispose();
+        }
+      } finally {
+        // Clean up temp cred file
+        try { fs.unlinkSync(tmpCredFile); } catch {}
+        // Unmount drive
+        if (driveLetter) {
+          try { execSync(`net use ${driveLetter}: /delete /y`, { timeout: 10000 }); } catch {}
+        }
+      }
+    } catch (err: unknown) {
+      const error = err instanceof Error ? err.message : String(err);
+      resolve({ success: false, error: `Windows download failed: ${error}` });
+    }
+  });
+}
+
+// ── Directory / dataset creation ─────────────────────────────────────────────
+
+/**
+ * Create a directory on the server.
+ */
+export async function createServerDirectory(
+  serverIp: string,
+  username: string,
+  dirPath: string,
+): Promise<{ success: boolean; error?: string }> {
+  const ssh = await connectSSH(serverIp, username);
+  try {
+    const result = await ssh.execCommand(`mkdir -p ${shellQuote(dirPath)} 2>&1`);
+    if (result.code !== 0 && result.code !== null) {
+      return { success: false, error: (result.stderr || result.stdout || '').trim() };
+    }
+    return { success: true };
+  } finally {
+    ssh.dispose();
+  }
+}
+
+/**
+ * Create a ZFS dataset on the server.
+ */
+export async function createZfsDatasetOnServer(
+  serverIp: string,
+  username: string,
+  datasetName: string,
+  mountpoint?: string,
+): Promise<{ success: boolean; error?: string }> {
+  const ssh = await connectSSH(serverIp, username);
+  try {
+    if (!/^[A-Za-z0-9_./-]+$/.test(datasetName)) {
+      return { success: false, error: 'Dataset name contains invalid characters' };
+    }
+
+    let cmd = `sudo zfs create`;
+    if (mountpoint) {
+      cmd += ` -o mountpoint=${shellQuote(mountpoint)}`;
+    }
+    cmd += ` ${shellQuote(datasetName)} 2>&1`;
+
+    const result = await ssh.execCommand(cmd);
+    if (result.code !== 0 && result.code !== null) {
+      return { success: false, error: (result.stderr || result.stdout || '').trim() };
+    }
+    return { success: true };
   } finally {
     ssh.dispose();
   }
@@ -603,6 +1174,219 @@ export async function rollbackSnapshot(
     }
 
     return { success: true, dataset, snapshot: snapName };
+  } finally {
+    ssh.dispose();
+  }
+}
+
+/**
+ * Create a new ZFS snapshot.
+ * Safety: checks for active ZFS send/receive operations on the dataset
+ * to avoid interrupting in-progress replications.
+ */
+export async function createZfsSnapshot(
+  serverIp: string,
+  username: string,
+  dataset: string,
+  snapName: string,
+  recursive: boolean = false,
+): Promise<SnapshotCreateResult> {
+  const ssh = await connectSSH(serverIp, username);
+  try {
+    // Validate snapshot name: alphanumeric, dots, underscores, hyphens, colons only
+    if (!/^[A-Za-z0-9._:-]+$/.test(snapName)) {
+      return { success: false, error: 'Snapshot name may only contain alphanumeric characters, dots, underscores, hyphens, and colons' };
+    }
+    if (snapName.length > 255) {
+      return { success: false, error: 'Snapshot name is too long (max 255 characters)' };
+    }
+
+    // Safety: check for active ZFS send/receive on this dataset
+    const busyCheck = await ssh.execCommand(
+      `zfs list -H -o name,receive_resume_token ${shellQuote(dataset)} 2>/dev/null`
+    );
+    if (busyCheck.code === 0) {
+      const token = busyCheck.stdout.split('\t')[1]?.trim();
+      if (token && token !== '-') {
+        return { success: false, error: 'Dataset has an active receive-resume token — a replication may be in progress. Please wait and try again.' };
+      }
+    }
+
+    // Also check if zfs send is running against this dataset
+    const sendCheck = await ssh.execCommand(
+      `ps aux 2>/dev/null | grep -E 'zfs (send|recv)' | grep -v grep | grep ${shellQuote(dataset)} || true`
+    );
+    if (sendCheck.stdout.trim()) {
+      return { success: false, error: 'A ZFS send/receive operation is currently running on this dataset. Please wait for it to complete before creating a new snapshot.' };
+    }
+
+    const fullName = `${dataset}@${snapName}`;
+    const flags = recursive ? '-r' : '';
+    const result = await ssh.execCommand(
+      `sudo zfs snapshot ${flags} ${shellQuote(fullName)} 2>&1`
+    );
+
+    if (result.code !== 0 && result.code !== null) {
+      const error = (result.stderr || result.stdout || '').trim();
+      return { success: false, error };
+    }
+
+    return { success: true, snapshotName: fullName };
+  } finally {
+    ssh.dispose();
+  }
+}
+
+/**
+ * Destroy a ZFS snapshot.
+ */
+export async function destroyZfsSnapshot(
+  serverIp: string,
+  username: string,
+  snapshotName: string,
+  recursive: boolean = false,
+): Promise<SnapshotDestroyResult> {
+  const ssh = await connectSSH(serverIp, username);
+  try {
+    const atIdx = snapshotName.indexOf('@');
+    if (atIdx === -1) {
+      return { success: false, error: 'Invalid snapshot name — expected dataset@snapname format' };
+    }
+
+    const flags = recursive ? '-r' : '';
+    const result = await ssh.execCommand(
+      `sudo zfs destroy ${flags} ${shellQuote(snapshotName)} 2>&1`
+    );
+
+    if (result.code !== 0 && result.code !== null) {
+      const error = (result.stderr || result.stdout || '').trim();
+      return { success: false, error };
+    }
+
+    return { success: true };
+  } finally {
+    ssh.dispose();
+  }
+}
+
+/**
+ * Browse files inside a ZFS snapshot via its .zfs/snapshot/<name>/ path.
+ */
+export async function browseSnapshotFiles(
+  serverIp: string,
+  username: string,
+  dataset: string,
+  snapName: string,
+  subPath: string = '/',
+): Promise<SnapshotFileEntry[]> {
+  const ssh = await connectSSH(serverIp, username);
+  try {
+    // Get the mountpoint for this dataset
+    const mpResult = await ssh.execCommand(
+      `zfs get -H -o value mountpoint ${shellQuote(dataset)} 2>/dev/null`
+    );
+    const mountpoint = assertCommandSuccess(mpResult, 'get mountpoint').trim();
+    if (!mountpoint || mountpoint === 'none' || mountpoint === 'legacy') {
+      throw new Error(`Dataset ${dataset} has no usable mountpoint (${mountpoint})`);
+    }
+
+    // Build path: <mountpoint>/.zfs/snapshot/<snapName>/<subPath>
+    const safeSub = subPath.replace(/\.\./g, '').replace(/^\/+/, '');
+    const browsePath = `${mountpoint}/.zfs/snapshot/${snapName}${safeSub ? '/' + safeSub : ''}`;
+
+    const cmd = `python3 -c "
+import os, json, sys
+p = sys.argv[1]
+entries = []
+try:
+    for name in sorted(os.listdir(p)):
+        full = os.path.join(p, name)
+        try:
+            s = os.stat(full)
+            entries.append({
+                'name': name,
+                'path': full,
+                'size': s.st_size,
+                'isDir': os.path.isdir(full),
+                'modTime': s.st_mtime,
+            })
+        except OSError:
+            pass
+except OSError as e:
+    print(json.dumps({'error': str(e)}))
+    sys.exit(1)
+print(json.dumps(entries))
+" ${shellQuote(browsePath)}`;
+
+    const result = await ssh.execCommand(cmd);
+    const stdout = assertCommandSuccess(result, `browse snapshot ${browsePath}`);
+    const parsed = JSON.parse(stdout);
+    if (parsed.error) throw new Error(parsed.error);
+    return parsed;
+  } finally {
+    ssh.dispose();
+  }
+}
+
+/**
+ * Restore specific files from a ZFS snapshot to a target path on the server.
+ */
+export async function restoreFromSnapshot(
+  serverIp: string,
+  username: string,
+  dataset: string,
+  snapName: string,
+  filePaths: string[],
+  destPath: string,
+): Promise<SnapshotRestoreResult> {
+  const ssh = await connectSSH(serverIp, username);
+  try {
+    if (filePaths.length === 0) {
+      return { success: false, error: 'No files selected for restore' };
+    }
+
+    // Get the mountpoint for this dataset
+    const mpResult = await ssh.execCommand(
+      `zfs get -H -o value mountpoint ${shellQuote(dataset)} 2>/dev/null`
+    );
+    const mountpoint = assertCommandSuccess(mpResult, 'get mountpoint').trim();
+    if (!mountpoint || mountpoint === 'none' || mountpoint === 'legacy') {
+      throw new Error(`Dataset ${dataset} has no usable mountpoint (${mountpoint})`);
+    }
+
+    const snapRoot = `${mountpoint}/.zfs/snapshot/${snapName}`;
+
+    // Ensure destination exists
+    await ssh.execCommand(`sudo mkdir -p ${shellQuote(destPath)}`);
+
+    // Use rsync to copy selected files, preserving relative paths
+    // Build a file list for rsync --files-from
+    const relPaths = filePaths.map(fp => {
+      // Convert absolute snapshot paths to relative paths from snapRoot
+      if (fp.startsWith(snapRoot)) {
+        return fp.substring(snapRoot.length).replace(/^\//, '');
+      }
+      return fp.replace(/^\//, '');
+    });
+
+    // Write file list to a temp file on the server
+    const tmpFile = `/tmp/houston-snap-restore-${Date.now()}`;
+    const fileListContent = relPaths.join('\n');
+    await ssh.execCommand(`cat > ${shellQuote(tmpFile)} << 'HOUSTON_EOF'\n${fileListContent}\nHOUSTON_EOF`);
+
+    const result = await ssh.execCommand(
+      `sudo rsync -a --files-from=${shellQuote(tmpFile)} ${shellQuote(snapRoot + '/')} ${shellQuote(destPath + '/')} 2>&1`
+    );
+
+    // Clean up temp file
+    await ssh.execCommand(`rm -f ${shellQuote(tmpFile)}`);
+
+    if (result.code !== 0 && result.code !== null) {
+      const error = (result.stderr || result.stdout || '').trim();
+      return { success: false, error };
+    }
+
+    return { success: true, filesRestored: relPaths.length };
   } finally {
     ssh.dispose();
   }

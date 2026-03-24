@@ -11,7 +11,7 @@
             <div class="inline-flex rounded-lg border border-default overflow-hidden shrink-0">
                 <button class="px-3 sm:px-5 py-1.5 sm:py-2 text-sm font-medium flex items-center gap-2 transition-colors"
                     :class="activeTab === 'local' ? 'bg-accent text-default shadow-[inset_0_-2px_0_var(--btn-primary-bg)]' : 'bg-well hover:bg-accent text-muted'"
-                    @click="activeTab = 'local'; showRestoreView = false">
+                    @click="activeTab = 'local'; remoteView = 'backups'">
                     <ComputerDesktopIcon class="w-4 h-4" />
                     Local Backups
                 </button>
@@ -63,15 +63,27 @@
             <!-- Right-aligned group -->
             <template v-if="activeTab === 'remote'">
                 <button class="btn btn-with-icon text-sm h-fit"
-                    :class="showRestoreView ? 'btn-secondary' : 'btn-primary'" :disabled="!restoreConnected"
-                    @click="showRestoreView = !showRestoreView">
-                    <template v-if="showRestoreView">
+                    :class="remoteView === 'restore' ? 'btn-secondary' : 'btn-primary'" :disabled="!restoreConnected"
+                    @click="remoteView = remoteView === 'restore' ? 'backups' : 'restore'">
+                    <template v-if="remoteView === 'restore'">
                         <ArrowLeftIcon class="w-4 h-fit" />
                         Return to Backups
                     </template>
                     <template v-else>
                         <ArrowDownTrayIcon class="w-4 h-fit" />
                         Restore
+                    </template>
+                </button>
+                <button class="btn btn-with-icon text-sm h-fit"
+                    :class="remoteView === 'snapshots' ? 'btn-secondary' : 'btn-primary'" :disabled="!restoreConnected"
+                    @click="remoteView = remoteView === 'snapshots' ? 'backups' : 'snapshots'">
+                    <template v-if="remoteView === 'snapshots'">
+                        <ArrowLeftIcon class="w-4 h-fit" />
+                        Return to Backups
+                    </template>
+                    <template v-else>
+                        <CameraIcon class="w-4 h-fit" />
+                        Snapshots
                     </template>
                 </button>
             </template>
@@ -135,11 +147,15 @@
         <!-- REMOTE tab content -->
         <div v-else-if="activeTab === 'remote'" class="flex-1 min-h-0 bg-well rounded-lg border border-default overflow-hidden">
             <!-- Restore view (toggled via Restore button) -->
-            <RestoreBrowser v-if="showRestoreView && restoreConnected && restoreUsername"
+            <RestoreBrowser v-if="remoteView === 'restore' && restoreConnected && restoreUsername"
+                :serverIp="selectedIp" :username="restoreUsername" />
+
+            <!-- Snapshot manager (toggled via Snapshots button) -->
+            <SnapshotManager v-else-if="remoteView === 'snapshots' && restoreConnected && restoreUsername"
                 :serverIp="selectedIp" :username="restoreUsername" />
 
             <!-- Scheduler webview (default remote view) -->
-            <CockpitWebview v-else-if="currentServer && !showRestoreView" :key="currentServer.ip" ref="cockpitRef"
+            <CockpitWebview v-else-if="currentServer && remoteView === 'backups'" :key="currentServer.ip" ref="cockpitRef"
                 routePath="/scheduler-test" hash="simple" wrapperClass="h-full overflow-hidden"
                 heightClass="h-full" :openDevtoolsInDev="true" />
 
@@ -161,6 +177,7 @@
 import { BackUpTask, IPCRouter } from '@45drives/houston-common-lib';
 import CockpitWebview from '../../components/CockpitWebview.vue';
 import RestoreBrowser from './RestoreBrowser.vue';
+import SnapshotManager from './SnapshotManager.vue';
 import ServerLoginModal from './ServerLoginModal.vue';
 import SettingsModal from './SettingsModal.vue';
 import { useEnterToAdvance } from '@45drives/houston-common-ui';
@@ -175,7 +192,7 @@ import { useSettings } from '../../composables/useSettings';
 import {
     ComputerDesktopIcon, GlobeAltIcon, PlusIcon,
     ArrowLeftIcon, ArrowDownTrayIcon, Cog6ToothIcon, XMarkIcon,
-    LinkIcon, ArrowRightOnRectangleIcon, TrashIcon
+    LinkIcon, ArrowRightOnRectangleIcon, TrashIcon, CameraIcon,
 } from '@heroicons/vue/24/outline';
 
 useHeader('Backup Manager');
@@ -188,13 +205,16 @@ const activeTab = ref<'local' | 'remote'>('local');
 const settingsOpen = ref(false);
 const { settings } = useSettings();
 
-// ── Restore view state (within Remote tab) ─────────────────────────────────
-const showRestoreView = ref(false);
+// ── Restore/Snapshot view state (within Remote tab) ────────────────────────
+const remoteView = ref<'backups' | 'restore' | 'snapshots'>('backups');
 const restoreConnected = ref(false);
 const restoreUsername = ref('');
 
+// Compat: showRestoreView used in disconnect logic
+const showRestoreView = computed(() => remoteView.value !== 'backups');
+
 function disconnectRestore() {
-    showRestoreView.value = false;
+    remoteView.value = 'backups';
     restoreConnected.value = false;
     restoreUsername.value = '';
     if (currentServer) currentServer.value = null;
@@ -338,7 +358,7 @@ watch(selectedIp, async (ip) => {
     activeCredId.value = null;
     restoreConnected.value = false;
     restoreUsername.value = '';
-    showRestoreView.value = false;
+    remoteView.value = 'backups';
     if (!ip) return;
     const fav = savedServers.value.find(s => s.host === ip && s.favorite);
     const alreadyConnected = currentServer?.value?.ip === ip;

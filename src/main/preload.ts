@@ -46,10 +46,16 @@ const INVOKE_CHANNELS = new Set([
   'restore:browse-s2s-remote',
   'restore:start',
   'restore:cancel',
+  'restore:mkdir',
+  'restore:create-zfs-dataset',
   // Snapshot operations
   'snapshot:list-datasets',
   'snapshot:list-snapshots',
   'snapshot:rollback',
+  'snapshot:create',
+  'snapshot:destroy',
+  'snapshot:browse-files',
+  'snapshot:restore-files',
 ]);
 
 const RECEIVE_CHANNELS = new Set([

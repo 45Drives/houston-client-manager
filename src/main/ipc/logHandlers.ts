@@ -172,12 +172,44 @@ function extractSummary(obj: Record<string, any>): string {
   // If there's a direct event field, build summary from the structured data
   if (obj.event && typeof obj.event === 'string') {
     const parts = [obj.event];
+
+    // Identity / tracking
     if (obj.taskUuid) parts.push(`uuid=${obj.taskUuid}`);
     else if (obj.uuid) parts.push(`uuid=${obj.uuid}`);
+    if (obj.operationId) parts.push(`op=${obj.operationId.slice(0, 8)}`);
+
+    // Server / host
+    if (obj.serverIp) parts.push(`server=${obj.serverIp}`);
     if (obj.host) parts.push(`host=${obj.host}`);
+    if (obj.remoteHost) parts.push(`remote=${obj.remoteHost}`);
+
+    // Paths & sources
+    if (obj.source && obj.source !== obj.event) parts.push(`source=${obj.source}`);
+    if (obj.remote) parts.push(`remote=${obj.remote}`);
+    if (obj.sourcePath) parts.push(`from=${obj.sourcePath}`);
+    if (obj.destPath) parts.push(`to=${obj.destPath}`);
+    if (obj.remotePath) parts.push(`path=${obj.remotePath}`);
+    if (obj.serverPath) parts.push(`path=${obj.serverPath}`);
+    if (obj.dirPath) parts.push(`dir=${obj.dirPath}`);
+    if (obj.target) parts.push(`target=${obj.target}`);
+
+    // ZFS / snapshots
+    if (obj.dataset) parts.push(`dataset=${obj.dataset}`);
+    if (obj.datasetName) parts.push(`dataset=${obj.datasetName}`);
+    if (obj.snapName) parts.push(`snap=${obj.snapName}`);
+    if (obj.mountpoint) parts.push(`mountpoint=${obj.mountpoint}`);
+
+    // Shares
     if (obj.share) parts.push(`share=${obj.share}`);
-    if (obj.error) parts.push(`error=${String(obj.error).slice(0, 100)}`);
+
+    // Counts & results
+    if (obj.fileCount != null) parts.push(`files=${obj.fileCount}`);
+    if (obj.count != null) parts.push(`count=${obj.count}`);
     if (obj.tasks && Array.isArray(obj.tasks)) parts.push(`(${obj.tasks.length} task(s))`);
+    if (obj.result === true || obj.success === true) parts.push('→ OK');
+    if (obj.result === false || obj.success === false) parts.push('→ FAILED');
+    if (obj.error) parts.push(`error=${String(obj.error).slice(0, 100)}`);
+
     return parts.join(' ');
   }
   // Plain message

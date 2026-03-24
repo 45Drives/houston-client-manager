@@ -3,17 +3,16 @@
         <!-- Source type selector + path breadcrumb -->
         <div class="px-3 py-2 border-b border-default flex items-center gap-3 shrink-0">
             <select v-model="restore.sourceType.value"
-                class="input-textlike border border-default rounded px-2 py-1 text-sm min-w-[140px]"
+                class="input-textlike border border-default rounded px-2 py-1 text-sm min-w-[210px]"
                 @change="onSourceTypeChange">
-                <option value="cloud">Cloud Storage</option>
                 <option value="s2s">Server-to-Server Backups</option>
-                <option value="snapshot">Snapshots</option>
+                <option value="cloud">Cloud Storage Backups</option>
             </select>
 
             <!-- Cloud: remote picker -->
             <template v-if="restore.sourceType.value === 'cloud'">
                 <select v-model="selectedRemote"
-                    class="input-textlike border border-default rounded px-2 py-1 text-sm min-w-[160px]"
+                    class="input-textlike border border-default rounded px-2 py-1 text-sm min-w-[210px]"
                     @change="onRemoteSelected">
                     <option value="">Select remote…</option>
                     <option v-for="r in restore.remotes.value" :key="r.name" :value="r.name">
@@ -25,11 +24,11 @@
             <!-- S2S: task picker -->
             <template v-if="restore.sourceType.value === 's2s'">
                 <select v-model="selectedTaskName"
-                    class="input-textlike border border-default rounded px-2 py-1 text-sm min-w-[200px]"
+                    class="input-textlike border border-default rounded px-2 py-1 text-sm min-w-[400px]"
                     @change="onS2STaskSelected">
                     <option value="">Select backup task…</option>
                     <option v-for="t in restore.s2sTasks.value" :key="t.name" :value="t.name">
-                        {{ t.name }} — {{ t.direction === 'push' ? `→ ${t.remoteHost}:${t.remotePath}` : `← ${t.remoteHost}:${t.remotePath}` }}
+                        {{ t.name }} {{ t.direction === 'push' ? `→ ${t.remoteHost}:${t.remotePath}` : `← ${t.remoteHost}:${t.remotePath}` }}
                     </option>
                 </select>
             </template>
@@ -63,72 +62,16 @@
             {{ restore.error.value }}
         </div>
 
-        <!-- ── SNAPSHOT mode ────────────────────────────────────────── -->
-        <template v-if="restore.sourceType.value === 'snapshot'">
-            <div class="flex-1 min-h-0 flex gap-4 p-3">
-                <!-- Dataset list -->
-                <div class="w-2/5 flex flex-col min-h-0 bg-well rounded-lg border border-default overflow-hidden">
-                    <div class="px-3 py-2 border-b border-default text-sm font-medium">ZFS Datasets</div>
-                    <div v-if="restore.loading.value" class="flex-1 flex items-center justify-center">
-                        <div class="spinner"></div>
-                    </div>
-                    <div v-else-if="restore.datasets.value.length === 0"
-                        class="flex-1 flex items-center justify-center text-muted text-sm">
-                        No datasets found.
-                    </div>
-                    <div v-else class="flex-1 overflow-y-auto">
-                        <div v-for="ds in restore.datasets.value" :key="ds.name"
-                            class="px-3 py-2 border-b border-default cursor-pointer transition-colors"
-                            :class="selectedDataset === ds.name ? 'bg-primary/10' : 'hover:bg-accent'"
-                            @click="onDatasetSelected(ds.name)">
-                            <div class="text-sm font-medium text-default">{{ ds.name }}</div>
-                            <div class="text-xs text-muted">{{ ds.mountpoint }} — {{ ds.used }} used, {{ ds.available }} free</div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Snapshot list -->
-                <div class="w-3/5 flex flex-col min-h-0 bg-well rounded-lg border border-default overflow-hidden">
-                    <div class="px-3 py-2 border-b border-default flex items-center justify-between">
-                        <span class="text-sm font-medium">
-                            {{ selectedDataset ? `Snapshots for ${selectedDataset}` : 'Select a dataset' }}
-                        </span>
-                    </div>
-                    <div v-if="!selectedDataset"
-                        class="flex-1 flex items-center justify-center text-muted text-sm">
-                        Select a dataset to view its snapshots.
-                    </div>
-                    <div v-else-if="restore.loading.value" class="flex-1 flex items-center justify-center">
-                        <div class="spinner"></div>
-                    </div>
-                    <div v-else-if="restore.snapshots.value.length === 0"
-                        class="flex-1 flex items-center justify-center text-muted text-sm">
-                        No snapshots found.
-                    </div>
-                    <div v-else class="flex-1 overflow-y-auto">
-                        <div v-for="snap in restore.snapshots.value" :key="snap.name"
-                            class="px-3 py-2 border-b border-default flex items-center justify-between hover:bg-accent transition-colors">
-                            <div>
-                                <div class="text-sm font-medium text-default">{{ snap.snapName }}</div>
-                                <div class="text-xs text-muted">{{ snap.creation }} — {{ snap.used }} used, {{ snap.referenced }} referenced</div>
-                            </div>
-                            <button class="btn btn-danger text-xs h-fit" :disabled="restore.restoring.value"
-                                @click="confirmRollback(snap)">
-                                Rollback
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </template>
-
         <!-- ── CLOUD / SERVER mode: file browser ────────────────────── -->
-        <template v-else>
             <div class="flex-1 min-h-0 flex gap-4 p-3">
                 <!-- LEFT: File list -->
-                <div class="w-3/5 flex flex-col min-h-0 bg-well rounded-lg border border-default overflow-hidden">
+                <div class="w-3/5 flex flex-col min-h-0 bg-well rounded-lg border border-default overflow-hidden bg-default">
                     <div class="px-3 py-2 border-b border-default flex items-center justify-between shrink-0">
-                        <span class="text-sm font-medium text-default">Files</span>
+                        <button class="text-sm font-medium text-default flex items-center gap-1 hover:text-primary transition-colors"
+                            @click="toggleSort">
+                            Name
+                            <span class="text-xs">{{ sortDir === 'asc' ? '▲' : '▼' }}</span>
+                        </button>
                         <div v-if="restore.files.value.length > 0" class="flex items-center gap-2">
                             <button class="text-xs text-muted hover:text-default" @click="restore.selectAll()">Select All</button>
                             <span class="text-muted">|</span>
@@ -169,10 +112,10 @@
                     </div>
 
                     <!-- File list -->
-                    <div v-else class="flex-1 overflow-y-auto">
-                        <div v-for="(file, index) in restore.files.value" :key="index"
-                            class="flex items-center gap-3 px-3 py-2 border-b border-default cursor-pointer transition-colors"
-                            :class="file.selected ? 'bg-primary/10' : 'hover:bg-accent'"
+                    <div v-else class="flex-1 overflow-y-auto text-left">
+                        <div v-for="(file, index) in sortedFiles" :key="index"
+                            class="flex items-center gap-3 px-3 py-2 border-b border-default cursor-pointer transition-colors hover:bg-accent"
+                            :class="file.selected ? 'bg-primary/10' : ''"
                             @click="onFileClick(file)"
                             @dblclick="onFileDblClick(file)">
                             <!-- Checkbox (files only) -->
@@ -203,7 +146,7 @@
                 <!-- RIGHT: Restore controls -->
                 <div class="w-2/5 flex flex-col gap-3 min-h-0">
                     <!-- Destination card -->
-                    <div class="bg-well rounded-lg border border-default p-3">
+                    <div class="bg-default rounded-lg border border-default p-3">
                         <h3 class="text-sm font-medium mb-2">Restore Destination</h3>
 
                         <div class="space-y-2">
@@ -217,11 +160,48 @@
                             </label>
                         </div>
 
-                        <!-- Server destination path -->
+                        <!-- Server destination path with autocomplete -->
                         <div v-if="restoreTarget === 'server'" class="mt-3">
-                            <label class="text-xs text-muted mb-1 block">Server destination path</label>
-                            <input v-model="destPath" type="text" placeholder="/data/restored"
-                                class="input-textlike w-full border border-default rounded px-2 py-1 text-sm" />
+                            <label v-if="restore.originalLocalPath.value" class="flex items-center gap-2 cursor-pointer mb-2">
+                                <input type="checkbox" v-model="restoreToOriginalPath" />
+                                <span class="text-xs text-muted">Restore to original path</span>
+                            </label>
+
+                            <template v-if="restoreToOriginalPath && restore.originalLocalPath.value">
+                                <div class="text-xs text-muted bg-accent/50 rounded p-2 border border-default">
+                                    Files will be restored to their original location:
+                                    <strong class="text-default block mt-1">{{ restore.originalLocalPath.value }}</strong>
+                                    <span class="text-danger mt-1 block">⚠ Existing files at this path will be overwritten.</span>
+                                </div>
+                            </template>
+
+                            <template v-else>
+                                <label class="text-xs text-muted mb-1 block">Server destination path</label>
+                                <input v-model="destPath" type="text" placeholder="/data/restored"
+                                    list="dest-path-suggestions"
+                                    class="input-textlike w-full border border-default rounded px-2 py-1 text-sm"
+                                    @input="onDestPathInput" />
+                                <datalist id="dest-path-suggestions">
+                                    <option v-for="s in restore.destSuggestions.value" :key="s" :value="s" />
+                                </datalist>
+
+                                <!-- Create options -->
+                                <div class="mt-2 space-y-1.5">
+                                    <label class="flex items-center gap-2 cursor-pointer">
+                                        <input type="checkbox" v-model="createDirOnRestore" />
+                                        <span class="text-xs text-muted">Create folder if it doesn't exist</span>
+                                    </label>
+                                    <label class="flex items-center gap-2 cursor-pointer">
+                                        <input type="checkbox" v-model="createZfsDataset" />
+                                        <span class="text-xs text-muted">Create as ZFS dataset</span>
+                                    </label>
+                                    <div v-if="createZfsDataset" class="ml-5 space-y-1">
+                                        <label class="text-xs text-muted block">Parent dataset (e.g. tank/data)</label>
+                                        <input v-model="zfsParentDataset" type="text" placeholder="tank/data"
+                                            class="input-textlike w-full border border-default rounded px-2 py-1 text-xs" />
+                                    </div>
+                                </div>
+                            </template>
                         </div>
 
                         <!-- Client destination -->
@@ -229,7 +209,7 @@
                             <label class="text-xs text-muted mb-1 block">Download to</label>
                             <div class="flex items-center gap-2">
                                 <input :value="destPath" type="text" readonly
-                                    class="input-textlike flex-1 border border-default rounded px-2 py-1 text-sm bg-well"
+                                    class="input-textlike flex-1 border border-default rounded px-2 py-1 text-sm bg-default"
                                     placeholder="Choose folder…" />
                                 <button class="btn btn-secondary text-sm h-fit" @click="pickLocalFolder">Browse</button>
                             </div>
@@ -241,7 +221,7 @@
 
                     <!-- Progress card (during restore) -->
                     <div v-if="restore.restoring.value || restore.progress.phase === 'complete'"
-                        class="bg-well rounded-lg border border-default p-3">
+                        class="bg-default rounded-lg border border-default p-3">
                         <h3 class="text-sm font-medium mb-2">
                             {{ restore.progress.phase === 'complete' ? 'Restore Complete' : 'Restoring…' }}
                         </h3>
@@ -272,6 +252,28 @@
                         </div>
                     </div>
 
+                    <!-- Restore summary -->
+                    <div v-if="(destPath.trim() || restoreToOriginalPath) && (restore.files.value.length > 0 || restore.currentPath.value.length > 0)"
+                        class="bg-accent/50 rounded-lg border border-default p-3 text-xs space-y-1">
+                        <div class="flex gap-2">
+                            <span class="text-muted shrink-0">From:</span>
+                            <span class="text-default truncate">{{ restoreSourceLabel }}</span>
+                        </div>
+                        <div class="flex gap-2">
+                            <span class="text-muted shrink-0">To:</span>
+                            <span class="text-default truncate">{{ restoreToOriginalPath && restore.originalLocalPath.value ? restore.originalLocalPath.value : destPath }}</span>
+                        </div>
+                        <div v-if="restore.selectedFiles.value.length > 0 && restore.selectedFiles.value.length < restore.files.value.length"
+                            class="flex gap-2">
+                            <span class="text-muted shrink-0">Files:</span>
+                            <span class="text-default">{{ restore.selectedFiles.value.length }} of {{ restore.files.value.length }}</span>
+                        </div>
+                        <div v-else class="flex gap-2">
+                            <span class="text-muted shrink-0">Files:</span>
+                            <span class="text-default">All ({{ restore.files.value.length }})</span>
+                        </div>
+                    </div>
+
                     <!-- Restore button -->
                     <button class="btn btn-primary text-sm h-fit w-full flex items-center justify-center gap-2"
                         :disabled="!canRestore" @click="onRestoreClick">
@@ -287,7 +289,7 @@
 
                     <!-- Info card: selection summary or single-file details -->
                     <div v-if="restore.selectedFiles.value.length > 1"
-                        class="bg-well rounded-lg border border-default p-3 flex-1 overflow-y-auto">
+                        class="bg-default rounded-lg border border-default p-3 flex-1 overflow-y-auto">
                         <h3 class="text-sm font-medium mb-2">Selection</h3>
                         <dl class="text-xs space-y-1">
                             <div class="flex justify-between">
@@ -300,7 +302,7 @@
                             </div>
                         </dl>
                     </div>
-                    <div v-else-if="focusedFile" class="bg-well rounded-lg border border-default p-3 flex-1 overflow-y-auto">
+                    <div v-else-if="focusedFile" class="bg-default rounded-lg border border-default p-3 flex-1 overflow-y-auto">
                         <h3 class="text-sm font-medium mb-2">Details</h3>
                         <dl class="text-xs space-y-1">
                             <div class="flex justify-between">
@@ -323,13 +325,28 @@
                     </div>
                 </div>
             </div>
-        </template>
+    </div>
+
+    <!-- ── Confirmation dialog ──────────────────────────────────── -->
+    <div v-if="confirmDialog.open" class="fixed inset-0 z-[1000] flex items-center justify-center bg-black/40"
+        @keydown.esc="confirmDialog.resolve(false)">
+        <div class="bg-well border border-default rounded-lg p-5 w-[26rem] shadow-xl space-y-3">
+            <h3 class="text-base font-semibold text-default">{{ confirmDialog.title }}</h3>
+            <p class="text-sm text-muted whitespace-pre-line">{{ confirmDialog.message }}</p>
+            <div class="flex justify-end gap-2 pt-1">
+                <button class="btn btn-secondary text-sm h-fit" @click="confirmDialog.resolve(false)">Cancel</button>
+                <button class="btn btn-primary text-sm h-fit" :class="confirmDialog.danger ? 'btn-danger' : 'btn-primary'"
+                    @click="confirmDialog.resolve(true)">
+                    {{ confirmDialog.confirmLabel || 'Continue' }}
+                </button>
+            </div>
+        </div>
     </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue';
-import { useRestore, type RemoteFileEntry, type ServerFileEntry, type ZfsSnapshot, type S2STask } from '../../composables/useRestore';
+import { ref, reactive, computed, watch } from 'vue';
+import { useRestore, type RemoteFileEntry, type ServerFileEntry, type S2STask } from '../../composables/useRestore';
 import {
     ArrowLeftIcon, ArrowPathIcon, ArrowDownTrayIcon,
     FolderIcon, FolderOpenIcon, DocumentIcon,
@@ -352,7 +369,36 @@ const selectedTaskName = ref('');
 const restoreTarget = ref<'server' | 'client'>('server');
 const destPath = ref('');
 const focusedFile = ref<RemoteFileEntry | ServerFileEntry | null>(null);
-const selectedDataset = ref('');
+const sortDir = ref<'asc' | 'desc'>('asc');
+const createDirOnRestore = ref(true);
+const createZfsDataset = ref(false);
+const zfsParentDataset = ref('');
+const restoreToOriginalPath = ref(false);
+
+// ── Confirmation dialog state ────────────────────────────────────────────
+
+const confirmDialog = reactive({
+    open: false,
+    title: '',
+    message: '',
+    confirmLabel: 'Continue',
+    danger: false,
+    resolve: (_val: boolean) => {},
+});
+
+function showConfirm(opts: { title: string; message: string; confirmLabel?: string; danger?: boolean }): Promise<boolean> {
+    return new Promise((resolve) => {
+        confirmDialog.open = true;
+        confirmDialog.title = opts.title;
+        confirmDialog.message = opts.message;
+        confirmDialog.confirmLabel = opts.confirmLabel || 'Continue';
+        confirmDialog.danger = opts.danger || false;
+        confirmDialog.resolve = (val: boolean) => {
+            confirmDialog.open = false;
+            resolve(val);
+        };
+    });
+}
 
 // ── Init: load remotes when component mounts with valid server ───────────
 
@@ -365,8 +411,6 @@ watch(() => props.serverIp, async (ip) => {
         await restore.loadRemotes();
     } else if (restore.sourceType.value === 's2s') {
         await restore.loadS2STasks();
-    } else if (restore.sourceType.value === 'snapshot') {
-        await restore.loadDatasets();
     }
 }, { immediate: true });
 
@@ -374,16 +418,15 @@ watch(() => props.serverIp, async (ip) => {
 
 function onSourceTypeChange() {
     restore.resetBrowse();
+    restore.progress.phase = 'listing';
+    restore.progress.operationId = '';
     selectedRemote.value = '';
     selectedTaskName.value = '';
-    selectedDataset.value = '';
 
     if (restore.sourceType.value === 'cloud') {
         restore.loadRemotes();
     } else if (restore.sourceType.value === 's2s') {
         restore.loadS2STasks();
-    } else if (restore.sourceType.value === 'snapshot') {
-        restore.loadDatasets();
     }
 }
 
@@ -403,11 +446,6 @@ async function onS2STaskSelected() {
     await restore.browseS2SRemote(task, task.remotePath);
 }
 
-async function onDatasetSelected(name: string) {
-    selectedDataset.value = name;
-    await restore.loadSnapshots(name);
-}
-
 function onFileClick(file: RemoteFileEntry | ServerFileEntry) {
     focusedFile.value = file;
     if (!isDir(file)) {
@@ -421,26 +459,83 @@ function onFileDblClick(file: RemoteFileEntry | ServerFileEntry) {
     }
 }
 
+function onDestPathInput() {
+    restore.fetchDirSuggestions(destPath.value);
+}
+
+function toggleSort() {
+    sortDir.value = sortDir.value === 'asc' ? 'desc' : 'asc';
+}
+
 async function pickLocalFolder() {
     const folder = await window.electron.selectFolder();
     if (folder) destPath.value = folder;
 }
 
-async function confirmRollback(snap: ZfsSnapshot) {
-    const ok = window.confirm(
-        `Are you sure you want to rollback "${snap.dataset}" to snapshot "${snap.snapName}"?\n\n` +
-        `This will DESTROY all data created after this snapshot. This cannot be undone.`
-    );
-    if (!ok) return;
-    await restore.rollbackSnapshot(snap.name);
-}
-
 async function onRestoreClick() {
     if (!canRestore.value) return;
+
+    const selCount = restore.selectedFiles.value.length;
+    const totalCount = restore.files.value.length;
+
+    // Warn if restoring everything (no selection or all selected)
+    if (selCount === 0 || selCount === totalCount) {
+        const confirmed = await showConfirm({
+            title: 'Restore all files?',
+            message: selCount === 0
+                ? `No individual files are selected. This will restore ALL ${totalCount} items in the current directory.`
+                : `All ${totalCount} files are selected. This will restore everything in the current directory.`,
+            confirmLabel: 'Restore All',
+        });
+        if (!confirmed) return;
+    }
+
+    // Determine effective destination
+    let effectiveDest = destPath.value;
+    if (restoreTarget.value === 'server' && restoreToOriginalPath.value && restore.originalLocalPath.value) {
+        effectiveDest = restore.originalLocalPath.value;
+        // Warn about overwrite
+        const confirmed = await showConfirm({
+            title: 'Overwrite warning',
+            message: `Restoring to the original path:\n${effectiveDest}\n\nExisting files at this location will be overwritten. This cannot be undone.`,
+            confirmLabel: 'Overwrite & Restore',
+            danger: true,
+        });
+        if (!confirmed) return;
+    }
+
+    // Warn about overwrite for client downloads
+    if (restoreTarget.value === 'client') {
+        const confirmed = await showConfirm({
+            title: 'Download to this computer',
+            message: `Files will be downloaded to:\n${destPath.value}\n\nIf files with the same names already exist there, they will be overwritten.`,
+            confirmLabel: 'Download',
+        });
+        if (!confirmed) return;
+    }
+
+    // Create ZFS dataset if requested
+    if (restoreTarget.value === 'server' && !restoreToOriginalPath.value && createZfsDataset.value && zfsParentDataset.value.trim()) {
+        const leafName = effectiveDest.split('/').filter(Boolean).pop() || 'restored';
+        const datasetName = `${zfsParentDataset.value.replace(/\/$/, '')}/${leafName}`;
+        const result = await restore.createZfsDataset(datasetName, effectiveDest);
+        if (!result.success) {
+            restore.error.value = `Failed to create ZFS dataset: ${result.error}`;
+            return;
+        }
+    }
+    // Create directory if requested (and not creating a ZFS dataset, which handles its own mountpoint)
+    else if (restoreTarget.value === 'server' && !restoreToOriginalPath.value && createDirOnRestore.value) {
+        const result = await restore.createDirectory(effectiveDest);
+        if (!result.success) {
+            restore.error.value = `Failed to create directory: ${result.error}`;
+            return;
+        }
+    }
+
     await restore.startRestore({
-        destPath: destPath.value,
+        destPath: effectiveDest,
         target: restoreTarget.value,
-        smbSharePath: restoreTarget.value === 'client' ? destPath.value : undefined,
     });
 }
 
@@ -448,12 +543,15 @@ async function onRestoreClick() {
 
 const canRestore = computed(() => {
     if (restore.restoring.value) return false;
-    if (!destPath.value.trim()) return false;
-    // In file-browse mode, need files selected or navigated into a folder
-    if (restore.sourceType.value !== 'snapshot') {
-        // Allow restore of entire directory (no individual selection required)
+    // Need a destination path, unless restoring to original path
+    if (restoreTarget.value === 'server' && restoreToOriginalPath.value) {
+        // Just need files browsed
         if (restore.files.value.length === 0 && restore.currentPath.value.length === 0) return false;
+        return true;
     }
+    if (!destPath.value.trim()) return false;
+    // Allow restore of entire directory (no individual selection required)
+    if (restore.files.value.length === 0 && restore.currentPath.value.length === 0) return false;
     return true;
 });
 
@@ -471,6 +569,35 @@ const progressPercent = computed(() => {
 const selectedTotalSize = computed(() =>
     restore.selectedFiles.value.reduce((sum, f) => sum + fileSize(f), 0)
 );
+
+const sortedFiles = computed(() => {
+    const sorted = [...restore.files.value];
+    sorted.sort((a, b) => {
+        const aIsDir = isDir(a);
+        const bIsDir = isDir(b);
+        if (aIsDir !== bIsDir) return aIsDir ? -1 : 1;
+
+        const aName = fileName(a).toLowerCase();
+        const bName = fileName(b).toLowerCase();
+        const cmp = aName.localeCompare(bName);
+        return sortDir.value === 'asc' ? cmp : -cmp;
+    });
+    return sorted;
+});
+
+const restoreSourceLabel = computed(() => {
+    const navPath = restore.pathString.value;
+    if (restore.sourceType.value === 'cloud') {
+        return `${restore.currentRemote.value}${navPath}`;
+    }
+    if (restore.sourceType.value === 's2s' && restore.selectedS2STask.value) {
+        const task = restore.selectedS2STask.value;
+        const basePath = task.direction === 'push' ? task.remotePath : task.localPath;
+        const fullPath = basePath.replace(/\/$/, '') + navPath;
+        return `${task.remoteUser}@${task.remoteHost}:${fullPath}`;
+    }
+    return navPath;
+});
 
 // ── Helpers ──────────────────────────────────────────────────────────────
 
