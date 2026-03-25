@@ -51,7 +51,7 @@
 
                 <!-- Quick Actions -->
                 <div class="w-64 shrink-0 space-y-2" data-tour="quick-actions">
-                    <h2 class="text-sm font-semibold text-default mb-1 px-1 -mt-7">Quick Actions</h2>
+                    <h2 class="text-sm font-semibold text-default mb-1 px-1">Quick Actions</h2>
                     <button @click="goSetup()"
                         class="quick-action-card group">
                         <ServerIcon class="w-5 h-5 text-slate-500 group-hover:text-slate-600 dark:group-hover:text-slate-300" />
