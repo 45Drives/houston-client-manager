@@ -1,7 +1,7 @@
 <template>
     <div v-if="open" class="fixed inset-0 z-[1000] flex items-center justify-center bg-black/40"
         @keydown.esc="close" @click.self="close" tabindex="-1" ref="overlayRef">
-        <div class="bg-well border border-default rounded-lg shadow-xl w-[32rem] max-w-[calc(100vw-2rem)] max-h-[80vh] flex flex-col text-left"
+        <div class="bg-well border border-default rounded-lg shadow-xl w-[44rem] max-w-[calc(100vw-2rem)] h-[28rem] max-h-[80vh] flex flex-col text-left"
             @click.stop>
             <!-- Header -->
             <div class="flex items-center justify-between px-5 py-3 border-b border-default shrink-0">
@@ -11,20 +11,23 @@
                 </button>
             </div>
 
-            <!-- Tabs -->
-            <div class="flex border-b border-default px-5 shrink-0 gap-4">
-                <button v-for="t in tabs" :key="t.key"
-                    class="py-2 text-sm font-medium border-b-2 transition-colors -mb-px"
-                    :class="activeSection === t.key
-                        ? 'border-primary text-primary'
-                        : 'border-transparent text-muted hover:text-default'"
-                    @click="activeSection = t.key">
-                    {{ t.label }}
-                </button>
-            </div>
+            <!-- Body: sidebar + content -->
+            <div class="flex flex-1 min-h-0">
+                <!-- Sidebar nav -->
+                <nav class="w-40 shrink-0 border-r border-default py-3 overflow-y-auto">
+                    <template v-for="group in navGroups" :key="group.label">
+                        <p class="nav-group-label">{{ group.label }}</p>
+                        <button v-for="item in group.items" :key="item.key"
+                            class="nav-btn" :class="{ 'nav-btn-active': activeSection === item.key }"
+                            @click="activeSection = item.key">
+                            <component :is="item.icon" class="w-4 h-4 shrink-0" />
+                            {{ item.label }}
+                        </button>
+                    </template>
+                </nav>
 
-            <!-- Body (scrollable) -->
-            <div class="flex-1 overflow-y-auto px-5 py-4">
+                <!-- Content -->
+                <div class="flex-1 overflow-y-auto px-5 py-4">
 
                 <!-- ═══ Servers ═══════════════════════════════════════ -->
                 <template v-if="activeSection === 'servers'">
@@ -95,6 +98,12 @@
                         <SettingRow label="Show notification toasts" description="Display in-app notifications for backup events.">
                             <ToggleSwitch v-model="draft.showNotifications" />
                         </SettingRow>
+
+                        <SettingRow label="Re-enable first-time tips" description="Reset onboarding walkthroughs and welcome screens so they show again.">
+                            <button class="btn btn-sm btn-outline-shadow h-fit" :disabled="allOnboardingDone === false" @click="handleResetOnboarding">
+                                Reset
+                            </button>
+                        </SettingRow>
                     </div>
                 </template>
 
@@ -105,27 +114,40 @@
                             <ToggleSwitch v-model="draft.autoConnectFavorites" />
                         </SettingRow>
 
-                        <SettingRow label="SSH timeout" description="How long to wait for SSH connections (seconds).">
+                        <SettingRow label="SSH timeout" description="Seconds to wait for SSH connections.">
                             <input v-model.number="sshTimeoutSec" type="number" min="5" max="120" step="5"
-                                class="input-textlike border border-default rounded px-2 py-1 text-sm w-20 text-right" />
-                            <span class="text-xs text-muted ml-1">sec</span>
-                        </SettingRow>
-
-                        <SettingRow label="Discovery scan interval" description="How often to scan for servers (seconds).">
-                            <input v-model.number="discoveryScanSec" type="number" min="2" max="60" step="1"
-                                class="input-textlike border border-default rounded px-2 py-1 text-sm w-20 text-right" />
-                            <span class="text-xs text-muted ml-1">sec</span>
-                        </SettingRow>
-
-                        <SettingRow label="Server inactivity timeout" description="How long to show offline servers (seconds).">
-                            <input v-model.number="inactivitySec" type="number" min="10" max="600" step="10"
-                                class="input-textlike border border-default rounded px-2 py-1 text-sm w-20 text-right" />
+                                class="input-textlike border border-default rounded px-2 py-1 text-sm w-16 text-right" />
                             <span class="text-xs text-muted ml-1">sec</span>
                         </SettingRow>
 
                         <SettingRow label="Fallback network scan" description="Scan the subnet when mDNS discovery fails.">
                             <ToggleSwitch v-model="draft.discoveryFallbackEnabled" />
                         </SettingRow>
+                    </div>
+
+                    <!-- Discovery timing row -->
+                    <p class="text-xs font-semibold text-muted uppercase tracking-wide mt-4 mb-2">Discovery Timing</p>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div class="flex items-center justify-between gap-2 rounded-lg border border-default bg-default px-3 py-2">
+                            <div class="min-w-0">
+                                <div class="text-sm font-medium text-default">Scan interval</div>
+                            </div>
+                            <div class="flex items-center gap-1">
+                                <input v-model.number="discoveryScanSec" type="number" min="2" max="60" step="1"
+                                    class="input-textlike border border-default rounded px-2 py-1 text-sm w-16 text-right" />
+                                <span class="text-xs text-muted">sec</span>
+                            </div>
+                        </div>
+                        <div class="flex items-center justify-between gap-2 rounded-lg border border-default bg-default px-3 py-2">
+                            <div class="min-w-0">
+                                <div class="text-sm font-medium text-default">Inactivity timeout</div>
+                            </div>
+                            <div class="flex items-center gap-1">
+                                <input v-model.number="inactivitySec" type="number" min="10" max="600" step="10"
+                                    class="input-textlike border border-default rounded px-2 py-1 text-sm w-16 text-right" />
+                                <span class="text-xs text-muted">sec</span>
+                            </div>
+                        </div>
                     </div>
                 </template>
 
@@ -146,6 +168,7 @@
                         <p class="text-xs text-muted mt-1">This resets all preferences to their defaults. Saved servers are not affected.</p>
                     </div>
                 </template>
+                </div>
             </div>
 
             <!-- Footer -->
@@ -165,9 +188,13 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, watch, nextTick } from 'vue';
+import { reportSuccess } from '@45drives/houston-common-ui';
 import { useSettings, type AppSettings, type SavedServer } from '../../composables/useSettings';
+import { useOnboarding } from '../../composables/useOnboarding';
 import {
     XMarkIcon, TrashIcon, PencilIcon,
+    ServerStackIcon, SwatchIcon, BellIcon, SparklesIcon,
+    WifiIcon, Cog6ToothIcon,
 } from '@heroicons/vue/24/outline';
 import { StarIcon as StarIconSolid } from '@heroicons/vue/24/solid';
 import { StarIcon as StarIconOutline } from '@heroicons/vue/24/outline';
@@ -182,16 +209,51 @@ const emit = defineEmits<{
 }>();
 
 const { settings, load, save, reset, listServers, setServerName, setServerFavorite, removeServer } = useSettings();
+const { onboarding, resetAll: resetOnboarding } = useOnboarding();
 
-// ── Section tabs ─────────────────────────────────────────────────────────
+const allOnboardingDone = computed(() =>
+    onboarding.value.backupManagerSeen || onboarding.value.backupManagerTourDone
+);
+
+async function handleResetOnboarding() {
+    await resetOnboarding();
+    // Sync draft so saving doesn't overwrite the reset with stale values
+    if (settings.value) {
+        Object.assign(draft.onboarding, settings.value.onboarding);
+    }
+    reportSuccess('First-time tips have been reset');
+}
+
+// ── Section nav ──────────────────────────────────────────────────────────
 
 type Section = 'servers' | 'display' | 'connection' | 'advanced';
 const activeSection = ref<Section>('servers');
-const tabs: { key: Section; label: string }[] = [
-    { key: 'servers', label: 'Servers' },
-    { key: 'display', label: 'Display' },
-    { key: 'connection', label: 'Connection' },
-    { key: 'advanced', label: 'Advanced' },
+
+const navGroups = [
+    {
+        label: 'Servers',
+        items: [
+            { key: 'servers' as Section, label: 'Saved', icon: ServerStackIcon },
+        ],
+    },
+    {
+        label: 'Client',
+        items: [
+            { key: 'display' as Section, label: 'Display', icon: SwatchIcon },
+        ],
+    },
+    {
+        label: 'Network',
+        items: [
+            { key: 'connection' as Section, label: 'Connection', icon: WifiIcon },
+        ],
+    },
+    {
+        label: 'System',
+        items: [
+            { key: 'advanced' as Section, label: 'Advanced', icon: Cog6ToothIcon },
+        ],
+    },
 ];
 
 // ── Draft state (for settings that require Save) ─────────────────────────
@@ -205,6 +267,18 @@ const draft = reactive<AppSettings>({
     sshTimeoutMs: 20000,
     logRetentionDays: 14,
     showNotifications: true,
+    onboarding: {
+        dashboardTourDone: false,
+        backupManagerSeen: false,
+        backupManagerTourDone: false,
+        createBackupTourDone: false,
+        backupListTourDone: false,
+        backupBrowserTourDone: false,
+        editTaskTourDone: false,
+        remoteBackupsTourDone: false,
+        restoreBrowserTourDone: false,
+        snapshotManagerTourDone: false,
+    },
 });
 
 // Derived seconds fields (convert ms ↔ sec for display)
@@ -223,9 +297,12 @@ const inactivitySec = computed({
 
 const dirty = computed(() => {
     if (!settings.value) return false;
-    return (Object.keys(draft) as (keyof AppSettings)[]).some(
-        k => draft[k] !== settings.value![k]
-    );
+    return (Object.keys(draft) as (keyof AppSettings)[]).some(k => {
+        const a = draft[k];
+        const b = settings.value![k];
+        if (typeof a === 'object' && a !== null) return JSON.stringify(a) !== JSON.stringify(b);
+        return a !== b;
+    });
 });
 
 // ── Server list state ────────────────────────────────────────────────────
@@ -287,7 +364,8 @@ watch(() => props.open, async (isOpen) => {
 });
 
 async function saveAndClose() {
-    await save({ ...draft });
+    await save(JSON.parse(JSON.stringify(draft)));
+    reportSuccess('Settings saved');
     emit('saved');
     emit('close');
 }
@@ -366,3 +444,54 @@ const ToggleSwitch = defineComponent({
     },
 });
 </script>
+
+<style scoped>
+.nav-group-label {
+    font-size: 0.625rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: rgb(156 163 175);
+    padding: 0.5rem 0.75rem 0.25rem;
+}
+:root.dark .nav-group-label {
+    color: rgb(107 114 128);
+}
+.nav-group-label:not(:first-child) {
+    margin-top: 0.5rem;
+}
+.nav-btn {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    width: 100%;
+    padding: 0.375rem 0.75rem;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    color: rgb(107 114 128);
+    transition: all 0.15s ease;
+    border-left: 2px solid transparent;
+}
+:root.dark .nav-btn {
+    color: rgb(156 163 175);
+}
+.nav-btn:hover {
+    color: rgb(55 65 81);
+    background-color: rgb(249 250 251);
+}
+:root.dark .nav-btn:hover {
+    color: rgb(209 213 219);
+    background-color: rgba(255,255,255,0.05);
+}
+.nav-btn-active {
+    color: rgb(71 85 105);
+    background-color: rgba(71, 85, 105, 0.08);
+    font-weight: 600;
+    border-left-color: rgb(71 85 105);
+}
+:root.dark .nav-btn-active {
+    color: rgb(148 163 184);
+    background-color: rgba(148, 163, 184, 0.1);
+    border-left-color: rgb(148 163 184);
+}
+</style>

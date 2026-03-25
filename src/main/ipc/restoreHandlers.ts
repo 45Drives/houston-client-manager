@@ -20,6 +20,7 @@ import {
   restoreFromSnapshot,
   listS2STasks,
   browseS2SRemotePath,
+  getReplicationAnchors,
 } from '../restoreManager';
 import type { IPCHandlerContext } from './types';
 import type { RestoreProgressCallback } from '../restoreManager';
@@ -337,6 +338,18 @@ export function registerRestoreHandlers(ctx: IPCHandlerContext) {
       ctx.jsonLogger.info({ event: 'snapshot:restore-files', serverIp, dataset, snapName, fileCount: filePaths.length, destPath });
       const result = await restoreFromSnapshot(serverIp, username, dataset, snapName, filePaths, destPath);
       ctx.jsonLogger[result?.success ? 'info' : 'error']({ event: 'snapshot:restore-files.done', serverIp, dataset, snapName, fileCount: filePaths.length, destPath, success: result?.success, error: result?.error });
+      return result;
+    },
+  );
+
+  ipcMain.handle(
+    'snapshot:get-replication-anchors',
+    async (_event, { serverIp, username, dataset }: {
+      serverIp: string; username: string; dataset: string;
+    }) => {
+      ctx.jsonLogger.info({ event: 'snapshot:get-replication-anchors', serverIp, dataset });
+      const result = await getReplicationAnchors(serverIp, username, dataset);
+      ctx.jsonLogger.info({ event: 'snapshot:get-replication-anchors.done', serverIp, dataset, count: result.length });
       return result;
     },
   );

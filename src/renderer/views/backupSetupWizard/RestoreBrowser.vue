@@ -3,7 +3,7 @@
         <!-- Header -->
         <div class="flex items-center justify-between mb-3 shrink-0">
             <!-- <h2 class="text-sm font-semibold text-default">Restore Browser</h2> -->
-            <div class="flex items-center gap-3">
+            <div class="flex items-center gap-3" data-tour="restore-source-picker">
                 <select v-model="restore.sourceType.value"
                     class="input-textlike border border-default rounded px-2 py-1 text-sm min-w-[210px]"
                     @change="onSourceTypeChange">
@@ -146,7 +146,7 @@
                 </div>
 
                 <!-- RIGHT: Restore controls -->
-                <div class="w-2/5 flex flex-col min-h-0 gap-4">
+                <div class="w-2/5 flex flex-col min-h-0 gap-4" data-tour="restore-controls">
                     <!-- Destination card -->
                     <div class="bg-accent rounded-lg border border-default overflow-hidden shrink-0">
                         <div class="px-3 py-2 border-b border-default">
@@ -340,6 +340,7 @@
             </div>
     </div>
 
+
     <!-- ── Confirmation dialog ──────────────────────────────────── -->
     <div v-if="confirmDialog.open" class="fixed inset-0 z-[1000] flex items-center justify-center bg-black/40"
         @keydown.esc="confirmDialog.resolve(false)">
@@ -358,12 +359,14 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, watch } from 'vue';
+import { ref, reactive, computed, watch, onMounted } from 'vue';
 import { useRestore, type RemoteFileEntry, type ServerFileEntry, type S2STask } from '../../composables/useRestore';
 import {
     ArrowLeftIcon, ArrowPathIcon, ArrowDownTrayIcon,
     FolderIcon, FolderOpenIcon, DocumentIcon,
 } from '@heroicons/vue/24/outline';
+import { useOnboarding } from '../../composables/useOnboarding';
+import { useTourManager, type TourStep } from '../../composables/useTourManager';
 
 const props = defineProps<{
     serverIp: string;
@@ -374,6 +377,29 @@ const restore = useRestore(
     () => props.serverIp,
     () => props.username,
 );
+
+// ── Guided tour ──────────────────────────────────────────────────────────
+const { onboarding, markDone } = useOnboarding();
+const { requestTour } = useTourManager();
+
+const restoreTourSteps: TourStep[] = [
+    {
+        target: '[data-tour="restore-source-picker"]',
+        message: 'Choose the backup source type here.\n\nServer-to-Server shows backups replicated between servers.\nCloud Storage shows backups from rclone remotes (S3, B2, etc.).',
+    },
+    {
+        target: '[data-tour="restore-controls"]',
+        message: 'Configure where to restore files.\n\nYou can restore to the server itself or download to your local machine. Browse folders, select files, and hit Restore.',
+    },
+];
+
+onMounted(() => {
+    if (!onboarding.value.restoreBrowserTourDone) {
+        setTimeout(() => {
+            requestTour('restore-browser', restoreTourSteps, () => markDone('restoreBrowserTourDone'));
+        }, 400);
+    }
+});
 
 // ── Local state ──────────────────────────────────────────────────────────
 

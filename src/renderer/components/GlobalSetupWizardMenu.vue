@@ -53,6 +53,10 @@
                                 <DocumentTextIcon class="w-4 h-4 shrink-0" />
                                 View Logs
                             </button>
+                            <button class="nav-item" @click="openSettings">
+                                <Cog6ToothIcon class="w-4 h-4 shrink-0" />
+                                Settings
+                            </button>
                         </nav>
                     </div>
 
@@ -107,17 +111,19 @@ import { ref, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import {
     Bars3Icon, HomeIcon, ServerIcon, CircleStackIcon,
-    DocumentTextIcon, MoonIcon, SunIcon, XMarkIcon, CheckIcon
+    DocumentTextIcon, MoonIcon, SunIcon, XMarkIcon, CheckIcon, Cog6ToothIcon
 } from '@heroicons/vue/24/outline'
 import { toggleDarkMode, useDarkModeState } from '@45drives/houston-common-ui'
 import { useThemeFromAlias } from '../composables/useThemeFromAlias'
 import { useLogModal } from '../composables/useLogModal'
+import { useSettingsModal } from '../composables/useSettingsModal'
 
 const router = useRouter()
 const route = useRoute()
 const darkMode = useDarkModeState()
 const { setTheme, currentTheme } = useThemeFromAlias()
 const { openLogModal } = useLogModal()
+const { openSettingsModal } = useSettingsModal()
 
 const themes = [
     { value: 'theme-default' as const, label: '45Drives', color: '#D92B2F' },
@@ -150,6 +156,11 @@ function goto(name: string) {
 
 function openLogs() {
     openLogModal()
+    show.value = false
+}
+
+function openSettings() {
+    openSettingsModal()
     show.value = false
 }
 

@@ -35,6 +35,20 @@ export interface AppSettings {
 
   /** Show notification toasts in-app */
   showNotifications: boolean;
+
+  /** First-time user onboarding flags */
+  onboarding: {
+    dashboardTourDone: boolean;
+    backupManagerSeen: boolean;
+    backupManagerTourDone: boolean;
+    createBackupTourDone: boolean;
+    backupListTourDone: boolean;
+    backupBrowserTourDone: boolean;
+    editTaskTourDone: boolean;
+    remoteBackupsTourDone: boolean;
+    restoreBrowserTourDone: boolean;
+    snapshotManagerTourDone: boolean;
+  };
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -46,6 +60,18 @@ export const DEFAULT_SETTINGS: AppSettings = {
   sshTimeoutMs: 20000,
   logRetentionDays: 14,
   showNotifications: true,
+  onboarding: {
+    dashboardTourDone: false,
+    backupManagerSeen: false,
+    backupManagerTourDone: false,
+    createBackupTourDone: false,
+    backupListTourDone: false,
+    backupBrowserTourDone: false,
+    editTaskTourDone: false,
+    remoteBackupsTourDone: false,
+    restoreBrowserTourDone: false,
+    snapshotManagerTourDone: false,
+  },
 };
 
 // ── Store ──────────────────────────────────────────────────────────────────
@@ -65,7 +91,10 @@ export function loadSettings(): AppSettings {
       const raw = fs.readFileSync(filePath(), 'utf-8');
       const parsed = JSON.parse(raw);
       // Merge with defaults so missing keys get default values
-      cached = { ...DEFAULT_SETTINGS, ...parsed };
+      const merged = { ...DEFAULT_SETTINGS, ...parsed };
+      // Deep-merge nested objects so partial stored values get defaults
+      merged.onboarding = { ...DEFAULT_SETTINGS.onboarding, ...parsed.onboarding };
+      cached = merged;
       return cached!;
     }
   } catch {

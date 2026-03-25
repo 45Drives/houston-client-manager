@@ -11,6 +11,18 @@ export interface AppSettings {
   sshTimeoutMs: number;
   logRetentionDays: number;
   showNotifications: boolean;
+  onboarding: {
+    dashboardTourDone: boolean;
+    backupManagerSeen: boolean;
+    backupManagerTourDone: boolean;
+    createBackupTourDone: boolean;
+    backupListTourDone: boolean;
+    backupBrowserTourDone: boolean;
+    editTaskTourDone: boolean;
+    remoteBackupsTourDone: boolean;
+    restoreBrowserTourDone: boolean;
+    snapshotManagerTourDone: boolean;
+  };
 }
 
 export interface SavedServer {

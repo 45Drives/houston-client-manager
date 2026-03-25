@@ -4,23 +4,23 @@
     <div class="flex flex-wrap items-center gap-2 min-h-9">
       <!-- Action buttons (space reserved so the table does not jump) -->
       <div class="flex flex-wrap items-center gap-2"
-        :class="selectedBackUps.length > 0 ? '' : 'invisible pointer-events-none'">
+        :class="selectedBackUps.length > 0 || activeTour?.id === 'backup-manager' ? '' : 'invisible pointer-events-none'">
         <span class="text-xs text-gray-500 mr-1">{{ selectedBackUps.length }} selected</span>
 
-        <button class="btn btn-sm btn-primary btn-with-icon h-fit"
+        <button class="btn btn-sm btn-primary btn-with-icon h-fit" data-tour="run-now"
           :disabled="isRunningNow || selectedBackUps.length < 1" @click="$emit('run')">
           <PlayIcon class="w-4 h-4" />
           <template v-if="!isRunningNow">Run Now</template>
           <template v-else>Running…</template>
         </button>
 
-        <button class="btn btn-sm btn-outline-shadow btn-with-icon h-fit"
+        <button class="btn btn-sm btn-outline-shadow btn-with-icon h-fit" data-tour="view-restore"
           :disabled="selectedBackUps.length < 1" @click="$emit('view')">
           <EyeIcon24 class="w-4 h-4" />
           View/Restore
         </button>
 
-        <button class="btn btn-sm btn-outline-shadow btn-with-icon h-fit"
+        <button class="btn btn-sm btn-outline-shadow btn-with-icon h-fit" data-tour="edit-btn"
           :disabled="selectedBackUps.length !== 1" @click="$emit('edit')">
           <PencilSquareIcon class="w-4 h-4" />
           Edit
@@ -56,10 +56,10 @@
     </div>
 
     <!-- Table -->
-    <div v-else class="overflow-x-auto rounded-lg border border-neutral-200 dark:border-neutral-700 flex-1 flex flex-col min-h-0">
+    <div v-else class="overflow-x-auto rounded-lg border border-neutral-200 dark:border-neutral-700 flex-1 flex flex-col min-h-0" data-tour="backup-table">
       <div class="flex-1 overflow-y-auto">
       <table ref="tableRef" class="min-w-full text-sm text-left table-fixed" style="table-layout: fixed;">
-        <thead class="sticky top-0 bg-neutral-50 dark:bg-neutral-850 z-10">
+        <thead class="sticky top-0 bg-neutral-50 dark:bg-neutral-850">
           <tr class="border-b border-neutral-200 dark:border-neutral-700">
             <th class="px-3 py-2 relative table-header-cell" :style="{ width: colWidths[0] + 'px' }">
               <input type="checkbox" class="input-checkbox" :checked="allSelected" @change="toggleSelectAll"
@@ -141,7 +141,7 @@
     </div>
 
     <!-- Edit Backup Task Modal -->
-    <Modal :show="showEditModal" @clickOutside="">
+    <Modal :show="showEditModal" @clickOutside="" data-tour="edit-modal">
       <div class="w-full max-w-2xl mx-auto bg-default border-2 border-default rounded-lg p-6 shadow-xl">
         <h2 class="text-xl font-semibold mb-4">Edit Backup Task</h2>
 
@@ -271,6 +271,8 @@ import { ArrowPathIcon, CalendarIcon, PlayIcon, EyeIcon as EyeIcon24, PencilSqua
 import { EyeIcon, EyeSlashIcon } from '@heroicons/vue/20/solid';
 import { CircleStackIcon } from '@heroicons/vue/24/outline';
 import { useRouter } from 'vue-router';
+import { useOnboarding } from '../../composables/useOnboarding';
+import { useTourManager, type TourStep } from '../../composables/useTourManager';
 
 const props = defineProps<{
   selectedCount: number;
@@ -294,6 +296,25 @@ const isLoading = ref(true);
 const thisOs = inject(thisOsInjectionKey);
 
 const credsModalRef = ref<InstanceType<typeof CredentialsModal> | null>(null);
+
+// ── Guided tours ─────────────────────────────────────────────────────────
+const { onboarding, markDone } = useOnboarding();
+const { requestTour, activeTour } = useTourManager();
+
+const editTourSteps: TourStep[] = [
+  {
+    target: '[data-tour="edit-modal"]',
+    message: 'This is the Edit Backup Task modal.\n\nYou can change the backup name, source folder, schedule type and frequency, and update SMB credentials.\n\nLeave credential fields blank to keep the existing ones.',
+  },
+];
+
+function triggerEditTour() {
+  if (!onboarding.value.editTaskTourDone) {
+    setTimeout(() => {
+      requestTour('edit-task', editTourSteps, () => markDone('editTaskTourDone'));
+    }, 400);
+  }
+}
 
 const selectedTaskSchedule = ref<TaskSchedule | undefined>();
 const showCalendar = ref(false);
@@ -512,6 +533,8 @@ async function editSelectedSchedules() {
   editPassword.value = '';
   showEditPassword.value = false;
   showEditModal.value = true;
+
+  triggerEditTour();
 }
 
 async function changeEditSource() {
@@ -682,6 +705,19 @@ onMounted(() => {
         // Track running tasks from event log (backup_start without backup_end)
         if (Array.isArray(msg.runningUuids)) {
           eventRunningUuids.value = msg.runningUuids;
+
+          // Auto-clear event-log-restored running UUIDs after 30s if no real
+          // progress arrives (process likely crashed/was interrupted).
+          if (msg.runningUuids.length > 0) {
+            const snapshot = new Set<string>(msg.runningUuids);
+            setTimeout(() => {
+              // Remove only the UUIDs that were in this batch and are still
+              // present (not already cleared by a proper backup_end).
+              eventRunningUuids.value = eventRunningUuids.value.filter(
+                id => !snapshot.has(id)
+              );
+            }, 30_000);
+          }
         }
         // merge into tasks
         backUpTasks.value = backUpTasks.value.map(t =>
@@ -756,7 +792,7 @@ function getTaskName(uuid: string): string | undefined {
 }
 
 // expose to parent
-defineExpose({ deleteSelectedTasks, editSelectedSchedules, runSelectedNow, getTaskName });
+defineExpose({ deleteSelectedTasks, editSelectedSchedules, runSelectedNow, getTaskName, fetchBackupTasks });
 </script>
 
 <style scoped>

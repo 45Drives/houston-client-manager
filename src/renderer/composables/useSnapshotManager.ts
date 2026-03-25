@@ -45,6 +45,12 @@ export interface SnapshotRollbackResult {
   error?: string;
 }
 
+export interface ReplicationAnchor {
+  snapshotName: string;
+  snapName: string;
+  tasks: Array<{ name: string; target: string }>;
+}
+
 export interface SnapshotRestoreResult {
   success: boolean;
   filesRestored?: number;
@@ -63,6 +69,10 @@ export function useSnapshotManager(serverIp: () => string, username: () => strin
   const browsing = ref(false);
   const operating = ref(false);
   const error = ref<string | null>(null);
+
+  /** Map of snapName → anchor info for the currently selected dataset */
+  const anchorMap = ref<Map<string, ReplicationAnchor>>(new Map());
+  const anchorsLoading = ref(false);
 
   const selectedDataset = ref<string | null>(null);
   const selectedSnapshot = ref<ZfsSnapshot | null>(null);
@@ -106,7 +116,39 @@ export function useSnapshotManager(serverIp: () => string, username: () => strin
     selectedSnapshot.value = null;
     files.value = [];
     filePath.value = [];
+    anchorMap.value = new Map();
     await loadSnapshots(dsName);
+    // Load replication anchors in the background (non-blocking)
+    loadAnchors(dsName);
+  }
+
+  // ── Replication anchor detection ────────────────────────────────────────
+
+  async function loadAnchors(dataset?: string) {
+    const ds = dataset ?? selectedDataset.value;
+    if (!ds) return;
+
+    anchorsLoading.value = true;
+    try {
+      const anchors: ReplicationAnchor[] = await window.electron.ipcRenderer.invoke(
+        'snapshot:get-replication-anchors',
+        { serverIp: serverIp(), username: username(), dataset: ds },
+      );
+      const map = new Map<string, ReplicationAnchor>();
+      for (const a of anchors) {
+        map.set(a.snapName, a);
+      }
+      anchorMap.value = map;
+    } catch {
+      // Scheduler may not be installed — silently ignore
+      anchorMap.value = new Map();
+    } finally {
+      anchorsLoading.value = false;
+    }
+  }
+
+  function getAnchor(snapName: string): ReplicationAnchor | undefined {
+    return anchorMap.value.get(snapName);
   }
 
   // ── Snapshot operations ────────────────────────────────────────────────
@@ -308,6 +350,7 @@ export function useSnapshotManager(serverIp: () => string, username: () => strin
     selectedSnapshot.value = null;
     filePath.value = [];
     error.value = null;
+    anchorMap.value = new Map();
   }
 
   return {
@@ -323,6 +366,8 @@ export function useSnapshotManager(serverIp: () => string, username: () => strin
     selectedDataset,
     selectedSnapshot,
     filePath,
+    anchorMap,
+    anchorsLoading,
 
     // Computed
     breadcrumb,
@@ -338,6 +383,10 @@ export function useSnapshotManager(serverIp: () => string, username: () => strin
     createSnapshot,
     destroySnapshot,
     rollbackSnapshot,
+
+    // Replication anchors
+    loadAnchors,
+    getAnchor,
 
     // File browsing
     browseSnapshot,

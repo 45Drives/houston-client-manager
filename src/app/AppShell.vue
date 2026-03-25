@@ -29,6 +29,8 @@
     <GlobalModalConfirm />
     <NotificationView />
     <LogModal />
+    <SettingsModal :open="settingsModalOpen" @close="closeSettingsModal" @serversChanged="() => {}" />
+    <GuidedTour v-if="activeTour" :steps="activeTour.steps" :active="true" @done="finishTour" @skip="finishTour" />
   </div>
 </template>
 
@@ -38,6 +40,8 @@ import { DynamicBrandingLogo, GlobalModalConfirm, NotificationView, reportError,
 import GlobalSetupWizardMenu from '../renderer/components/GlobalSetupWizardMenu.vue'
 import AppBreadcrumb from '../renderer/components/AppBreadcrumb.vue'
 import LogModal from '../renderer/components/LogModal.vue'
+import SettingsModal from '../renderer/views/backupSetupWizard/SettingsModal.vue'
+import GuidedTour from '../renderer/components/GuidedTour.vue'
 import { divisionCodeInjectionKey, currentServerInjectionKey, discoveryStateInjectionKey, discoveryRescanInjectionKey, thisOsInjectionKey } from '../renderer/keys/injection-keys'
 import type { Server, DivisionType, DiscoveryState } from '../renderer/types'
 import { useServerDiscovery } from '../renderer/composables/useServerDiscovery'
@@ -45,6 +49,8 @@ import { useIpcActions } from '../renderer/composables/useIpcActions'
 import { useThemeFromAlias } from '../renderer/composables/useThemeFromAlias'
 import { useRoute, useRouter } from 'vue-router'
 import { useHeaderTitle } from '../renderer/composables/useHeaderTitle'
+import { useSettingsModal } from '../renderer/composables/useSettingsModal'
+import { useTourManager } from '../renderer/composables/useTourManager'
 import { registerIpcActionListener } from "../renderer/composables/registerIpcActionListener";
 
 // provide shared refs
@@ -55,6 +61,8 @@ const route = useRoute()
 const router = useRouter()
 const hideHeader = computed(() => route.meta.hideHeader === true)
 const { headerTitle } = useHeaderTitle()
+const { settingsModalOpen, closeSettingsModal } = useSettingsModal()
+const { activeTour, finishTour } = useTourManager()
 
 provide(currentServerInjectionKey, currentServer)
 provide(divisionCodeInjectionKey, divisionCode)

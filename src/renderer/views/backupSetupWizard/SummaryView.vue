@@ -1,60 +1,51 @@
 <template>
   <CardContainer class="overflow-y-auto min-h-0">
-    
-    <div class="w-9/12 mx-auto text-center">
-      <p class="mb-6 text-2xl">
-        You're almost finished! A summary of information can be found below. <br />
-        If everything looks accurate, click <span class="font-bold">Next</span> to set up your backups. <br />
-        If you'd like to make changes, click <span class="font-bold">Back.</span>
+
+    <div class="flex flex-col gap-4 w-full">
+      <!-- Intro -->
+      <p class="text-sm text-center text-muted">
+        Review your backup configuration below. Click <span class="font-semibold">Next</span> to proceed
+        or <span class="font-semibold">Back</span> to make changes.
       </p>
+
+      <!-- OS-specific warnings -->
       <p v-if="(thisOs === 'rocky' || thisOs === 'debian') && isFirstBackupRun"
-        class="p-2 bg-red-500/50 font-bold rounded-md">
-        Note: On Linux, if this is your first time creating a backup, you will be prompted to enter sudo/admin
-        credentials.<br /> This is expected, and is only done on the first backup creation in order to configure the
-        network share location.
+        class="p-2 text-sm bg-red-500/50 font-bold rounded-md text-center">
+        Note: On Linux, if this is your first backup, you will be prompted for sudo/admin credentials
+        to configure the network share.
       </p>
-      <p v-if="(thisOs === 'mac')" class="p-2 bg-red-500/50 font-bold rounded-md">
-        <strong>Note:</strong> On macOS, if this is your first time creating a backup, you need to grant
-        <code>cron</code> <em>Full Disk Access</em> so it can read files from all folders.
-        <br />
-        To do this, go to:
-        <strong>System Settings → Privacy & Security → Full Disk Access</strong> and enable access for
-        <code>cron</code>.
+      <p v-if="thisOs === 'mac'" class="p-2 text-sm bg-red-500/50 font-bold rounded-md text-center">
+        <strong>Note:</strong> On macOS, grant <code>cron</code> <em>Full Disk Access</em> via
+        <strong>System Settings → Privacy &amp; Security → Full Disk Access</strong>.
       </p>
-      <div class="flex flex-col space-y-4 mt-[5rem]">
-        <div class="flex items-center">
-          <text class="text-default font-semibold text-left mr-2">Back Up Location</text>
-          <CommanderToolTip :message="`This is the designated backup storage location you configured earlier.`" />
-          <text class="text-default font-semibold text-left px-4">{{ `${actualHost}:${actualShare}` }}</text>
-        </div>
+
+      <!-- Backup Location -->
+      <div class="flex items-center gap-2 px-3 py-2 rounded-md bg-accent/5 border border-default">
+        <span class="text-sm font-semibold whitespace-nowrap">Backup Location</span>
+        <CommanderToolTip :message="'This is the designated backup storage location you configured earlier.'" />
+        <span class="text-sm break-all">{{ `${actualHost}:${actualShare}` }}</span>
       </div>
 
-      <!-- Folder Selection -->
-      <div class="flex flex-col space-y-4 mt-[2rem]">
-        <div v-if="backUpSetupConfig?.backUpTasks.length! > 0"
-          class="overflow-y-auto max-h-[40vh] space-y-4">
-          <div v-for="(task, index) in backUpSetupConfig?.backUpTasks" :key="index" class="flex items-center">
-            <div class="text-start w-[50%]">
-              <text class="text-default font-semibold text-left">{{ task.name || 'Folder' }}:</text>
-
-              <text class="text-default font-semibold text-left px-4">{{ task.source }}</text>
-            </div>
-            <div class="text-start w-[50%] flex items-center">
-              <text class="text-default font-semibold text-left">When:</text>
-              <text class="text-default font-semibold text-left px-4">{{ `Backup
-                will run
-                ${formatFrequency(task.schedule.repeatFrequency)} starting on
-                ${task.schedule.startDate.toDateString()} at ${task.schedule.startDate.toLocaleTimeString([], {
-                hour:
-                  '2-digit', minute: '2-digit' })}`}}</text>
-
-            </div>
+      <!-- Backup Tasks -->
+      <div v-if="backUpSetupConfig?.backUpTasks && backUpSetupConfig.backUpTasks.length > 0"
+        class="overflow-y-auto max-h-[40vh] space-y-3 pr-1">
+        <div v-for="(task, index) in backUpSetupConfig.backUpTasks" :key="index"
+          class="rounded-md border border-default p-3 space-y-1.5">
+          <div class="flex items-baseline gap-2">
+            <span class="text-xs font-semibold uppercase tracking-wide text-muted">Task</span>
+            <span class="text-sm font-semibold">{{ task.name || 'Folder' }}</span>
           </div>
+          <dl class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm">
+            <dt class="font-medium text-muted">Source</dt>
+            <dd class="break-all">{{ task.source }}</dd>
+            <dt class="font-medium text-muted">Frequency</dt>
+            <dd class="capitalize">{{ formatFrequency(task.schedule.repeatFrequency) }}</dd>
+            <dt class="font-medium text-muted">Starts</dt>
+            <dd>{{ task.schedule.startDate.toDateString() }} at {{ task.schedule.startDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }}</dd>
+          </dl>
         </div>
       </div>
-
     </div>
-
 
     <!-- Buttons -->
     <template #footer>

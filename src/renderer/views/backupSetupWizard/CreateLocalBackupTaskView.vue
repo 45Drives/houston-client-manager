@@ -14,7 +14,7 @@
 
 					<div class="shrink-0 space-y-2 overflow-hidden w-full">
 						<!-- Backup Location -->
-						<div class="flex items-center">
+						<div class="flex items-center" data-tour="backup-location">
 							<div class="flex items-center w-[25%] flex-shrink-0 space-x-2">
 								<label class="text-default font-semibold text-left">Back Up Location</label>
 								<CommanderToolTip
@@ -41,7 +41,7 @@
 						</div>
 
 						<!-- Schedule Mode Toggle -->
-						<div class="shrink-0 flex flex-row items-center py-2">
+						<div class="shrink-0 flex flex-row items-center py-2" data-tour="schedule-type">
 							<label class="w-[25%] text-default font-semibold text-start">Schedule Type</label>
 							<div class="inline-flex rounded-lg border border-default overflow-hidden">
 								<button
@@ -85,7 +85,7 @@
 						</div>
 
 						<!-- Folder Selection Button -->
-						<div class="flex flex-row items-center mt-4">
+						<div class="flex flex-row items-center mt-4" data-tour="add-folder">
 							<button @click="handleFolderSelect" class="btn btn-sm btn-secondary h-fit">
 								<PlusIcon class="w-4 h-4" />
 							</button>
@@ -171,9 +171,37 @@ import { useRouter } from 'vue-router';
 import { SimpleCalendar } from "../../components/calendar";
 import { sanitizeFilePath } from "./utils";
 import { useHeader } from '../../composables/useHeader';
+import { useOnboarding } from '../../composables/useOnboarding';
+import { useTourManager, type TourStep } from '../../composables/useTourManager';
 
 useHeader('Create Backup Task');
 const router = useRouter();
+
+const { onboarding, markDone } = useOnboarding();
+const { requestTour } = useTourManager();
+
+const tourSteps: TourStep[] = [
+	{
+		target: '[data-tour="backup-location"]',
+		message: 'Select which storage server your backups will be saved to.\n\nThis dropdown shows servers you\'ve already set up via the Setup Wizard.',
+	},
+	{
+		target: '[data-tour="schedule-type"]',
+		message: 'Choose Simple for a quick preset schedule (hourly, daily, weekly, monthly), or Custom to set a specific date and time for each folder.',
+	},
+	{
+		target: '[data-tour="add-folder"]',
+		message: 'Click here to add folders for backup.\n\nA file browser will open — select a folder and it will be added to your backup list. You can add as many folders as you like.',
+	},
+];
+
+onMounted(() => {
+	if (!onboarding.value.createBackupTourDone) {
+		setTimeout(() => {
+			requestTour('create-backup', tourSteps, () => markDone('createBackupTourDone'));
+		}, 400);
+	}
+});
 
 const { completeCurrentStep, prevStep } = useWizardSteps('backup-new');
 

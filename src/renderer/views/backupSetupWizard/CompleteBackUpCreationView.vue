@@ -44,12 +44,12 @@
 
       <div class="button-group-row justify-end">
 
-        <button :disabled="setupComplete !== 'yes'" class="btn btn-primary h-fit" @click="goToBackupWizard">
-          Go To Backup Manager
-        </button>
-
         <button :disabled="setupComplete !== 'yes'" class="btn btn-secondary h-fit" @click="goToSetupWizard">
           Setup More Storage Servers
+        </button>
+
+        <button :disabled="setupComplete !== 'yes'" class="btn btn-primary h-fit" @click="goToBackupWizard">
+          Go To Backup Manager
         </button>
 
       </div>

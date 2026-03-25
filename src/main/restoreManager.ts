@@ -44,6 +44,19 @@ export interface S2STask {
   direction: 'push' | 'pull';
 }
 
+export interface ReplicationAnchor {
+  /** Full snapshot name on the local side (dataset@snapname) */
+  snapshotName: string;
+  /** Short snapshot name (just the @name part) */
+  snapName: string;
+  /** Replication tasks this snapshot anchors */
+  tasks: Array<{
+    name: string;
+    /** Human-readable description like "user@host:pool/dataset" */
+    target: string;
+  }>;
+}
+
 export interface RestoreRequest {
   serverIp: string;
   username: string;
@@ -373,6 +386,188 @@ async function readRsyncEnvFiles(ssh: NodeSSH): Promise<S2STask[]> {
   }
 
   return tasks;
+}
+
+/**
+ * Detect replication anchor snapshots for a given dataset.
+ *
+ * Queries the scheduler's task instances on the server, finds ZFS replication
+ * tasks that involve the given dataset, then determines the most recent common
+ * snapshot (by GUID) between the local and remote sides. That common snapshot
+ * is the "replication anchor" — deleting it forces a full re-send on the next
+ * replication run.
+ */
+export async function getReplicationAnchors(
+  serverIp: string,
+  username: string,
+  dataset: string,
+): Promise<ReplicationAnchor[]> {
+  const ssh = await connectSSH(serverIp, username);
+  try {
+    // 1. Get all scheduler task instances
+    const scriptPath = '/opt/45drives/houston/scheduler/scripts/get-task-instances.py';
+    const taskResult = await ssh.execCommand(`python3 ${shellQuote(scriptPath)} 2>/dev/null`);
+
+    if (taskResult.code !== 0 || !taskResult.stdout.trim()) return [];
+
+    const allTasks: Array<{
+      name: string;
+      template: string;
+      parameters: Record<string, string>;
+    }> = JSON.parse(taskResult.stdout);
+
+    // 2. Filter for ZfsReplicationTask instances involving this dataset
+    const repTasks = allTasks
+      .filter(t => t.template === 'ZfsReplicationTask')
+      .map(t => {
+        const p = t.parameters;
+        const srcPool = p['zfsRepConfig_sourceDataset_pool'] || '';
+        const srcDs = p['zfsRepConfig_sourceDataset_dataset'] || '';
+        const dstPool = p['zfsRepConfig_destDataset_pool'] || '';
+        const dstDs = p['zfsRepConfig_destDataset_dataset'] || '';
+        const joinZfs = (pool: string, ds: string) =>
+          pool && ds ? `${pool}/${ds}` : pool || ds;
+        return {
+          name: t.name,
+          sourceDataset: joinZfs(srcPool, srcDs),
+          destDataset: joinZfs(dstPool, dstDs),
+          destHost: p['zfsRepConfig_destDataset_host'] || '',
+          destUser: p['zfsRepConfig_destDataset_user'] || 'root',
+          destSshPort: parseInt(p['zfsRepConfig_destDataset_sshPort'] || '22', 10),
+          direction: (p['zfsRepConfig_direction'] || 'push') as 'push' | 'pull',
+        };
+      });
+
+    // Push: source is local. Pull: dest is local.
+    const matchingTasks = repTasks.filter(t => {
+      if (t.direction === 'push') return t.sourceDataset === dataset;
+      if (t.direction === 'pull') return t.destDataset === dataset;
+      return false;
+    });
+
+    if (matchingTasks.length === 0) return [];
+
+    // 3. Get local snapshots with GUIDs
+    const localSnapResult = await ssh.execCommand(
+      `zfs list -H -p -o name,guid,creation -t snapshot -r ${shellQuote(dataset)} 2>/dev/null`,
+    );
+    if (localSnapResult.code !== 0 || !localSnapResult.stdout.trim()) return [];
+
+    const localSnaps = localSnapResult.stdout
+      .trim()
+      .split('\n')
+      .filter(Boolean)
+      .map(line => {
+        const parts = line.split('\t');
+        return { name: parts[0], guid: parts[1], creation: parseInt(parts[2] || '0', 10) };
+      })
+      .filter(s => s.name.startsWith(dataset + '@')); // Only direct snapshots of this dataset
+
+    if (localSnaps.length === 0) return [];
+
+    // 4. For each task, get remote snapshots and find the most recent common snapshot
+    const anchorMap = new Map<string, { tasks: Array<{ name: string; target: string }> }>();
+
+    for (const task of matchingTasks) {
+      let otherDataset: string;
+      let otherHost: string;
+      let otherUser: string;
+      let otherSshPort: number;
+
+      if (task.direction === 'push') {
+        // Push: other side is destination
+        otherDataset = task.destDataset;
+        otherHost = task.destHost;
+        otherUser = task.destUser;
+        otherSshPort = task.destSshPort;
+      } else {
+        // Pull: other side is source (on the remote host)
+        otherDataset = task.sourceDataset;
+        otherHost = task.destHost;
+        otherUser = task.destUser;
+        otherSshPort = task.destSshPort;
+      }
+
+      let remoteSnaps: Array<{ name: string; guid: string; creation: number }> = [];
+      try {
+        if (otherHost) {
+          // SSH hop: managed server → remote host
+          const hopCmd = [
+            'ssh',
+            '-p', String(otherSshPort),
+            '-o', 'BatchMode=yes',
+            '-o', 'ConnectTimeout=10',
+            '-o', 'StrictHostKeyChecking=accept-new',
+            `${otherUser}@${otherHost}`,
+            'zfs', 'list', '-H', '-p',
+            '-o', 'name,guid,creation',
+            '-t', 'snapshot',
+            '-r', otherDataset,
+          ].map(shellQuote).join(' ');
+          const result = await ssh.execCommand(`${hopCmd} 2>/dev/null`);
+          if (result.code === 0 && result.stdout.trim()) {
+            remoteSnaps = result.stdout.trim().split('\n').filter(Boolean).map(line => {
+              const parts = line.split('\t');
+              return { name: parts[0], guid: parts[1], creation: parseInt(parts[2] || '0', 10) };
+            }).filter(s => s.name.startsWith(otherDataset + '@'));
+          }
+        } else {
+          // Local: destination is on the same server
+          const result = await ssh.execCommand(
+            `zfs list -H -p -o name,guid,creation -t snapshot -r ${shellQuote(otherDataset)} 2>/dev/null`,
+          );
+          if (result.code === 0 && result.stdout.trim()) {
+            remoteSnaps = result.stdout.trim().split('\n').filter(Boolean).map(line => {
+              const parts = line.split('\t');
+              return { name: parts[0], guid: parts[1], creation: parseInt(parts[2] || '0', 10) };
+            }).filter(s => s.name.startsWith(otherDataset + '@'));
+          }
+        }
+      } catch {
+        // Can't reach the other side — skip this task
+        continue;
+      }
+
+      if (remoteSnaps.length === 0) continue;
+
+      // Find most recent common snapshot by GUID
+      const remoteGuids = new Set(remoteSnaps.map(s => s.guid));
+      const commonSnaps = localSnaps
+        .filter(s => remoteGuids.has(s.guid))
+        .sort((a, b) => b.creation - a.creation);
+
+      if (commonSnaps.length === 0) continue;
+
+      const anchor = commonSnaps[0];
+      const targetDesc = otherHost
+        ? `${otherUser}@${otherHost}:${otherDataset}`
+        : otherDataset;
+
+      const existing = anchorMap.get(anchor.name);
+      if (existing) {
+        existing.tasks.push({ name: task.name, target: targetDesc });
+      } else {
+        anchorMap.set(anchor.name, {
+          tasks: [{ name: task.name, target: targetDesc }],
+        });
+      }
+    }
+
+    // 5. Convert to array
+    return Array.from(anchorMap.entries()).map(([snapshotName, info]) => {
+      const atIdx = snapshotName.indexOf('@');
+      return {
+        snapshotName,
+        snapName: snapshotName.substring(atIdx + 1),
+        tasks: info.tasks,
+      };
+    });
+  } catch {
+    // If scheduler isn't installed or any parse error, return empty gracefully
+    return [];
+  } finally {
+    ssh.dispose();
+  }
 }
 
 /**

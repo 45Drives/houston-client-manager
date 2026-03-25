@@ -441,8 +441,13 @@ export async function handleBackupMessage(message: any, ctx: IPCHandlerContext):
     case 'fetchBackupEvents': {
       const logPath = path.join(app.getPath('userData'), 'logs', '45drives_backup_events.json');
       let events: Array<{ uuid: string; host: string; share: string; source: string; timestamp: string; status: string }> = [];
-      // Track which UUIDs have started but not ended (still running)
-      const startedUuids = new Set<string>();
+      // Track which UUIDs have started but not ended (still running),
+      // along with their start timestamp so we can detect stale entries.
+      const startedUuids = new Map<string, string>(); // uuid → timestamp
+
+      // Maximum age (ms) for a backup_start without backup_end before
+      // we consider it stale (crashed/interrupted). 12 hours.
+      const MAX_RUNNING_AGE_MS = 12 * 60 * 60 * 1000;
 
       if (fs.existsSync(logPath)) {
         const lines = fs.readFileSync(logPath, 'utf8')
@@ -452,13 +457,23 @@ export async function handleBackupMessage(message: any, ctx: IPCHandlerContext):
           try {
             const ev = JSON.parse(line);
             if (ev.event === 'backup_start' && ev.uuid) {
-              startedUuids.add(ev.uuid);
+              startedUuids.set(ev.uuid, ev.timestamp || '');
             }
             if (ev.event === 'backup_end') {
               startedUuids.delete(ev.uuid);
               events.push({ uuid: ev.uuid, host: ev.host, share: ev.share, source: ev.source, timestamp: ev.timestamp, status: ev.status });
             }
           } catch { /* skip invalid JSON */ }
+        }
+      }
+
+      // Prune stale "running" entries: if backup_start is older than MAX_RUNNING_AGE_MS,
+      // the process almost certainly crashed or was killed without writing backup_end.
+      const now = Date.now();
+      for (const [uuid, ts] of startedUuids) {
+        const startMs = ts ? Date.parse(ts) : NaN;
+        if (Number.isFinite(startMs) && now - startMs > MAX_RUNNING_AGE_MS) {
+          startedUuids.delete(uuid);
         }
       }
 
@@ -469,7 +484,7 @@ export async function handleBackupMessage(message: any, ctx: IPCHandlerContext):
           try {
             const existingTasks = await backupManager.queryTasks();
             const existingUuids = new Set(existingTasks.map(t => t.uuid));
-            for (const uuid of startedUuids) {
+            for (const uuid of startedUuids.keys()) {
               if (!existingUuids.has(uuid)) {
                 startedUuids.delete(uuid);
               }
@@ -481,7 +496,7 @@ export async function handleBackupMessage(message: any, ctx: IPCHandlerContext):
       router.send('renderer', 'action', JSON.stringify({
         type: 'sendBackupEvents',
         events,
-        runningUuids: Array.from(startedUuids),
+        runningUuids: Array.from(startedUuids.keys()),
       }));
       return true;
     }

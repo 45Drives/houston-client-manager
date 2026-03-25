@@ -1,5 +1,5 @@
 <template>
-    <div class="h-full flex flex-col min-h-0 overflow-hidden p-4">
+    <div class="h-full flex flex-col min-h-0 overflow-hidden p-4 ui-texture-surface ui-texture-surface--soft">
         <!-- Header -->
         <div class="flex items-center justify-between mb-3 shrink-0">
             <div class="flex items-center gap-3">
@@ -10,7 +10,7 @@
                 <h2 class="text-sm font-semibold text-default">Backup Browser</h2>
             </div>
             <!-- Backup selector (multi-backup mode) -->
-            <div v-if="!singleMode" class="flex items-center gap-2">
+            <div v-if="!singleMode" class="flex items-center gap-2" data-tour="backup-selector">
                 <label class="text-sm text-muted">Backup:</label>
                 <select
                     class="bg-well border border-default rounded px-2 py-1 text-sm text-default min-w-[200px]"
@@ -32,7 +32,7 @@
         <!-- Main two-column content -->
         <div class="flex-1 min-h-0 flex gap-4">
             <!-- LEFT: Files in backup -->
-            <div class="w-3/5 flex flex-col min-h-0 bg-white dark:bg-neutral-800 rounded-lg border border-neutral-200 dark:border-neutral-700 overflow-hidden">
+            <div class="w-3/5 flex flex-col min-h-0 bg-white dark:bg-neutral-800 rounded-lg border border-neutral-200 dark:border-neutral-700 overflow-hidden" data-tour="file-panel">
                 <!-- File panel header -->
                 <div class="px-3 py-2 border-b border-default flex items-center justify-between shrink-0">
                     <span class="text-sm font-medium text-default">
@@ -233,7 +233,7 @@
                 </div>
 
                 <!-- Action buttons -->
-                <div v-if="selectedBackup" class="shrink-0 flex flex-col gap-2">
+                <div v-if="selectedBackup" class="shrink-0 flex flex-col gap-2" data-tour="restore-actions">
                     <button class="btn btn-primary w-full h-fit flex items-center justify-center gap-1.5 py-2.5"
                         :disabled="selectedFilesCount === 0"
                         @click="restoreSelected">
@@ -259,7 +259,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onUnmounted, watch } from 'vue'
+import { ref, computed, onUnmounted, onMounted, watch } from 'vue'
 import { confirm, useEnterToAdvance } from '@45drives/houston-common-ui'
 import { IPCRouter, type BackupEntry, type FileEntry, type BackUpTask } from '@45drives/houston-common-lib'
 import { useRouter } from 'vue-router'
@@ -269,8 +269,32 @@ import {
     MagnifyingGlassIcon, DocumentIcon, DocumentMagnifyingGlassIcon,
     InformationCircleIcon
 } from '@heroicons/vue/24/outline'
+import { useOnboarding } from '../../composables/useOnboarding'
+import { useTourManager, type TourStep } from '../../composables/useTourManager'
 useHeader('View Selected Backups')
 const router = useRouter();
+
+const { onboarding, markDone } = useOnboarding();
+const { requestTour } = useTourManager();
+
+const browserTourSteps: TourStep[] = [
+    {
+        target: '[data-tour="file-panel"]',
+        message: 'This panel shows all files in the selected backup.\n\nClick files to select them, or use the Select All / Deselect All buttons at the top.',
+    },
+    {
+        target: '[data-tour="restore-actions"]',
+        message: 'Use these buttons to restore selected files, open the backup folder on disk, or delete the entire backup.\n\nRestored files go back to their original locations.',
+    },
+];
+
+onMounted(() => {
+    if (!onboarding.value.backupBrowserTourDone) {
+        setTimeout(() => {
+            requestTour('backup-browser', browserTourSteps, () => markDone('backupBrowserTourDone'));
+        }, 600);
+    }
+});
 
 // Extended file entry with metadata from the backend
 interface RichFileEntry extends FileEntry {

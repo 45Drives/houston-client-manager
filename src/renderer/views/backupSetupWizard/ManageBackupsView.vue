@@ -8,7 +8,7 @@
                 Dashboard
             </button>
 
-            <div class="inline-flex rounded-lg border border-default overflow-hidden shrink-0">
+            <div class="inline-flex rounded-lg border border-default overflow-hidden shrink-0" data-tour="tab-bar">
                 <button class="px-3 sm:px-5 py-1.5 sm:py-2 text-sm font-medium flex items-center gap-2 transition-colors"
                     :class="activeTab === 'local' ? 'bg-accent text-default shadow-[inset_0_-2px_0_var(--btn-primary-bg)]' : 'bg-well hover:bg-accent text-muted'"
                     @click="activeTab = 'local'; remoteView = 'backups'">
@@ -25,7 +25,7 @@
 
             <!-- Remote: server dropdown + action buttons (left-aligned) -->
             <template v-if="activeTab === 'remote'">
-                <div class="flex flex-wrap items-center gap-3 min-h-9">
+                <div class="flex flex-wrap items-center gap-3 min-h-9" data-tour="remote-server-picker">
                     <select v-model="selectedIp" :title="selectedIp"
                         class="input-textlike border border-default rounded-lg px-3 py-1.5 text-sm min-w-0 max-w-full sm:max-w-56 truncate">
                         <option value="">Select Server…</option>
@@ -41,14 +41,14 @@
                         Connect
                     </button>
                     <button class="btn btn-sm btn-outline-shadow h-fit flex items-center gap-1.5"
-                        :class="currentServer ? '' : 'invisible pointer-events-none'"
+                        :class="currentServer || showRemoteTour ? '' : 'invisible pointer-events-none'"
                         :disabled="!currentServer"
                         @click="showRestoreView ? disconnectRestore() : cockpitRef?.logoutFromCurrentServer()">
                         <ArrowRightOnRectangleIcon class="w-4 h-4" />
                         Disconnect
                     </button>
                     <button class="btn btn-sm btn-ghost h-fit flex items-center gap-1.5 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20"
-                        :class="activeCredId && currentServer ? '' : 'invisible pointer-events-none'"
+                        :class="(activeCredId && currentServer) || showRemoteTour ? '' : 'invisible pointer-events-none'"
                         :disabled="!(activeCredId && currentServer)"
                         @click="forgetActive">
                         <TrashIcon class="w-4 h-4" />
@@ -62,7 +62,7 @@
 
             <!-- Right-aligned group -->
             <template v-if="activeTab === 'remote'">
-                <button class="btn btn-sm h-fit flex items-center gap-1.5"
+                <button class="btn btn-sm h-fit flex items-center gap-1.5" data-tour="restore-btn"
                     :class="remoteView === 'restore' ? 'btn-outline-shadow' : 'btn-primary'" :disabled="!restoreConnected"
                     @click="remoteView = remoteView === 'restore' ? 'backups' : 'restore'">
                     <template v-if="remoteView === 'restore'">
@@ -74,7 +74,7 @@
                         Restore
                     </template>
                 </button>
-                <button class="btn btn-sm h-fit flex items-center gap-1.5"
+                <button class="btn btn-sm h-fit flex items-center gap-1.5" data-tour="snapshots-btn"
                     :class="remoteView === 'snapshots' ? 'btn-outline-shadow' : 'btn-primary'" :disabled="!restoreConnected"
                     @click="remoteView = remoteView === 'snapshots' ? 'backups' : 'snapshots'">
                     <template v-if="remoteView === 'snapshots'">
@@ -88,13 +88,13 @@
                 </button>
             </template>
             <template v-else>
-                <button class="btn btn-sm btn-primary h-fit flex items-center gap-1.5" @click="newBackupTask">
+                <button class="btn btn-sm btn-primary h-fit flex items-center gap-1.5" @click="newBackupTask" data-tour="new-backup">
                     <PlusIcon class="w-4 h-4" />
                     New Backup
                 </button>
             </template>
 
-            <button class="w-8 h-8 p-0 rounded-md bg-transparent inline-flex items-center justify-center text-gray-500 hover:text-default hover:bg-neutral-100 dark:hover:bg-neutral-700 transition-colors" title="Settings" @click="settingsOpen = true">
+            <button class="w-8 h-8 p-0 rounded-md bg-transparent inline-flex items-center justify-center text-gray-500 hover:text-default hover:bg-neutral-100 dark:hover:bg-neutral-700 transition-colors" title="Settings" @click="openSettingsModal()" data-tour="settings-btn">
                 <Cog6ToothIcon class="w-5 h-5" />
             </button>
         </div>
@@ -159,6 +159,11 @@
                 routePath="/scheduler-test" hash="simple" wrapperClass="h-full overflow-hidden"
                 heightClass="h-full" :openDevtoolsInDev="true" />
 
+            <!-- Scheduler mockup shown during the remote tour when not connected -->
+            <div v-else-if="showRemoteTour" class="relative h-full" data-tour="scheduler-preview">
+                <SchedulerMockup class="h-full" />
+            </div>
+
             <div v-else class="h-full flex flex-col items-center justify-center text-muted gap-4">
                 <GlobeAltIcon class="w-12 h-12 opacity-30" />
                 <p>Select a server above to view remote backups.</p>
@@ -168,18 +173,16 @@
 
     <ServerLoginModal :open="loginOpen" :host="selectedIp || null" :displayName="selectedOptionLabel"
         :presetUsername="prefillUsername" @cancel="closeLogin" @submit="onLoginSubmit" />
-
-    <SettingsModal :open="settingsOpen" @close="settingsOpen = false" @saved="onSettingsSaved"
-        @serversChanged="loadSavedServers" />
 </template>
 
 <script setup lang="ts">
 import { BackUpTask, IPCRouter } from '@45drives/houston-common-lib';
 import CockpitWebview from '../../components/CockpitWebview.vue';
+import { useTourManager, type TourStep } from '../../composables/useTourManager';
+import SchedulerMockup from '../../components/SchedulerMockup.vue';
 import RestoreBrowser from './RestoreBrowser.vue';
 import SnapshotManager from './SnapshotManager.vue';
 import ServerLoginModal from './ServerLoginModal.vue';
-import SettingsModal from './SettingsModal.vue';
 import BackUpListView from './BackUpListView.vue';
 import { useServerCredentials } from '../../composables/useServerCredentials';
 import { computed, inject, Ref, ref, watch, onMounted, onBeforeUnmount } from 'vue';
@@ -187,8 +190,10 @@ import { currentServerInjectionKey, discoveryStateInjectionKey, reviewBackUpSetu
 import { useRouter } from 'vue-router';
 import { useHeader } from '../../composables/useHeader';
 import { useLogModal } from '../../composables/useLogModal';
+import { useSettingsModal } from '../../composables/useSettingsModal';
 import { DiscoveryState, type Server as ServerType } from '../../types';
 import { useSettings } from '../../composables/useSettings';
+import { useOnboarding } from '../../composables/useOnboarding';
 import {
     ComputerDesktopIcon, GlobeAltIcon, PlusIcon,
     ArrowLeftIcon, ArrowDownTrayIcon, Cog6ToothIcon, XMarkIcon,
@@ -203,12 +208,89 @@ const emit = defineEmits<{
 
 const { setCredentials } = useServerCredentials();
 const { openLogModal } = useLogModal();
+const { openSettingsModal } = useSettingsModal();
 const reviewBackup = inject(reviewBackUpSetupKey);
 const router = useRouter();
 const selectedBackUpTasks = ref<BackUpTask[]>([]);
 const activeTab = ref<'local' | 'remote'>('local');
-const settingsOpen = ref(false);
 const { settings } = useSettings();
+const { onboarding, markDone } = useOnboarding();
+const { requestTour, activeTour } = useTourManager();
+const showRemoteTour = computed(() => activeTour.value?.id === 'remote-backups');
+
+// ── Guided tour ──────────────────────────────────────────────────────────
+
+const managerTourSteps: TourStep[] = [
+    {
+        target: '[data-tour="tab-bar"]',
+        message: 'Switch between Local and Remote backup views here.\n\nLocal backups are scheduled tasks that run on this computer.\nRemote backups let you connect to your 45Drives storage server.',
+    },
+    {
+        target: '[data-tour="new-backup"]',
+        message: 'Click here to create a new backup task.\n\nYou\'ll choose which folders to back up, pick a schedule, and enter your server credentials.',
+    },
+    {
+        target: '[data-tour="settings-btn"]',
+        message: 'Open Settings to configure server connections, display preferences, and more.',
+    },
+    {
+        target: '[data-tour="backup-table"]',
+        message: 'This is your backup task list.\n\nClick on a row to select it. You can select multiple tasks using the checkboxes.',
+    },
+    {
+        target: '[data-tour="run-now"]',
+        message: 'Run a backup immediately.\n\nThese action buttons appear when you select one or more tasks from the list. Click Run Now to trigger a backup right away instead of waiting for the schedule.',
+    },
+    {
+        target: '[data-tour="view-restore"]',
+        message: 'View the files in a backup and restore individual files or entire backups.\n\nSelect tasks from the list to enable this button.',
+    },
+    {
+        target: '[data-tour="edit-btn"]',
+        message: 'Edit a task\'s name, source folder, schedule, or credentials.\n\nThis button is enabled when exactly one task is selected.',
+    },
+];
+
+onMounted(() => {
+    if (!onboarding.value.backupManagerTourDone) {
+        setTimeout(() => {
+            requestTour('backup-manager', managerTourSteps, async () => {
+                await markDone('backupManagerTourDone');
+                await markDone('backupListTourDone');
+            });
+        }, 500);
+    }
+});
+
+// ── Remote backups tab tour ──────────────────────────────────────────────
+
+const remoteTourSteps: TourStep[] = [
+    {
+        target: '[data-tour="remote-server-picker"]',
+        message: 'Select a storage server from your discovered servers or favorites, then click Connect to log in.\n\nOnce connected, you can view the remote backup scheduler.',
+    },
+    {
+        target: '[data-tour="scheduler-preview"]',
+        message: 'Here\'s a preview of the Remote Backup Scheduler.\n\nOnce connected, you\'ll see your server\'s backup tasks listed in a table — create new tasks, run them on demand, view logs, and monitor progress.',
+        placement: 'top',
+    },
+    {
+        target: '[data-tour="restore-btn"]',
+        message: 'Open the Restore browser to recover files from server-to-server or cloud backups on the remote server.',
+    },
+    {
+        target: '[data-tour="snapshots-btn"]',
+        message: 'Manage ZFS snapshots on the connected server.\n\nCreate, browse, restore, rollback, or delete snapshots for any dataset.',
+    },
+];
+
+watch(activeTab, (tab) => {
+    if (tab === 'remote' && !onboarding.value.remoteBackupsTourDone) {
+        setTimeout(() => {
+            requestTour('remote-backups', remoteTourSteps, () => markDone('remoteBackupsTourDone'));
+        }, 400);
+    }
+});
 
 // ── Restore/Snapshot view state (within Remote tab) ────────────────────────
 const remoteView = ref<'backups' | 'restore' | 'snapshots'>('backups');
@@ -523,6 +605,20 @@ const actionHandler = (raw: string) => {
                 }
             }
             isRunningNow.value = true;
+
+            // If no backupProgress events arrive within 30s for event-log-restored
+            // tasks, they're almost certainly stale (process crashed/app was closed
+            // mid-backup). Clear them so the UI doesn't show phantom running tasks.
+            const restoredUuids = new Set(msg.runningUuids as string[]);
+            setTimeout(() => {
+                for (const uuid of restoredUuids) {
+                    const entry = taskProgressMap.value[uuid];
+                    // Only clear if percent is still null (never received real progress)
+                    if (entry && entry.percent == null) {
+                        removeFinishedTask(uuid);
+                    }
+                }
+            }, 30_000);
         }
     } catch (e) { console.debug('actionHandler parse error:', e); }
 };
@@ -536,4 +632,10 @@ onBeforeUnmount(() => {
     try { IPCRouter.getInstance().removeEventListener?.('action', actionHandler); } catch { }
     try { IPCRouter.getInstance().removeEventListener?.('backupProgress', backupProgressHandler); } catch { }
 });
+
+function refreshBackups() {
+    backUpListRef.value?.fetchBackupTasks();
+}
+
+defineExpose({ refreshBackups });
 </script>

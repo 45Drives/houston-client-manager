@@ -10,7 +10,7 @@
             <div class="flex-1" />
 
             <!-- Create snapshot -->
-            <button class="btn btn-sm btn-primary btn-with-icon h-fit"
+            <button class="btn btn-sm btn-primary btn-with-icon h-fit" data-tour="new-snapshot"
                 :disabled="!snap.selectedDataset.value || snap.operating.value" @click="showCreateModal = true">
                 <PlusIcon class="w-4 h-4" />
                 New Snapshot
@@ -35,7 +35,7 @@
         <div class="flex-1 min-h-0 flex gap-3 p-3">
 
             <!-- LEFT: Dataset list ─────────────────────────────────────── -->
-            <div class="w-1/5 min-w-[180px] flex flex-col min-h-0 bg-white dark:bg-neutral-800 rounded-lg border border-neutral-200 dark:border-neutral-700 overflow-hidden">
+            <div class="w-1/5 min-w-[180px] flex flex-col min-h-0 bg-white dark:bg-neutral-800 rounded-lg border border-neutral-200 dark:border-neutral-700 overflow-hidden" data-tour="dataset-list">
                 <div class="px-3 py-2 border-b border-neutral-200 dark:border-neutral-700 text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400 text-left">Datasets</div>
                 <div v-if="snap.loading.value" class="flex-1 flex items-center justify-center">
                     <div class="spinner"></div>
@@ -56,7 +56,7 @@
             </div>
 
             <!-- CENTER: Snapshot list ──────────────────────────────────── -->
-            <div class="w-2/5 flex flex-col min-h-0 bg-neutral-50 dark:bg-neutral-850 rounded-lg border border-neutral-200 dark:border-neutral-700 overflow-hidden text-left">
+            <div class="w-2/5 flex flex-col min-h-0 bg-neutral-50 dark:bg-neutral-850 rounded-lg border border-neutral-200 dark:border-neutral-700 overflow-hidden text-left" data-tour="snapshot-list">
                 <div class="px-3 py-2 border-b border-default flex items-center justify-between">
                     <button v-if="snap.selectedDataset.value"
                         class="text-sm font-medium flex items-center gap-1 hover:text-muted transition-colors"
@@ -91,8 +91,14 @@
                         <div class="flex items-start justify-between gap-2">
                             <div class="min-w-0 flex-1 cursor-pointer"
                                 @click="snap.browseSnapshot(s)">
-                                <div class="text-sm font-medium text-default truncate" :title="s.snapName">
+                                <div class="text-sm font-medium text-default truncate flex items-center gap-1.5" :title="s.snapName">
                                     {{ s.snapName }}
+                                    <span v-if="snap.getAnchor(s.snapName)"
+                                        class="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 shrink-0"
+                                        :title="'Replication anchor for: ' + snap.getAnchor(s.snapName)!.tasks.map(t => t.name).join(', ')">
+                                        <LinkIcon class="w-3 h-3" />
+                                        Anchor
+                                    </span>
                                 </div>
                                 <div class="text-xs text-gray-400">
                                     {{ s.creation }} — {{ s.used }} used
@@ -122,7 +128,7 @@
             </div>
 
             <!-- RIGHT: File browser / detail panel ──────────────────── -->
-            <div class="flex-1 flex flex-col min-h-0 bg-white dark:bg-neutral-800 rounded-lg border border-neutral-200 dark:border-neutral-700 overflow-hidden">
+            <div class="flex-1 flex flex-col min-h-0 bg-white dark:bg-neutral-800 rounded-lg border border-neutral-200 dark:border-neutral-700 overflow-hidden" data-tour="snapshot-file-browser">
                 <!-- File browser header -->
                 <div class="px-3 py-2 border-b border-default flex flex-wrap items-center gap-1 shrink-0">
                     <template v-if="snap.selectedSnapshot.value">
@@ -294,7 +300,7 @@
         <!-- ── Confirm Delete Modal ───────────────────────────────────── -->
         <Teleport to="body">
             <div v-if="deleteTarget" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
-                @click.self="deleteTarget = null">
+                @click.self="cancelDelete">
                 <div class="bg-default border border-default rounded-lg shadow-xl w-full max-w-md p-5">
                     <h3 class="text-base font-semibold mb-2 text-danger">Delete Snapshot</h3>
                     <p class="text-sm text-muted mb-4">
@@ -302,9 +308,41 @@
                         <strong class="text-default">{{ deleteTarget.snapName }}</strong>
                         from dataset <strong class="text-default">{{ deleteTarget.dataset }}</strong>?
                     </p>
+
+                    <!-- Replication anchor warning -->
+                    <div v-if="deleteTargetAnchor"
+                        class="p-3 bg-amber-50 dark:bg-amber-900/15 border border-amber-300 dark:border-amber-700 rounded text-sm mb-4">
+                        <div class="flex items-start gap-2">
+                            <ExclamationTriangleIcon class="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
+                            <div>
+                                <p class="font-medium text-amber-800 dark:text-amber-300 mb-1">
+                                    This snapshot is a replication anchor
+                                </p>
+                                <p class="text-amber-700 dark:text-amber-400 mb-2">
+                                    Deleting it will break the incremental replication chain. The next
+                                    replication run will require a <strong>full re-send</strong> of the
+                                    entire dataset instead of an incremental delta.
+                                </p>
+                                <ul class="text-xs text-amber-600 dark:text-amber-400 space-y-1">
+                                    <li v-for="t in deleteTargetAnchor.tasks" :key="t.name" class="flex items-center gap-1">
+                                        <LinkIcon class="w-3 h-3 shrink-0" />
+                                        <span><strong>{{ t.name }}</strong> → {{ t.target }}</span>
+                                    </li>
+                                </ul>
+                                <label class="flex items-center gap-2 mt-3 cursor-pointer">
+                                    <input v-model="deleteAnchorConfirmed" type="checkbox" />
+                                    <span class="text-xs text-amber-800 dark:text-amber-300">
+                                        I understand this will force a full re-replication
+                                    </span>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+
                     <div class="flex justify-end gap-2">
-                        <button class="btn btn-sm btn-outline-shadow h-fit" @click="deleteTarget = null">Cancel</button>
-                        <button class="btn btn-sm btn-danger h-fit" :disabled="snap.operating.value"
+                        <button class="btn btn-sm btn-outline-shadow h-fit" @click="cancelDelete">Cancel</button>
+                        <button class="btn btn-sm btn-danger h-fit"
+                            :disabled="snap.operating.value || (!!deleteTargetAnchor && !deleteAnchorConfirmed)"
                             @click="doDelete">
                             {{ snap.operating.value ? 'Deleting…' : 'Delete' }}
                         </button>
@@ -322,9 +360,11 @@ import { Notification, pushNotification, reportError } from '@45drives/houston-c
 import {
     ArrowLeftIcon, ArrowPathIcon, ArrowDownTrayIcon, ArrowUturnLeftIcon,
     PlusIcon, TrashIcon, FolderIcon, FolderOpenIcon, DocumentIcon,
-    ServerIcon, ExclamationTriangleIcon, CameraIcon,
+    ServerIcon, ExclamationTriangleIcon, CameraIcon, LinkIcon,
     ChevronUpIcon, ChevronDownIcon,
 } from '@heroicons/vue/24/outline';
+import { useOnboarding } from '../../composables/useOnboarding';
+import { useTourManager, type TourStep } from '../../composables/useTourManager';
 
 const props = defineProps<{
     serverIp: string;
@@ -336,6 +376,37 @@ const snap = useSnapshotManager(
     () => props.username,
 );
 
+// ── Guided tour ──────────────────────────────────────────────────────────
+const { onboarding, markDone } = useOnboarding();
+const { requestTour } = useTourManager();
+
+const snapTourSteps: TourStep[] = [
+    {
+        target: '[data-tour="dataset-list"]',
+        message: 'This panel lists all ZFS datasets on the server.\n\nClick a dataset to see its snapshots.',
+    },
+    {
+        target: '[data-tour="snapshot-list"]',
+        message: 'Snapshots for the selected dataset appear here.\n\nClick a snapshot to browse its files. Use the action icons to browse, rollback, or delete snapshots.',
+    },
+    {
+        target: '[data-tour="snapshot-file-browser"]',
+        message: 'Browse the file contents of a snapshot here.\n\nSelect files and enter a destination path to restore them to a specific location on the server.',
+    },
+    {
+        target: '[data-tour="new-snapshot"]',
+        message: 'Create a new ZFS snapshot of the selected dataset.\n\nYou can optionally name it and choose to snapshot child datasets recursively.',
+    },
+];
+
+onMounted(() => {
+    if (!onboarding.value.snapshotManagerTourDone) {
+        setTimeout(() => {
+            requestTour('snapshot-manager', snapTourSteps, () => markDone('snapshotManagerTourDone'));
+        }, 400);
+    }
+});
+
 // ── Local state ──────────────────────────────────────────────────────────
 
 const showCreateModal = ref(false);
@@ -343,8 +414,15 @@ const createName = ref('');
 const createRecursive = ref(false);
 const rollbackTarget = ref<ZfsSnapshot | null>(null);
 const deleteTarget = ref<ZfsSnapshot | null>(null);
+const deleteAnchorConfirmed = ref(false);
 const restoreDestPath = ref('');
 const snapSortAsc = ref(false); // false = newest first (descending), true = oldest first (ascending)
+
+/** Anchor info for the snapshot being deleted (if any) */
+const deleteTargetAnchor = computed(() => {
+    if (!deleteTarget.value) return null;
+    return snap.getAnchor(deleteTarget.value.snapName) ?? null;
+});
 
 const sortedSnapshots = computed(() => {
     const list = [...snap.snapshots.value];
@@ -426,7 +504,13 @@ async function doRollback() {
 }
 
 function confirmDelete(s: ZfsSnapshot) {
+    deleteAnchorConfirmed.value = false;
     deleteTarget.value = s;
+}
+
+function cancelDelete() {
+    deleteTarget.value = null;
+    deleteAnchorConfirmed.value = false;
 }
 
 async function doDelete() {
@@ -435,7 +519,10 @@ async function doDelete() {
     const result = await snap.destroySnapshot(deleteTarget.value.name);
     if (result.success) {
         deleteTarget.value = null;
+        deleteAnchorConfirmed.value = false;
         pushNotification(new Notification('Snapshot Deleted', `"${name}" deleted.`, 'success', 6000));
+        // Refresh anchors since the chain may have changed
+        snap.loadAnchors();
     } else {
         deleteTarget.value = null;
         reportError(new Error(result.error ?? 'Failed to delete snapshot'));

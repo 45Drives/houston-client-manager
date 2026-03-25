@@ -2,7 +2,7 @@
     <div class="h-full overflow-y-auto ui-texture-surface ui-texture-surface--soft">
         <div class="max-w-5xl mx-auto px-6 py-6 space-y-5">
             <!-- Status strip -->
-            <div class="flex flex-wrap items-center gap-3">
+            <div class="flex flex-wrap items-center gap-3" data-tour="status-strip">
                 <div class="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-sm">
                     <span class="status-dot status-dot-ok"></span>
                     <span class="text-default font-medium">{{ stats.activeBackups }}</span>
@@ -13,11 +13,6 @@
                     <span class="status-dot status-dot-error"></span>
                     <span class="text-red-700 dark:text-red-400 font-medium">{{ stats.failedBackups }}</span>
                     <span class="text-red-600 dark:text-red-400">Failed</span>
-                </div>
-                <div class="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-sm">
-                    <CameraIcon class="w-4 h-4 text-gray-400" />
-                    <span class="text-default font-medium">{{ stats.snapshots }}</span>
-                    <span class="text-gray-500">Snapshots</span>
                 </div>
             </div>
 
@@ -35,7 +30,7 @@
             <!-- Main content: Recent Activity + Quick Actions -->
             <div class="flex gap-5 items-start">
                 <!-- Recent Activity -->
-                <div class="flex-1 min-w-0 bg-white dark:bg-neutral-800 rounded-lg border border-neutral-200 dark:border-neutral-700 overflow-hidden">
+                <div class="flex-1 min-w-0 bg-white dark:bg-neutral-800 rounded-lg border border-neutral-200 dark:border-neutral-700 overflow-hidden" data-tour="recent-activity">
                     <div class="px-4 py-3 border-b border-neutral-200 dark:border-neutral-700">
                         <h2 class="text-sm font-semibold text-default">Recent Activity</h2>
                     </div>
@@ -55,7 +50,7 @@
                 </div>
 
                 <!-- Quick Actions -->
-                <div class="w-64 shrink-0 space-y-2">
+                <div class="w-64 shrink-0 space-y-2" data-tour="quick-actions">
                     <h2 class="text-sm font-semibold text-default mb-1 px-1 -mt-7">Quick Actions</h2>
                     <button @click="goSetup()"
                         class="quick-action-card group">
@@ -101,21 +96,41 @@ import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import {
     ServerIcon, CircleStackIcon, DocumentTextIcon,
-    WrenchScrewdriverIcon, CameraIcon, ExclamationTriangleIcon
+    WrenchScrewdriverIcon, ExclamationTriangleIcon
 } from '@heroicons/vue/24/outline'
 import { useHeader } from '../composables/useHeader'
 import { useLogModal } from '../composables/useLogModal'
+import { useOnboarding } from '../composables/useOnboarding'
+import { useTourManager, type TourStep } from '../composables/useTourManager'
 import { IPCRouter } from '@45drives/houston-common-lib'
 
 useHeader('45Drives Storage Wizard')
 
 const router = useRouter()
 const { openLogModal } = useLogModal()
+const { onboarding, markDone } = useOnboarding()
+const { requestTour } = useTourManager()
 const goSetup = () => router.push({ name: 'setup' })
 const goBackup = () => router.push({ name: 'backup-manage' })
 
+// ── Guided tour ──────────────────────────────────────────────────────────
+const dashboardTourSteps: TourStep[] = [
+    {
+        target: '[data-tour="status-strip"]',
+        message: 'Welcome to the Dashboard!\n\nThis status bar shows how many backup tasks are active and whether any have failed recently.',
+    },
+    {
+        target: '[data-tour="recent-activity"]',
+        message: 'Recent Activity shows your latest backup runs.\n\nGreen dots mean success, red dots indicate failures. The list updates automatically.',
+    },
+    {
+        target: '[data-tour="quick-actions"]',
+        message: 'Quick Actions let you jump straight to common tasks — set up a new server, manage backups, or view logs.',
+    },
+]
+
 // Dashboard stats — populated from backend data when available
-const stats = ref({ activeBackups: 0, failedBackups: 0, snapshots: 0 })
+const stats = ref({ activeBackups: 0, failedBackups: 0 })
 
 interface ActivityItem {
     label: string
@@ -137,6 +152,13 @@ function formatTimeAgo(date: Date): string {
 }
 
 onMounted(() => {
+    // Guided tour
+    if (!onboarding.value.dashboardTourDone) {
+        setTimeout(() => {
+            requestTour('dashboard', dashboardTourSteps, () => markDone('dashboardTourDone'))
+        }, 500)
+    }
+
     // Request backup tasks to populate stats
     const handler = (raw: string) => {
         try {
