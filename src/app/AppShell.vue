@@ -1,11 +1,11 @@
 <template>
   <div
     class="w-screen h-screen overflow-hidden flex flex-col items-center justify-center text-default bg-default text-center">
-    <header v-if="!hideHeader" class="relative flex items-center justify-center h-18 w-full py-6 bg-plugin-header">
+    <header v-if="!hideHeader" class="relative flex items-center justify-center w-full h-12 shrink-0 bg-plugin-header shadow-sm border-b border-neutral-200 dark:border-neutral-700 overflow-hidden">
       <!-- Left (logo + breadcrumb) -->
       <div id="app-header-left" class="absolute left-0 p-1 px-4 rounded-l flex items-center gap-3">
         <button @click="router.push({ name: 'dashboard' })" class="hover:opacity-80 transition-opacity" title="Go to Dashboard">
-          <DynamicBrandingLogo :division="divisionCode" :height="(divisionCode === 'studio' ? 16 : 12)" />
+          <DynamicBrandingLogo :division="divisionCode" :height="divisionCode === 'studio' ? 12 : 8" />
         </button>
         <div class="border-l border-default pl-3 hidden sm:block">
           <AppBreadcrumb />
@@ -13,7 +13,7 @@
       </div>
 
       <!-- Center (title) -->
-      <div id="app-header-title" class="text-xl sm:text-3xl font-semibold text-center">
+      <div id="app-header-title" class="text-sm sm:text-lg font-medium text-center">
          {{ headerTitle || (route.meta.title as string) || 'Storage Wizard' }}
       </div>
 

@@ -1,49 +1,47 @@
 <template>
-  <div class="flex flex-col gap-3 p-3 bg-well">
+  <div class="flex flex-col gap-3 p-3 bg-well flex-1 min-h-0">
     <!-- Toolbar: actions + refresh -->
     <div class="flex flex-wrap items-center gap-2 min-h-9">
       <!-- Action buttons (space reserved so the table does not jump) -->
       <div class="flex flex-wrap items-center gap-2"
         :class="selectedBackUps.length > 0 ? '' : 'invisible pointer-events-none'">
-        <span class="text-sm text-muted mr-1">{{ selectedBackUps.length }} selected</span>
+        <span class="text-xs text-gray-500 mr-1">{{ selectedBackUps.length }} selected</span>
 
-        <button class="btn btn-primary btn-with-icon text-sm h-fit"
+        <button class="btn btn-sm btn-primary btn-with-icon h-fit"
           :disabled="isRunningNow || selectedBackUps.length < 1" @click="$emit('run')">
           <PlayIcon class="w-4 h-4" />
           <template v-if="!isRunningNow">Run Now</template>
           <template v-else>Running…</template>
         </button>
 
-        <button class="btn btn-secondary btn-with-icon text-sm h-fit"
+        <button class="btn btn-sm btn-outline-shadow btn-with-icon h-fit"
           :disabled="selectedBackUps.length < 1" @click="$emit('view')">
           <EyeIcon24 class="w-4 h-4" />
-          View/Restore Files
+          View/Restore
         </button>
 
-        <button class="btn btn-secondary btn-with-icon text-sm h-fit"
+        <button class="btn btn-sm btn-outline-shadow btn-with-icon h-fit"
           :disabled="selectedBackUps.length !== 1" @click="$emit('edit')">
           <PencilSquareIcon class="w-4 h-4" />
           Edit
         </button>
 
-        <button class="btn btn-secondary btn-with-icon text-sm h-fit"
+        <button class="btn btn-sm btn-outline-shadow btn-with-icon h-fit"
           :disabled="selectedBackUps.length < 1" @click="$emit('viewLog')">
           <DocumentTextIcon class="w-4 h-4" />
           Logs
         </button>
 
-        <button class="btn btn-danger btn-with-icon text-sm h-fit"
+        <button class="btn btn-sm btn-ghost h-fit text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20"
           :disabled="selectedBackUps.length < 1" @click="$emit('delete')">
           <TrashIcon class="w-4 h-4" />
-          Delete
         </button>
       </div>
 
       <div class="flex-1" />
 
-      <button class="btn btn-secondary btn-with-icon text-sm h-8" @click.stop="fetchBackupTasks">
+      <button class="w-8 h-8 p-0 rounded-md bg-transparent inline-flex items-center justify-center text-gray-500 hover:text-default hover:bg-neutral-100 dark:hover:bg-neutral-700 transition-colors" title="Refresh" @click.stop="fetchBackupTasks">
         <ArrowPathIcon class="w-4 h-4" />
-        Refresh
       </button>
     </div>
 
@@ -58,76 +56,88 @@
     </div>
 
     <!-- Table -->
-    <div v-else class="overflow-x-auto rounded-md">
-      <table ref="tableRef" class="min-w-full text-sm text-left table-fixed border border-default rounded-md" style="table-layout: fixed;">
-        <thead class="sticky top-0 bg-secondary">
-          <tr class="border-b border-default">
-            <th class="px-3 py-2 relative" :style="{ width: colWidths[0] + 'px' }">
+    <div v-else class="overflow-x-auto rounded-lg border border-neutral-200 dark:border-neutral-700 flex-1 flex flex-col min-h-0">
+      <div class="flex-1 overflow-y-auto">
+      <table ref="tableRef" class="min-w-full text-sm text-left table-fixed" style="table-layout: fixed;">
+        <thead class="sticky top-0 bg-neutral-50 dark:bg-neutral-850 z-10">
+          <tr class="border-b border-neutral-200 dark:border-neutral-700">
+            <th class="px-3 py-2 relative table-header-cell" :style="{ width: colWidths[0] + 'px' }">
               <input type="checkbox" class="input-checkbox" :checked="allSelected" @change="toggleSelectAll"
                 :aria-checked="allSelected" />
               <div class="col-resize-handle" @mousedown.prevent="startResize($event, 0)"></div>
             </th>
-            <th class="px-3 py-2 relative" :style="{ width: colWidths[1] + 'px' }">
+            <th class="px-3 py-2 relative table-header-cell" :style="{ width: colWidths[1] + 'px' }">
               Name
               <div class="col-resize-handle" @mousedown.prevent="startResize($event, 1)"></div>
             </th>
-            <th class="px-3 py-2 relative" :style="{ width: colWidths[2] + 'px' }">
-              Samba User
+            <th class="px-3 py-2 relative table-header-cell" :style="{ width: colWidths[2] + 'px' }">
+              User
               <div class="col-resize-handle" @mousedown.prevent="startResize($event, 2)"></div>
             </th>
-            <th class="px-3 py-2 relative" :style="{ width: colWidths[3] + 'px' }">
+            <th class="px-3 py-2 relative table-header-cell" :style="{ width: colWidths[3] + 'px' }">
               Source
               <div class="col-resize-handle" @mousedown.prevent="startResize($event, 3)"></div>
             </th>
-            <th class="px-3 py-2 relative" :style="{ width: colWidths[4] + 'px' }">
+            <th class="px-3 py-2 relative table-header-cell" :style="{ width: colWidths[4] + 'px' }">
               Destination
               <div class="col-resize-handle" @mousedown.prevent="startResize($event, 4)"></div>
             </th>
-            <th class="px-3 py-2 relative" :style="{ width: colWidths[5] + 'px' }">
-              Frequency
+            <th class="px-3 py-2 relative table-header-cell" :style="{ width: colWidths[5] + 'px' }">
+              Freq
               <div class="col-resize-handle" @mousedown.prevent="startResize($event, 5)"></div>
             </th>
-            <th class="px-3 py-2 relative" :style="{ width: colWidths[6] + 'px' }">
+            <th class="px-3 py-2 relative table-header-cell" :style="{ width: colWidths[6] + 'px' }">
               Status
               <div class="col-resize-handle" @mousedown.prevent="startResize($event, 6)"></div>
             </th>
-            <th class="px-3 py-2 relative" :style="{ width: colWidths[7] + 'px' }">
-              Last Run at
+            <th class="px-3 py-2 relative table-header-cell" :style="{ width: colWidths[7] + 'px' }">
+              Last Run
               <div class="col-resize-handle" @mousedown.prevent="startResize($event, 7)"></div>
             </th>
-            <th class="px-3 py-2 relative" :style="{ width: colWidths[8] + 'px' }">
-              Next Run at
+            <th class="px-3 py-2 relative table-header-cell" :style="{ width: colWidths[8] + 'px' }">
+              Next Run
             </th>
           </tr>
         </thead>
         <tbody>
           <tr v-for="task in backUpTasks" :key="task.uuid" :class="rowClass(task)" :aria-selected="isSelected(task)"
             tabindex="0" @click="toggleSelection(task)">
-            <td class="px-3 py-2">
+            <td class="px-3 py-1.5" @click.stop>
               <input type="checkbox" class="input-checkbox" :checked="isSelected(task)"
-                @change.stop="toggleSelection(task)" :aria-checked="isSelected(task)" />
+                @change="toggleSelection(task)" :aria-checked="isSelected(task)" />
             </td>
-            <td class="px-3 py-2 truncate" :title="taskDisplayName(task)">{{ taskDisplayName(task) }}</td>
-            <td class="px-3 py-2" :title="task.smb_user">{{ task.smb_user }}</td>
-            <td class="px-3 py-2 truncate" :title="sourceText(task)">{{ sourceText(task) }}</td>
-            <td class="px-3 py-2 truncate" :title="fullDestPath(task)">{{ destinationText(task) }}</td>
-            <td class="px-3 py-2 capitalize">{{ formatFrequency(task.schedule?.repeatFrequency) }}</td>
-            <td class="px-3 py-2">
+            <td class="px-3 py-1.5 truncate font-medium" :title="taskDisplayName(task)">{{ taskDisplayName(task) }}</td>
+            <td class="px-3 py-1.5 text-gray-500" :title="task.smb_user">{{ task.smb_user }}</td>
+            <td class="px-3 py-1.5 truncate max-w-[180px] text-gray-500" :title="sourceText(task)">{{ sourceText(task) }}</td>
+            <td class="px-3 py-1.5 truncate max-w-[180px] text-gray-500" :title="fullDestPath(task)">{{ destinationText(task) }}</td>
+            <td class="px-3 py-1.5 capitalize text-gray-500">{{ formatFrequency(task.schedule?.repeatFrequency) }}</td>
+            <td class="px-3 py-1.5">
               <span class="inline-flex items-center gap-1.5 text-xs font-medium px-2 py-0.5 rounded-full"
                 :class="taskStatusClass(task)">
                 <span class="w-1.5 h-1.5 rounded-full" :class="taskStatusDotClass(task)" />
                 {{ taskStatusLabel(task) }}
               </span>
             </td>
-            <td class="px-3 py-2" :title="formatDateTime(getLastRunAt(task))">{{ formatDateTime(getLastRunAt(task)) }}
+            <td class="px-3 py-1.5 text-gray-500" :title="formatDateTime(getLastRunAt(task))">{{ formatRelativeTime(getLastRunAt(task)) }}
             </td>
-            <td class="px-3 py-2"
+            <td class="px-3 py-1.5 text-gray-500"
               :title="formatDateTime(getNextBackupDate(task.schedule.startDate, task.schedule.repeatFrequency))">
-              {{ formatDateTime(getNextBackupDate(task.schedule.startDate, task.schedule.repeatFrequency)) }}
+              {{ formatRelativeTime(getNextBackupDate(task.schedule.startDate, task.schedule.repeatFrequency)) }}
             </td>
           </tr>
         </tbody>
       </table>
+      </div>
+      <!-- Summary footer -->
+      <div class="table-summary-footer shrink-0">
+        {{ backUpTasks.length }} backup{{ backUpTasks.length !== 1 ? 's' : '' }}
+        <template v-if="backUpTasks.filter(t => taskStatus(t) === 'online').length > 0">
+          · {{ backUpTasks.filter(t => taskStatus(t) === 'online').length }} online
+        </template>
+        <template v-if="backUpTasks.filter(t => taskStatus(t) === 'failed').length > 0">
+          · <span class="text-red-500">{{ backUpTasks.filter(t => taskStatus(t) === 'failed').length }} failed</span>
+        </template>
+      </div>
     </div>
 
     <!-- Edit Backup Task Modal -->
@@ -149,7 +159,7 @@
             <label class="w-[140px] font-semibold text-sm shrink-0">Source Folder</label>
             <input :value="editTask.source" disabled
               class="bg-well flex-1 rounded-lg px-3 py-2 border border-default text-muted" />
-            <button class="btn btn-secondary btn-with-icon text-sm h-9 px-3" @click="changeEditSource">
+            <button class="btn btn-sm btn-outline-shadow h-fit flex items-center gap-1.5" @click="changeEditSource">
               <FolderOpenIcon class="w-4 h-4" />
               Browse…
             </button>
@@ -186,7 +196,7 @@
           <!-- Custom schedule -->
           <div v-if="editScheduleMode === 'custom'" class="flex items-center gap-3">
             <label class="w-[140px] font-semibold text-sm shrink-0">Custom Schedule</label>
-            <button class="btn btn-secondary btn-with-icon text-sm h-9 px-3"
+            <button class="btn btn-sm btn-outline-shadow h-fit flex items-center gap-1.5"
               @click="openEditCalendar">
               <CalendarIcon class="w-4 h-4" />
               Set Schedule
@@ -224,11 +234,11 @@
 
         <!-- Buttons -->
         <div class="flex justify-end gap-2 mt-6">
-          <button class="btn btn-secondary btn-with-icon w-fit" @click="cancelEdit">
+          <button class="btn btn-sm btn-outline-shadow btn-with-icon w-fit" @click="cancelEdit">
             <XMarkIcon class="w-4 h-4" />
             Cancel
           </button>
-          <button class="btn btn-primary btn-with-icon w-fit" @click="saveEdit">
+          <button class="btn btn-sm btn-primary btn-with-icon w-fit" @click="saveEdit">
             <CheckIcon class="w-4 h-4" />
             Save Changes
           </button>
@@ -335,8 +345,8 @@ function toggleSelectAll() {
 
 function rowClass(task: BackUpTask) {
   return [
-    'border-b border-default cursor-pointer select-none transition-colors row-hover',
-    isSelected(task) ? 'row-selected' : 'bg-default'
+    'border-b border-neutral-100 dark:border-neutral-700/50 cursor-pointer select-none transition-colors',
+    isSelected(task) ? 'bg-slate-600/5 dark:bg-slate-400/5 border-l-2 border-l-slate-600 dark:border-l-slate-400' : 'border-l-2 border-l-transparent bg-default hover:bg-neutral-50 dark:hover:bg-neutral-700/30'
   ];
 }
 
@@ -390,6 +400,24 @@ function formatDateTime(dt?: Date | string | number | null) {
   return d.toLocaleString([], {
     weekday: 'short', year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
   });
+}
+
+function formatRelativeTime(dt?: Date | string | number | null): string {
+  if (!dt) return '—';
+  const d = dt instanceof Date ? dt : new Date(dt);
+  if (Number.isNaN(d.getTime())) return '—';
+  const now = Date.now();
+  const diff = now - d.getTime();
+  const absDiff = Math.abs(diff);
+  const future = diff < 0;
+  const mins = Math.floor(absDiff / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return future ? `in ${mins}m` : `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return future ? `in ${hours}h` : `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 30) return future ? `in ${days}d` : `${days}d ago`;
+  return d.toLocaleDateString([], { month: 'short', day: 'numeric' });
 }
 
 function getLastRunAt(task: BackUpTask): Date | null {

@@ -9,10 +9,12 @@
               <div class="text-xs text-muted mt-1">View logs from the local client app and connected servers.</div>
             </div>
             <div class="flex items-center gap-2">
-              <button class="btn btn-secondary" type="button" @click="refresh" :disabled="loading">
-                {{ loading ? 'Refreshing…' : 'Refresh' }}
+              <button
+                class="w-8 h-8 p-0 rounded-md bg-transparent inline-flex items-center justify-center text-gray-500 hover:text-default hover:bg-neutral-100 dark:hover:bg-neutral-700 transition-colors"
+                :title="loading ? 'Refreshing…' : 'Refresh'" @click="refresh" :disabled="loading">
+                <ArrowPathIcon class="w-4 h-4" />
               </button>
-              <button class="btn btn-secondary" type="button" @click="goHome">
+              <button class="btn btn-sm btn-ghost h-fit" type="button" @click="goHome">
                 Back
               </button>
             </div>
@@ -66,7 +68,7 @@
                 <option value="easysetup">easysetup-*.log</option>
               </select>
             </div>
-            <button class="btn btn-primary" @click="fetchServerLogs" :disabled="!serverIp || serverLoading">
+            <button class="btn btn-sm btn-primary h-fit" @click="fetchServerLogs" :disabled="!serverIp || serverLoading">
               {{ serverLoading ? 'Fetching…' : 'Fetch Server Logs' }}
             </button>
           </div>
@@ -201,7 +203,7 @@ import { useRouter } from "vue-router";
 import { useHeader } from "../composables/useHeader";
 import { discoveryStateInjectionKey } from "../keys/injection-keys";
 import type { DiscoveryState } from "../types";
-
+import { ArrowPathIcon } from '@heroicons/vue/24/outline';
 useHeader("Log Viewer");
 
 const router = useRouter();

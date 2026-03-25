@@ -10,14 +10,14 @@
             <div class="flex-1" />
 
             <!-- Create snapshot -->
-            <button class="btn btn-primary btn-with-icon text-sm h-fit"
+            <button class="btn btn-sm btn-primary btn-with-icon h-fit"
                 :disabled="!snap.selectedDataset.value || snap.operating.value" @click="showCreateModal = true">
                 <PlusIcon class="w-4 h-4" />
                 New Snapshot
             </button>
 
             <!-- Refresh -->
-            <button class="btn btn-secondary text-sm h-fit p-1.5" title="Refresh"
+            <button class="w-8 h-8 p-0 rounded-md bg-transparent inline-flex items-center justify-center text-gray-500 hover:text-default hover:bg-neutral-100 dark:hover:bg-neutral-700 transition-colors" title="Refresh"
                 :disabled="snap.loading.value" @click="refresh">
                 <ArrowPathIcon class="w-4 h-4" />
             </button>
@@ -35,8 +35,8 @@
         <div class="flex-1 min-h-0 flex gap-3 p-3">
 
             <!-- LEFT: Dataset list ─────────────────────────────────────── -->
-            <div class="w-1/4 min-w-[180px] flex flex-col min-h-0 bg-default rounded-lg border border-default overflow-hidden">
-                <div class="px-3 py-2 border-b border-default text-sm font-medium text-left">ZFS Datasets</div>
+            <div class="w-1/5 min-w-[180px] flex flex-col min-h-0 bg-white dark:bg-neutral-800 rounded-lg border border-neutral-200 dark:border-neutral-700 overflow-hidden">
+                <div class="px-3 py-2 border-b border-neutral-200 dark:border-neutral-700 text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400 text-left">Datasets</div>
                 <div v-if="snap.loading.value" class="flex-1 flex items-center justify-center">
                     <div class="spinner"></div>
                 </div>
@@ -46,8 +46,8 @@
                 </div>
                 <div v-else class="flex-1 overflow-y-auto text-left">
                     <div v-for="ds in snap.datasets.value" :key="ds.name"
-                        class="px-3 py-2 border-b border-default cursor-pointer transition-colors"
-                        :class="snap.selectedDataset.value === ds.name ? 'bg-primary/10' : 'hover:bg-accent'"
+                        class="px-3 py-2 border-b border-neutral-100 dark:border-neutral-700/50 cursor-pointer transition-colors border-l-2"
+                        :class="snap.selectedDataset.value === ds.name ? 'bg-slate-600/5 dark:bg-slate-400/5 border-l-slate-600 dark:border-l-slate-400' : 'border-l-transparent hover:bg-neutral-50 dark:hover:bg-neutral-700/30'"
                         @click="snap.selectDataset(ds.name)">
                         <div class="text-sm font-medium text-default truncate" :title="ds.name">{{ ds.name }}</div>
                         <div class="text-xs text-muted truncate">{{ ds.mountpoint }} — {{ ds.used }} used</div>
@@ -56,7 +56,7 @@
             </div>
 
             <!-- CENTER: Snapshot list ──────────────────────────────────── -->
-            <div class="w-1/3 flex flex-col min-h-0 bg-default rounded-lg border border-default overflow-hidden text-left">
+            <div class="w-2/5 flex flex-col min-h-0 bg-neutral-50 dark:bg-neutral-850 rounded-lg border border-neutral-200 dark:border-neutral-700 overflow-hidden text-left">
                 <div class="px-3 py-2 border-b border-default flex items-center justify-between">
                     <button v-if="snap.selectedDataset.value"
                         class="text-sm font-medium flex items-center gap-1 hover:text-muted transition-colors"
@@ -86,30 +86,31 @@
                 </div>
                 <div v-else class="flex-1 overflow-y-auto">
                     <div v-for="s in sortedSnapshots" :key="s.name"
-                        class="px-3 py-2 border-b border-default transition-colors"
-                        :class="snap.selectedSnapshot.value?.name === s.name ? 'bg-primary/10' : 'hover:bg-accent'">
+                        class="group px-3 py-2 border-b border-neutral-100 dark:border-neutral-700/50 transition-colors border-l-2"
+                        :class="snap.selectedSnapshot.value?.name === s.name ? 'bg-slate-600/5 dark:bg-slate-400/5 border-l-slate-600 dark:border-l-slate-400' : 'border-l-transparent hover:bg-white dark:hover:bg-neutral-800/60'">
                         <div class="flex items-start justify-between gap-2">
                             <div class="min-w-0 flex-1 cursor-pointer"
                                 @click="snap.browseSnapshot(s)">
                                 <div class="text-sm font-medium text-default truncate" :title="s.snapName">
                                     {{ s.snapName }}
                                 </div>
-                                <div class="text-xs text-muted">
-                                    {{ s.creation }} — {{ s.used }} used, {{ s.referenced }} ref
+                                <div class="text-xs text-gray-400">
+                                    {{ s.creation }} — {{ s.used }} used
                                 </div>
                             </div>
-                            <div class="flex items-center gap-1 shrink-0 mt-0.5">
-                                <button class="btn btn-secondary text-xs h-fit px-2 py-0.5" title="Browse files"
+                            <!-- Icon-only actions: browse + kebab for destructive -->
+                            <div class="flex items-center gap-0.5 shrink-0 mt-0.5">
+                                <button class="w-7 h-7 p-0 rounded-md bg-transparent inline-flex items-center justify-center text-gray-500 hover:text-default hover:bg-neutral-100 dark:hover:bg-neutral-700 transition-colors" title="Browse files"
                                     :disabled="snap.operating.value"
                                     @click="snap.browseSnapshot(s)">
                                     <FolderOpenIcon class="w-3.5 h-3.5" />
                                 </button>
-                                <button class="btn btn-warning text-xs h-fit px-2 py-0.5" title="Rollback to this snapshot"
+                                <button class="w-7 h-7 p-0 rounded-md bg-transparent inline-flex items-center justify-center text-amber-500 hover:text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-900/20 transition-colors" title="Rollback"
                                     :disabled="snap.operating.value"
                                     @click="confirmRollback(s)">
                                     <ArrowUturnLeftIcon class="w-3.5 h-3.5" />
                                 </button>
-                                <button class="btn btn-danger text-xs h-fit px-2 py-0.5" title="Delete snapshot"
+                                <button class="w-7 h-7 p-0 rounded-md bg-transparent inline-flex items-center justify-center opacity-0 group-hover:opacity-100 hover:!opacity-100 text-rose-500 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/20 transition-colors" title="Delete"
                                     :disabled="snap.operating.value"
                                     @click="confirmDelete(s)">
                                     <TrashIcon class="w-3.5 h-3.5" />
@@ -121,7 +122,7 @@
             </div>
 
             <!-- RIGHT: File browser / detail panel ──────────────────── -->
-            <div class="flex-1 flex flex-col min-h-0 bg-default rounded-lg border border-default overflow-hidden">
+            <div class="flex-1 flex flex-col min-h-0 bg-white dark:bg-neutral-800 rounded-lg border border-neutral-200 dark:border-neutral-700 overflow-hidden">
                 <!-- File browser header -->
                 <div class="px-3 py-2 border-b border-default flex flex-wrap items-center gap-1 shrink-0">
                     <template v-if="snap.selectedSnapshot.value">
@@ -183,8 +184,8 @@
 
                     <div v-else class="flex-1 overflow-y-auto">
                         <div v-for="file in snap.files.value" :key="file.path"
-                            class="flex items-center gap-3 px-3 py-1.5 border-b border-default cursor-pointer transition-colors"
-                            :class="file.selected ? 'bg-primary/10' : 'hover:bg-accent'"
+                            class="flex items-center gap-3 px-3 py-1.5 border-b border-neutral-100 dark:border-neutral-700/50 cursor-pointer transition-colors border-l-2"
+                            :class="file.selected ? 'bg-slate-600/5 dark:bg-slate-400/5 border-l-slate-600 dark:border-l-slate-400' : 'border-l-transparent hover:bg-neutral-50 dark:hover:bg-neutral-700/30'"
                             @click="file.isDir ? snap.navigateInto(file) : snap.toggleFileSelection(file)">
                             <!-- Checkbox for files -->
                             <input v-if="!file.isDir" type="checkbox" :checked="file.selected"
@@ -207,14 +208,14 @@
 
                     <!-- Restore bar (shown when files selected) -->
                     <div v-if="snap.selectedFiles.value.length > 0"
-                        class="px-3 py-2 border-t border-default flex items-center gap-3 shrink-0 bg-accent">
+                        class="px-3 py-2 border-t border-neutral-200 dark:border-neutral-700 flex items-center gap-3 shrink-0 bg-neutral-50 dark:bg-neutral-850">
                         <span class="text-sm text-default">
                             {{ snap.selectedFiles.value.length }} file{{ snap.selectedFiles.value.length !== 1 ? 's' : '' }} selected
                         </span>
                         <div class="flex-1" />
                         <input v-model="restoreDestPath" type="text" placeholder="Restore to path (e.g. /data/restored)"
                             class="input-textlike border border-default rounded px-2 py-1 text-sm w-64" />
-                        <button class="btn btn-primary text-sm h-fit"
+                        <button class="btn btn-sm btn-primary h-fit"
                             :disabled="snap.operating.value || !restoreDestPath.trim()"
                             @click="doRestoreFiles">
                             <ArrowDownTrayIcon class="w-4 h-4 mr-1 inline" />
@@ -229,7 +230,7 @@
         <Teleport to="body">
             <div v-if="showCreateModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
                 @click.self="showCreateModal = false">
-                <div class="bg-default border border-default rounded-lg shadow-xl w-full max-w-md p-5 text-default">
+                <div class="bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-lg shadow-xl w-full max-w-md p-5 text-default">
                     <h3 class="text-base font-semibold mb-4">Create Snapshot</h3>
 
                     <div class="space-y-3">
@@ -254,8 +255,8 @@
                     </div>
 
                     <div class="flex justify-end gap-2 mt-5">
-                        <button class="btn btn-danger text-sm h-fit" @click="showCreateModal = false">Cancel</button>
-                        <button class="btn btn-success text-sm h-fit" :disabled="snap.operating.value || !!createNameError"
+                        <button class="btn btn-sm btn-outline-shadow h-fit" @click="showCreateModal = false">Cancel</button>
+                        <button class="btn btn-sm btn-primary h-fit" :disabled="snap.operating.value || !!createNameError"
                             @click="doCreate">
                             {{ snap.operating.value ? 'Creating…' : 'Create' }}
                         </button>
@@ -280,8 +281,8 @@
                         This action cannot be undone.
                     </div>
                     <div class="flex justify-end gap-2">
-                        <button class="btn btn-secondary text-sm h-fit" @click="rollbackTarget = null">Cancel</button>
-                        <button class="btn btn-danger text-sm h-fit" :disabled="snap.operating.value"
+                        <button class="btn btn-sm btn-outline-shadow h-fit" @click="rollbackTarget = null">Cancel</button>
+                        <button class="btn btn-sm btn-danger h-fit" :disabled="snap.operating.value"
                             @click="doRollback">
                             {{ snap.operating.value ? 'Rolling back…' : 'Rollback' }}
                         </button>
@@ -302,8 +303,8 @@
                         from dataset <strong class="text-default">{{ deleteTarget.dataset }}</strong>?
                     </p>
                     <div class="flex justify-end gap-2">
-                        <button class="btn btn-secondary text-sm h-fit" @click="deleteTarget = null">Cancel</button>
-                        <button class="btn btn-danger text-sm h-fit" :disabled="snap.operating.value"
+                        <button class="btn btn-sm btn-outline-shadow h-fit" @click="deleteTarget = null">Cancel</button>
+                        <button class="btn btn-sm btn-danger h-fit" :disabled="snap.operating.value"
                             @click="doDelete">
                             {{ snap.operating.value ? 'Deleting…' : 'Delete' }}
                         </button>

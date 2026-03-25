@@ -12,7 +12,7 @@ export const router = createRouter({
       component: () => import('../renderer/views/HoustonWebView.vue'),
       meta: { hideHeader: true, title: '' }
     },
-    { path: '/backup/new', name: 'create-new-backup', component: () => import('../renderer/views/backupSetupWizard/LocalBackupWizard.vue')},
+    { path: '/backup/new', name: 'create-new-backup', redirect: { name: 'backup-manage' } },
     {
       path: '/backup/view',
       name: 'view-selected-backups',

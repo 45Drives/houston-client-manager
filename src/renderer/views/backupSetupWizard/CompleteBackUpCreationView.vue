@@ -44,11 +44,13 @@
 
       <div class="button-group-row justify-end">
 
-        <button :disabled="setupComplete !== 'yes'" class="btn btn-primary w-40 h-20" @click="goToBackupWizard">{{
-          "Go To Backup Manager" }}</button>
+        <button :disabled="setupComplete !== 'yes'" class="btn btn-primary h-fit" @click="goToBackupWizard">
+          Go To Backup Manager
+        </button>
 
-        <button :disabled="setupComplete !== 'yes'" class="btn btn-secondary w-40 h-20" @click="goToSetupWizard">{{
-          "Setup More Storage Servers" }}</button>
+        <button :disabled="setupComplete !== 'yes'" class="btn btn-secondary h-fit" @click="goToSetupWizard">
+          Setup More Storage Servers
+        </button>
 
       </div>
     </template>
@@ -62,7 +64,7 @@ import { CardContainer, useEnterToAdvance } from "@45drives/houston-common-ui";
 import { ref, watch, inject, onActivated, onBeforeUnmount } from "vue";
 import { useWizardSteps} from "@45drives/houston-common-ui";
 import { EasySetupProgress, IPCRouter } from "@45drives/houston-common-lib";
-import { backUpSetupConfigKey } from "../../keys/injection-keys";
+import { backUpSetupConfigKey, closeWizardModalKey } from "../../keys/injection-keys";
 import type { BackUpSetupConfig } from "@45drives/houston-common-lib";
 import { useHeader } from '../../composables/useHeader'
 import { useRouter } from 'vue-router'
@@ -75,6 +77,7 @@ const setupComplete = ref<string>("no");
 const error = ref<string>();
 const completedSteps = ref<EasySetupProgress[]>([]);
 const backUpSetupConfig = inject(backUpSetupConfigKey);
+const closeWizardModal = inject(closeWizardModalKey, () => router.push({ name: 'backup-manage' }));
 
 watch(setupComplete, (value) => {
   if (value === "yes" && backUpSetupConfig) {
@@ -85,20 +88,14 @@ watch(setupComplete, (value) => {
 function goToBackupWizard(): void {
 
   if (backUpSetupConfig) {
-    for (const key in backUpSetupConfig) {
-      if (Array.isArray(backUpSetupConfig[key])) {
-        backUpSetupConfig[key] = [];
-      } else if (typeof backUpSetupConfig[key] === 'object' && backUpSetupConfig[key] !== null) {
-        backUpSetupConfig[key] = {};
-      } else {
-        backUpSetupConfig[key] = null;
-      }
-    }
+    backUpSetupConfig.backUpTasks = [];
+    backUpSetupConfig.username = '';
+    backUpSetupConfig.password = '';
   }
 
   // setStep(0);
 
-  router.push({ name: 'backup-manage' })
+  closeWizardModal();
 }
 
 function goToSetupWizard(): void {

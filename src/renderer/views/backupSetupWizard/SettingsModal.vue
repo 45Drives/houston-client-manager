@@ -50,8 +50,8 @@
                                         placeholder="Display name (optional)"
                                         @keydown.enter="saveServerName(srv)"
                                         @keydown.esc="editingServerId = null" />
-                                    <button class="btn btn-primary text-xs h-fit px-2" @click="saveServerName(srv)">Save</button>
-                                    <button class="btn btn-secondary text-xs h-fit px-2" @click="editingServerId = null">Cancel</button>
+                                    <button class="btn btn-sm btn-primary h-fit px-2" @click="saveServerName(srv)">Save</button>
+                                    <button class="btn btn-sm btn-ghost h-fit px-2" @click="editingServerId = null">Cancel</button>
                                 </div>
                                 <div v-else class="flex items-center gap-2">
                                     <span class="text-sm font-medium truncate">
@@ -140,7 +140,7 @@
                     </div>
 
                     <div class="pt-4 mt-4 border-t border-default">
-                        <button class="btn btn-danger text-sm" @click="confirmReset">
+                        <button class="btn btn-sm btn-ghost h-fit text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20" @click="confirmReset">
                             Reset All Settings
                         </button>
                         <p class="text-xs text-muted mt-1">This resets all preferences to their defaults. Saved servers are not affected.</p>
@@ -153,8 +153,8 @@
                 <div v-if="dirty" class="text-xs text-muted">Unsaved changes</div>
                 <div v-else />
                 <div class="flex items-center gap-2">
-                    <button class="btn btn-secondary text-sm" @click="close">Cancel</button>
-                    <button class="btn btn-primary text-sm" :disabled="!dirty" @click="saveAndClose">
+                    <button class="btn btn-sm btn-outline-shadow h-fit" @click="close">Cancel</button>
+                    <button class="btn btn-sm btn-primary h-fit" :disabled="!dirty" @click="saveAndClose">
                         Save
                     </button>
                 </div>

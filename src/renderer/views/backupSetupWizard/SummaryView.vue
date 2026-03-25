@@ -59,8 +59,8 @@
     <!-- Buttons -->
     <template #footer>
       <div class="button-group-row justify-between">
-        <button @click="proceedToPreviousStep" class="btn btn-primary h-20 w-40">Back</button>
-        <button @click="handleNextClick" class="btn btn-primary h-20 w-40">Next</button>
+        <button @click="proceedToPreviousStep" class="btn btn-secondary h-fit">Back</button>
+        <button @click="handleNextClick" class="btn btn-primary h-fit">Next</button>
       </div>
     </template>
 

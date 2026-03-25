@@ -1,71 +1,73 @@
 <template>
-    <div class="h-full flex flex-col min-h-0">
-        <!-- Source type selector + path breadcrumb -->
-        <div class="px-3 py-2 border-b border-default flex items-center gap-3 shrink-0">
-            <select v-model="restore.sourceType.value"
-                class="input-textlike border border-default rounded px-2 py-1 text-sm min-w-[210px]"
-                @change="onSourceTypeChange">
-                <option value="s2s">Server-to-Server Backups</option>
-                <option value="cloud">Cloud Storage Backups</option>
-            </select>
-
-            <!-- Cloud: remote picker -->
-            <template v-if="restore.sourceType.value === 'cloud'">
-                <select v-model="selectedRemote"
+    <div class="h-full flex flex-col min-h-0 overflow-hidden p-4">
+        <!-- Header -->
+        <div class="flex items-center justify-between mb-3 shrink-0">
+            <!-- <h2 class="text-sm font-semibold text-default">Restore Browser</h2> -->
+            <div class="flex items-center gap-3">
+                <select v-model="restore.sourceType.value"
                     class="input-textlike border border-default rounded px-2 py-1 text-sm min-w-[210px]"
-                    @change="onRemoteSelected">
-                    <option value="">Select remote…</option>
-                    <option v-for="r in restore.remotes.value" :key="r.name" :value="r.name">
-                        {{ r.name }} ({{ r.type }})
-                    </option>
+                    @change="onSourceTypeChange">
+                    <option value="s2s">Server-to-Server Backups</option>
+                    <option value="cloud">Cloud Storage Backups</option>
                 </select>
-            </template>
 
-            <!-- S2S: task picker -->
-            <template v-if="restore.sourceType.value === 's2s'">
-                <select v-model="selectedTaskName"
-                    class="input-textlike border border-default rounded px-2 py-1 text-sm min-w-[400px]"
-                    @change="onS2STaskSelected">
-                    <option value="">Select backup task…</option>
-                    <option v-for="t in restore.s2sTasks.value" :key="t.name" :value="t.name">
-                        {{ t.name }} {{ t.direction === 'push' ? `→ ${t.remoteHost}:${t.remotePath}` : `← ${t.remoteHost}:${t.remotePath}` }}
-                    </option>
-                </select>
-            </template>
-
-            <!-- Breadcrumb -->
-            <div v-if="restore.files.value.length > 0 || restore.currentPath.value.length > 0"
-                class="flex items-center gap-1 text-sm text-muted ml-2 overflow-x-auto">
-                <button v-for="(crumb, i) in restore.breadcrumb.value" :key="i"
-                    class="hover:text-default transition-colors whitespace-nowrap"
-                    @click="restore.navigateToBreadcrumb(i)">
-                    {{ crumb }}
-                </button>
-                <template v-if="restore.breadcrumb.value.length > 1">
-                    <span class="mx-1 text-muted/50">/</span>
+                <!-- Cloud: remote picker -->
+                <template v-if="restore.sourceType.value === 'cloud'">
+                    <select v-model="selectedRemote"
+                        class="input-textlike border border-default rounded px-2 py-1 text-sm min-w-[210px]"
+                        @change="onRemoteSelected">
+                        <option value="">Select remote…</option>
+                        <option v-for="r in restore.remotes.value" :key="r.name" :value="r.name">
+                            {{ r.name }} ({{ r.type }})
+                        </option>
+                    </select>
                 </template>
+
+                <!-- S2S: task picker -->
+                <template v-if="restore.sourceType.value === 's2s'">
+                    <select v-model="selectedTaskName"
+                        class="input-textlike border border-default rounded px-2 py-1 text-sm min-w-[400px]"
+                        @change="onS2STaskSelected">
+                        <option value="">Select backup task…</option>
+                        <option v-for="t in restore.s2sTasks.value" :key="t.name" :value="t.name">
+                            {{ t.name }} {{ t.direction === 'push' ? `→ ${t.remoteHost}:${t.remotePath}` : `← ${t.remoteHost}:${t.remotePath}` }}
+                        </option>
+                    </select>
+                </template>
+
+                <!-- Refresh -->
+                <button v-if="restore.sourceType.value === 'cloud' || restore.sourceType.value === 's2s'"
+                    class="w-8 h-8 p-0 rounded-md bg-transparent inline-flex items-center justify-center text-gray-500 hover:text-default hover:bg-neutral-100 dark:hover:bg-neutral-700 transition-colors"
+                    title="Refresh"
+                    :disabled="restore.loading.value"
+                    @click="restore.sourceType.value === 'cloud' ? restore.loadRemotes() : restore.loadS2STasks()">
+                    <ArrowPathIcon class="w-4 h-4" />
+                </button>
             </div>
+        </div>
 
-            <div class="flex-1" />
-
-            <!-- Refresh -->
-            <button v-if="restore.sourceType.value === 'cloud' || restore.sourceType.value === 's2s'"
-                class="btn btn-secondary text-sm h-fit"
-                :disabled="restore.loading.value"
-                @click="restore.sourceType.value === 'cloud' ? restore.loadRemotes() : restore.loadS2STasks()">
-                <ArrowPathIcon class="w-4 h-4" />
+        <!-- Breadcrumb -->
+        <div v-if="restore.files.value.length > 0 || restore.currentPath.value.length > 0"
+            class="flex items-center gap-1 text-sm text-muted mb-2 overflow-x-auto shrink-0">
+            <button v-for="(crumb, i) in restore.breadcrumb.value" :key="i"
+                class="hover:text-default transition-colors whitespace-nowrap"
+                @click="restore.navigateToBreadcrumb(i)">
+                {{ crumb }}
             </button>
+            <template v-if="restore.breadcrumb.value.length > 1">
+                <span class="mx-1 text-muted/50">/</span>
+            </template>
         </div>
 
         <!-- Error banner -->
-        <div v-if="restore.error.value" class="mx-3 mt-2 p-2 bg-danger/10 border border-danger/30 rounded text-sm text-danger">
+        <div v-if="restore.error.value" class="mb-2 p-2 bg-danger/10 border border-danger/30 rounded text-sm text-danger shrink-0">
             {{ restore.error.value }}
         </div>
 
-        <!-- ── CLOUD / SERVER mode: file browser ────────────────────── -->
-            <div class="flex-1 min-h-0 flex gap-4 p-3">
+        <!-- Main two-column content -->
+        <div class="flex-1 min-h-0 flex gap-4">
                 <!-- LEFT: File list -->
-                <div class="w-3/5 flex flex-col min-h-0 bg-well rounded-lg border border-default overflow-hidden bg-default">
+                <div class="w-3/5 flex flex-col min-h-0 rounded-lg border border-neutral-200 dark:border-neutral-700 overflow-hidden bg-white dark:bg-neutral-800">
                     <div class="px-3 py-2 border-b border-default flex items-center justify-between shrink-0">
                         <button class="text-sm font-medium text-default flex items-center gap-1 hover:text-primary transition-colors"
                             @click="toggleSort">
@@ -114,8 +116,8 @@
                     <!-- File list -->
                     <div v-else class="flex-1 overflow-y-auto text-left">
                         <div v-for="(file, index) in sortedFiles" :key="index"
-                            class="flex items-center gap-3 px-3 py-2 border-b border-default cursor-pointer transition-colors hover:bg-accent"
-                            :class="file.selected ? 'bg-primary/10' : ''"
+                            class="flex items-center gap-3 px-3 py-1.5 border-b border-neutral-100 dark:border-neutral-700/50 cursor-pointer transition-colors border-l-2"
+                            :class="file.selected ? 'bg-slate-600/5 dark:bg-slate-400/5 border-l-slate-600 dark:border-l-slate-400' : 'border-l-transparent hover:bg-neutral-50 dark:hover:bg-neutral-700/30'"
                             @click="onFileClick(file)"
                             @dblclick="onFileDblClick(file)">
                             <!-- Checkbox (files only) -->
@@ -144,10 +146,13 @@
                 </div>
 
                 <!-- RIGHT: Restore controls -->
-                <div class="w-2/5 flex flex-col gap-3 min-h-0">
+                <div class="w-2/5 flex flex-col min-h-0 gap-4">
                     <!-- Destination card -->
-                    <div class="bg-default rounded-lg border border-default p-3">
-                        <h3 class="text-sm font-medium mb-2">Restore Destination</h3>
+                    <div class="bg-accent rounded-lg border border-default overflow-hidden shrink-0">
+                        <div class="px-3 py-2 border-b border-default">
+                            <span class="text-sm font-medium text-default">Restore Destination</span>
+                        </div>
+                        <div class="px-3 py-2">
 
                         <div class="space-y-2">
                             <label class="flex items-center gap-2 cursor-pointer">
@@ -211,17 +216,18 @@
                                 <input :value="destPath" type="text" readonly
                                     class="input-textlike flex-1 border border-default rounded px-2 py-1 text-sm bg-default"
                                     placeholder="Choose folder…" />
-                                <button class="btn btn-secondary text-sm h-fit" @click="pickLocalFolder">Browse</button>
+                                <button class="btn btn-sm btn-outline-shadow h-fit" @click="pickLocalFolder">Browse</button>
                             </div>
                             <div class="text-xs text-muted">
                                 Files will be staged on the server's SMB share, then downloaded to your machine.
                             </div>
                         </div>
+                        </div>
                     </div>
 
                     <!-- Progress card (during restore) -->
                     <div v-if="restore.restoring.value || restore.progress.phase === 'complete'"
-                        class="bg-default rounded-lg border border-default p-3">
+                        class="p-3 rounded-lg border border-default bg-accent shrink-0">
                         <h3 class="text-sm font-medium mb-2">
                             {{ restore.progress.phase === 'complete' ? 'Restore Complete' : 'Restoring…' }}
                         </h3>
@@ -238,7 +244,7 @@
                             <div v-if="restore.progress.currentFile" class="text-xs text-muted truncate mt-1">
                                 {{ restore.progress.currentFile }}
                             </div>
-                            <button class="btn btn-danger text-xs h-fit mt-2" @click="restore.cancelRestore()">
+                            <button class="btn btn-sm btn-ghost h-fit text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20 mt-2" @click="restore.cancelRestore()">
                                 Cancel
                             </button>
                         </div>
@@ -254,7 +260,7 @@
 
                     <!-- Restore summary -->
                     <div v-if="(destPath.trim() || restoreToOriginalPath) && (restore.files.value.length > 0 || restore.currentPath.value.length > 0)"
-                        class="bg-accent/50 rounded-lg border border-default p-3 text-xs space-y-1">
+                        class="bg-accent rounded-lg border border-default p-3 text-xs space-y-1 shrink-0">
                         <div class="flex gap-2">
                             <span class="text-muted shrink-0">From:</span>
                             <span class="text-default truncate">{{ restoreSourceLabel }}</span>
@@ -274,8 +280,52 @@
                         </div>
                     </div>
 
+                    <!-- Info card: selection summary or single-file details -->
+                    <div v-if="restore.selectedFiles.value.length > 1"
+                        class="bg-accent rounded-lg border border-default overflow-hidden shrink-0">
+                        <div class="px-3 py-2 border-b border-default">
+                            <span class="text-sm font-medium text-default">Selection Summary</span>
+                        </div>
+                        <div class="px-3 py-2 space-y-2 text-sm">
+                            <div class="flex justify-between gap-2">
+                                <span class="text-muted">Files Selected</span>
+                                <span class="text-default font-medium">{{ restore.selectedFiles.value.length }}</span>
+                            </div>
+                            <div class="flex justify-between gap-2">
+                                <span class="text-muted">Total Size</span>
+                                <span class="text-default font-medium">{{ formatSize(selectedTotalSize) }}</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div v-else-if="focusedFile" class="bg-accent rounded-lg border border-default overflow-hidden shrink-0">
+                        <div class="px-3 py-2 border-b border-default">
+                            <span class="text-sm font-medium text-default">File Details</span>
+                        </div>
+                        <div class="px-3 py-2 space-y-2 text-sm">
+                            <div>
+                                <span class="text-muted text-xs">Name</span>
+                                <p class="text-default break-all">{{ fileName(focusedFile) }}</p>
+                            </div>
+                            <div v-if="!isDir(focusedFile)">
+                                <span class="text-muted text-xs">Size</span>
+                                <p class="text-default">{{ formatSize(fileSize(focusedFile)) }}</p>
+                            </div>
+                            <div>
+                                <span class="text-muted text-xs">Modified</span>
+                                <p class="text-default">{{ formatDate(fileModTime(focusedFile)) }}</p>
+                            </div>
+                            <div>
+                                <span class="text-muted text-xs">Type</span>
+                                <p class="text-default">{{ isDir(focusedFile) ? 'Folder' : fileMimeType(focusedFile) }}</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Spacer to push actions to bottom -->
+                    <div class="flex-1 min-h-0"></div>
+
                     <!-- Restore button -->
-                    <button class="btn btn-primary text-sm h-fit w-full flex items-center justify-center gap-2"
+                    <button class="btn btn-primary w-full h-fit flex items-center justify-center gap-1.5 py-2.5"
                         :disabled="!canRestore" @click="onRestoreClick">
                         <ArrowDownTrayIcon class="w-4 h-4" />
                         <template v-if="restore.restoring.value">Restoring…</template>
@@ -286,43 +336,6 @@
                             </template>
                         </template>
                     </button>
-
-                    <!-- Info card: selection summary or single-file details -->
-                    <div v-if="restore.selectedFiles.value.length > 1"
-                        class="bg-default rounded-lg border border-default p-3 flex-1 overflow-y-auto">
-                        <h3 class="text-sm font-medium mb-2">Selection</h3>
-                        <dl class="text-xs space-y-1">
-                            <div class="flex justify-between">
-                                <dt class="text-muted">Files selected</dt>
-                                <dd class="text-default">{{ restore.selectedFiles.value.length }}</dd>
-                            </div>
-                            <div class="flex justify-between">
-                                <dt class="text-muted">Total size</dt>
-                                <dd class="text-default">{{ formatSize(selectedTotalSize) }}</dd>
-                            </div>
-                        </dl>
-                    </div>
-                    <div v-else-if="focusedFile" class="bg-default rounded-lg border border-default p-3 flex-1 overflow-y-auto">
-                        <h3 class="text-sm font-medium mb-2">Details</h3>
-                        <dl class="text-xs space-y-1">
-                            <div class="flex justify-between">
-                                <dt class="text-muted">Name</dt>
-                                <dd class="text-default truncate ml-4">{{ fileName(focusedFile) }}</dd>
-                            </div>
-                            <div class="flex justify-between">
-                                <dt class="text-muted">Size</dt>
-                                <dd class="text-default">{{ formatSize(fileSize(focusedFile)) }}</dd>
-                            </div>
-                            <div class="flex justify-between">
-                                <dt class="text-muted">Modified</dt>
-                                <dd class="text-default">{{ formatDate(fileModTime(focusedFile)) }}</dd>
-                            </div>
-                            <div class="flex justify-between">
-                                <dt class="text-muted">Type</dt>
-                                <dd class="text-default">{{ isDir(focusedFile) ? 'Folder' : fileMimeType(focusedFile) }}</dd>
-                            </div>
-                        </dl>
-                    </div>
                 </div>
             </div>
     </div>
@@ -334,8 +347,8 @@
             <h3 class="text-base font-semibold text-default">{{ confirmDialog.title }}</h3>
             <p class="text-sm text-muted whitespace-pre-line">{{ confirmDialog.message }}</p>
             <div class="flex justify-end gap-2 pt-1">
-                <button class="btn btn-secondary text-sm h-fit" @click="confirmDialog.resolve(false)">Cancel</button>
-                <button class="btn btn-primary text-sm h-fit" :class="confirmDialog.danger ? 'btn-danger' : 'btn-primary'"
+                <button class="btn btn-sm btn-outline-shadow h-fit" @click="confirmDialog.resolve(false)">Cancel</button>
+                <button class="btn btn-sm btn-primary h-fit" :class="confirmDialog.danger ? 'btn-danger' : 'btn-primary'"
                     @click="confirmDialog.resolve(true)">
                     {{ confirmDialog.confirmLabel || 'Continue' }}
                 </button>

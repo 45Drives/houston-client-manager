@@ -28,18 +28,16 @@
 
     <!-- Buttons -->
     <template #footer>
-      <div class="button-group-row w-full justify-end">
-        <div class="button-group-row w-full justify-between">
+      <div class="button-group-row w-full justify-between">
 
-          <button @click="proceedToPreviousStep" class="btn btn-secondary w-40 h-20">
-            Back
-          </button>
+        <button @click="proceedToPreviousStep" class="btn btn-secondary h-fit">
+          Back
+        </button>
 
-          <button :disabled="isButtonDisabled" @click="proceedToNextStep" class="btn btn-primary w-40 h-20">
-            Next
-          </button>
+        <button :disabled="isButtonDisabled" @click="proceedToNextStep" class="btn btn-primary h-fit">
+          Next
+        </button>
 
-        </div>
       </div>
     </template>
 

@@ -16,3 +16,4 @@ export const discoveryStateInjectionKey: InjectionKey<DiscoveryState> =
 export const discoveryRescanInjectionKey: InjectionKey<() => void> =
     Symbol('discovery-rescan')
 export const reviewBackUpSetupKey: InjectionKey<ReviewBackupSetupData> = Symbol('backup-setup-config');
+export const closeWizardModalKey: InjectionKey<() => void> = Symbol('close-wizard-modal');

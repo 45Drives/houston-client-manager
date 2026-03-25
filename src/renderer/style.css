@@ -39,11 +39,11 @@
   --ui-surface-tech-texture-image: url('../../assets/textures/hexellence.png');
   --ui-surface-soft-texture-size: 180px;
   --ui-surface-tech-texture-size: auto;
-  --ui-surface-soft-bg: #d7dce2;
+  --ui-surface-soft-bg: #d2dae4;
   --ui-surface-tech-bg: #e8eef5;
   --ui-surface-soft-bg-dark: #111821;
   --ui-surface-tech-bg-dark: #0d141c;
-  --ui-surface-tint-light: color-mix(in srgb, var(--btn-primary-bg) 36%, white);
+  --ui-surface-tint-light: color-mix(in srgb, var(--btn-primary-bg) 50%, white);
   --ui-surface-tint-dark: color-mix(in srgb, var(--btn-primary-bg) 24%, #081018);
 }
 
@@ -244,7 +244,7 @@
 
 .ui-texture-surface {
   background-color: var(--ui-surface-bg);
-  background-image: linear-gradient(color-mix(in srgb, var(--ui-surface-tint-light) 22%, transparent), color-mix(in srgb, var(--ui-surface-tint-light) 22%, transparent)), var(--ui-surface-texture-image);
+  background-image: linear-gradient(color-mix(in srgb, var(--ui-surface-tint-light) 10%, transparent), color-mix(in srgb, var(--ui-surface-tint-light) 10%, transparent)), var(--ui-surface-texture-image);
   background-repeat: repeat, repeat;
   background-size: auto, var(--ui-surface-texture-size);
   background-position: top left, top left;

@@ -78,11 +78,11 @@ const currentUrl = computed(() => {
     const base = `https://${ip}:9090${props.routePath}`
     const route = props.hash ? (props.hash.startsWith('/') ? props.hash : `/${props.hash}`) : ''
 
-    // optional: dark/advanced/client_ip/server_ip in search params
-    // not needed for this purpose.
+    // Only include stable values in the URL – reactive flags like dark/advanced
+    // must NOT go here because changing them would recompute the URL and force
+    // the webview to navigate (full page reload).  Dark mode is synced via
+    // localStorage injection (see watch(dark, …) below).
     const searchQS = new URLSearchParams({
-        dark: String(dark.value),
-        advanced: String(adv.value),
         client_ip: clientIp.value || '',
         server_ip: ip,
     }).toString()
@@ -116,11 +116,12 @@ watch(webview, (wv) => {
     wv.addEventListener('dom-ready', () => {
         console.debug('cockpit webview dom-ready')
         injectChromeCSS(wv)
-        // Sync client dark mode into the webview's localStorage so the
-        // server-side plugin (useDarkModeState) picks it up on init.
+        // Sync client dark mode into the webview's localStorage and fire
+        // the custom event so useDarkModeState picks it up immediately.
         const darkStyle = dark.value ? 'dark' : 'light'
         wv.executeJavaScript(`
             localStorage.setItem('shell:style', '${darkStyle}');
+            window.dispatchEvent(new CustomEvent('cockpit-style', { detail: { style: '${darkStyle}' } }));
         `).catch((err: any) => console.error('Dark mode sync failed:', err))
         // Inject a postMessage relay so scheduler iframe can request OAuth
         // and receive tokens back. The scheduler cannot call window.open()
@@ -207,9 +208,18 @@ const onWebViewLoaded = async () => {
         routerRenderer.setCockpitWebView(view)
     }
 
-    // const user = manualCreds.value?.username ?? 'root'
-    // const pass = manualCreds.value?.password ?? '45Dr!ves'
-    // const pass = manualCreds.value?.password ?? 'bello'
+    // If manualCreds are missing, try hydrating from the in-memory store
+    // (covers tab-switch: component is recreated but the store still has creds).
+    if (!manualCreds.value) {
+        const ip = currentServer.value?.ip
+        if (ip) {
+            const stored = getCredentials(ip)
+            if (stored) {
+                manualCreds.value = { ip, username: stored.username, password: stored.password }
+            }
+        }
+    }
+
     if (!manualCreds.value) { loadingWebview.value = false; return; }
     const { username: user, password: pass } = manualCreds.value;
 
@@ -238,14 +248,15 @@ const onWebViewLoaded = async () => {
 }
 
 // Push dark mode changes to the webview in real-time.
-// Setting localStorage from the top frame fires a 'storage' event in the
-// plugin iframe (same origin), where useDarkModeState listens for it.
+// Update localStorage AND dispatch the custom event so both cross-frame
+// storage listeners and same-frame cockpit-style listeners pick it up.
 watch(dark, (isDark) => {
     const wv = webview.value
     if (!wv) return
     const style = isDark ? 'dark' : 'light'
     wv.executeJavaScript(`
         localStorage.setItem('shell:style', '${style}');
+        window.dispatchEvent(new CustomEvent('cockpit-style', { detail: { style: '${style}' } }));
     `).catch(() => {})
 })
 

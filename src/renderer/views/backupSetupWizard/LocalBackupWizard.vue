@@ -1,7 +1,7 @@
 <template>
 
     <Wizard :id="wizardId" :steps="steps" :onComplete="data => onComplete" :hideHeader="true"
-        :hideProgress="true" class="h-full flex-1 text-default bg-default" />
+        :hideProgress="true" class="h-full flex-1 text-default bg-well" />
 
 </template>
 <script setup lang="ts">
@@ -11,20 +11,16 @@ import EnterSmbCredBackUpSetupView from './EnterSmbCredBackUpSetupView.vue'
 import SummaryView from './SummaryView.vue'
 import CompleteBackUpCreationView from './CompleteBackUpCreationView.vue'
 
-import { reactive, provide } from 'vue'
-import { backUpSetupConfigKey, reviewBackUpSetupKey } from '../../keys/injection-keys'
+import { provide, inject } from 'vue'
+import { backUpSetupConfigKey, reviewBackUpSetupKey, closeWizardModalKey } from '../../keys/injection-keys'
 import { useRouter } from 'vue-router'
 const router = useRouter()
+const closeWizardModal = inject(closeWizardModalKey, () => router.replace({ name: 'backup-manage' }));
 
-// make planType part of shared config
-const setup = reactive({
-    planType: null as 'simple' | 'custom' | null,
-    backUpTasks: [],
-    username: '',
-    password: '',
-})
-provide(backUpSetupConfigKey, setup)
-provide(reviewBackUpSetupKey, reactive({ tasks: [] }))
+// Config is provided by BackupManageView parent
+// Just define local reactive for the wizard
+const setup = inject(backUpSetupConfigKey)!;
+const review = inject(reviewBackUpSetupKey)!
 
 const wizardId = 'backup-new'
 
@@ -53,6 +49,6 @@ const steps: WizardStep[] = [
     },
 ]
 
-const onComplete = () => router.replace({ name: 'backup-manage' })
+const onComplete = () => closeWizardModal();
 provide('wizardKey', wizardId)
 </script>

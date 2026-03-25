@@ -3,7 +3,7 @@
         <!-- Tab bar + actions header -->
         <div class="flex flex-wrap items-center gap-3 mb-4 shrink-0">
             <!-- Left-aligned group -->
-            <button class="btn btn-secondary btn-with-icon text-sm h-fit shrink-0" @click="router.push({ name: 'dashboard' })">
+            <button class="btn btn-sm btn-ghost h-fit flex items-center gap-1.5 text-gray-500 hover:text-default shrink-0" @click="router.push({ name: 'dashboard' })">
                 <ArrowLeftIcon class="w-4 h-4" />
                 Dashboard
             </button>
@@ -36,18 +36,18 @@
                             <option v-for="opt in serversForDropdown" :key="opt.ip" :value="opt.ip">{{ opt.label }}</option>
                         </optgroup>
                     </select>
-                    <button class="btn btn-primary btn-with-icon text-sm h-fit" :disabled="!selectedIp" @click="openLogin">
+                    <button class="btn btn-sm btn-primary h-fit flex items-center gap-1.5" :disabled="!selectedIp" @click="openLogin">
                         <LinkIcon class="w-4 h-4" />
                         Connect
                     </button>
-                    <button class="btn btn-secondary btn-with-icon text-sm h-fit"
+                    <button class="btn btn-sm btn-outline-shadow h-fit flex items-center gap-1.5"
                         :class="currentServer ? '' : 'invisible pointer-events-none'"
                         :disabled="!currentServer"
                         @click="showRestoreView ? disconnectRestore() : cockpitRef?.logoutFromCurrentServer()">
                         <ArrowRightOnRectangleIcon class="w-4 h-4" />
                         Disconnect
                     </button>
-                    <button class="btn btn-danger btn-with-icon text-sm h-fit"
+                    <button class="btn btn-sm btn-ghost h-fit flex items-center gap-1.5 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20"
                         :class="activeCredId && currentServer ? '' : 'invisible pointer-events-none'"
                         :disabled="!(activeCredId && currentServer)"
                         @click="forgetActive">
@@ -62,39 +62,39 @@
 
             <!-- Right-aligned group -->
             <template v-if="activeTab === 'remote'">
-                <button class="btn btn-with-icon text-sm h-fit"
-                    :class="remoteView === 'restore' ? 'btn-secondary' : 'btn-primary'" :disabled="!restoreConnected"
+                <button class="btn btn-sm h-fit flex items-center gap-1.5"
+                    :class="remoteView === 'restore' ? 'btn-outline-shadow' : 'btn-primary'" :disabled="!restoreConnected"
                     @click="remoteView = remoteView === 'restore' ? 'backups' : 'restore'">
                     <template v-if="remoteView === 'restore'">
-                        <ArrowLeftIcon class="w-4 h-fit" />
+                        <ArrowLeftIcon class="w-4 h-4" />
                         Return to Backups
                     </template>
                     <template v-else>
-                        <ArrowDownTrayIcon class="w-4 h-fit" />
+                        <ArrowDownTrayIcon class="w-4 h-4" />
                         Restore
                     </template>
                 </button>
-                <button class="btn btn-with-icon text-sm h-fit"
-                    :class="remoteView === 'snapshots' ? 'btn-secondary' : 'btn-primary'" :disabled="!restoreConnected"
+                <button class="btn btn-sm h-fit flex items-center gap-1.5"
+                    :class="remoteView === 'snapshots' ? 'btn-outline-shadow' : 'btn-primary'" :disabled="!restoreConnected"
                     @click="remoteView = remoteView === 'snapshots' ? 'backups' : 'snapshots'">
                     <template v-if="remoteView === 'snapshots'">
-                        <ArrowLeftIcon class="w-4 h-fit" />
+                        <ArrowLeftIcon class="w-4 h-4" />
                         Return to Backups
                     </template>
                     <template v-else>
-                        <CameraIcon class="w-4 h-fit" />
+                        <CameraIcon class="w-4 h-4" />
                         Snapshots
                     </template>
                 </button>
             </template>
             <template v-else>
-                <button class="btn btn-primary btn-with-icon text-sm h-fit" @click="newBackupTask">
-                    <PlusIcon class="w-4 h-fit" />
+                <button class="btn btn-sm btn-primary h-fit flex items-center gap-1.5" @click="newBackupTask">
+                    <PlusIcon class="w-4 h-4" />
                     New Backup
                 </button>
             </template>
 
-            <button class="btn btn-secondary text-sm h-fit p-1.5" title="Settings" @click="settingsOpen = true">
+            <button class="w-8 h-8 p-0 rounded-md bg-transparent inline-flex items-center justify-center text-gray-500 hover:text-default hover:bg-neutral-100 dark:hover:bg-neutral-700 transition-colors" title="Settings" @click="settingsOpen = true">
                 <Cog6ToothIcon class="w-5 h-5" />
             </button>
         </div>
@@ -180,8 +180,8 @@ import RestoreBrowser from './RestoreBrowser.vue';
 import SnapshotManager from './SnapshotManager.vue';
 import ServerLoginModal from './ServerLoginModal.vue';
 import SettingsModal from './SettingsModal.vue';
-import { useEnterToAdvance } from '@45drives/houston-common-ui';
 import BackUpListView from './BackUpListView.vue';
+import { useServerCredentials } from '../../composables/useServerCredentials';
 import { computed, inject, Ref, ref, watch, onMounted, onBeforeUnmount } from 'vue';
 import { currentServerInjectionKey, discoveryStateInjectionKey, reviewBackUpSetupKey } from '../../keys/injection-keys';
 import { useRouter } from 'vue-router';
@@ -197,6 +197,11 @@ import {
 
 useHeader('Backup Manager');
 
+const emit = defineEmits<{
+    openWizard: [];
+}>();
+
+const { setCredentials } = useServerCredentials();
 const { openLogModal } = useLogModal();
 const reviewBackup = inject(reviewBackUpSetupKey);
 const router = useRouter();
@@ -300,6 +305,9 @@ function closeLogin() {
 }
 
 function sendCredsToWebview(ip: string, username: string, password: string) {
+    // Populate in-memory store so CockpitWebview can hydrate on mount
+    // (the IPC relay is async and may arrive after the component mounts).
+    setCredentials(ip, username, password);
     window.electron?.ipcRenderer.send('store-manual-creds', { ip, username, password });
 }
 
@@ -386,7 +394,7 @@ watch(serversForDropdown, (list) => {
 }, { immediate: true })
 
 function newBackupTask() {
-    router.push({ name: 'create-new-backup' });
+    emit('openWizard');
 }
 
 const deleteSelectedTasks = () => {

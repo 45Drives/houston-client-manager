@@ -1,13 +1,13 @@
 <template>
     <div class="h-full flex flex-col min-h-0 overflow-hidden p-4">
         <!-- Header -->
-        <div class="flex items-center justify-between mb-4 shrink-0">
+        <div class="flex items-center justify-between mb-3 shrink-0">
             <div class="flex items-center gap-3">
-                <button class="btn btn-secondary text-sm h-8 flex items-center gap-1.5" @click="proceedToPreviousStep">
+                <button class="btn btn-sm btn-ghost h-fit flex items-center gap-1.5 text-gray-500 hover:text-default" @click="proceedToPreviousStep">
                     <ArrowLeftIcon class="w-4 h-4" />
-                    Back
+                    Backups
                 </button>
-                <h2 class="text-lg font-semibold text-default">Backup Browser</h2>
+                <h2 class="text-sm font-semibold text-default">Backup Browser</h2>
             </div>
             <!-- Backup selector (multi-backup mode) -->
             <div v-if="!singleMode" class="flex items-center gap-2">
@@ -32,7 +32,7 @@
         <!-- Main two-column content -->
         <div class="flex-1 min-h-0 flex gap-4">
             <!-- LEFT: Files in backup -->
-            <div class="w-3/5 flex flex-col min-h-0 bg-accent rounded-lg border border-default overflow-hidden">
+            <div class="w-3/5 flex flex-col min-h-0 bg-white dark:bg-neutral-800 rounded-lg border border-neutral-200 dark:border-neutral-700 overflow-hidden">
                 <!-- File panel header -->
                 <div class="px-3 py-2 border-b border-default flex items-center justify-between shrink-0">
                     <span class="text-sm font-medium text-default">
@@ -74,10 +74,10 @@
                 <!-- File list -->
                 <div v-else class="flex-1 overflow-y-auto">
                     <div v-for="(file, index) in selectedBackup.files" :key="index"
-                        class="flex items-center gap-3 px-3 py-2 border-b border-default cursor-pointer transition-colors"
+                        class="flex items-center gap-3 px-3 py-1.5 border-b border-neutral-100 dark:border-neutral-700/50 cursor-pointer transition-colors border-l-2"
                         :class="[
-                            file?.selected ? 'bg-primary/10' : 'hover:bg-well',
-                            focusedFile === file ? 'ring-1 ring-inset ring-primary' : ''
+                            file?.selected ? 'bg-slate-600/5 dark:bg-slate-400/5 border-l-slate-600 dark:border-l-slate-400' : 'border-l-transparent hover:bg-neutral-50 dark:hover:bg-neutral-700/30',
+                            focusedFile === file ? 'ring-1 ring-inset ring-slate-500' : ''
                         ]"
                         @click="onFileClick(file)">
                         <input type="checkbox" v-model="file.selected" class="shrink-0" @click.stop />
@@ -224,29 +224,29 @@
                         Restore complete. Open the restored folder{{ restoredFolders.length > 1 ? 's' : '' }}?
                     </p>
                     <div class="flex items-center gap-2">
-                        <button class="btn btn-primary text-sm h-8 flex items-center gap-1.5" @click="openRestoredFolders">
+                        <button class="btn btn-sm btn-primary h-fit flex items-center gap-1.5" @click="openRestoredFolders">
                             <FolderOpenIcon class="w-4 h-4" />
                             Open {{ restoredFolders.length > 1 ? 'All' : 'Folder' }}
                         </button>
-                        <button class="btn btn-secondary text-sm h-8" @click="showOpenFolderPrompt = false">Dismiss</button>
+                        <button class="btn btn-sm btn-ghost h-fit" @click="showOpenFolderPrompt = false">Dismiss</button>
                     </div>
                 </div>
 
                 <!-- Action buttons -->
                 <div v-if="selectedBackup" class="shrink-0 flex flex-col gap-2">
-                    <button class="btn btn-primary w-full text-sm h-9 flex items-center justify-center gap-1.5"
+                    <button class="btn btn-primary w-full h-fit flex items-center justify-center gap-1.5 py-2.5"
                         :disabled="selectedFilesCount === 0"
                         @click="restoreSelected">
                         <ArrowDownTrayIcon class="w-4 h-4" />
                         Restore Selected ({{ selectedFilesCount }})
                     </button>
                     <div class="flex gap-2">
-                        <button class="btn btn-secondary flex-1 text-sm h-8 flex items-center justify-center gap-1.5"
+                        <button class="btn btn-sm btn-outline-shadow flex-1 h-fit flex items-center justify-center gap-1.5"
                             @click="openSelectedBackupFolder">
                             <FolderOpenIcon class="w-4 h-4" />
                             Open Folder
                         </button>
-                        <button class="btn btn-danger flex-1 text-sm h-8 flex items-center justify-center gap-1.5"
+                        <button class="btn btn-sm btn-ghost flex-1 h-fit flex items-center justify-center gap-1.5 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20"
                             @click="deleteSingleBackup">
                             <TrashIcon class="w-4 h-4" />
                             Delete
@@ -525,8 +525,16 @@ const ipcActionHandler = (raw: string) => {
             restoreProgress.value.lastFile = response.value.file
             if (response.value.error) console.error(`Error restoring ${response.value.file}: ${response.value.error}`)
         } else if (response.type === 'restoreCompleted') {
-            restoredFolders.value = response.allFolders ?? [response.folder]
-            showOpenFolderPrompt.value = true
+            const client = selectedBackup.value?.client
+            const validFolder = (p: string) => p && p !== '/' && p !== '\\'
+            restoredFolders.value = response.allFolders?.filter(validFolder)?.length
+                ? response.allFolders.filter(validFolder)
+                : validFolder(response.folder)
+                    ? [response.folder]
+                    : client
+                        ? [client]
+                        : []
+            showOpenFolderPrompt.value = restoredFolders.value.length > 0
         } else if (response.type === 'deleteBackupsCompleted') {
             // Remove deleted backups from the list
             const deleted: string[] = response.uuids || []

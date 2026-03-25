@@ -4,8 +4,8 @@
 			<div class="flex flex-col h-full min-h-0">
 				<div class="flex flex-col flex-1 min-h-0 overflow-hidden w-full sm:w-9/12 mx-auto px-2 sm:px-0 text-left space-y-2">
 					<div class="text-center shrink-0">
-						<p class="mb-2 text-2xl">
-							Choose the folders or files you want to back up, pick a schedule, and we'll handle the rest.
+						<p class="mb-2 text-xl">
+							Choose the folders you want to back up, pick a schedule, and we'll handle the rest.
 						</p>
 						<p class="mb-2 text-sm text-muted">
 							File explorer may open on a different screen when you click the add button.
@@ -18,7 +18,7 @@
 							<div class="flex items-center w-[25%] flex-shrink-0 space-x-2">
 								<label class="text-default font-semibold text-left">Back Up Location</label>
 								<CommanderToolTip
-									:message="`This is the designated backup storage location you set up earlier.`" />
+									:message="`This is the designated backup storage location you set up earlier (Either manually or via Setup Wizard).`" />
 							</div>
 							<div class="flex items-center flex-1 gap-2">
 								<select v-model="selectedServerIp"
@@ -33,9 +33,9 @@
 								</select>
 								<div v-if="discoveryState.loading" class="spinner-sm shrink-0" title="Discovering servers…"></div>
 								<button v-else @click="rescan"
-									class="btn btn-secondary h-[3rem] w-[3rem] shrink-0 flex items-center justify-center"
+									class="w-8 h-8 p-0 rounded-md bg-transparent inline-flex items-center justify-center text-gray-500 hover:text-default hover:bg-neutral-100 dark:hover:bg-neutral-700 transition-colors"
 									title="Re-discover servers">
-									<ArrowPathIcon class="w-5 h-5 text-white" />
+									<ArrowPathIcon class="w-4 h-4" />
 								</button>
 							</div>
 						</div>
@@ -86,8 +86,8 @@
 
 						<!-- Folder Selection Button -->
 						<div class="flex flex-row items-center mt-4">
-							<button @click="handleFolderSelect" class="btn btn-secondary h-10 w-15">
-								<PlusIcon class="w-6 h-6 text-white" />
+							<button @click="handleFolderSelect" class="btn btn-sm btn-secondary h-fit">
+								<PlusIcon class="w-4 h-4" />
 							</button>
 							<p class="text-start ml-2 font-semibold text-lg">
 								Select a folder to back up.
@@ -112,12 +112,12 @@
 								<div class="flex space-x-2">
 									<button v-if="scheduleMode === 'custom'"
 										@click="editSchedule(backUpSetupConfig!.backUpTasks[index].schedule)"
-										class="btn btn-secondary h-10 w-fit flex flex-row justify-between px-3 text-center items-center">
-										<CalendarIcon class="w-6 h-6 text-white" />
-										<span class="text-sm px-2">Edit Schedule</span>
+										class="btn btn-sm btn-secondary h-fit btn-with-icon">
+										<CalendarIcon class="w-4 h-4" />
+										<span>Edit Schedule</span>
 									</button>
-									<button @click="removeFolder(index)" class="btn btn-secondary">
-										<MinusIcon class="w-6 h-6 text-white" />
+									<button @click="removeFolder(index)" class="btn btn-sm btn-secondary h-fit">
+										<MinusIcon class="w-4 h-4" />
 									</button>
 								</div>
 							</div>
@@ -139,11 +139,11 @@
 		<!-- Buttons -->
 		<template #footer>
 			<div class="button-group-row justify-between">
-				<button @click="proceedToPreviousStep" class="btn btn-primary h-20 w-40">
+				<button @click="proceedToPreviousStep" class="btn btn-secondary h-fit">
 					Back
 				</button>
 				<button :disabled="backUpSetupConfig?.backUpTasks.length === 0" @click="proceedToNextStep"
-					class="absolute btn right-[1rem] btn-primary h-20 w-40">
+					class="btn btn-primary h-fit">
 					Next
 				</button>
 			</div>
@@ -163,7 +163,7 @@ import { useWizardSteps } from '@45drives/houston-common-ui';
 import { computed, inject, onMounted, reactive, ref, watch, nextTick } from "vue";
 import { PlusIcon, MinusIcon } from "@heroicons/vue/20/solid";
 import { ArrowPathIcon, CalendarIcon } from "@heroicons/vue/24/outline";
-import { backUpSetupConfigKey, discoveryStateInjectionKey, discoveryRescanInjectionKey } from "../../keys/injection-keys";
+import { backUpSetupConfigKey, discoveryStateInjectionKey, discoveryRescanInjectionKey, closeWizardModalKey } from "../../keys/injection-keys";
 import MessageDialog from '../../components/MessageDialog.vue';
 import { BackUpTask, IPCRouter, TaskSchedule } from "@45drives/houston-common-lib";
 import { DiscoveryState } from '../../types';
@@ -178,6 +178,7 @@ const router = useRouter();
 const { completeCurrentStep, prevStep } = useWizardSteps('backup-new');
 
 const backUpSetupConfig = inject(backUpSetupConfigKey);
+const closeWizardModal = inject(closeWizardModalKey, () => router.push({ name: 'backup-manage' }));
 
 const selectedFolders = ref<{ name: string; path: string }[]>([]);
 const scheduleMode = ref<'interval' | 'custom'>('interval');
@@ -446,7 +447,7 @@ const proceedToNextStep = () => {
 	completeCurrentStep();
 };
 
-const proceedToPreviousStep = () => router.push({ name: 'backup-manage' });
+const proceedToPreviousStep = () => closeWizardModal();
 useEnterToAdvance(
 	() => {
 		if (backUpSetupConfig!.backUpTasks.length > 0) proceedToNextStep();

@@ -25,8 +25,8 @@
             </div>
 
             <div class="flex justify-end gap-2 mt-6">
-                <button class="btn btn-secondary" @click="cancel">Cancel</button>
-                <button class="btn btn-primary" :disabled="!username || !password" @click="confirm">Continue</button>
+                <button class="btn btn-sm btn-outline-shadow h-fit" @click="cancel">Cancel</button>
+                <button class="btn btn-sm btn-primary h-fit" :disabled="!username || !password" @click="confirm">Continue</button>
             </div>
         </div>
     </Modal>

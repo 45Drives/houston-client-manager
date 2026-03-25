@@ -26,8 +26,8 @@
             </div>
 
             <div class="mt-4 flex justify-end gap-2">
-                <button class="btn btn-secondary" @click="$emit('cancel')">Cancel</button>
-                <button class="btn btn-primary" :disabled="!model.username || !model.password" @click="onSubmit">
+                <button class="btn btn-sm btn-outline-shadow h-fit" @click="$emit('cancel')">Cancel</button>
+                <button class="btn btn-sm btn-primary h-fit" :disabled="!model.username || !model.password" @click="onSubmit">
                     Continue
                 </button>
             </div>
