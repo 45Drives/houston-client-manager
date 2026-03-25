@@ -49,6 +49,21 @@ export interface AppSettings {
     restoreBrowserTourDone: boolean;
     snapshotManagerTourDone: boolean;
   };
+
+  /** Restore operation history (capped at 20 entries) */
+  restoreHistory: RestoreHistoryEntry[];
+}
+
+export interface RestoreHistoryEntry {
+  timestamp: number;
+  source: string;
+  sourcePath: string;
+  destPath: string;
+  target: 'server' | 'client';
+  sourceType: 'cloud' | 's2s' | 'snapshot';
+  fileCount: number | string;
+  success: boolean;
+  error?: string;
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -72,6 +87,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
     restoreBrowserTourDone: false,
     snapshotManagerTourDone: false,
   },
+  restoreHistory: [],
 };
 
 // ── Store ──────────────────────────────────────────────────────────────────
@@ -94,6 +110,7 @@ export function loadSettings(): AppSettings {
       const merged = { ...DEFAULT_SETTINGS, ...parsed };
       // Deep-merge nested objects so partial stored values get defaults
       merged.onboarding = { ...DEFAULT_SETTINGS.onboarding, ...parsed.onboarding };
+      merged.restoreHistory = Array.isArray(parsed.restoreHistory) ? parsed.restoreHistory : [];
       cached = merged;
       return cached!;
     }

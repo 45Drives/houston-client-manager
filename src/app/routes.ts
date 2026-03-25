@@ -6,6 +6,7 @@ export const router = createRouter({
     { path: '/', name: 'dashboard', component: () => import('../renderer/views/DashboardView.vue') },
     { path: '/setup', name: 'setup', component: () => import('../renderer/views/SetupWizardView.vue') },
     { path: '/backup/manage', name: 'backup-manage', component: () => import('../renderer/views/BackupManageView.vue') },
+    { path: '/vault', name: 'vault', component: () => import('../renderer/views/CredentialVaultView.vue') },
     {
       path: '/houston',
       name: 'houston',

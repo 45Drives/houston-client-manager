@@ -117,7 +117,7 @@
               placeholder="Search event, summary, details..."
               class="input-textlike px-3 py-2 border border-default rounded-lg bg-default text-default min-w-[280px]"
             />
-            <select v-model="levelFilter" class="px-3 py-2 border border-default rounded-lg bg-default text-default">
+            <select v-model="levelFilter" class="px-3 py-2 border border-default rounded-lg bg-default text-default min-w-[120px]">
               <option value="">All levels</option>
               <option value="error">Error</option>
               <option value="warn">Warn</option>

@@ -385,7 +385,7 @@ const { requestTour } = useTourManager();
 const restoreTourSteps: TourStep[] = [
     {
         target: '[data-tour="restore-source-picker"]',
-        message: 'Choose the backup source type here.\n\nServer-to-Server shows backups replicated between servers.\nCloud Storage shows backups from rclone remotes (S3, B2, etc.).',
+        message: 'Choose the backup source type here.\n\nServer-to-Server shows backups synced between servers.\nCloud Storage shows backups from rclone remotes (S3, B2, etc.).',
     },
     {
         target: '[data-tour="restore-controls"]',

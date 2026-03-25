@@ -23,6 +23,19 @@ export interface AppSettings {
     restoreBrowserTourDone: boolean;
     snapshotManagerTourDone: boolean;
   };
+  restoreHistory: RestoreHistoryEntry[];
+}
+
+export interface RestoreHistoryEntry {
+  timestamp: number;
+  source: string;
+  sourcePath: string;
+  destPath: string;
+  target: 'server' | 'client';
+  sourceType: 'cloud' | 's2s' | 'snapshot';
+  fileCount: number | string;
+  success: boolean;
+  error?: string;
 }
 
 export interface SavedServer {

@@ -24,6 +24,7 @@ import {
 } from '../restoreManager';
 import type { IPCHandlerContext } from './types';
 import type { RestoreProgressCallback } from '../restoreManager';
+import { loadSettings, saveSettings, type RestoreHistoryEntry } from '../settingsStore';
 
 /**
  * Register all restore + snapshot IPC handlers.
@@ -204,6 +205,26 @@ export function registerRestoreHandlers(ctx: IPCHandlerContext) {
         success: result?.success,
         error: result?.error,
       });
+
+      // Persist restore history entry
+      try {
+        const sourceType: RestoreHistoryEntry['sourceType'] = opts.s2sTask ? 's2s' : 'cloud';
+        const entry: RestoreHistoryEntry = {
+          timestamp: Date.now(),
+          source: opts.source,
+          sourcePath: opts.sourcePath,
+          destPath: opts.destPath,
+          target: opts.target,
+          sourceType,
+          fileCount: opts.selectedFiles?.length ?? 'all',
+          success: !!result?.success,
+          error: result?.error,
+        };
+        const settings = loadSettings();
+        const history = [entry, ...(settings.restoreHistory || [])].slice(0, 20);
+        saveSettings({ restoreHistory: history });
+      } catch { /* non-critical */ }
+
       return result;
 
       } catch (err: unknown) {
@@ -216,6 +237,26 @@ export function registerRestoreHandlers(ctx: IPCHandlerContext) {
           target: opts.target,
           error,
         });
+
+        // Persist failed restore history entry
+        try {
+          const sourceType: RestoreHistoryEntry['sourceType'] = opts.s2sTask ? 's2s' : 'cloud';
+          const entry: RestoreHistoryEntry = {
+            timestamp: Date.now(),
+            source: opts.source,
+            sourcePath: opts.sourcePath,
+            destPath: opts.destPath,
+            target: opts.target,
+            sourceType,
+            fileCount: opts.selectedFiles?.length ?? 'all',
+            success: false,
+            error,
+          };
+          const settings = loadSettings();
+          const history = [entry, ...(settings.restoreHistory || [])].slice(0, 20);
+          saveSettings({ restoreHistory: history });
+        } catch { /* non-critical */ }
+
         return { success: false, error };
       }
     },

@@ -14,8 +14,10 @@
               <p class="text-xs text-muted mt-0.5">View logs from the local client app and connected servers.</p>
             </div>
             <div class="flex items-center gap-2">
-              <button class="btn btn-secondary text-sm" @click="refresh" :disabled="loading || taskLoading || serverLoading">
-                {{ (loading || taskLoading || serverLoading) ? 'Refreshing…' : 'Refresh' }}
+              <button
+                class="w-8 h-8 p-0 rounded-md bg-transparent inline-flex items-center justify-center text-gray-500 hover:text-default hover:bg-neutral-100 dark:hover:bg-neutral-700 transition-colors"
+                :title="(loading || taskLoading || serverLoading) ? 'Refreshing…' : 'Refresh'" @click="refresh" :disabled="loading || taskLoading || serverLoading">
+                <ArrowPathIcon class="w-4 h-4" />
               </button>
               <button class="btn bg-well hover:bg-accent text-default p-2 rounded-full" @click="closeLogModal" title="Close">
                 <XMarkIcon class="w-5 h-5" />
@@ -145,7 +147,7 @@
             <div class="flex flex-wrap items-center gap-2 mb-4 text-left">
               <input v-model.trim="search" type="search" placeholder="Search event, summary, details..."
                 class="input-textlike px-3 py-2 border border-default rounded-lg bg-default text-default min-w-[280px]" />
-              <select v-model="levelFilter" class="px-3 py-2 border border-default rounded-lg bg-default text-default">
+              <select v-model="levelFilter" class="px-3 py-2 border border-default rounded-lg bg-default text-default min-w-[120px]">
                 <option value="">All levels</option>
                 <option value="error">Error</option>
                 <option value="warn">Warn</option>
@@ -218,7 +220,7 @@
 
 <script setup lang="ts">
 import { computed, inject, ref, watch } from 'vue'
-import { XMarkIcon } from '@heroicons/vue/24/outline'
+import { XMarkIcon, ArrowPathIcon } from '@heroicons/vue/24/outline'
 import { useLogModal } from '../composables/useLogModal'
 import { discoveryStateInjectionKey } from '../keys/injection-keys'
 import type { DiscoveryState } from '../types'

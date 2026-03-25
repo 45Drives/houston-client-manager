@@ -24,6 +24,7 @@ const INVOKE_CHANNELS = new Set([
   'credentials:list',
   'credentials:remove',
   'credentials:retrieve',
+  'credentials:test-connection',
   'cred:list-servers',
   'cred:get-for',
   'cred:save',

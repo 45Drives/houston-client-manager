@@ -82,6 +82,7 @@ import { installServerDepsRemotely } from './installServerDeps';
 import { getPin, rememberPin } from './certPins'
 import { getCredentialManager } from './credentialManager';
 import { assertSafeHost, assertSafeShare, assertSafeUsername } from './security';
+import { checkSSH } from './setupSsh';
 import { loadSettings, saveSettings, resetSettings } from './settingsStore';
 import { handleBackupMessage } from './ipc/backupHandlers';
 import { handleDiscoveryMessage } from './ipc/discoveryHandlers';
@@ -713,8 +714,9 @@ function createWindow() {
             Object.assign(existing, {
               name: displayName,
               lastSeen: server.lastSeen,
-              status: server.status,
-              setupComplete: server.setupComplete,
+              // Preserve status/setupComplete when HTTP check was skipped (discovery disabled)
+              status: (!discoveryEnabled && existing.status !== 'unknown') ? existing.status : server.status,
+              setupComplete: (!discoveryEnabled && existing.setupComplete !== undefined) ? existing.setupComplete : server.setupComplete,
               serverName: server.serverName,
               shareName: server.shareName,
               setupTime: server.setupTime,
@@ -1040,6 +1042,13 @@ app.whenReady().then(() => {
     );
     jsonLogger.info({ event: 'credentials:remove', host, share, username, removed });
     return { success: removed };
+  });
+
+  ipcMain.handle('credentials:test-connection', async (event, { host }: { host: string }) => {
+    assertMainWindowSender(event);
+    const safeHost = assertSafeHost(host);
+    const reachable = await checkSSH(safeHost, 5000);
+    return { host: safeHost, reachable };
   });
 
   ipcMain.handle('credentials:retrieve', (event, { host, share, username }: { host: string; share: string; username?: string }) => {
