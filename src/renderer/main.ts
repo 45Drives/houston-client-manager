@@ -61,7 +61,7 @@ const app = createApp(AppShell)
 app.use(router)
 app.directive('enter-next', enterNextDirective);
 app.mount('#app');
-document.documentElement.classList.add('theme-homelab');
+// Theme is now restored from localStorage by useThemeFromAlias composable
 window.electron?.ipcRenderer.send('renderer-ready');
 
 const IGNORE = [

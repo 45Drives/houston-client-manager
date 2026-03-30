@@ -60,7 +60,7 @@ import { useRouter } from 'vue-router'
 import { useHeader } from '../../composables/useHeader'
 import { ArrowLeftIcon, ArrowRightIcon } from '@heroicons/vue/24/outline'
 
-useHeader('Welcome to the 45Drives Backup Wizard!')
+useHeader('45Drives Storage Wizard')
 
 const router = useRouter()
 const { completeCurrentStep } = useWizardSteps('backup-new')

@@ -94,6 +94,17 @@
                                 <ServerIcon class="w-4 h-4 icon-secondary group-hover:icon-primary shrink-0" />
                                 <span class="text-xs font-medium text-default truncate">Setup Server</span>
                             </button>
+                            <div class="flex gap-1.5">
+                                <button @click="openLogModal()" class="quick-action-card group flex-1">
+                                    <DocumentTextIcon
+                                        class="w-4 h-4 icon-secondary group-hover:icon-primary shrink-0" />
+                                    <span class="text-xs font-medium text-default truncate">Logs</span>
+                                </button>
+                                <button @click="openSettingsModal()" class="quick-action-card group flex-1">
+                                    <Cog6ToothIcon class="w-4 h-4 icon-secondary group-hover:icon-primary shrink-0" />
+                                    <span class="text-xs font-medium text-default truncate">Settings</span>
+                                </button>
+                            </div>
                       
                             <button @click="goBackup()" class="quick-action-card group">
                                 <CircleStackIcon class="w-4 h-4 icon-secondary group-hover:icon-primary shrink-0" />
@@ -103,20 +114,14 @@
                                 <ArrowDownTrayIcon class="w-4 h-4 icon-secondary group-hover:icon-primary shrink-0" />
                                 <span class="text-xs font-medium text-default truncate">Restore Files</span>
                             </button> -->
-                            
+                      
+
                             <div class="quick-action-card card-disabled">
                                 <WrenchScrewdriverIcon class="w-4 h-4 text-gray-400 shrink-0" />
                                 <span class="text-xs font-medium text-default truncate">Manage Server</span>
                                 <span class="badge-coming-soon">Soon</span>
-                            </div>                            <button @click="openLogModal()" class="quick-action-card group">
-                                <DocumentTextIcon class="w-4 h-4 icon-secondary group-hover:icon-primary shrink-0" />
-                                <span class="text-xs font-medium text-default truncate">View Logs</span>
-                            </button>
-                            <!-- <button @click="openSettingsModal()" class="quick-action-card group">
-                                <Cog6ToothIcon class="w-4 h-4 icon-secondary group-hover:icon-primary shrink-0" />
-                                <span class="text-xs font-medium text-default truncate">Settings</span>
-                            </button> -->
-                       
+                            </div>                            
+                      
                         </div>
                     </div>
 
