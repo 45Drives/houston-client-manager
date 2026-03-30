@@ -1,7 +1,7 @@
 <template>
     <DashboardCard title="Last Backup Run" noPad>
         <template #header-action>
-            <button class="text-xs text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300 transition-colors"
+            <button class="text-xs text-link transition-colors"
                 @click="$emit('go-backup')">
                 View All
             </button>
@@ -17,10 +17,10 @@
                     :class="lastBackup.status === 'success'
                         ? 'bg-green-50 dark:bg-green-900/20'
                         : lastBackup.status === 'running'
-                            ? 'bg-blue-50 dark:bg-blue-900/20'
+                            ? 'bg-selected'
                             : 'bg-red-50 dark:bg-red-900/20'">
                     <CheckCircleIcon v-if="lastBackup.status === 'success'" class="w-5 h-5 text-green-500" />
-                    <ArrowPathIcon v-else-if="lastBackup.status === 'running'" class="w-5 h-5 text-blue-500 animate-spin" />
+                    <ArrowPathIcon v-else-if="lastBackup.status === 'running'" class="w-5 h-5 icon-primary animate-spin" />
                     <XCircleIcon v-else class="w-5 h-5 text-red-500" />
                 </div>
                 <div class="flex-1 min-w-0">
@@ -33,7 +33,7 @@
                     :class="lastBackup.status === 'success'
                         ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
                         : lastBackup.status === 'running'
-                            ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
+                            ? 'bg-selected text-primary'
                             : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'">
                     {{ lastBackup.status === 'success' ? 'Success' : lastBackup.status === 'running' ? 'Running' : 'Failed' }}
                 </span>

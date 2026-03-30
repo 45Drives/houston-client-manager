@@ -7,8 +7,8 @@
                 <select v-model="restore.sourceType.value"
                     class="input-textlike border border-default rounded px-2 py-1 text-sm min-w-[210px]"
                     @change="onSourceTypeChange">
-                    <option value="s2s">Server-to-Server Backups</option>
-                    <option value="cloud">Cloud Storage Backups</option>
+                    <option value="s2s">Server Backups</option>
+                    <option value="cloud">Cloud Backups</option>
                 </select>
 
                 <!-- Cloud: remote picker -->
@@ -16,7 +16,7 @@
                     <select v-model="selectedRemote"
                         class="input-textlike border border-default rounded px-2 py-1 text-sm min-w-[210px]"
                         @change="onRemoteSelected">
-                        <option value="">Select remote…</option>
+                        <option value="">Select cloud account…</option>
                         <option v-for="r in restore.remotes.value" :key="r.name" :value="r.name">
                             {{ r.name }} ({{ r.type }})
                         </option>

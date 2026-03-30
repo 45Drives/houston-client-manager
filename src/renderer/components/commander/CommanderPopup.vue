@@ -17,7 +17,7 @@
             <div class="flex flex-col">
                 <p class="font-mono text-sm text-muted"><i>Houston Commander says:</i></p>
                 <p class="font-mono text-lg flex-1 overflow-auto max-h-[300px] pr-4 whitespace-pre-wrap break-words"
-                    v-text="displayedText">
+                    v-html="displayedText">
                 </p>
             </div>
             <button

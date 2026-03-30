@@ -6,10 +6,9 @@
         <!-- Header -->
         <div class="text-center space-y-2">
           <LockClosedIcon class="w-8 h-8 mx-auto text-muted" />
-          <h2 class="text-xl font-semibold">Server Credentials</h2>
+          <h2 class="text-xl font-semibold">Server Login</h2>
           <p class="text-sm text-muted">
-            Enter the SMB credentials for the backup destination server.
-            These are used to authenticate file transfers to the network share.
+            Enter the username and password for the server where your backups will be stored.
           </p>
         </div>
 
@@ -44,7 +43,7 @@
         </form>
 
         <p class="text-xs text-muted text-center">
-          Credentials are stored locally and only used to mount the network share during backups.
+          Your login details are stored securely on this computer and only used to connect to the server during backups.
         </p>
       </div>
     </div>
@@ -76,7 +75,7 @@ import { LockClosedIcon, ServerIcon } from "@heroicons/vue/24/outline";
 import { useWizardSteps, useAutoFocus, useEnterToAdvance } from '@45drives/houston-common-ui';
 import { backUpSetupConfigKey } from '../../keys/injection-keys';
 import { useHeader } from '../../composables/useHeader'
-useHeader('Server Credentials')
+useHeader('Server Login')
 
 useAutoFocus();
 

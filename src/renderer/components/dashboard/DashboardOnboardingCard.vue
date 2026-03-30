@@ -8,7 +8,7 @@
             <!-- Progress bar -->
             <div class="w-full h-2 rounded-full bg-neutral-100 dark:bg-neutral-700 overflow-hidden">
                 <div class="h-full rounded-full transition-all duration-500 ease-out"
-                    :class="completedCount === totalSteps ? 'bg-green-500' : 'bg-blue-500'"
+                    :class="completedCount === totalSteps ? 'bg-green-500' : 'bg-primary'"
                     :style="{ width: `${(completedCount / totalSteps) * 100}%` }" />
             </div>
             <!-- Checklist -->

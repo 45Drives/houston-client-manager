@@ -75,9 +75,8 @@
             </label>
 
             <p class="text-xs italic opacity-75 mt-2 text-center">
-              Credentials are used to copy a secure SSH key, install required tools
-              (<b>ZFS</b>, <b>Samba</b>, <b>Cockpit</b>, <b>45Drives Setup Module</b>), <br/>
-              and auto-login to the server's Cockpit UI.
+              These credentials are used to securely connect to the server, install required software,
+              and auto-login to the server's management interface.
             </p>
           </section>
         </div>

@@ -11,11 +11,11 @@
       <!-- OS-specific warnings -->
       <p v-if="(thisOs === 'rocky' || thisOs === 'debian') && isFirstBackupRun"
         class="p-2 text-sm bg-red-500/50 font-bold rounded-md text-center">
-        Note: On Linux, if this is your first backup, you will be prompted for sudo/admin credentials
-        to configure the network share.
+        Note: On Linux, if this is your first backup, you will be prompted for your admin password
+        to set up the server connection.
       </p>
       <p v-if="thisOs === 'mac'" class="p-2 text-sm bg-red-500/50 font-bold rounded-md text-center">
-        <strong>Note:</strong> On macOS, grant <code>cron</code> <em>Full Disk Access</em> via
+        <strong>Note:</strong> On macOS, you'll need to grant scheduled backups (<code>cron</code>) <em>Full Disk Access</em> via
         <strong>System Settings → Privacy &amp; Security → Full Disk Access</strong>.
       </p>
 

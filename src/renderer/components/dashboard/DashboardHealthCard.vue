@@ -6,8 +6,8 @@
         <div v-else class="space-y-2.5">
             <!-- Network discovery -->
             <div class="flex items-center gap-2.5">
-                <div class="p-1.5 rounded-lg bg-blue-50 dark:bg-blue-900/20">
-                    <ServerStackIcon class="w-4 h-4 text-blue-500" />
+                <div class="p-1.5 rounded-lg bg-selected">
+                    <ServerStackIcon class="w-4 h-4 icon-primary" />
                 </div>
                 <div class="flex-1 min-w-0">
                     <div class="text-sm text-default">{{ discoveredCount }} server{{ discoveredCount !== 1 ? 's' : '' }} discovered</div>

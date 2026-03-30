@@ -223,11 +223,11 @@ const showRemoteTour = computed(() => activeTour.value?.id === 'remote-backups')
 const managerTourSteps: TourStep[] = [
     {
         target: '[data-tour="tab-bar"]',
-        message: 'Switch between Local and Remote backup views here.\n\nLocal backups are scheduled tasks that run on this computer.\nRemote backups let you connect to your 45Drives storage server.',
+        message: 'Switch between Local and Remote backup views here.\n\nLocal backups are scheduled tasks that run on this computer.\nRemote backups let you connect to your storage server to manage backups there.',
     },
     {
         target: '[data-tour="new-backup"]',
-        message: 'Click here to create a new backup task.\n\nYou\'ll choose which folders to back up, pick a schedule, and enter your server credentials.',
+        message: 'Click here to create a new backup task.\n\nYou\'ll choose which folders to back up, pick a schedule, and enter your server login details.',
     },
     {
         target: '[data-tour="settings-btn"]',
@@ -267,7 +267,7 @@ onMounted(() => {
 const remoteTourSteps: TourStep[] = [
     {
         target: '[data-tour="remote-server-picker"]',
-        message: 'Select a storage server from your discovered servers or favorites, then click Connect to log in.\n\nOnce connected, you can view the remote backup scheduler.',
+        message: 'Select a storage server from your discovered servers or favorites, then click Connect to log in.\n\nOnce connected, you can view and manage the server\'s backup tasks.',
     },
     {
         target: '[data-tour="scheduler-preview"]',

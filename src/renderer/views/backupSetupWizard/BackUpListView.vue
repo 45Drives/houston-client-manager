@@ -209,15 +209,15 @@
 
           <!-- Credentials -->
           <div class="border-t border-default pt-4 mt-4">
-            <p class="text-sm text-muted mb-3">Leave blank to keep existing credentials.</p>
+            <p class="text-sm text-muted mb-3">Leave blank to keep your current login details.</p>
             <div class="flex items-center gap-3 mb-3">
-              <label class="w-[140px] font-semibold text-sm shrink-0">SMB Username</label>
+              <label class="w-[140px] font-semibold text-sm shrink-0">Server Username</label>
               <input v-model="editUsername" type="text"
                 class="input-textlike flex-1 rounded-lg px-3 py-2 border border-default"
                 :placeholder="editTask.smb_user || 'Username'" />
             </div>
             <div class="flex items-center gap-3">
-              <label class="w-[140px] font-semibold text-sm shrink-0">SMB Password</label>
+              <label class="w-[140px] font-semibold text-sm shrink-0">Server Password</label>
               <div class="flex-1 relative">
                 <input v-model="editPassword" :type="showEditPassword ? 'text' : 'password'"
                   class="input-textlike w-full rounded-lg px-3 py-2 border border-default pr-10"
@@ -304,7 +304,7 @@ const { requestTour, activeTour } = useTourManager();
 const editTourSteps: TourStep[] = [
   {
     target: '[data-tour="edit-modal"]',
-    message: 'This is the Edit Backup Task modal.\n\nYou can change the backup name, source folder, schedule type and frequency, and update SMB credentials.\n\nLeave credential fields blank to keep the existing ones.',
+    message: 'This is the Edit Backup Task modal.\n\nYou can change the backup name, source folder, schedule type and frequency, and update your server login details.\n\nLeave login fields blank to keep the existing ones.',
   },
 ];
 

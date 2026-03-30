@@ -11,7 +11,7 @@
                     <div>
                         <h1 class="text-lg font-semibold text-default">Credential Vault</h1>
                         <p class="text-xs text-gray-400">
-                            Manage saved server credentials. Encrypted locally via your OS keychain.
+                            Manage saved server logins. Stored securely on this device.
                         </p>
                     </div>
                 </div>
@@ -29,7 +29,7 @@
             <div class="grid grid-cols-4 gap-4">
                 <div class="vault-stat-card">
                     <div class="text-2xl font-bold text-default">{{ allCreds.length }}</div>
-                    <div class="text-xs text-gray-400">Total Credentials</div>
+                    <div class="text-xs text-gray-400">Total Saved Logins</div>
                 </div>
                 <div class="vault-stat-card">
                     <div class="text-2xl font-bold text-default">{{ hostCount }}</div>
@@ -142,11 +142,10 @@
             <div class="flex items-start gap-2 px-4 py-3 rounded-lg bg-blue-50 dark:bg-blue-900/10 border border-blue-200 dark:border-blue-800/30 text-xs">
                 <InformationCircleIcon class="w-4 h-4 text-blue-500 shrink-0 mt-0.5" />
                 <div class="text-blue-700 dark:text-blue-300 space-y-1">
-                    <p><strong>"Unused for 30+ days"</strong> means the credential's <code>lastUsedAt</code> timestamp
-                        hasn't been updated in over 30 days. This timestamp updates when a backup task runs, an SMB
-                        share is mounted, or you connect to the server through this app.</p>
-                    <p><strong>"Orphaned"</strong> means no matching server was found via network discovery.
-                        The server may be offline, renamed, or removed from the network.</p>
+                    <p><strong>"Stale"</strong> means the saved login hasn't been used in over 30 days.
+                        It gets updated whenever a backup runs or you connect to that server.</p>
+                    <p><strong>"Orphaned"</strong> means we couldn't find this server on your network.
+                        It may be turned off, renamed, or no longer connected.</p>
                 </div>
             </div>
         </div>
@@ -155,11 +154,11 @@
         <Teleport to="body">
             <div v-if="deleteTarget" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40" @click.self="deleteTarget = null">
                 <div class="bg-white dark:bg-neutral-800 rounded-lg border border-neutral-200 dark:border-neutral-700 shadow-xl max-w-sm w-full mx-4 p-5 space-y-4">
-                    <h3 class="text-sm font-semibold text-default">Delete Credential?</h3>
+                    <h3 class="text-sm font-semibold text-default">Delete Saved Login?</h3>
                     <p class="text-sm text-gray-500">
-                        This will permanently remove the credential for
+                        This will permanently remove the saved login for
                         <strong>{{ deleteTarget.username }}@{{ deleteTarget.host }}</strong>{{ deleteTarget.share !== '*' ? ` (share: ${deleteTarget.share})` : '' }}.
-                        Backup tasks using this credential may stop working.
+                        Backup tasks using this login may stop working.
                     </p>
                     <div class="flex justify-end gap-2">
                         <button class="btn btn-sm btn-ghost h-fit" @click="deleteTarget = null">Cancel</button>

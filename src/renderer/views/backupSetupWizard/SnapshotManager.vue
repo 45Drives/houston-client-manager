@@ -42,7 +42,7 @@
                 </div>
                 <div v-else-if="snap.datasets.value.length === 0"
                     class="flex-1 flex items-start text-muted text-sm p-3">
-                    No datasets found on this server.
+                    No ZFS datasets found on this server.
                 </div>
                 <div v-else class="flex-1 overflow-y-auto text-left">
                     <div v-for="ds in snap.datasets.value" :key="ds.name"
@@ -283,7 +283,7 @@
                     </p>
                     <div class="p-3 bg-danger/10 border border-danger/30 rounded text-sm text-danger mb-4">
                         <strong>Warning:</strong> All data and snapshots created after
-                        <strong>{{ rollbackTarget.snapName }}</strong> will be permanently destroyed.
+                        <strong>{{ rollbackTarget.snapName }}</strong> will be permanently deleted.
                         This action cannot be undone.
                     </div>
                     <div class="flex justify-end gap-2">
@@ -316,12 +316,12 @@
                             <ExclamationTriangleIcon class="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
                             <div>
                                 <p class="font-medium text-amber-800 dark:text-amber-300 mb-1">
-                                    This snapshot is a replication anchor
+                                    This snapshot is a replication anchor (used by a backup task)
                                 </p>
                                 <p class="text-amber-700 dark:text-amber-400 mb-2">
-                                    Deleting it will break the incremental replication chain. The next
-                                    replication run will require a <strong>full re-send</strong> of the
-                                    entire dataset instead of an incremental delta.
+                                    Deleting it breaks the incremental replication chain. The next backup will need to
+                                    send a <strong>full copy</strong> of all your data instead of just the changes,
+                                    which could take much longer.
                                 </p>
                                 <ul class="text-xs text-amber-600 dark:text-amber-400 space-y-1">
                                     <li v-for="t in deleteTargetAnchor.tasks" :key="t.name" class="flex items-center gap-1">
@@ -332,7 +332,7 @@
                                 <label class="flex items-center gap-2 mt-3 cursor-pointer">
                                     <input v-model="deleteAnchorConfirmed" type="checkbox" />
                                     <span class="text-xs text-amber-800 dark:text-amber-300">
-                                        I understand this will force a full re-replication
+                                        I understand this will require a full backup next time
                                     </span>
                                 </label>
                             </div>
@@ -383,11 +383,11 @@ const { requestTour } = useTourManager();
 const snapTourSteps: TourStep[] = [
     {
         target: '[data-tour="dataset-list"]',
-        message: 'This panel lists all ZFS datasets on the server.\n\nClick a dataset to see its snapshots.',
+        message: 'This panel lists all ZFS datasets on the server — these are the storage folders managed by ZFS.\n\nClick a dataset to see its snapshots.',
     },
     {
         target: '[data-tour="snapshot-list"]',
-        message: 'Snapshots for the selected dataset appear here.\n\nClick a snapshot to browse its files. Use the action icons to browse, rollback, or delete snapshots.',
+        message: 'Snapshots for the selected dataset appear here. A snapshot is a point-in-time copy of your data.\n\nClick a snapshot to browse its files. Use the action icons to browse, restore, or delete snapshots.',
     },
     {
         target: '[data-tour="snapshot-file-browser"]',
@@ -395,7 +395,7 @@ const snapTourSteps: TourStep[] = [
     },
     {
         target: '[data-tour="new-snapshot"]',
-        message: 'Create a new ZFS snapshot of the selected dataset.\n\nYou can optionally name it and choose to snapshot child datasets recursively.',
+        message: 'Create a new ZFS snapshot of the selected dataset.\n\nYou can optionally name it and choose to include child datasets.',
     },
 ];
 

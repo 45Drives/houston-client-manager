@@ -10,7 +10,7 @@
           If you're using your own drives, we recommend <b>ensuring they all have the same capacity</b> to optimize
           usable storage.
           <CommanderToolTip
-            :message="`Beware of using mixed drive sizes! The smallest one determines how much storage you will be able to use.\nExample: If you have three 20TB drives and one 4TB drive, your pool of storage will only be equal to four 4TB drives, or 12TB of storage. (16TB raw total minus one drive for redundancy)`" />
+            :message="`Beware of using mixed drive sizes! The smallest one determines how much storage you will be able to use.\nExample: If you have three 20TB drives and one 4TB drive, your usable storage will only be equal to four 4TB drives, or 12TB. (16TB total minus one drive used for redundancy)`" />
 
           <br />
           <br />

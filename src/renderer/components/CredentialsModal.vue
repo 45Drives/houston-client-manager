@@ -1,7 +1,7 @@
 <template>
     <Modal :show="show" @clickOutside="cancel">
         <div class="w-full max-w-md mx-auto bg-default p-4 rounded-xl shadow">
-            <h2 class="text-xl font-semibold mb-4">Samba Credentials Needed</h2>
+            <h2 class="text-xl font-semibold mb-4">Server Login Required</h2>
 
             <div class="flex flex-col gap-4 mt-4 text-default">
                 <div class="grid relative grid-cols-[200px_1fr] items-center">

@@ -1,6 +1,6 @@
 <template>
     <div class="h-full overflow-y-auto ui-texture-surface ui-texture-surface--soft">
-        <div class="max-w-6xl mx-auto px-6 py-6 space-y-5">
+        <div class="max-w-7xl mx-auto px-6 py-6 space-y-5">
             <!-- Status strip + connection status -->
             <div class="flex flex-wrap items-center gap-3" data-tour="status-strip">
                 <div class="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-sm">
@@ -17,10 +17,10 @@
                 <!-- Selected server status -->
                 <div class="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm ml-auto"
                     :class="selectedServer
-                        ? 'bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800/40'
+                        ? 'bg-selected border border-selected'
                         : 'bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700'">
                     <span class="status-dot" :class="selectedServer ? 'status-dot-ok' : 'status-dot-idle'" />
-                    <span :class="selectedServer ? 'text-blue-700 dark:text-blue-300' : 'text-gray-500'">
+                    <span :class="selectedServer ? 'text-primary font-medium' : 'text-gray-500'">
                         {{ selectedServer ? `Viewing: ${selectedServer.name || selectedServer.host}` : 'Select a server to view details' }}
                     </span>
                 </div>
@@ -85,45 +85,38 @@
                 </div>
 
                 <!-- ═══ Sidebar (right 1/3) ═══ -->
-                <div class="col-span-1 space-y-5" data-tour="quick-actions">
+                <div class="col-span-1 space-y-5">
                     <!-- Quick Actions -->
-                    <div class="space-y-2">
-                        <h2 class="text-sm font-semibold text-default mb-1 px-1 bg-primary rounded-md">Quick Actions</h2>
-                        <button @click="goSetup()" class="quick-action-card group">
-                            <ServerIcon class="w-5 h-5 text-slate-500 group-hover:text-slate-600 dark:group-hover:text-slate-300" />
-                            <div>
-                                <div class="text-sm font-medium text-default">Setup a Server</div>
-                                <div class="text-xs text-gray-400">Configure ZFS, Samba & more</div>
-                            </div>
-                        </button>
-                        <button @click="goBackup()" class="quick-action-card group">
-                            <CircleStackIcon class="w-5 h-5 text-slate-500 group-hover:text-slate-600 dark:group-hover:text-slate-300" />
-                            <div>
-                                <div class="text-sm font-medium text-default">Manage Backups</div>
-                                <div class="text-xs text-gray-400">Create, schedule & restore</div>
-                            </div>
-                        </button>
-                        <button @click="goBackup()" class="quick-action-card group">
-                            <ArrowDownTrayIcon class="w-5 h-5 text-slate-500 group-hover:text-slate-600 dark:group-hover:text-slate-300" />
-                            <div>
-                                <div class="text-sm font-medium text-default">Restore Files</div>
-                                <div class="text-xs text-gray-400">Recover from backup</div>
-                            </div>
-                        </button>
-                        <button @click="openLogModal()" class="quick-action-card group">
-                            <DocumentTextIcon class="w-5 h-5 text-slate-500 group-hover:text-slate-600 dark:group-hover:text-slate-300" />
-                            <div>
-                                <div class="text-sm font-medium text-default">View Logs</div>
-                                <div class="text-xs text-gray-400">Browse & troubleshoot</div>
-                            </div>
-                        </button>
-                        <div class="quick-action-card card-disabled">
-                            <WrenchScrewdriverIcon class="w-5 h-5 text-gray-400" />
-                            <div>
-                                <div class="text-sm font-medium text-default">Manage Server</div>
-                                <div class="text-xs text-gray-400">Coming soon</div>
-                            </div>
-                            <span class="badge-coming-soon">Soon</span>
+                    <div data-tour="quick-actions">
+                        <h2 class="text-sm font-semibold text-default mb-2 px-1 bg-primary rounded-md">Quick Actions</h2>
+                        <div class="grid grid-cols-2 gap-1.5">
+                            <button @click="goSetup()" class="quick-action-card group">
+                                <ServerIcon class="w-4 h-4 icon-secondary group-hover:icon-primary shrink-0" />
+                                <span class="text-xs font-medium text-default truncate">Setup Server</span>
+                            </button>
+                      
+                            <button @click="goBackup()" class="quick-action-card group">
+                                <CircleStackIcon class="w-4 h-4 icon-secondary group-hover:icon-primary shrink-0" />
+                                <span class="text-xs font-medium text-default truncate">Manage Backups</span>
+                            </button>
+                            <!-- <button @click="goBackup()" class="quick-action-card group">
+                                <ArrowDownTrayIcon class="w-4 h-4 icon-secondary group-hover:icon-primary shrink-0" />
+                                <span class="text-xs font-medium text-default truncate">Restore Files</span>
+                            </button> -->
+                            
+                            <div class="quick-action-card card-disabled">
+                                <WrenchScrewdriverIcon class="w-4 h-4 text-gray-400 shrink-0" />
+                                <span class="text-xs font-medium text-default truncate">Manage Server</span>
+                                <span class="badge-coming-soon">Soon</span>
+                            </div>                            <button @click="openLogModal()" class="quick-action-card group">
+                                <DocumentTextIcon class="w-4 h-4 icon-secondary group-hover:icon-primary shrink-0" />
+                                <span class="text-xs font-medium text-default truncate">View Logs</span>
+                            </button>
+                            <!-- <button @click="openSettingsModal()" class="quick-action-card group">
+                                <Cog6ToothIcon class="w-4 h-4 icon-secondary group-hover:icon-primary shrink-0" />
+                                <span class="text-xs font-medium text-default truncate">Settings</span>
+                            </button> -->
+                       
                         </div>
                     </div>
 
@@ -153,10 +146,11 @@ import { useRouter } from 'vue-router'
 import {
     ServerIcon, CircleStackIcon, DocumentTextIcon,
     WrenchScrewdriverIcon, ExclamationTriangleIcon,
-    ArrowDownTrayIcon,
+    ArrowDownTrayIcon, Cog6ToothIcon,
 } from '@heroicons/vue/24/outline'
 import { useHeader } from '../composables/useHeader'
 import { useLogModal } from '../composables/useLogModal'
+import { useSettingsModal } from '../composables/useSettingsModal'
 import { useOnboarding } from '../composables/useOnboarding'
 import { useTourManager, type TourStep } from '../composables/useTourManager'
 import { IPCRouter } from '@45drives/houston-common-lib'
@@ -175,6 +169,7 @@ useHeader('45Drives Storage Wizard')
 
 const router = useRouter()
 const { openLogModal } = useLogModal()
+const { openSettingsModal } = useSettingsModal()
 const { onboarding, markDone } = useOnboarding()
 const { requestTour } = useTourManager()
 const { listServers } = useSettings()
@@ -214,7 +209,7 @@ const dashboardTourSteps: TourStep[] = [
     },
     {
         target: '[data-tour="storage-health"]',
-        message: 'Server Storage shows ZFS dataset usage for the selected server. System Health gives you a quick network and storage health overview.\n\nSelect a different server above to switch.',
+        message: 'Server Storage shows ZFS dataset usage for the selected server — ZFS is the file system that manages your storage. System Health gives you a quick network and storage health overview.\n\nSelect a different server above to switch.',
     },
     {
         target: '[data-tour="recent-activity"]',
@@ -226,7 +221,7 @@ const dashboardTourSteps: TourStep[] = [
     },
     {
         target: '[data-tour="quick-actions"]',
-        message: 'Quick Actions let you jump straight to common tasks — set up a server, manage backups, restore files, or view logs.',
+        message: 'Quick Actions let you jump straight to common tasks — set up a server, manage backups, manage a server, or view logs.',
     },
     {
         target: '[data-tour="schedule"]',
@@ -234,7 +229,7 @@ const dashboardTourSteps: TourStep[] = [
     },
     {
         target: '[data-tour="vault"]',
-        message: 'The Credential Vault summary shows how many saved credentials you have and flags any that may be stale.\n\nClick "Manage" to open the full vault where you can test, rename, or delete credentials.',
+        message: 'The Credential Vault summary shows how many saved logins you have and flags any that may be stale.\n\nClick "Manage" to open the full vault where you can test, rename, or delete saved logins.',
     },
 ]
 
@@ -325,9 +320,9 @@ onMounted(() => {
 
 <style scoped>
 .quick-action-card {
-    @apply w-full flex items-center gap-3 px-4 py-3 rounded-lg
-           bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700
-           hover:border-slate-400 dark:hover:border-slate-600 hover:shadow-sm
+    @apply flex items-center gap-2 px-2.5 py-2 rounded-lg
+           bg-accent border border-default
+           hover:bg-hover hover:shadow-sm
            transition-all text-left relative;
 }
 </style>

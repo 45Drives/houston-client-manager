@@ -13,7 +13,7 @@
           <b>NOTE:</b> This is a Network Attached Server (NAS), not a Direct Attached Server (DAS).
           Connecting the server directly to a computer will not work.
           <CommanderToolTip
-            :message="`A NAS connects to a network, not directly to a computer. It needs a network connection to function properly.`" />
+            :message="'Your storage server is a network device — it needs to be connected to a router or network switch to work properly. Think of it like a shared drive that everyone on the network can access.'" />
         </p>
         <img class="h-fit" src="../../assets/plugEthernet.png" alt="Plug Ethernet" />
 

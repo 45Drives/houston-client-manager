@@ -10,7 +10,7 @@
 
       <p class="text-lg leading-relaxed">
         From here you can create automated backup tasks, monitor their progress,
-        restore files from previous backups, and manage snapshots on your storage server.
+        restore files from previous backups, and manage saved copies or snapshots on your storage server.
       </p>
 
       <p class="text-base text-muted leading-relaxed">

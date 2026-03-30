@@ -109,7 +109,7 @@
                             <span class="text-default text-right truncate" :title="selectedBackup.folder">{{ selectedBackup.folder || '—' }}</span>
                         </div>
                         <div v-if="selectedBackup.__task?.smb_user" class="flex justify-between gap-2">
-                            <span class="text-muted shrink-0">SMB User</span>
+                            <span class="text-muted shrink-0">Server User</span>
                             <span class="text-default text-right truncate">{{ selectedBackup.__task.smb_user }}</span>
                         </div>
                         <div v-if="selectedBackup.__task?.share" class="flex justify-between gap-2">
@@ -359,7 +359,7 @@ const backupStatusLabel = computed(() => {
     const labels: Record<string, string> = {
         online: 'Online',
         offline_unreachable: 'Unreachable',
-        offline_invalid_credentials: 'Invalid Credentials',
+        offline_invalid_credentials: 'Login Failed — Check Username/Password',
         offline_connection_error: 'Connection Error',
         missing_folder: 'Missing Folder',
         offline_insufficient_permissions: 'Insufficient Permissions',

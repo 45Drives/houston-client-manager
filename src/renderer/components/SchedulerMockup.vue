@@ -41,8 +41,8 @@
           <tr class="border-b border-default border-l-2 border-l-primary bg-slate-600/5 dark:bg-slate-400/5">
             <td class="px-3 py-2"><div class="w-3.5 h-3.5 rounded-full border-2 border-primary bg-primary/30" /></td>
             <td class="px-3 py-2 font-medium">Daily Documents</td>
-            <td class="px-3 py-2"><span class="px-2 py-0.5 rounded text-xs bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">Rsync</span></td>
-            <td class="px-3 py-2 text-muted text-xs">admin@192.168.1.10:/data/docs<br/>→ /mnt/tank/backups/docs</td>
+            <td class="px-3 py-2"><span class="px-2 py-0.5 rounded text-xs bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">File Copy</span></td>
+            <td class="px-3 py-2 text-muted text-xs">admin@192.168.1.10:/data/docs<br/>→ /backups/docs</td>
             <td class="px-3 py-2 text-muted">Daily</td>
             <td class="px-3 py-2"><span class="inline-flex items-center gap-1.5 text-xs"><span class="w-1.5 h-1.5 rounded-full bg-green-500" />Success</span></td>
             <td class="px-3 py-2 text-muted">2h ago</td>
@@ -51,7 +51,7 @@
             <td class="px-3 py-2"><div class="w-3.5 h-3.5 rounded-full border-2 border-default" /></td>
             <td class="px-3 py-2 font-medium">Weekly Photos</td>
             <td class="px-3 py-2"><span class="px-2 py-0.5 rounded text-xs bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400">Cloud Sync</span></td>
-            <td class="px-3 py-2 text-muted text-xs">backblaze-b2:photos-bucket<br/>→ /mnt/tank/photos</td>
+            <td class="px-3 py-2 text-muted text-xs">backblaze-b2:photos-bucket<br/>→ /photos</td>
             <td class="px-3 py-2 text-muted">Weekly</td>
             <td class="px-3 py-2"><span class="inline-flex items-center gap-1.5 text-xs"><span class="w-1.5 h-1.5 rounded-full bg-gray-400" />Idle</span></td>
             <td class="px-3 py-2 text-muted">3d ago</td>
@@ -59,8 +59,8 @@
           <tr class="border-b border-default border-l-2 border-l-transparent hover:bg-neutral-50 dark:hover:bg-neutral-700/30">
             <td class="px-3 py-2"><div class="w-3.5 h-3.5 rounded-full border-2 border-default" /></td>
             <td class="px-3 py-2 font-medium">Nightly DB Sync</td>
-            <td class="px-3 py-2"><span class="px-2 py-0.5 rounded text-xs bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">Rsync</span></td>
-            <td class="px-3 py-2 text-muted text-xs">root@10.0.0.5:/var/lib/postgres<br/>→ /mnt/tank/db-backups</td>
+            <td class="px-3 py-2"><span class="px-2 py-0.5 rounded text-xs bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">File Copy</span></td>
+            <td class="px-3 py-2 text-muted text-xs">root@10.0.0.5:/var/lib/postgres<br/>→ /db-backups</td>
             <td class="px-3 py-2 text-muted">Daily</td>
             <td class="px-3 py-2"><span class="inline-flex items-center gap-1.5 text-xs"><span class="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />Running</span></td>
             <td class="px-3 py-2 text-muted">Running…</td>

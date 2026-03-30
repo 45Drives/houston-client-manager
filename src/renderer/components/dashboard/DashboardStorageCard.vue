@@ -5,7 +5,7 @@
         </div>
         <div v-else-if="loading" class="py-5 text-center text-gray-400 text-sm">Loading…</div>
         <div v-else-if="datasets.length === 0" class="py-5 text-center text-gray-400 text-sm">
-            No ZFS datasets found on server.
+            No ZFS datasets found on this server.
         </div>
         <div v-else class="space-y-3">
             <div v-for="ds in topDatasets" :key="ds.name" class="space-y-1">
@@ -19,7 +19,7 @@
                 </div>
                 <div class="w-full h-2 rounded-full bg-neutral-100 dark:bg-neutral-700 overflow-hidden">
                     <div class="h-full rounded-full transition-all duration-500"
-                        :class="ds.percent > 90 ? 'bg-red-500' : ds.percent > 75 ? 'bg-amber-500' : 'bg-blue-500'"
+                        :class="ds.percent > 90 ? 'bg-red-500' : ds.percent > 75 ? 'bg-amber-500' : 'bg-primary'"
                         :style="{ width: `${ds.percent}%` }" />
                 </div>
             </div>

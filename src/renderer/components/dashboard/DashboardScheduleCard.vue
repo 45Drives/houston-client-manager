@@ -11,13 +11,13 @@
                     <span class="text-[10px] uppercase text-gray-400 font-medium">{{ day.label }}</span>
                     <div class="w-7 h-7 rounded-full flex items-center justify-center text-xs font-medium transition-colors"
                         :class="day.isToday
-                            ? 'bg-blue-500 text-white'
+                            ? 'bg-primary text-white'
                             : day.hasBackup
-                                ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300'
+                                ? 'bg-selected text-primary'
                                 : 'text-gray-400'">
                         {{ day.date }}
                     </div>
-                    <div v-if="day.hasBackup" class="w-1 h-1 rounded-full bg-blue-500" />
+                    <div v-if="day.hasBackup" class="w-1 h-1 rounded-full bg-primary" />
                     <div v-else class="w-1 h-1" />
                 </div>
             </div>

@@ -114,13 +114,13 @@
                             <ToggleSwitch v-model="draft.autoConnectFavorites" />
                         </SettingRow>
 
-                        <SettingRow label="SSH timeout" description="Seconds to wait for SSH connections.">
+                        <SettingRow label="SSH Connection timeout" description="Seconds to wait when connecting to a server.">
                             <input v-model.number="sshTimeoutSec" type="number" min="5" max="120" step="5"
                                 class="input-textlike border border-default rounded px-2 py-1 text-sm w-16 text-right" />
                             <span class="text-xs text-muted ml-1">sec</span>
                         </SettingRow>
 
-                        <SettingRow label="Fallback network scan" description="Scan the subnet when mDNS discovery fails.">
+                        <SettingRow label="Fallback network scan" description="Scan the network when automatic discovery fails.">
                             <ToggleSwitch v-model="draft.discoveryFallbackEnabled" />
                         </SettingRow>
                     </div>

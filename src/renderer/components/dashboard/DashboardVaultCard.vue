@@ -1,7 +1,7 @@
 <template>
     <DashboardCard title="Credential Vault" noPad>
         <template #header-action>
-            <button class="text-xs text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300 transition-colors"
+            <button class="text-xs text-link transition-colors"
                 @click="$emit('manage')">
                 Manage
             </button>

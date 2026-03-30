@@ -1,7 +1,7 @@
 <template>
     <DashboardCard title="Saved Servers" noPad>
         <template #header-action>
-            <button class="text-xs text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300 transition-colors"
+            <button class="text-xs text-link transition-colors"
                 @click="$emit('go-setup')">
                 + Add Server
             </button>
@@ -17,8 +17,8 @@
             <div v-for="server in displayServers" :key="server.id"
                 class="px-4 py-2.5 flex items-center gap-3 cursor-pointer group transition-colors"
                 :class="server.host === props.selectedHost
-                    ? 'bg-blue-50 dark:bg-blue-900/20 border-l-2 border-blue-500'
-                    : 'hover:bg-neutral-50 dark:hover:bg-neutral-700/30'"
+                    ? 'bg-selected border-l-2 border-selected'
+                    : 'hover:bg-hover'"
                 @click="$emit('connect', server)">
                 <!-- Online indicator -->
                 <span class="status-dot shrink-0"
@@ -28,7 +28,7 @@
                 <div class="flex-1 min-w-0">
                     <div class="flex items-center gap-1.5">
                         <span class="text-sm font-medium truncate"
-                            :class="server.host === props.selectedHost ? 'text-blue-700 dark:text-blue-300' : 'text-default'">
+                            :class="server.host === props.selectedHost ? 'text-primary' : 'text-default'">
                             {{ server.name || server.host }}
                         </span>
                         <StarIcon v-if="server.favorite"
@@ -42,7 +42,7 @@
 
                 <!-- Selected indicator -->
                 <span v-if="server.host === props.selectedHost"
-                    class="text-xs font-medium text-blue-600 dark:text-blue-400 shrink-0">Viewing</span>
+                    class="text-xs font-medium text-primary shrink-0">Viewing</span>
             </div>
         </div>
     </DashboardCard>
