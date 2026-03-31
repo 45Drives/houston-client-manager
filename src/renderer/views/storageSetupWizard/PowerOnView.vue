@@ -14,11 +14,11 @@
     <!-- Buttons -->
     <template #footer>
       <div class="button-group-row w-full justify-between">
-        <button type="button" @click="goBackStep" class="btn btn-secondary w-40 h-20">
+        <button type="button" @click="goBackStep" class="btn btn-secondary w-40 h-fit py-4">
           Back
         </button>
 
-        <button type="button" @click="proceedToNextStep" class="btn btn-primary w-40 h-20">
+        <button type="button" @click="proceedToNextStep" class="btn btn-primary w-40 h-fit py-4">
           Next
         </button>
       </div>

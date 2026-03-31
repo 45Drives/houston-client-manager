@@ -17,6 +17,32 @@ export function checkSSH(host: string, timeout = 3000): Promise<boolean> {
   });
 }
 
+export async function verifySshCredentials(
+  host: string,
+  username: string,
+  password: string,
+): Promise<{ success: boolean; error?: string }> {
+  const ssh = new NodeSSH();
+  try {
+    await ssh.connect({
+      host,
+      username,
+      password,
+      tryKeyboard: true,
+      onKeyboardInteractive(_name, _instr, _lang, prompts, finish) {
+        finish(prompts.map(() => password));
+      },
+      readyTimeout: loadSettings().sshTimeoutMs,
+    });
+    return { success: true };
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    return { success: false, error: message };
+  } finally {
+    ssh.dispose();
+  }
+}
+
 // Generates + uploads SSH key
 export async function setupSshKey(
   host: string,

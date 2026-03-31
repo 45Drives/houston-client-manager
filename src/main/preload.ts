@@ -9,6 +9,7 @@ const SEND_CHANNELS = new Set([
 ]);
 
 const INVOKE_CHANNELS = new Set([
+  'verify-ssh-credentials',
   'install-cockpit-module',
   'get-os',
   'backup:isFirstRunNeeded',

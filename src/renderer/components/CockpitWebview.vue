@@ -56,6 +56,8 @@ const clientId = ref('');
 
 const webview = ref<any>(null)
 const loadingWebview = ref(true)
+// Guard to prevent dark-mode sync feedback loops between client ↔ webview
+let suppressDarkSync = false
 
 // Request the ID synchronously before mount so first URL has it
 onBeforeMount(async () => {
@@ -123,6 +125,21 @@ watch(webview, (wv) => {
             localStorage.setItem('shell:style', '${darkStyle}');
             window.dispatchEvent(new CustomEvent('cockpit-style', { detail: { style: '${darkStyle}' } }));
         `).catch((err: any) => console.error('Dark mode sync failed:', err))
+        // Inject a relay so dark mode changes made INSIDE the webview
+        // (e.g. via the setup module's theme toggle) propagate back to the
+        // client app.  Uses a tagged console.log picked up by console-message.
+        wv.executeJavaScript(`
+          (function() {
+            if (window.__darkModeRelayInstalled) return;
+            window.__darkModeRelayInstalled = true;
+            window.addEventListener('cockpit-style', function(e) {
+              var style = e.detail && e.detail.style;
+              if (style === 'dark' || style === 'light') {
+                console.log('__45D_DARK_MODE__:' + style);
+              }
+            });
+          })();
+        `).catch((err: any) => console.error('Dark mode relay injection failed:', err))
         // Inject a postMessage relay so scheduler iframe can request OAuth
         // and receive tokens back. The scheduler cannot call window.open()
         // from within its Cockpit iframe, so it posts a message upward.
@@ -142,6 +159,18 @@ watch(webview, (wv) => {
     })
     wv.addEventListener('console-message', async (e: any) => {
         const message = e.message || ''
+        // Handle dark mode changes relayed from inside the webview
+        if (typeof message === 'string' && message.startsWith('__45D_DARK_MODE__:')) {
+            const style = message.slice('__45D_DARK_MODE__:'.length)
+            const shouldBeDark = style === 'dark'
+            if (dark.value !== shouldBeDark) {
+                suppressDarkSync = true
+                localStorage.setItem('shell:style', style)
+                window.dispatchEvent(new CustomEvent('cockpit-style', { detail: { style } }))
+                suppressDarkSync = false
+            }
+            return
+        }
         // Handle OAuth requests relayed from scheduler iframe via console.log
         if (typeof message === 'string' && message.startsWith('__45D_OAUTH_REQUEST__:')) {
             const url = message.slice('__45D_OAUTH_REQUEST__:'.length)
@@ -251,6 +280,7 @@ const onWebViewLoaded = async () => {
 // Update localStorage AND dispatch the custom event so both cross-frame
 // storage listeners and same-frame cockpit-style listeners pick it up.
 watch(dark, (isDark) => {
+    if (suppressDarkSync) return
     const wv = webview.value
     if (!wv) return
     const style = isDark ? 'dark' : 'light'

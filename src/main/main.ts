@@ -82,7 +82,7 @@ import { installServerDepsRemotely } from './installServerDeps';
 import { getPin, rememberPin } from './certPins'
 import { getCredentialManager } from './credentialManager';
 import { assertSafeHost, assertSafeShare, assertSafeUsername } from './security';
-import { checkSSH } from './setupSsh';
+import { checkSSH, verifySshCredentials } from './setupSsh';
 import { loadSettings, saveSettings, resetSettings } from './settingsStore';
 import { handleBackupMessage } from './ipc/backupHandlers';
 import { handleDiscoveryMessage } from './ipc/discoveryHandlers';
@@ -403,6 +403,11 @@ function createWindow() {
   // so CockpitWebview receives creds even for discovered servers that skip install
   ipcMain.on('store-manual-creds', (event, creds) => {
     mainWindow?.webContents.send('store-manual-creds', creds);
+  });
+
+  ipcMain.handle('verify-ssh-credentials', async (event, { host, username, password }) => {
+    assertMainWindowSender(event);
+    return verifySshCredentials(host, username, password);
   });
 
   ipcMain.handle('install-cockpit-module', async (event, { host, username, password }) => {

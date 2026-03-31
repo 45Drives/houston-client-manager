@@ -109,11 +109,11 @@
     <!-- Footer Buttons -->
     <template #footer>
       <div class="button-group-row w-full justify-between">
-        <button type="button" @click="goBackStep" class="btn btn-secondary w-40 h-20">
+        <button type="button" @click="goBackStep" class="btn btn-secondary w-40 h-fit py-4">
           Back
         </button>
 
-        <button type="button" class="btn btn-primary w-40 h-20"
+        <button type="button" class="btn btn-primary w-40 h-fit py-4"
           :disabled="!canProceed || isInstalling"
           @click="proceedToNextStep">
           <template v-if="isInstalling">
@@ -218,6 +218,23 @@ function onRescanServers() {
   );
 }
 
+function friendlySshError(raw?: string): string {
+  const msg = (raw ?? '').toLowerCase();
+  if (msg.includes('authentication') || msg.includes('auth')) {
+    return 'Incorrect username or password. Please double-check your credentials and try again.';
+  }
+  if (msg.includes('timed out') || msg.includes('timeout')) {
+    return 'Connection timed out. The server may be unreachable or SSH is not running.';
+  }
+  if (msg.includes('econnrefused') || msg.includes('connection refused')) {
+    return 'Connection refused. Make sure SSH (port 22) is enabled on the server.';
+  }
+  if (msg.includes('getaddrinfo') || msg.includes('enotfound')) {
+    return 'Could not resolve the server address. Please check the IP.';
+  }
+  return raw || 'Authentication failed. Please check your credentials.';
+}
+
 interface InstallResult {
   success: boolean;
   error?: string;
@@ -246,7 +263,8 @@ const installModule = async (
 
     console.debug("installModule result:", result);
     if (!result.success) {
-      statusMessage.value = result.error || "Installation failed.";
+      statusMessage.value = '';
+      reportError(new Error(friendlySshError(result.error)));
     } else if (result.reboot) {
       statusMessage.value = "Setup installed. Server will reboot to finish enabling ZFS…";
       await rebootFunction();
@@ -256,8 +274,10 @@ const installModule = async (
     return result;
   } catch (err: unknown) {
     console.error("installModule failed:", err);
-    statusMessage.value = "Could not connect or authenticate.";
-    return { success: false, error: err instanceof Error ? err.message : String(err) };
+    statusMessage.value = '';
+    const raw = err instanceof Error ? err.message : String(err);
+    reportError(new Error(friendlySshError(raw)));
+    return { success: false, error: raw };
   } finally {
     isInstalling.value = false;
   }
@@ -307,6 +327,31 @@ const proceedToNextStep = async () => {
     // to CockpitWebview for auto-login
     const result = await installModule(ip, user, pass);
     if (!result.success) return;
+  } else {
+    // Verify credentials via SSH before handing off to the webview
+    isInstalling.value = true;
+    statusMessage.value = "Verifying credentials…";
+    try {
+      const check = await IPCRouter
+        .getInstance()
+        .invoke<{ success: boolean; error?: string }>("verify-ssh-credentials", {
+          host: ip,
+          username: user,
+          password: pass,
+        });
+      if (!check.success) {
+        const friendlyMsg = friendlySshError(check.error);
+        statusMessage.value = '';
+        reportError(new Error(friendlyMsg));
+        return;
+      }
+    } catch (err: unknown) {
+      statusMessage.value = '';
+      reportError(new Error("Could not verify credentials. Is the server reachable?"));
+      return;
+    } finally {
+      isInstalling.value = false;
+    }
   }
 
   // Set the current server for the rest of the app
