@@ -40,11 +40,11 @@
   --ui-surface-soft-texture-size: 180px;
   --ui-surface-tech-texture-size: auto;
   --ui-surface-soft-bg: #d2dae4;
-  --ui-surface-tech-bg: #e8eef5;
+  --ui-surface-tech-bg: #ecedef;
   --ui-surface-soft-bg-dark: #111821;
-  --ui-surface-tech-bg-dark: #0d141c;
-  --ui-surface-tint-light: color-mix(in srgb, var(--btn-primary-bg) 50%, white);
-  --ui-surface-tint-dark: color-mix(in srgb, var(--btn-primary-bg) 24%, #081018);
+  --ui-surface-tech-bg-dark: #10141a;
+  --ui-surface-tint-light: color-mix(in srgb, var(--btn-primary-bg) 28%, white);
+  --ui-surface-tint-dark: color-mix(in srgb, var(--btn-primary-bg) 14%, #081018);
 }
 
 /* === Success button === */
@@ -264,7 +264,7 @@
   --ui-surface-texture-image: var(--ui-surface-tech-texture-image);
   --ui-surface-texture-size: var(--ui-surface-tech-texture-size);
   --ui-surface-bg: var(--ui-surface-tech-bg);
-  background-image: linear-gradient(color-mix(in srgb, var(--ui-surface-tint-light) 12%, transparent), color-mix(in srgb, var(--ui-surface-tint-light) 12%, transparent)), var(--ui-surface-texture-image);
+  background-image: linear-gradient(color-mix(in srgb, var(--ui-surface-tint-light) 10%, transparent), color-mix(in srgb, var(--ui-surface-tint-light) 10%, transparent)), var(--ui-surface-texture-image);
 }
 
 .dark .ui-texture-surface--soft {
@@ -273,7 +273,7 @@
 
 .dark .ui-texture-surface--tech {
   --ui-surface-bg: var(--ui-surface-tech-bg-dark);
-  background-image: linear-gradient(color-mix(in srgb, var(--ui-surface-tint-dark) 48%, transparent), color-mix(in srgb, var(--ui-surface-tint-dark) 48%, transparent)), var(--ui-surface-texture-image);
+  background-image: linear-gradient(color-mix(in srgb, var(--ui-surface-tint-dark) 32%, transparent), color-mix(in srgb, var(--ui-surface-tint-dark) 32%, transparent)), var(--ui-surface-texture-image);
 }
 
 /* =====================
