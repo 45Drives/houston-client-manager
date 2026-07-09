@@ -88,7 +88,7 @@ async function fetchDatasets(serverIp: string) {
 
         const raw: DatasetInfo[] = await window.electron.ipcRenderer.invoke(
             'snapshot:list-datasets',
-            { serverIp, username: cred.username }
+            { serverIp, username: cred.username, password: cred.password }
         )
         if (!Array.isArray(raw)) return
 

@@ -147,7 +147,7 @@ export type RestoreProgressCallback = (progress: {
 
 // ── SSH helper ───────────────────────────────────────────────────────────────
 
-async function connectSSH(host: string, username: string): Promise<NodeSSH> {
+async function connectSSH(host: string, username: string, password?: string): Promise<NodeSSH> {
   const safeHost = assertSafeHost(host);
   const safeUser = assertSafeUsername(username);
 
@@ -171,10 +171,40 @@ async function connectSSH(host: string, username: string): Promise<NodeSSH> {
   } catch {
     // If agent fails, fall back to key file
     if (agentSock) {
+      try {
+        await ssh.connect({
+          host: safeHost,
+          username: safeUser,
+          privateKey: fs.readFileSync(privateKeyPath, 'utf8'),
+          readyTimeout: loadSettings().sshTimeoutMs,
+        });
+      } catch {
+        // Key file also failed — try password if available
+        if (password) {
+          await ssh.connect({
+            host: safeHost,
+            username: safeUser,
+            password,
+            tryKeyboard: true,
+            onKeyboardInteractive(_name, _instr, _lang, prompts, finish) {
+              finish(prompts.map(() => password));
+            },
+            readyTimeout: loadSettings().sshTimeoutMs,
+          });
+        } else {
+          throw new Error(`SSH connection to ${safeHost} failed`);
+        }
+      }
+    } else if (password) {
+      // Key auth failed — try password
       await ssh.connect({
         host: safeHost,
         username: safeUser,
-        privateKey: fs.readFileSync(privateKeyPath, 'utf8'),
+        password,
+        tryKeyboard: true,
+        onKeyboardInteractive(_name, _instr, _lang, prompts, finish) {
+          finish(prompts.map(() => password));
+        },
         readyTimeout: loadSettings().sshTimeoutMs,
       });
     } else {
@@ -1286,8 +1316,9 @@ export async function createZfsDatasetOnServer(
 export async function listZfsDatasets(
   serverIp: string,
   username: string,
+  password?: string,
 ): Promise<ZfsDataset[]> {
-  const ssh = await connectSSH(serverIp, username);
+  const ssh = await connectSSH(serverIp, username, password);
   try {
     const result = await ssh.execCommand(
       'zfs list -H -o name,mountpoint,used,available -t filesystem 2>/dev/null'

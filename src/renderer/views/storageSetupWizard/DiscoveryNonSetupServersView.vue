@@ -134,11 +134,12 @@ import { useWizardSteps, useEnterToAdvance } from '@45drives/houston-common-ui';
 import { IPCRouter } from '@45drives/houston-common-lib';
 import { EyeIcon, EyeSlashIcon } from "@heroicons/vue/20/solid";
 import { Server, DiscoveryState } from '../../types';
-import { computed, onBeforeUnmount, onMounted, ref, watch, inject, Ref } from 'vue';
+import { computed, inject, onBeforeUnmount, onMounted, ref, watch, Ref } from 'vue';
 import { useRouter } from 'vue-router'
 import { CommanderToolTip } from '../../components/commander';
 import { useHeader } from '../../composables/useHeader'
 import { useServerCredentials } from '../../composables/useServerCredentials'
+import { useRebootWatcher } from '../../composables/useRebootWatcher'
 import { currentServerInjectionKey, discoveryStateInjectionKey } from '../../keys/injection-keys'
 
 const router = useRouter()
@@ -242,7 +243,7 @@ interface InstallResult {
   reboot?: boolean;
 }
 
-const rebootFunction = inject<() => Promise<void>>('reboot-function')!;
+const rebootWatcher = useRebootWatcher();
 
 const installModule = async (
   host: string,
@@ -267,7 +268,7 @@ const installModule = async (
       reportError(new Error(friendlySshError(result.error)));
     } else if (result.reboot) {
       statusMessage.value = "Setup installed. Server will reboot to finish enabling ZFS…";
-      await rebootFunction();
+      await rebootWatcher.waitFor(host);
     } else {
       statusMessage.value = "Modules installed and SSH key uploaded!";
     }

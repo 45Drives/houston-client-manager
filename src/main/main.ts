@@ -701,12 +701,8 @@ function createWindow() {
                   chassisSize: setupStatusResponse.chassisSize || server.serverInfo!.chassisSize,
                 };
               }
-            } catch (error) {
-              // This is expected when 9099 isn't up; use debug instead of warn
-              console.debug(
-                `setup-status fetch failed for ${server.ip}:9099; using mDNS TXT only`,
-                error
-              );
+            } catch {
+              // Expected when 9099 isn't reachable; silently fall back to mDNS TXT
             }
           }
 
@@ -1040,12 +1036,14 @@ app.whenReady().then(() => {
 
   ipcMain.handle('credentials:remove', (event, { host, share, username }: { host: string; share: string; username: string }) => {
     assertMainWindowSender(event);
-    const removed = getCredentialManager().remove(
-      assertSafeHost(host),
-      assertSafeShare(share),
-      assertSafeUsername(username)
-    );
-    jsonLogger.info({ event: 'credentials:remove', host, share, username, removed });
+    // Remove only does a dictionary key lookup+delete — no shell/path risk.
+    // Use lenient validation so legacy credentials with unusual share names can be removed.
+    const safeHost = assertSafeHost(host);
+    const safeUsername = assertSafeUsername(username);
+    const safeShare = (share || '').trim();
+    if (!safeShare) throw new Error('Share is required');
+    const removed = getCredentialManager().remove(safeHost, safeShare, safeUsername);
+    jsonLogger.info({ event: 'credentials:remove', host: safeHost, share: safeShare, username: safeUsername, removed });
     return { success: removed };
   });
 

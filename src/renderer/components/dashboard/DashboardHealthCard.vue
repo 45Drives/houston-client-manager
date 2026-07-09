@@ -4,14 +4,40 @@
             No servers discovered on network.
         </div>
         <div v-else class="space-y-2.5">
-            <!-- Network discovery -->
-            <div class="flex items-center gap-2.5">
-                <div class="p-1.5 rounded-lg bg-selected">
-                    <ServerStackIcon class="w-4 h-4 icon-primary" />
+            <!-- Network discovery (clickable to expand) -->
+            <div class="cursor-pointer" @click="expanded = !expanded">
+                <div class="flex items-center gap-2.5">
+                    <div class="p-1.5 rounded-lg bg-selected">
+                        <ServerStackIcon class="w-4 h-4 icon-primary" />
+                    </div>
+                    <div class="flex-1 min-w-0">
+                        <div class="text-sm text-default">{{ discoveredCount }} server{{ discoveredCount !== 1 ? 's' : '' }} discovered</div>
+                        <div class="text-xs text-gray-400">via mDNS / network scan</div>
+                    </div>
+                    <ChevronDownIcon class="w-4 h-4 text-gray-400 transition-transform" :class="expanded && 'rotate-180'" />
                 </div>
-                <div class="flex-1 min-w-0">
-                    <div class="text-sm text-default">{{ discoveredCount }} server{{ discoveredCount !== 1 ? 's' : '' }} discovered</div>
-                    <div class="text-xs text-gray-400">via mDNS / network scan</div>
+            </div>
+
+            <!-- Expanded discovered server list -->
+            <div v-if="expanded" class="ml-1 border-l-2 border-neutral-200 dark:border-neutral-700 pl-3 space-y-1.5">
+                <div v-for="srv in discoveryState.servers" :key="srv.ip"
+                    class="flex items-center gap-2 py-1.5 px-2 rounded-md hover:bg-hover transition-colors group">
+                    <span class="status-dot shrink-0"
+                        :class="srv.setupComplete || srv.status === 'complete' ? 'status-dot-ok' : 'status-dot-idle'" />
+                    <div class="flex-1 min-w-0">
+                        <div class="text-xs font-medium text-default truncate">{{ srv.name || srv.ip }}</div>
+                        <div class="text-[11px] text-gray-400 truncate">
+                            {{ srv.ip }}
+                            <span v-if="srv.setupComplete || srv.status === 'complete'" class="text-green-500">· set up</span>
+                            <span v-else class="text-amber-500">· not set up</span>
+                        </div>
+                    </div>
+                    <button v-if="!isSaved(srv.ip)"
+                        class="opacity-0 group-hover:opacity-100 text-[11px] text-link transition-opacity shrink-0"
+                        @click.stop="$emit('add-server', srv)">
+                        + Add
+                    </button>
+                    <span v-else class="text-[11px] text-gray-400 shrink-0">Saved</span>
                 </div>
             </div>
 
@@ -37,23 +63,34 @@
 </template>
 
 <script setup lang="ts">
-import { computed, inject } from 'vue'
+import { ref, computed, inject } from 'vue'
 import {
     ServerStackIcon,
     ExclamationTriangleIcon,
     ShieldCheckIcon,
+    ChevronDownIcon,
 } from '@heroicons/vue/24/outline'
 import { discoveryStateInjectionKey } from '../../keys/injection-keys'
-import type { DiscoveryState } from '../../types'
+import type { DiscoveryState, Server } from '../../types'
 import DashboardCard from './DashboardCard.vue'
 
 const props = defineProps<{
     storagePercent?: number
+    savedHosts?: string[]
+}>()
+
+defineEmits<{
+    'add-server': [server: Server]
 }>()
 
 const discoveryState = inject<DiscoveryState>(discoveryStateInjectionKey)!
 
+const expanded = ref(false)
 const discoveredCount = computed(() => discoveryState.servers.length)
+
+function isSaved(ip: string): boolean {
+    return (props.savedHosts ?? []).includes(ip)
+}
 
 const highUsageWarning = computed(() => (props.storagePercent ?? 0) > 85)
 const highUsagePercent = computed(() => props.storagePercent ?? 0)

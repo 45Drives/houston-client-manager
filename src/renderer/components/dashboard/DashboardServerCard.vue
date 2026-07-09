@@ -2,7 +2,7 @@
     <DashboardCard title="Saved Servers" noPad>
         <template #header-action>
             <button class="text-xs text-link transition-colors"
-                @click="$emit('go-setup')">
+                @click="addServerModal?.open()">
                 + Add Server
             </button>
         </template>
@@ -46,6 +46,8 @@
             </div>
         </div>
     </DashboardCard>
+
+    <AddServerModal ref="addServerModal" @go-setup="$emit('go-setup')" @added="refreshServers" />
 </template>
 
 <script setup lang="ts">
@@ -53,6 +55,7 @@ import { ref, computed, inject, onMounted } from 'vue'
 import { StarIcon } from '@heroicons/vue/24/solid'
 import { useSettings, type SavedServer } from '../../composables/useSettings'
 import { discoveryStateInjectionKey } from '../../keys/injection-keys'
+import AddServerModal from './AddServerModal.vue'
 import type { DiscoveryState } from '../../types'
 import DashboardCard from './DashboardCard.vue'
 const props = defineProps<{
@@ -66,8 +69,13 @@ defineEmits<{
 const { listServers } = useSettings()
 const discoveryState = inject<DiscoveryState>(discoveryStateInjectionKey)!
 
+const addServerModal = ref<InstanceType<typeof AddServerModal> | null>(null)
 const servers = ref<SavedServer[]>([])
 const loading = ref(true)
+
+async function refreshServers() {
+    servers.value = await listServers()
+}
 
 const displayServers = computed(() => {
     // Favorites first, then by most recently used
@@ -103,4 +111,12 @@ onMounted(async () => {
         loading.value = false
     }
 })
+
+function addExistingServer(srv: { ip: string; name?: string }) {
+    addServerModal.value?.openForServer(srv)
+}
+
+const savedHosts = computed(() => servers.value.map(s => s.host))
+
+defineExpose({ addExistingServer, savedHosts })
 </script>

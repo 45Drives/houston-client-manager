@@ -123,8 +123,8 @@ export class BackUpManagerLin implements BackUpManager {
       const smbShare = smbSharePart.split("/")[0];
 
       // Store credential in encrypted vault
-      getCredentialManager().store(smbHost, smbShare, username, password);
-
+      getCredentialManager().store(smbHost, smbShare, username, password);      // Ensure server-level entry exists so server appears in Saved Servers
+      getCredentialManager().storeServer(smbHost, username, password);
       this.ensureFstabEntry(smbHost, smbShare, username, password);
 
       this.generateBackupScript(task, username, password, scriptPath);
@@ -161,6 +161,8 @@ export class BackUpManagerLin implements BackUpManager {
 
       // Store credential in encrypted vault
       getCredentialManager().store(smbHost, smbShare, username, password);
+      // Ensure server-level entry exists so server appears in Saved Servers
+      getCredentialManager().storeServer(smbHost, username, password);
 
       this.ensureFstabEntry(smbHost, smbShare, username, password);
 
@@ -242,10 +244,18 @@ export class BackUpManagerLin implements BackUpManager {
       const smbUserMatch = content.match(/SMB_USER='([^']+)'/);
       if (smbUserMatch && !resolvedUser) resolvedUser = smbUserMatch[1];
       if (!resolvedPass) {
-        // Try credential vault
-        const [smbHostRaw, smbSharePart] = task.target.split(":");
-        const smbShare = smbSharePart?.split("/")[0] || '';
-        const stored = getCredentialManager().retrieve(smbHostRaw, smbShare, resolvedUser);
+        // Try credential vault — use task.host/share if available, else parse target
+        let vaultHost: string;
+        let vaultShare: string;
+        if (task.host && task.share) {
+          vaultHost = task.host;
+          vaultShare = task.share;
+        } else {
+          const [smbHostRaw, smbSharePart] = task.target.split(":");
+          vaultHost = smbHostRaw;
+          vaultShare = smbSharePart?.split("/")[0] || '';
+        }
+        const stored = getCredentialManager().retrieve(vaultHost, vaultShare, resolvedUser);
         if (stored) resolvedPass = stored.password;
       }
     }
@@ -437,16 +447,25 @@ ${ hasFstab ? '' : `echo ${shellQuote(fstabEntry)} >> /etc/fstab` }
 
 
   protected generateBackupScript(task: BackUpTask, username: string, password: string, scriptPath: string): void {
-    const [smbHostRaw, smbSharePart] = task.target.split(":");
-    const smbHost = assertSafeHost(smbHostRaw);
-    const smbShare = assertSafeShare(smbSharePart.split("/")[0]);
+    // Use task.host/task.share if available; fall back to parsing target for legacy tasks
+    let smbHost: string;
+    let smbShare: string;
+    if (task.host && task.share) {
+      smbHost = assertSafeHost(task.host);
+      smbShare = assertSafeShare(task.share);
+    } else {
+      const [smbHostRaw, smbSharePart] = task.target.split(":");
+      smbHost = assertSafeHost(smbHostRaw);
+      smbShare = assertSafeShare(smbSharePart.split("/")[0]);
+    }
 
     const logPath = path.join(LOG_DIR, `Houston_Backup_Task_${task.uuid}.log`);
     const safe = (s: string) => s.replace(/[^A-Za-z0-9_.-]/g, "_");
     const key = `${safe(smbHost)}_${safe(smbShare)}_${safe(username)}`;
     const mountDir = `/mnt/houston-mounts/${key}`;
 
-    const target = getSmbTargetFromSmbTarget(task.target);
+    // If target already lacks host:share prefix, use it as-is; otherwise strip prefix
+    const target = task.target.includes(':') ? getSmbTargetFromSmbTarget(task.target) : task.target;
 
     const scriptContent = `#!/bin/bash
 set -euo pipefail

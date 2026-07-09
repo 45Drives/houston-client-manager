@@ -302,9 +302,9 @@ export function registerRestoreHandlers(ctx: IPCHandlerContext) {
 
   ipcMain.handle(
     'snapshot:list-datasets',
-    async (_event, { serverIp, username }: { serverIp: string; username: string }) => {
+    async (_event, { serverIp, username, password }: { serverIp: string; username: string; password?: string }) => {
       ctx.jsonLogger.info({ event: 'snapshot:list-datasets', serverIp });
-      const result = await listZfsDatasets(serverIp, username);
+      const result = await listZfsDatasets(serverIp, username, password);
       ctx.jsonLogger.info({ event: 'snapshot:list-datasets.done', serverIp, count: Array.isArray(result) ? result.length : 0 });
       return result;
     },

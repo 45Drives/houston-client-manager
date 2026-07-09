@@ -45,6 +45,7 @@
                     <!-- Saved Servers -->
                     <div data-tour="servers-card">
                         <DashboardServerCard
+                            ref="serverCard"
                             :selectedHost="selectedServer?.host ?? ''"
                             @go-setup="goSetup()"
                             @connect="onConnectServer" />
@@ -52,7 +53,9 @@
                     <!-- Storage + System Health -->
                     <div class="grid grid-cols-2 gap-5" data-tour="storage-health">
                         <DashboardStorageCard ref="storageCard" :serverIp="selectedServer?.host ?? ''" />
-                        <DashboardHealthCard :storagePercent="maxStoragePercent" />
+                        <DashboardHealthCard :storagePercent="maxStoragePercent"
+                            :savedHosts="serverCard?.savedHosts ?? []"
+                            @add-server="onAddDiscoveredServer" />
                     </div>
                  
 
@@ -185,10 +188,15 @@ const goVault = () => router.push({ name: 'vault' })
 
 // ── Selected server for dashboard data ────────────────────────────────
 const selectedServer = ref<SavedServer | null>(null)
+const serverCard = ref<InstanceType<typeof DashboardServerCard> | null>(null)
 
 // Select a server from the server card (shows its data on dashboard)
 function onConnectServer(server: SavedServer) {
     selectedServer.value = server
+}
+
+function onAddDiscoveredServer(srv: { ip: string; name?: string }) {
+    serverCard.value?.addExistingServer(srv)
 }
 
 // Onboarding visibility

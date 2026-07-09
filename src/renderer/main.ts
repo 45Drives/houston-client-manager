@@ -58,11 +58,6 @@ import { enterNextDirective } from '@45drives/houston-common-ui'
 document.title = `45Drives Storage Wizard v${__APP_VERSION__}`;
 
 const app = createApp(AppShell)
-app.use(router)
-app.directive('enter-next', enterNextDirective);
-app.mount('#app');
-// Theme is now restored from localStorage by useThemeFromAlias composable
-window.electron?.ipcRenderer.send('renderer-ready');
 
 const IGNORE = [
     'setup() return property "_" should not start with "$" or "_"',
@@ -76,6 +71,12 @@ app.config.warnHandler = (msg, instance, trace) => {
     // otherwise let it through
     console.warn(`[Vue warn]: ${msg}${trace}`)
 }
+
+app.use(router)
+app.directive('enter-next', enterNextDirective);
+app.mount('#app');
+// Theme is now restored from localStorage by useThemeFromAlias composable
+window.electron?.ipcRenderer.send('renderer-ready');
 
 // Forward renderer console output to main process Winston logger
 ;(async () => {

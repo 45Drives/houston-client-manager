@@ -178,7 +178,7 @@ export class CredentialManager {
       updatedAt: now,
       name: existing?.name,
       favorite: existing?.favorite,
-      lastUsedAt: existing?.lastUsedAt,
+      lastUsedAt: existing?.lastUsedAt ?? Date.now(),
     };
 
     this.save();

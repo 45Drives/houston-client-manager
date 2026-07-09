@@ -398,6 +398,8 @@ if (-not $hasBatchLogon -or -not $hasServiceLogon) {
 
       // Store credential in encrypted vault
       getCredentialManager().store(smbHost, smbShare, username, password);
+      // Ensure server-level entry exists so server appears in Saved Servers
+      getCredentialManager().storeServer(smbHost, username, password);
 
       // Write cred file (user-level %LOCALAPPDATA%)
       const safe = (s: string) => s.replace(/[^A-Za-z0-9_.-]/g, '_');
