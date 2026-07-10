@@ -41,14 +41,14 @@ case "$OS_LIKE" in
     }
     open_firewall_ports() {
       if command -v firewall-cmd >/dev/null 2>&1; then
-        echo "[INFO] Opening ports for Cockpit (9090/TCP), Houston Broadcaster (9099/TCP) and mDNS (5353/UDP)…"
+        echo "[INFO] Opening ports for Cockpit (9090/TCP), Houston Broadcaster (9095/TCP) and mDNS (5353/UDP)…"
 
         # Cockpit (9090) and mDNS via services
         firewall-cmd --quiet --permanent --add-service=cockpit || true
         firewall-cmd --quiet --permanent --add-service=mdns || true
 
-        # Houston broadcaster on 9099/tcp
-        firewall-cmd --quiet --permanent --add-port=9099/tcp || true
+        # Houston broadcaster on 9095/tcp
+        firewall-cmd --quiet --permanent --add-port=9095/tcp || true
 
         firewall-cmd --reload || true
       else
@@ -82,10 +82,10 @@ case "$OS_LIKE" in
     }
     open_firewall_ports() {
       if command -v ufw >/dev/null 2>&1; then
-        echo "[INFO] Opening ports for Cockpit (9090/TCP), Houston Broadcaster (9099/TCP) and mDNS (5353/UDP)…"
+        echo "[INFO] Opening ports for Cockpit (9090/TCP), Houston Broadcaster (9095/TCP) and mDNS (5353/UDP)…"
 
         ufw allow 9090/tcp || true          # Cockpit
-        ufw allow 9099/tcp || true          # Houston broadcaster
+        ufw allow 9095/tcp || true          # Houston broadcaster
         ufw allow mdns || ufw allow 5353/udp || true  # mDNS
 
         ufw reload || true

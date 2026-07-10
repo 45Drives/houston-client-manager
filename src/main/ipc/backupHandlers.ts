@@ -14,6 +14,7 @@ import { app } from 'electron';
 import { execFileSync } from 'child_process';
 import type { IPCHandlerContext } from './types';
 import { getCredentialManager } from '../credentialManager';
+import { removeBackupConfig, syncBackupConfig, getClientId } from '../backup/broadcasterApi';
 
 /** Resolve SMB password: use provided password, or look it up from the credential vault */
 function resolvePassword(host: string, share: string, user: string, pass: string): string {
@@ -168,6 +169,15 @@ export async function handleBackupMessage(message: any, ctx: IPCHandlerContext):
         await backupManager.unschedule(task);
         ctx.jsonLogger.info({ event: 'removeBackUpTask_success', taskUuid: task.uuid, source: task.source, target: task.target });
         ctx.notify(`Successfully removed ${task.source} → ${task.target}`);
+
+        // Remove config from broadcaster (best-effort)
+        const host = task.host || task.target?.split(':')[0];
+        if (host) {
+          const cm = getCredentialManager();
+          const share = task.share || task.target?.split(':')[1]?.split('/')[0];
+          const cred = cm.findByHostAndShare(host, share || '');
+          if (cred) removeBackupConfig(host, cred.username, cred.password, task.uuid).catch(() => {});
+        }
       } catch (err: unknown) {
         ctx.jsonLogger.error({ event: 'removeBackUpTask_error', taskUuid: task.uuid, error: errMsg(err) });
         ctx.notify(`Error deleting task: ${errMsg(err)}`);
@@ -189,6 +199,17 @@ export async function handleBackupMessage(message: any, ctx: IPCHandlerContext):
           await backupManager.unscheduleSelectedTasks(tasks);
           ctx.jsonLogger.info({ event: 'removeMultipleBackUpTasks_success', count: tasks.length, taskUuids: tasks.map(t => t.uuid) });
           ctx.notify(`Successfully removed ${tasks.length} backup task(s)!`);
+
+          // Remove configs from broadcaster (best-effort)
+          for (const t of tasks) {
+            const host = t.host || t.target?.split(':')[0];
+            if (host) {
+              const cm = getCredentialManager();
+              const share = t.share || t.target?.split(':')[1]?.split('/')[0];
+              const cred = cm.findByHostAndShare(host, share || '');
+              if (cred) removeBackupConfig(host, cred.username, cred.password, t.uuid).catch(() => {});
+            }
+          }
         } else {
           ctx.notify('Error: Backup Manager does not support bulk deletion.');
         }
@@ -218,6 +239,17 @@ export async function handleBackupMessage(message: any, ctx: IPCHandlerContext):
         const minute = date.getMinutes().toString().padStart(2, '0');
         const hour = date.getHours();
         ctx.notify(`Updated backup task "${label}" (schedule: ${hour}:${minute})`);
+
+        // Sync updated config to broadcaster (best-effort)
+        const host = task.host || task.target?.split(':')[0];
+        if (host) {
+          const resolvedUser = username || task.smb_user || '';
+          const resolvedPass = password || resolvePassword(host, task.share || '', resolvedUser, '');
+          if (resolvedUser && resolvedPass) {
+            syncBackupConfig(host, resolvedUser, resolvedPass, task, getClientId()).catch(() => {});
+          }
+        }
+
         // Refresh task list in UI
         const updatedTasks = await backupManager.queryTasks();
         router.send('renderer', 'action', JSON.stringify({ type: 'sendBackupTasks', tasks: updatedTasks }));

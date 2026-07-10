@@ -2,18 +2,18 @@ import { describe, it, expect } from 'vitest';
 
 // ── Constants extracted in server.js
 // These mirror what was extracted to verify the values are correct.
-const SERVER_PORT = 9099;
-const BONJOUR_SERVICE_TYPE = 'houstonserver_legacy';
+const SERVER_PORT = 9095;
+const BONJOUR_SERVICE_TYPE = 'houstonserver';
 const REPUBLISH_DEBOUNCE_MS = 1_500;
 const WATCHDOG_INTERVAL_MS = 60_000;
 
 describe('server.js constants', () => {
-  it('SERVER_PORT is 9099', () => {
-    expect(SERVER_PORT).toBe(9099);
+  it('SERVER_PORT is 9095', () => {
+    expect(SERVER_PORT).toBe(9095);
   });
 
-  it('BONJOUR_SERVICE_TYPE is houstonserver_legacy', () => {
-    expect(BONJOUR_SERVICE_TYPE).toBe('houstonserver_legacy');
+  it('BONJOUR_SERVICE_TYPE is houstonserver', () => {
+    expect(BONJOUR_SERVICE_TYPE).toBe('houstonserver');
   });
 
   it('REPUBLISH_DEBOUNCE_MS is 1500', () => {

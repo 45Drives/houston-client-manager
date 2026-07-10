@@ -33,7 +33,7 @@ function makeCtx(overrides: Partial<DiscoveryContext> = {}): DiscoveryContext {
     } as any,
     notify: vi.fn(),
     mDNSClient: { query: vi.fn() },
-    serviceType: '_houstonserver_legacy._tcp.local',
+    serviceType: '_houstonserver._tcp.local',
     TIMEOUT_DURATION: 500, // short for testing
     doFallbackScan: vi.fn().mockResolvedValue([]),
     setDiscoveredServers: vi.fn(),

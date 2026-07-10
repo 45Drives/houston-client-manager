@@ -10,6 +10,7 @@ import { checkBackupTaskStatus } from './CheckSmbStatus';
 import path, { join } from "path";
 import { app } from 'electron';
 import { getCredentialManager } from '../credentialManager';
+import { syncBackupConfig, getClientId, bashEventSnippet } from './broadcasterApi';
 
 const SCRIPT_DIR = path.join(os.homedir(), ".local", "share", "houston-backups");
 
@@ -136,6 +137,11 @@ export class BackUpManagerLin implements BackUpManager {
       existingCrontab.push(cronLine);
 
       execSync("crontab -", { input: existingCrontab.join("\n") + "\n" });
+
+      // Sync backup config to broadcaster API (best-effort, non-blocking)
+      const serverHost = task.host || smbHost;
+      syncBackupConfig(serverHost, username, password, task, getClientId()).catch(() => {});
+
       resolve({ stdout: "Scheduled via user crontab", stderr: "" });
     });
   }
@@ -177,6 +183,13 @@ export class BackUpManagerLin implements BackUpManager {
 
     const finalCrontab = [...existing, ...cronEntries].join("\n") + "\n";
     execSync("crontab -", { input: finalCrontab });
+
+    // Sync all backup configs to broadcaster API (best-effort, non-blocking)
+    const clientId = getClientId();
+    for (const task of tasks) {
+      const serverHost = task.host || task.target.split(":")[0];
+      syncBackupConfig(serverHost, username, password, task, clientId).catch(() => {});
+    }
 
     // onProgress?.(total, total, "All backup tasks scheduled successfully.");
   }
@@ -478,6 +491,7 @@ SOURCE=${shellQuote(`${task.source}/`)}
 TARGET=${shellQuote(target)}
 LOG_FILE=${shellQuote(logPath)}
 MOUNT_DIR=${shellQuote(mountDir)}
+CRED_FILE=${shellQuote(`/etc/samba/houston-credentials/${key}.cred`)}
 START_DATE=${shellQuote(String(task.schedule.startDate))}
 DESC=${shellQuote(task.description)}
 BACKUP_NAME=${shellQuote(task.name || '')}
@@ -490,6 +504,9 @@ mkdir -p "$(dirname "$LOG_FILE")"
 exec > >(stdbuf -o0 tee -a "$LOG_FILE") 2>&1
 
 echo '{"event":"backup_start","timestamp":"'$(date -Iseconds)'","uuid":"'"${task.uuid}"'","host":"'"$SMB_HOST"'","share":"'"$SMB_SHARE"'","source":"'"$SOURCE"'","target":"'"$TARGET"'","install_id":"'"$INSTALL_ID"'","smb_user":"'"$SMB_USER"'"}' >> "$EVENT_LOG"
+
+# Report start event to broadcaster API (best-effort)
+${bashEventSnippet(smbHost, 'start', task.uuid)}
 
 cleanup() {
   # Only attempt unmount if it's actually mounted
@@ -525,7 +542,7 @@ MARKER_DIR="$MOUNT_DIR/$UUID/.houston"
 MARKER_FILE="$MARKER_DIR/client.json"
 mkdir -p "$MARKER_DIR"
 
-printf '{"install_id":"%s","smb_user":"%s","source":"%s","user":"%s","host":"%s","platform":"linux"}\n' \
+printf '{"install_id":"%s","smb_user":"%s","source":"%s","user":"%s","host":"%s","platform":"linux"}\n' \\
 "$INSTALL_ID" "$SMB_USER" "$SOURCE" "$(id -un)" "$(hostname -s)" > "$MARKER_FILE"
 
 mkdir -p "$MOUNT_DIR/$TARGET"
@@ -535,15 +552,24 @@ RSYNC_STATUS=$?
 
 if [ $RSYNC_STATUS -ne 0 ]; then
   echo "[ERROR] rsync failed with exit code $RSYNC_STATUS"
-  exit $RSYNC_STATUS
+  _BCAST_STATUS="failure"
+  _BCAST_ERROR="rsync exit code $RSYNC_STATUS"
 else
   echo "[SUCCESS] rsync completed successfully"
+  _BCAST_STATUS="success"
+  _BCAST_ERROR=""
 fi
 
 STATUS=$([ $RSYNC_STATUS -eq 0 ] && echo "success" || echo "failure")
 echo '{"event":"backup_end","timestamp":"'"$(date -Iseconds)"'","uuid":"'"${task.uuid}"'","host":"'"$SMB_HOST"'","share":"'"$SMB_SHARE"'","source":"'"$SOURCE"'","target":"'"$TARGET"'","status":"'"$STATUS"'","install_id":"'"$INSTALL_ID"'","smb_user":"'"$SMB_USER"'"}' >> "$EVENT_LOG"
 
+# Report end event to broadcaster API (best-effort)
+${bashEventSnippet(smbHost, 'end', task.uuid)}
+
 echo "===== [$(date -Iseconds)] Backup task completed ====="
+
+# Exit with rsync status so cron sees the real result
+exit $RSYNC_STATUS
 `;
 
     fs.writeFileSync(scriptPath, scriptContent, { mode: 0o700 });

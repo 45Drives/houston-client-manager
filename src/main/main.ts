@@ -259,7 +259,7 @@ function isPortOpen(ip: string, port: number, timeout = 2000): Promise<boolean> 
 
 // Discovery timeout — read from settings (default 60s)
 const TIMEOUT_DURATION = () => loadSettings().discoveryInactivityTimeoutMs;
-const serviceType = '_houstonserver_legacy._tcp.local';
+const serviceType = '_houstonserver._tcp.local';
 
 const isPrivateV4 = (ip: string) =>
   /^10\./.test(ip) ||
@@ -640,7 +640,7 @@ function createWindow() {
           if (serverIp === '127.0.0.1') continue;
           if (serverIp === '0.0.0.0') continue;
 
-          const instance = answer1.name;    // e.g. "hl4-test._houstonserver_legacy._tcp.local"
+          const instance = answer1.name;    // e.g. "hl4-test._houstonserver._tcp.local"
 
           // Derive a friendly name (strip off the service suffix)
           const [bare] = instance.split('._');
@@ -674,7 +674,7 @@ function createWindow() {
             !server.fallbackAdded
           ) {
             try {
-              const fetchResponse = await fetch(`http://${server.ip}:9099/setup-status`, {
+              const fetchResponse = await fetch(`http://${server.ip}:9095/setup-status`, {
                 cache: 'no-store',
                 signal: AbortSignal.timeout(2000),
               });
@@ -702,7 +702,7 @@ function createWindow() {
                 };
               }
             } catch {
-              // Expected when 9099 isn't reachable; silently fall back to mDNS TXT
+              // Expected when server isn't reachable; silently fall back to mDNS TXT
             }
           }
 
@@ -740,7 +740,7 @@ function createWindow() {
 
   async function pollActions(server: Server) {
     try {
-      const response = await fetch(`http://${server.ip}:9099/actions?client_ip=${getLocalIP()}`);
+      const response = await fetch(`http://${server.ip}:9095/actions?client_ip=${getLocalIP()}`);
       const data = await response.json();
 
       if (data.action) {

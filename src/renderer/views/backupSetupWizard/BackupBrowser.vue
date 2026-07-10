@@ -298,6 +298,8 @@ onMounted(() => {
 
 // Extended file entry with metadata from the backend
 interface RichFileEntry extends FileEntry {
+    /** Original path relative to UUID folder (includes hostname prefix), used for restore */
+    rawPath: string;
     size?: number;
     mtime?: string;
     atime?: string;
@@ -531,6 +533,7 @@ const ipcActionHandler = (raw: string) => {
                 const cleanPath = stripHostnamePrefix(rawPath, clientDir)
                 const entry: RichFileEntry = {
                     path: cleanPath,
+                    rawPath: rawPath,
                     selected: false,
                 }
                 if (typeof file !== 'string') {
@@ -645,7 +648,7 @@ const restoreSelected = async () => {
             smb_pass,
             uuid: selectedBackup.value.uuid,
             client: selectedBackup.value.client,
-            files: filesToRestore.map(f => f.path)
+            files: filesToRestore.map(f => f.rawPath)
         }
     }))
 }

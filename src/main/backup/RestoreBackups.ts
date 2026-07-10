@@ -10,6 +10,7 @@ interface RestoreBackupsData {
   smb_share: string;
   mountPoint?: string;
   uuid: string;
+  client?: string;
   files: string[];
 }
 
@@ -45,10 +46,12 @@ export default async function restoreBackups(
   for (let i = 0; i < files.length; i++) {
     const relFile = files[i];
     const sourcePath = path.join(folderPath, relFile);
-    let destPath = relFile;
-    if (os === "win") {
-      destPath = fixWinPath(relFile);
-    }
+
+    // relFile is rawPath: "{hostname}/{absolute_path}" (e.g. "keo-pc/home/user/file.png")
+    // Strip hostname prefix to get the absolute destination path
+    const slashIdx = relFile.indexOf('/');
+    const absFile = slashIdx >= 0 ? relFile.slice(slashIdx) : relFile;
+    let destPath = os === "win" ? fixWinPath(absFile) : absFile;
 
     console.debug(" Preparing restore:");
     console.debug(`  relFile:        ${relFile}`);
@@ -93,7 +96,11 @@ export default async function restoreBackups(
   // 3) Tell the UI which folders were restored
   try {
     const restoredFolders = Array.from(
-      new Set(files.map((f: string) => path.dirname(f)))
+      new Set(files.map((f: string) => {
+        const idx = f.indexOf('/');
+        const abs = idx >= 0 ? f.slice(idx) : f;
+        return path.dirname(abs);
+      }))
     ).map(f => normalizeRestorePath(
       os === "win" ? fixWinPath(f) : f
     ));

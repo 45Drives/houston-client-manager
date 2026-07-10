@@ -10,6 +10,7 @@ import os from 'os';
 import { exec } from "child_process";
 import { assertSafeHost, assertSafeShare, assertSafeUsername, escapeCmdValue, toBase64 } from "../security";
 import { getCredentialManager } from '../credentialManager';
+import { syncBackupConfig, getClientId, batchEventSnippet } from './broadcasterApi';
 
 const TASK_ID = "Houston_Backup_Task";
 const logPath = path.join(app.getPath('userData'), 'logs');
@@ -494,6 +495,13 @@ if (-not $hasBatchLogon -or -not $hasServiceLogon) {
 
     await this.runScriptAdmin(psLines.join('\n'), 'bulk_schedule');
 
+    // Sync all backup configs to broadcaster API (best-effort, non-blocking)
+    const clientId = getClientId();
+    for (const t of tasks) {
+      const serverHost = t.host || t.target.split(':')[0];
+      syncBackupConfig(serverHost, username, password, t, clientId).catch(() => {});
+    }
+
     if (onProgress) onProgress(tasks.length, tasks.length, 'All tasks scheduled');
   }
   
@@ -570,6 +578,10 @@ for /f "delims=" %%I in ('powershell -NoProfile -Command "Get-Date -Format o"') 
 :: --- backup_start (with install_id + smb_user) -----------------------------
 >> "%EVENT_LOG%" echo {^"event^":^"backup_start^",^"timestamp^":^"!TS!^",^"uuid^":^"${task.uuid}"^,^"host^":^"${task.host}"^,^"share^":^"${task.share}"^,^"source^":^"${task.source}"^,^"target^":^"${rawDst}"^,^"install_id^":^"!INSTALL_ID!"^,^"smb_user^":^"!SMB_USER!"^}
 
+set "BACKUP_STATUS="
+set "BACKUP_ERROR="
+${batchEventSnippet(task.host || '', 'start', task.uuid)}
+
 echo ==========================================================
 echo [!date! !time!]  START  ${task.uuid}
 echo  Source      : !SOURCE!
@@ -627,6 +639,10 @@ for /f "delims=" %%I in ('powershell -NoProfile -Command "Get-Date -Format o"') 
 set "STATUS="
 if !RC! GEQ 8 (set STATUS=failure) else (set STATUS=success)
 >> "%EVENT_LOG%" echo {^"event^":^"backup_end^",^"timestamp^":^"!TS2!^",^"uuid^":^"${task.uuid}"^,^"host^":^"${task.host}"^,^"share^":^"${task.share}"^,^"source^":^"${task.source}"^,^"target^":^"${rawDst}"^,^"status^":^"!STATUS!"^,^"install_id^":^"!INSTALL_ID!"^,^"smb_user^":^"!SMB_USER!"^}
+
+set "BACKUP_STATUS=!STATUS!"
+if !RC! GEQ 8 (set "BACKUP_ERROR=robocopy exit code !RC!") else (set "BACKUP_ERROR=")
+${batchEventSnippet(task.host || '', 'end', task.uuid)}
 
 :: --- clean up mapping + exit code interpretation ---------------------------
 timeout /t 2 >nul

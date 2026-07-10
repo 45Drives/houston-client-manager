@@ -9,6 +9,7 @@ import { app } from 'electron';
 import { getRsync, getSmbTargetFromSmbTarget } from "../utils";
 import { assertSafeHost, assertSafeShare, assertSafeUsername, shellQuote } from "../security";
 import { getCredentialManager } from '../credentialManager';
+import { syncBackupConfig, getClientId, bashEventSnippetMac } from './broadcasterApi';
 
 export class BackUpManagerMac implements BackUpManager {
   protected scriptDir = "/Library/Application Support/Houston/scripts";
@@ -167,6 +168,9 @@ EOF_${uuid}
       .filter(l => !l.includes(scriptPath));         // drop any old line
     this.applyCleanedCrontab([...existing, cronLine]);
 
+    // Sync backup config to broadcaster API (best-effort, non-blocking)
+    syncBackupConfig(safeHost, username, password, task, getClientId()).catch(() => {});
+
     return Promise.resolve({ stdout: "", stderr: "" });
   }
 
@@ -268,6 +272,13 @@ EOF_${uuid}
 
     /* write back the new crontab */
     this.applyCleanedCrontab(cleaned);
+
+    // Sync all backup configs to broadcaster API (best-effort, non-blocking)
+    const clientId = getClientId();
+    for (const task of tasks) {
+      const serverHost = task.host || task.target.split(':')[0];
+      syncBackupConfig(serverHost, username, password, task, clientId).catch(() => {});
+    }
 
     /* ------------------------------------------------------------------
        4.  Progress callbacks
@@ -578,6 +589,8 @@ echo "===== $(/bin/date -u '+%Y-%m-%dT%H:%M:%SZ') START ${task.uuid} ====="
 # --- backup_start (with install_id + smb_user) ------------------------------
 echo '{"event":"backup_start","timestamp":"'"$(date -u +%Y-%m-%dT%H:%M:%SZ)"'","uuid":"'"${task.uuid}"'","host":"'"$HOST"'","share":"'"$SHARE"'","source":"'"$SOURCE"'","target":"'"$TARGET"'","install_id":"'"$INSTALL_ID"'","smb_user":"'"$SMB_USER"'"}' >> "$EVENT_LOG"
 
+${bashEventSnippetMac(task.host || '', 'start', task.uuid, svc, username)}
+
 # keychain lookup for password
 PASSWORD=$(security find-generic-password -s "${svc}" -a "${username}" -w) || {
   echo "[ERROR] key-chain lookup failed"
@@ -619,6 +632,11 @@ ST=$?
 # --- backup_end (with install_id + smb_user) --------------------------------
 STATUS=$([ $ST -eq 0 ] && echo success || echo failure)
 echo '{"event":"backup_end","timestamp":"'"$(date -u +%Y-%m-%dT%H:%M:%SZ)"'","uuid":"'"${task.uuid}"'","host":"'"$HOST"'","share":"'"$SHARE"'","source":"'"$SOURCE"'","target":"'"$TARGET"'","status":"'"$STATUS"'","install_id":"'"$INSTALL_ID"'","smb_user":"'"$SMB_USER"'"}' >> "$EVENT_LOG"
+
+_BCAST_STATUS="$STATUS"
+_BCAST_ERROR=""
+if [ $ST -ne 0 ]; then _BCAST_ERROR="rsync exit code $ST"; fi
+${bashEventSnippetMac(task.host || '', 'end', task.uuid, svc, username)}
 
 echo "===== $(/bin/date -u '+%Y-%m-%dT%H:%M:%SZ') END $ST ====="
 exit $ST

@@ -412,7 +412,7 @@ export function registerLogHandlers(
       const limit = Math.min(Math.max(opts?.limit ?? 500, 1), 5000);
 
       try {
-        const url = `http://${ip}:9099/logs?source=${encodeURIComponent(source)}&limit=${limit}`;
+        const url = `http://${ip}:9095/logs?source=${encodeURIComponent(source)}&limit=${limit}`;
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), 10_000);
 
