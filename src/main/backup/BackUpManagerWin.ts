@@ -148,6 +148,7 @@ export class BackUpManagerWin implements BackUpManager {
               uuid: actionDetails.uuid!,
               description: actionDetails.description!,
               name: actionDetails.name as string || undefined,
+              disabled: actionDetails.disabled === 'true',
               schedule: trigger!,
               source: actionDetails.source!,
               target: actionDetails.target!,
@@ -538,12 +539,19 @@ setlocal enabledelayedexpansion
 :: uuid        = ${task.uuid}
 :: description = ${task.description}
 :: name        = ${task.name || ''}
+:: disabled    = ${task.disabled ? 'true' : 'false'}
 :: source      = ${task.source}
 :: target      = ${rawDst}
 :: START_DATE  = ${task.schedule.startDate.toISOString()}
 :: SMB_HOST    = ${task.host}
 :: SMB_SHARE   = ${task.share}
 :: SMB_USER    = ${smbUser}
+
+:: Skip execution if task is disabled
+if "${task.disabled ? 'true' : 'false'}"=="true" (
+  echo [INFO] Task is disabled, skipping.
+  exit /b 0
+)
 
 :: identities and constants
 set "CRED_FILE=${credFile.replace(/\\/g, '\\\\')}"

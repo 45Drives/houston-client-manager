@@ -9,7 +9,7 @@
                         <ArrowLeftIcon class="w-4 h-4" />
                     </button>
                     <div>
-                        <h1 class="text-lg font-semibold text-default">Credential Vault</h1>
+                        <h1 class="text-lg font-semibold text-default">Manage Connections</h1>
                         <p class="text-xs text-gray-400">
                             Manage saved server logins. Stored securely on this device.
                         </p>
@@ -105,7 +105,7 @@
                                     <span class="text-sm font-medium text-default truncate">
                                         {{ cred.name || `${cred.username}@${cred.host}` }}
                                     </span>
-                                    <span v-if="cred.share !== '*'" class="text-xs text-gray-400">/{{ cred.share }}</span>
+                                    <span v-if="cred.shareName" class="text-xs text-gray-400">/{{ cred.shareName }}</span>
                                 </div>
                                 <div class="text-xs text-gray-400 flex items-center gap-2 flex-wrap">
                                     <span>{{ cred.username }}</span>
@@ -118,8 +118,8 @@
                             <!-- Actions -->
                             <div class="flex items-center gap-1 shrink-0">
                                 <button class="p-1.5 rounded hover:bg-neutral-100 dark:hover:bg-neutral-700 transition-colors"
-                                    title="Rename"
-                                    @click="renameCredential(cred)">
+                                    title="Edit"
+                                    @click="editCredential(cred)">
                                     <PencilIcon class="w-3.5 h-3.5 text-gray-400" />
                                 </button>
                                 <button class="p-1.5 rounded hover:bg-neutral-100 dark:hover:bg-neutral-700 transition-colors"
@@ -157,7 +157,7 @@
                     <h3 class="text-sm font-semibold text-default">Delete Saved Login?</h3>
                     <p class="text-sm text-gray-500">
                         This will permanently remove the saved login for
-                        <strong>{{ deleteTarget.username }}@{{ deleteTarget.host }}</strong>{{ deleteTarget.share !== '*' ? ` (share: ${deleteTarget.share})` : '' }}.
+                        <strong>{{ deleteTarget.username }}@{{ deleteTarget.host }}</strong>{{ deleteTarget.shareName ? ` (share: ${deleteTarget.shareName})` : '' }}.
                         Backup tasks using this login may stop working.
                     </p>
                     <div class="flex justify-end gap-2">
@@ -180,7 +180,7 @@
                     </p>
                     <ul class="text-xs text-gray-400 space-y-0.5 max-h-32 overflow-y-auto">
                         <li v-for="c in staleCreds" :key="credKey(c)">
-                            {{ c.username }}@{{ c.host }}{{ c.share !== '*' ? `/${c.share}` : '' }}
+                            {{ c.username }}@{{ c.host }}{{ c.shareName ? `/${c.shareName}` : '' }}
                         </li>
                     </ul>
                     <div class="flex justify-end gap-2">
@@ -192,20 +192,53 @@
             </div>
         </Teleport>
 
-        <!-- Rename modal -->
+        <!-- Edit credential modal -->
         <Teleport to="body">
-            <div v-if="renameTarget" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40" @click.self="renameTarget = null">
-                <div class="bg-white dark:bg-neutral-800 rounded-lg border border-neutral-200 dark:border-neutral-700 shadow-xl max-w-sm w-full mx-4 p-5 space-y-4">
-                    <h3 class="text-sm font-semibold text-default">Rename Credential</h3>
-                    <p class="text-sm text-gray-500">
-                        Set a display label for <strong>{{ renameTarget.username }}@{{ renameTarget.host }}</strong>
+            <div v-if="editTarget" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40" @click.self="editTarget = null">
+                <div class="bg-white dark:bg-neutral-800 rounded-lg border border-neutral-200 dark:border-neutral-700 shadow-xl max-w-md w-full mx-4 p-5 space-y-4">
+                    <h3 class="text-sm font-semibold text-default">Edit Credential</h3>
+                    <p class="text-xs text-gray-400">
+                        Update the saved login for <strong>{{ editTarget.username }}@{{ editTarget.host }}</strong>
                     </p>
-                    <input v-model="renameValue" type="text" placeholder="e.g. NAS Backups"
-                        class="w-full px-3 py-1.5 text-sm rounded-lg bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 text-default placeholder:text-gray-400 outline-none focus:border-blue-400"
-                        @keyup.enter="executeRename" />
+                    <div class="space-y-3">
+                        <div>
+                            <label class="text-xs font-medium text-gray-500 mb-1 block">Nickname</label>
+                            <input v-model="editForm.name" type="text" placeholder="e.g. NAS Backups"
+                                class="w-full px-3 py-1.5 text-sm rounded-lg bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 text-default placeholder:text-gray-400 outline-none focus:border-blue-400" />
+                        </div>
+                        <div>
+                            <label class="text-xs font-medium text-gray-500 mb-1 block">Host / IP</label>
+                            <input v-model="editForm.host" type="text" placeholder="192.168.2.100"
+                                class="w-full px-3 py-1.5 text-sm rounded-lg bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 text-default placeholder:text-gray-400 outline-none focus:border-blue-400" />
+                        </div>
+                        <div>
+                            <label class="text-xs font-medium text-gray-500 mb-1 block">Samba Share Name</label>
+                            <input v-model="editForm.share" type="text" placeholder="backups"
+                                class="w-full px-3 py-1.5 text-sm rounded-lg bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 text-default placeholder:text-gray-400 outline-none focus:border-blue-400" />
+                        </div>
+                        <div>
+                            <label class="text-xs font-medium text-gray-500 mb-1 block">Username</label>
+                            <input v-model="editForm.username" type="text" placeholder="root"
+                                class="w-full px-3 py-1.5 text-sm rounded-lg bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 text-default placeholder:text-gray-400 outline-none focus:border-blue-400" />
+                        </div>
+                        <div class="relative">
+                            <label class="text-xs font-medium text-gray-500 mb-1 block">Password <span class="text-gray-400">(leave blank to keep current)</span></label>
+                            <input v-model="editForm.password" :type="editShowPassword ? 'text' : 'password'" placeholder="••••••••"
+                                class="w-full px-3 py-1.5 pr-9 text-sm rounded-lg bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 text-default placeholder:text-gray-400 outline-none focus:border-blue-400"
+                                @keyup.enter="executeEdit" />
+                            <button type="button" @click="editShowPassword = !editShowPassword"
+                                class="absolute right-2.5 bottom-1.5 text-gray-400 hover:text-default">
+                                <EyeIcon v-if="!editShowPassword" class="w-4 h-4" />
+                                <EyeSlashIcon v-if="editShowPassword" class="w-4 h-4" />
+                            </button>
+                        </div>
+                    </div>
+                    <div v-if="editError" class="text-xs text-red-500 bg-red-50 dark:bg-red-900/20 p-2 rounded-md">
+                        {{ editError }}
+                    </div>
                     <div class="flex justify-end gap-2">
-                        <button class="btn btn-sm btn-ghost h-fit" @click="renameTarget = null">Cancel</button>
-                        <button class="btn btn-sm btn-primary h-fit" @click="executeRename">Save</button>
+                        <button class="btn btn-sm btn-ghost h-fit" @click="editTarget = null">Cancel</button>
+                        <button class="btn btn-sm btn-primary h-fit" :disabled="!editCanSave" @click="executeEdit">Save</button>
                     </div>
                 </div>
             </div>
@@ -220,27 +253,21 @@ import {
     ArrowLeftIcon, TrashIcon, PencilIcon, SignalIcon,
     MagnifyingGlassIcon, ServerIcon, InformationCircleIcon,
 } from '@heroicons/vue/24/outline'
+import { EyeIcon, EyeSlashIcon } from '@heroicons/vue/20/solid'
 import { useHeader } from '../composables/useHeader'
+import { useServers, type StoredServer } from '../composables/useServers'
 import { discoveryStateInjectionKey } from '../keys/injection-keys'
 import type { DiscoveryState } from '../types'
 
-useHeader('Credential Vault')
+useHeader('Manage Connections')
 
 const router = useRouter()
 const discoveryState = inject<DiscoveryState>(discoveryStateInjectionKey)!
+const { savedServers: allServersList, refresh: refreshServers, updateServer, removeServer: removeServerById } = useServers()
 
 // ── Types ────────────────────────────────────────────────────────────────
 
-interface CredEntry {
-    host: string
-    share: string
-    username: string
-    name?: string
-    favorite?: boolean
-    lastUsedAt?: number
-    createdAt: string
-    updatedAt: string
-}
+type CredEntry = StoredServer
 
 interface HostGroup {
     host: string
@@ -250,14 +277,15 @@ interface HostGroup {
 
 // ── State ────────────────────────────────────────────────────────────────
 
-const allCreds = ref<CredEntry[]>([])
 const loading = ref(true)
 const searchQuery = ref('')
 const statusFilter = ref<'all' | 'active' | 'stale' | 'orphaned'>('all')
 const deleteTarget = ref<CredEntry | null>(null)
 const showBulkDelete = ref(false)
-const renameTarget = ref<CredEntry | null>(null)
-const renameValue = ref('')
+const editTarget = ref<CredEntry | null>(null)
+const editForm = ref({ name: '', host: '', share: '', username: '', password: '' })
+const editShowPassword = ref(false)
+const editError = ref('')
 const hostReachability = ref<Record<string, boolean | null>>({})
 
 const statusFilters = [
@@ -268,6 +296,8 @@ const statusFilters = [
 ]
 
 // ── Computed ─────────────────────────────────────────────────────────────
+
+const allCreds = computed(() => allServersList.value)
 
 const THIRTY_DAYS = 30 * 24 * 60 * 60 * 1000
 
@@ -294,7 +324,7 @@ const filteredGroups = computed(() => {
             c.host.toLowerCase().includes(q) ||
             c.username.toLowerCase().includes(q) ||
             (c.name || '').toLowerCase().includes(q) ||
-            c.share.toLowerCase().includes(q)
+            c.shareName.toLowerCase().includes(q)
         )
     }
 
@@ -321,7 +351,7 @@ const filteredGroups = computed(() => {
 // ── Helpers ──────────────────────────────────────────────────────────────
 
 function credKey(c: CredEntry): string {
-    return `${c.host}\0${c.share}\0${c.username}`
+    return c.id
 }
 
 function formatTimeAgo(epoch: number): string {
@@ -347,7 +377,7 @@ function formatDate(iso: string): string {
 async function loadCredentials() {
     loading.value = true
     try {
-        allCreds.value = await window.electron.ipcRenderer.invoke('credentials:list') ?? []
+        await refreshServers()
     } catch (e) {
         console.error('Failed to load credentials:', e)
     } finally {
@@ -373,10 +403,7 @@ async function executeDelete() {
     if (!deleteTarget.value) return
     const c = deleteTarget.value
     try {
-        await window.electron.ipcRenderer.invoke('credentials:remove', {
-            host: c.host, share: c.share, username: c.username,
-        })
-        allCreds.value = allCreds.value.filter(x => credKey(x) !== credKey(c))
+        await removeServerById(c.id)
     } catch (e) {
         console.error('Failed to delete credential:', e)
     }
@@ -390,32 +417,48 @@ function confirmBulkDeleteStale() {
 async function executeBulkDelete() {
     for (const c of staleCreds.value) {
         try {
-            await window.electron.ipcRenderer.invoke('credentials:remove', {
-                host: c.host, share: c.share, username: c.username,
-            })
+            await removeServerById(c.id)
         } catch { /* continue */ }
     }
     await loadCredentials()
     showBulkDelete.value = false
 }
 
-function renameCredential(cred: CredEntry) {
-    renameTarget.value = cred
-    renameValue.value = cred.name || ''
+function editCredential(cred: CredEntry) {
+    editTarget.value = cred
+    editForm.value = {
+        name: cred.name || '',
+        host: cred.host,
+        share: cred.shareName || '',
+        username: cred.username,
+        password: '',
+    }
+    editShowPassword.value = false
+    editError.value = ''
 }
 
-async function executeRename() {
-    if (!renameTarget.value) return
-    const id = `${renameTarget.value.host}|${renameTarget.value.username}`
+const editCanSave = computed(() =>
+    editForm.value.host.trim() && editForm.value.username.trim()
+)
+
+async function executeEdit() {
+    if (!editTarget.value || !editCanSave.value) return
+    const old = editTarget.value
+    const form = editForm.value
+    editError.value = ''
+
     try {
-        await window.electron.ipcRenderer.invoke('cred:set-name', id, renameValue.value.trim())
-        // Update local state
-        const match = allCreds.value.find(c => credKey(c) === credKey(renameTarget.value!))
-        if (match) match.name = renameValue.value.trim()
-    } catch (e) {
-        console.error('Failed to rename credential:', e)
+        await updateServer(old.id, {
+            host: form.host.trim(),
+            shareName: form.share.trim(),
+            username: form.username.trim(),
+            password: form.password || undefined,
+            name: form.name.trim() || undefined,
+        })
+        editTarget.value = null
+    } catch (e: any) {
+        editError.value = e?.message || 'Failed to update credential.'
     }
-    renameTarget.value = null
 }
 
 // ── Lifecycle ────────────────────────────────────────────────────────────

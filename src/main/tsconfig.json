@@ -17,5 +17,6 @@
     "**/*.int.test.ts",
     "**/node_modules/**",
     "**/build/**",
-    "**/dist/**"]
+    "**/dist/**"
+  ]
 }

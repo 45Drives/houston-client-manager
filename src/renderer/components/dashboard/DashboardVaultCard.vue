@@ -1,5 +1,5 @@
 <template>
-    <DashboardCard title="Credential Vault" noPad>
+    <DashboardCard title="Connections" noPad>
         <template #header-action>
             <button class="text-xs text-link transition-colors"
                 @click="$emit('manage')">
@@ -13,7 +13,7 @@
             <div class="grid grid-cols-2 gap-3">
                 <div class="text-center p-2 rounded-lg bg-neutral-50 dark:bg-neutral-700/30">
                     <div class="text-lg font-semibold text-default">{{ totalCreds }}</div>
-                    <div class="text-xs text-gray-400">Saved Credentials</div>
+                    <div class="text-xs text-gray-400">Saved Logins</div>
                 </div>
                 <div class="text-center p-2 rounded-lg bg-neutral-50 dark:bg-neutral-700/30">
                     <div class="text-lg font-semibold text-default">{{ serverCount }}</div>

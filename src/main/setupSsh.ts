@@ -21,7 +21,7 @@ export async function verifySshCredentials(
   host: string,
   username: string,
   password: string,
-): Promise<{ success: boolean; error?: string }> {
+): Promise<{ success: boolean; error?: string; isAdmin?: boolean }> {
   const ssh = new NodeSSH();
   try {
     await ssh.connect({
@@ -34,7 +34,24 @@ export async function verifySshCredentials(
       },
       readyTimeout: loadSettings().sshTimeoutMs,
     });
-    return { success: true };
+
+    // Check if user has admin privileges (root or wheel/sudo group)
+    let isAdmin = false;
+    try {
+      const uidResult = await ssh.execCommand('id -u');
+      if (uidResult.stdout.trim() === '0') {
+        isAdmin = true;
+      } else {
+        const groupsResult = await ssh.execCommand('id -Gn');
+        const groups = groupsResult.stdout.trim().split(/\s+/);
+        isAdmin = groups.includes('wheel') || groups.includes('sudo');
+      }
+    } catch {
+      // If we can't determine privileges, allow proceeding (fail open for the check)
+      isAdmin = true;
+    }
+
+    return { success: true, isAdmin };
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     return { success: false, error: message };

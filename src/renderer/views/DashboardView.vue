@@ -48,7 +48,8 @@
                             ref="serverCard"
                             :selectedHost="selectedServer?.host ?? ''"
                             @go-setup="goSetup()"
-                            @connect="onConnectServer" />
+                            @connect="onConnectServer"
+                            @manage="goVault()" />
                     </div>
                     <!-- Storage + System Health -->
                     <div class="grid grid-cols-2 gap-5" data-tour="storage-health">
@@ -80,11 +81,6 @@
                         </div>
                     </div>
 
-                    <!-- Last Backup + Last Restore -->
-                    <div class="grid grid-cols-2 gap-5" data-tour="backup-restore">
-                        <DashboardBackupCard @go-backup="goBackup()" />
-                        <DashboardRestoreCard />
-                    </div>
                 </div>
 
                 <!-- ═══ Sidebar (right 1/3) ═══ -->
@@ -133,13 +129,16 @@
                         <DashboardScheduleCard />
                     </div>
 
+                    <!-- Last Backup + Last Restore -->
+                    <div class="space-y-3" data-tour="backup-restore">
+                        <DashboardBackupCard @go-backup="goBackup()" />
+                        <DashboardRestoreCard />
+                    </div>
+
                     <!-- Getting Started (only if not all done) -->
                     <DashboardOnboardingCard v-if="!allOnboardingDone" />
 
-                    <!-- Credential Vault -->
-                    <div data-tour="vault">
-                        <DashboardVaultCard @manage="goVault()" />
-                    </div>
+
 
                     <!-- System Health (duplicate removed from main, lives here as overview) -->
                 </div>
@@ -162,13 +161,12 @@ import { useSettingsModal } from '../composables/useSettingsModal'
 import { useOnboarding } from '../composables/useOnboarding'
 import { useTourManager, type TourStep } from '../composables/useTourManager'
 import { IPCRouter } from '@45drives/houston-common-lib'
-import { useSettings, type SavedServer } from '../composables/useSettings'
+import { useServers, type StoredServer } from '../composables/useServers'
 
 import DashboardServerCard from '../components/dashboard/DashboardServerCard.vue'
 import DashboardBackupCard from '../components/dashboard/DashboardBackupCard.vue'
 import DashboardRestoreCard from '../components/dashboard/DashboardRestoreCard.vue'
 import DashboardOnboardingCard from '../components/dashboard/DashboardOnboardingCard.vue'
-import DashboardVaultCard from '../components/dashboard/DashboardVaultCard.vue'
 import DashboardScheduleCard from '../components/dashboard/DashboardScheduleCard.vue'
 import DashboardStorageCard from '../components/dashboard/DashboardStorageCard.vue'
 import DashboardHealthCard from '../components/dashboard/DashboardHealthCard.vue'
@@ -180,18 +178,19 @@ const { openLogModal } = useLogModal()
 const { openSettingsModal } = useSettingsModal()
 const { onboarding, markDone } = useOnboarding()
 const { requestTour } = useTourManager()
-const { listServers } = useSettings()
 
 const goSetup = () => router.push({ name: 'setup' })
 const goBackup = () => router.push({ name: 'backup-manage' })
 const goVault = () => router.push({ name: 'vault' })
 
+const { displayServers } = useServers()
+
 // ── Selected server for dashboard data ────────────────────────────────
-const selectedServer = ref<SavedServer | null>(null)
+const selectedServer = ref<StoredServer | null>(null)
 const serverCard = ref<InstanceType<typeof DashboardServerCard> | null>(null)
 
 // Select a server from the server card (shows its data on dashboard)
-function onConnectServer(server: SavedServer) {
+function onConnectServer(server: StoredServer) {
     selectedServer.value = server
 }
 
@@ -240,10 +239,6 @@ const dashboardTourSteps: TourStep[] = [
         target: '[data-tour="schedule"]',
         message: 'Upcoming Backups shows a mini week calendar with your next scheduled backup tasks, so you can see what\'s coming at a glance.',
     },
-    {
-        target: '[data-tour="vault"]',
-        message: 'The Credential Vault summary shows how many saved logins you have and flags any that may be stale.\n\nClick "Manage" to open the full vault where you can test, rename, or delete saved logins.',
-    },
 ]
 
 // Dashboard stats
@@ -269,13 +264,10 @@ function formatTimeAgo(date: Date): string {
 }
 
 onMounted(() => {
-    // Auto-select last-used server
-    listServers().then(servers => {
-        if (servers.length > 0) {
-            const sorted = [...servers].sort((a, b) => (b.lastUsedAt ?? 0) - (a.lastUsedAt ?? 0))
-            selectedServer.value = sorted[0] ?? null
-        }
-    }).catch(() => {})
+    // Auto-select last-used server from the unified list
+    if (displayServers.value.length > 0) {
+        selectedServer.value = displayServers.value[0] ?? null
+    }
 
     // Guided tour
     if (!onboarding.value.dashboardTourDone) {

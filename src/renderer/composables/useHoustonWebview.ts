@@ -106,17 +106,19 @@ export function useHoustonWebview() {
    * Full login + chrome-hide + admin-elevation script.
    * Ported from the original App.vue loginAndSimplifyScript.
    */
-  async function loginIntoCockpit(wv: any, { user, pass }: { user: string; pass: string }) {
+  async function loginIntoCockpit(wv: any, { user, pass, elevate = true }: { user: string; pass: string; elevate?: boolean }) {
     if (!wv) return
 
     const credsJson = JSON.stringify({ user, pass })
     const credsLiteral = JSON.stringify(credsJson)
+    const elevateLiteral = JSON.stringify(elevate)
 
     const loginAndSimplifyScript = `
 (function() {
   var CREDS = JSON.parse(${credsLiteral});
   var user = (CREDS && CREDS.user) ? String(CREDS.user) : "";
   var pass = (CREDS && CREDS.pass) ? String(CREDS.pass) : "";
+  var ELEVATE = ${elevateLiteral};
   return new Promise(function(resolve) {
     var LOGIN_SELECTOR  = "#login";
     var ERROR_SELECTOR  = "#login-error-message";
@@ -240,34 +242,53 @@ export function useHoustonWebview() {
       return false;
     }
 
-    function requireAdminOnce() {
+    function checkAdminAccess() {
       return new Promise(function(resolveSpawn, rejectSpawn) {
-        cockpit.spawn(["id", "-u"], { superuser: "require" })
-          .done(resolveSpawn)
+        cockpit.spawn(["id", "-u"], { superuser: "try" })
+          .done(function(output) {
+            var uid = parseInt((output || "").trim(), 10);
+            if (uid === 0) resolveSpawn(true);
+            else rejectSpawn(new Error("not root"));
+          })
           .fail(rejectSpawn);
       });
+    }
+
+    function dismissOpenModal() {
+      var modal = findAdminModal();
+      if (!modal) return;
+      var cancelBtn = modal.querySelector("button.pf-m-link") ||
+        Array.from(modal.querySelectorAll("button")).find(function(b) {
+          return /cancel|close/i.test((b.textContent || "").trim());
+        });
+      if (cancelBtn) cancelBtn.click();
     }
 
     function elevateToAdmin(password, timeoutMs) {
       timeoutMs = timeoutMs || 60000;
       if (!onModulePage()) return Promise.resolve({ ok: true, skipped: true });
 
+      var MAX_RETRIES = 8;
+      var attempts = 0;
+
       setChromeMode(true);
       return waitForCockpit().then(function() {
         var start = Date.now();
         function loop() {
-          if (Date.now() - start >= timeoutMs) {
+          if (Date.now() - start >= timeoutMs || attempts >= MAX_RETRIES) {
             setChromeMode(false);
             return { ok: false, error: "Timed out waiting for admin access" };
           }
+          attempts++;
           clickLimitedAccessThrottled();
           trySubmitModalOnce(password);
-          return requireAdminOnce().then(function() {
+          return checkAdminAccess().then(function() {
             setChromeMode(true);
             return { ok: true };
           }).catch(function() {
+            dismissOpenModal();
             setChromeMode(false);
-            return sleep(600).then(loop);
+            return sleep(1000).then(loop);
           });
         }
         return loop();
@@ -284,6 +305,7 @@ export function useHoustonWebview() {
       setTimeout(function() {
         clearGlobalTimeout();
         setChromeMode(true);
+        if (!ELEVATE) { done("no-login", { admin: false, skipped: true }); return; }
         elevateToAdmin(pass, 60000)
           .then(function(r) { done("no-login", { admin: !!r.ok, adminError: r.error || null }); })
           .catch(function(e) { done("no-login", { admin: false, adminError: String(e && (e.message || e)) }); });
@@ -332,6 +354,7 @@ export function useHoustonWebview() {
         setTimeout(function() {
           clearGlobalTimeout();
           setChromeMode(true);
+          if (!ELEVATE) { done("login-success", { admin: false, skipped: true }); return; }
           elevateToAdmin(pass, 60000)
             .then(function(r) { done("login-success", { admin: !!r.ok, adminError: r.error || null }); })
             .catch(function(e) { done("login-success", { admin: false, adminError: String(e && (e.message || e)) }); });

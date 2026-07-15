@@ -33,12 +33,14 @@ const props = withDefaults(defineProps<{
     heightClass?: string            // Tailwind height utility, e.g. 'h-[100vh]' or 'h-[42vh]'
     wrapperClass?: string           // optional extra classes on the outer wrapper
     openDevtoolsInDev?: boolean     // set true to auto-open devtools in dev
+    requireAdmin?: boolean          // attempt superuser elevation after login (default true)
 }>(), {
     routePath: '/super-simple-setup',
     hash: '',
     heightClass: 'h-[100vh]',
     wrapperClass: '',
     openDevtoolsInDev: false,
+    requireAdmin: true,
 })
 
 const dark = useDarkModeState()
@@ -253,7 +255,7 @@ const onWebViewLoaded = async () => {
     const { username: user, password: pass } = manualCreds.value;
 
     try {
-        await loginIntoCockpit(webview.value, { user, pass })
+        await loginIntoCockpit(webview.value, { user, pass, elevate: props.requireAdmin })
     } catch (e) {
         console.error('Webview login error:', e)
     } finally {
@@ -319,7 +321,7 @@ watch(manualCreds, async (creds) => {
 
     loadingWebview.value = true;
     try {
-        await loginIntoCockpit(webview.value, { user: creds.username, pass: creds.password });
+        await loginIntoCockpit(webview.value, { user: creds.username, pass: creds.password, elevate: props.requireAdmin });
     } catch (e) {
         console.error('Webview auto-login error:', e);
     } finally {

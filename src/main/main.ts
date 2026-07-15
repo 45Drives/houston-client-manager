@@ -431,7 +431,99 @@ function createWindow() {
       throw err;            // so the renderer gets the real stack
     }
   });
-  
+
+  // ── Add Existing Server: install deps, wait for API, register app ───────
+
+  ipcMain.handle('setup-existing-server', async (event, { host, username, password }: { host: string; username: string; password: string }) => {
+    assertMainWindowSender(event);
+    jsonLogger.info({ event: 'setup-existing-server', host });
+    const logs: string[] = [];
+    try {
+      const res = await installServerDepsRemotely({
+        host,
+        username,
+        password,
+        onProgress: (p) => {
+          if (p.step === 'bootstrap-log') logs.push(p.label);
+        },
+      });
+      if (!res.success) {
+        return { success: false, error: res.error, logs };
+      }
+      return { success: true, reboot: res.reboot, logs };
+    } catch (err: any) {
+      jsonLogger.error({ event: 'setup-existing-server_error', host, error: String(err) });
+      return { success: false, error: err?.message || String(err), logs };
+    }
+  });
+
+  ipcMain.handle('wait-for-server-api', async (event, { host }: { host: string }) => {
+    assertMainWindowSender(event);
+    const safeHost = assertSafeHost(host);
+    const maxAttempts = 30;
+    const delayMs = 2000;
+
+    for (let i = 0; i < maxAttempts; i++) {
+      try {
+        const res = await fetch(`http://${safeHost}:9095/setup-status`, {
+          method: 'GET',
+          cache: 'no-store',
+          signal: AbortSignal.timeout(3000),
+        });
+        if (res.ok) {
+          return { success: true };
+        }
+      } catch {
+        // Not ready yet
+      }
+      await new Promise(resolve => setTimeout(resolve, delayMs));
+    }
+    return { success: false, error: `Server API on ${safeHost}:9095 did not respond after ${maxAttempts * delayMs / 1000}s.` };
+  });
+
+  ipcMain.handle('register-server-app', async (event, { host, username, password }: { host: string; username: string; password: string }) => {
+    assertMainWindowSender(event);
+    const safeHost = assertSafeHost(host);
+    try {
+      // Login to get JWT
+      const loginRes = await fetch(`http://${safeHost}:9095/api/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password }),
+        signal: AbortSignal.timeout(10000),
+      });
+      if (!loginRes.ok) {
+        const body = await loginRes.json().catch(() => ({}));
+        return { success: false, error: body?.error || `Login failed (HTTP ${loginRes.status})` };
+      }
+      const { token } = await loginRes.json();
+
+      // Register the storage-wizard app
+      const regRes = await fetch(`http://${safeHost}:9095/api/register-app`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({ app: 'storage-wizard' }),
+        signal: AbortSignal.timeout(15000),
+      });
+      if (!regRes.ok) {
+        const body = await regRes.json().catch(() => ({}));
+        return { success: false, error: body?.error || `Registration failed (HTTP ${regRes.status})` };
+      }
+
+      // Write setup log on the server so discovery sees it as "complete"
+      // This is done via the broadcaster's own bootstrap, but let's also
+      // update local discovery state immediately
+      jsonLogger.info({ event: 'register-server-app_success', host: safeHost });
+      return { success: true };
+    } catch (err: any) {
+      jsonLogger.error({ event: 'register-server-app_error', host: safeHost, error: String(err) });
+      return { success: false, error: err?.message || String(err) };
+    }
+  });
+
   ipcMain.handle('get-os', () => getOS());
 
   ipcMain.handle("backup:isFirstRunNeeded", (event, host, share, smbUser) => {
@@ -450,6 +542,48 @@ function createWindow() {
   ipcMain.handle('scan-network-fallback', async (event) => {
     assertMainWindowSender(event);
     return await doFallbackScan();
+  });
+
+  ipcMain.handle('add-manual-server', (event, p: { ip: string; name?: string; shareName?: string }) => {
+    assertMainWindowSender(event);
+    const ip = assertSafeHost(p.ip);
+    const name = p.name || ip;
+    const share = p.shareName || '';
+
+    const existing = discoveredServers.find(s => s.ip === ip);
+    if (existing) {
+      existing.shareName = share || existing.shareName;
+      existing.name = name || existing.name;
+      existing.setupComplete = true;
+      existing.status = 'complete';
+      existing.lastSeen = Date.now();
+      existing.manuallyAdded = true;
+    } else {
+      discoveredServers.push({
+        ip,
+        name,
+        status: 'complete',
+        lastSeen: Date.now(),
+        setupComplete: true,
+        shareName: share,
+        serverName: name,
+        setupTime: '',
+        serverInfo: {
+          moboMake: '',
+          moboModel: '',
+          serverModel: '',
+          aliasStyle: '',
+          chassisSize: '',
+        },
+        manuallyAdded: true,
+        fallbackAdded: false,
+      });
+    }
+
+    if (mainWindow) {
+      mainWindow.webContents.send('discovered-servers', discoveredServers);
+    }
+    return { ok: true };
   });
 
   let discoveryEnabled = false;
@@ -1001,6 +1135,59 @@ app.whenReady().then(() => {
     return { ok: true };
   });
 
+  // ── Unified Servers IPC (used by useServers composable) ───────────────
+
+  ipcMain.handle('servers:list', (event) => {
+    assertMainWindowSender(event);
+    return getCredentialManager().listAllServers();
+  });
+
+  ipcMain.handle('servers:add', (event, p: { host: string; shareName: string; username: string; password: string; name?: string; favorite?: boolean }) => {
+    assertMainWindowSender(event);
+    const id = getCredentialManager().addServerEntry(
+      assertSafeHost(p.host),
+      p.shareName ? assertSafeShare(p.shareName) : '',
+      assertSafeUsername(p.username),
+      p.password,
+      { name: p.name, favorite: p.favorite }
+    );
+    jsonLogger.info({ event: 'servers:add', host: p.host, shareName: p.shareName, username: p.username });
+    return { ok: true, id };
+  });
+
+  ipcMain.handle('servers:update', (event, p: { id: string; host?: string; shareName?: string; username?: string; password?: string; name?: string; favorite?: boolean }) => {
+    assertMainWindowSender(event);
+    const newId = getCredentialManager().updateServerEntry(p.id, {
+      host: p.host ? assertSafeHost(p.host) : undefined,
+      shareName: p.shareName !== undefined ? (p.shareName ? assertSafeShare(p.shareName) : '') : undefined,
+      username: p.username ? assertSafeUsername(p.username) : undefined,
+      password: p.password,
+      name: p.name,
+      favorite: p.favorite,
+    });
+    jsonLogger.info({ event: 'servers:update', oldId: p.id, newId });
+    return { ok: true, id: newId };
+  });
+
+  ipcMain.handle('servers:remove', (event, id: string) => {
+    assertMainWindowSender(event);
+    getCredentialManager().removeServerEntry(id);
+    jsonLogger.info({ event: 'servers:remove', id });
+    return { ok: true };
+  });
+
+  ipcMain.handle('servers:set-favorite', (event, id: string, fav: boolean) => {
+    assertMainWindowSender(event);
+    getCredentialManager().setServerFavorite(id, fav);
+    return { ok: true };
+  });
+
+  ipcMain.handle('servers:touch', (event, id: string) => {
+    assertMainWindowSender(event);
+    getCredentialManager().touchServer(id);
+    return { ok: true };
+  });
+
   // ── App Settings IPC ──────────────────────────────────────────────────
   ipcMain.handle('settings:get', (event) => {
     assertMainWindowSender(event);
@@ -1047,11 +1234,87 @@ app.whenReady().then(() => {
     return { success: removed };
   });
 
+  ipcMain.handle('credentials:update', (event, { oldHost, oldShare, oldUsername, host, share, username, password }: {
+    oldHost: string; oldShare: string; oldUsername: string;
+    host: string; share: string; username: string; password?: string;
+  }) => {
+    assertMainWindowSender(event);
+    const cm = getCredentialManager();
+    const safeOldHost = assertSafeHost(oldHost);
+    const safeOldShare = (oldShare || '').trim();
+    const safeOldUser = assertSafeUsername(oldUsername);
+    const safeHost = assertSafeHost(host);
+    const safeShare = assertSafeShare(share);
+    const safeUser = assertSafeUsername(username);
+
+    // Retrieve old password before removing, in case we need it
+    let resolvedPassword = password;
+    if (!resolvedPassword) {
+      const existing = cm.retrieve(safeOldHost, safeOldShare, safeOldUser);
+      if (existing) {
+        resolvedPassword = existing.password;
+      } else {
+        throw new Error('Password is required when changing host, share, or username.');
+      }
+    }
+
+    // If key changed, remove old entry
+    const oldKey = `${safeOldHost}\0${safeOldShare}\0${safeOldUser}`.toLowerCase();
+    const newKey = `${safeHost}\0${safeShare}\0${safeUser}`.toLowerCase();
+    if (oldKey !== newKey) {
+      cm.remove(safeOldHost, safeOldShare, safeOldUser);
+    }
+
+    // Store new (or updated) credential
+    cm.store(safeHost, safeShare, safeUser, resolvedPassword);
+
+    jsonLogger.info({ event: 'credentials:update', oldHost: safeOldHost, newHost: safeHost, share: safeShare, username: safeUser });
+    return { success: true };
+  });
+
   ipcMain.handle('credentials:test-connection', async (event, { host }: { host: string }) => {
     assertMainWindowSender(event);
     const safeHost = assertSafeHost(host);
     const reachable = await checkSSH(safeHost, 5000);
     return { host: safeHost, reachable };
+  });
+
+  ipcMain.handle('backup:validate-smb-credentials', async (event, { host, share, username, password }: { host: string; share: string; username: string; password: string }) => {
+    assertMainWindowSender(event);
+    const safeHost = assertSafeHost(host);
+    const safeShare = assertSafeShare(share);
+    const safeUser = assertSafeUsername(username);
+    const { execFile: execFileCb } = require('child_process');
+    const os = getOS();
+
+    return new Promise<{ valid: boolean; error?: string }>((resolve) => {
+      if (os === 'win') {
+        // Use PowerShell to test SMB connection
+        const ps = `$pass = ConvertTo-SecureString '${password.replace(/'/g, "''")}' -AsPlainText -Force; $cred = New-Object System.Management.Automation.PSCredential('${safeUser}', $pass); try { New-PSDrive -Name HTest -PSProvider FileSystem -Root "\\\\${safeHost}\\${safeShare}" -Credential $cred -ErrorAction Stop | Out-Null; Remove-PSDrive -Name HTest; Write-Output 'OK' } catch { Write-Output "FAIL:$($_.Exception.Message)" }`;
+        execFileCb('powershell', ['-NoProfile', '-Command', ps], { timeout: 15000 }, (err: any, stdout: string) => {
+          if (err || !stdout.trim().startsWith('OK')) {
+            const detail = stdout?.trim().replace(/^FAIL:/, '') || err?.message || 'Connection failed';
+            resolve({ valid: false, error: detail });
+          } else {
+            resolve({ valid: true });
+          }
+        });
+      } else {
+        // Use smbclient to validate credentials on Linux/macOS
+        const args = ['-L', `//${safeHost}`, '-U', `${safeUser}%${password}`, '-g'];
+        execFileCb('smbclient', args, { timeout: 15000 }, (err: any, stdout: string, stderr: string) => {
+          const output = `${stdout}\n${stderr}`;
+          if (/NT_STATUS_LOGON_FAILURE|NT_STATUS_ACCESS_DENIED/i.test(output)) {
+            resolve({ valid: false, error: 'Invalid username or password' });
+          } else if (err && !/Disk\|/i.test(stdout)) {
+            // smbclient returns non-zero but may still list shares
+            resolve({ valid: false, error: 'Unable to connect to server' });
+          } else {
+            resolve({ valid: true });
+          }
+        });
+      }
+    });
   });
 
   ipcMain.handle('credentials:retrieve', (event, { host, share, username }: { host: string; share: string; username?: string }) => {

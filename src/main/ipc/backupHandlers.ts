@@ -20,9 +20,19 @@ import { removeBackupConfig, syncBackupConfig, getClientId } from '../backup/bro
 function resolvePassword(host: string, share: string, user: string, pass: string): string {
   if (pass) return pass;
   const cm = getCredentialManager();
-  const cred = user
-    ? cm.retrieve(host, share, user)
-    : cm.findByHostAndShare(host, share);
+  // Try exact match first
+  if (user) {
+    const cred = cm.retrieve(host, share, user);
+    if (cred?.password) return cred.password;
+    // Fall back to wildcard share entry (e.g. stored via login without share)
+    if (share !== '*') {
+      const wildcard = cm.retrieve(host, '*', user);
+      if (wildcard?.password) return wildcard.password;
+    }
+    return '';
+  }
+  // No user specified — search by host+share
+  const cred = cm.findByHostAndShare(host, share);
   return cred?.password ?? '';
 }
 
@@ -287,6 +297,70 @@ export async function handleBackupMessage(message: any, ctx: IPCHandlerContext):
         ctx.notify(`Error: ${errMsg(err)}`);
         console.error('requestBackUpTasksWithStatus failed:', err);
       }
+      return true;
+    }
+
+    case 'toggleBackUpTaskDisabled': {
+      const task: BackUpTask = message.task;
+      const disabled: boolean = message.disabled;
+      const backupManager = ctx.getBackUpManager();
+      if (!backupManager) { ctx.notify('Error: No Backup Manager available.'); return true; }
+
+      try {
+        const os = getOS();
+        let scriptPath: string;
+
+        if (os === 'win') {
+          const USER_LOCALAPPDATA = process.env.LOCALAPPDATA || path.join(require('os').homedir(), 'AppData', 'Local');
+          scriptPath = path.join(USER_LOCALAPPDATA, 'houston-backups', 'scripts', `Houston_Backup_Task_${task.uuid}.bat`);
+        } else if (os === 'mac') {
+          scriptPath = `/Library/Application Support/Houston/scripts/houston-backup-task-${task.uuid}.sh`;
+        } else {
+          scriptPath = path.join(require('os').homedir(), '.local', 'share', 'houston-backups', `Houston_Backup_Task_${task.uuid}.sh`);
+        }
+
+        if (fs.existsSync(scriptPath)) {
+          let content = fs.readFileSync(scriptPath, 'utf-8');
+
+          if (os === 'win') {
+            // Update :: disabled = ... comment and the if check
+            if (content.includes(':: disabled')) {
+              content = content.replace(/^:: disabled\s*=\s*.*/m, `:: disabled    = ${disabled ? 'true' : 'false'}`);
+            } else {
+              content = content.replace(/^:: name\s*=\s*.*/m, (match) => `${match}\n:: disabled    = ${disabled ? 'true' : 'false'}`);
+            }
+            // Update the runtime check
+            content = content.replace(/if "(?:true|false)"=="true"/, `if "${disabled ? 'true' : 'false'}"=="true"`);
+          } else if (os === 'mac') {
+            // Update # TASK_DISABLED="..." comment
+            if (content.includes('# TASK_DISABLED=')) {
+              content = content.replace(/# TASK_DISABLED="[^"]*"/, `# TASK_DISABLED="${disabled ? 'true' : 'false'}"`);
+            } else {
+              content = content.replace(/# TASK_NAME="[^"]*"/, (match) => `${match}\n# TASK_DISABLED="${disabled ? 'true' : 'false'}"`);
+            }
+            // Update the runtime check
+            content = content.replace(/if \[ "(?:true|false)" = "true" \]/, `if [ "${disabled ? 'true' : 'false'}" = "true" ]`);
+          } else {
+            // Linux
+            if (content.includes("DISABLED='")) {
+              content = content.replace(/DISABLED='[^']*'/, `DISABLED='${disabled ? 'true' : 'false'}'`);
+            } else {
+              content = content.replace(/^(BACKUP_NAME='[^']*')$/m, `$1\nDISABLED='${disabled ? 'true' : 'false'}'`);
+            }
+          }
+          fs.writeFileSync(scriptPath, content, { mode: os === 'win' ? undefined : 0o700 });
+        }
+
+        const label = task.name || task.description;
+        ctx.notify(`Backup task "${label}" ${disabled ? 'disabled' : 'enabled'}.`);
+        ctx.jsonLogger.info({ event: 'toggleBackUpTaskDisabled', taskUuid: task.uuid, disabled });
+      } catch (err: unknown) {
+        ctx.notify(`Error: ${errMsg(err)}`);
+        ctx.jsonLogger.error({ event: 'toggleBackUpTaskDisabled_error', taskUuid: task.uuid, error: errMsg(err) });
+      }
+
+      const tasks = await backupManager.queryTasks();
+      router.send('renderer', 'action', JSON.stringify({ type: 'sendBackupTasks', tasks }));
       return true;
     }
 

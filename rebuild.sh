@@ -22,3 +22,6 @@ rm -rf houston-common/houston-common-ui/dist
 
 
 yarn install
+
+cd houston-common/houston-common-lib && npm run build && cd ../..
+cd houston-common/houston-common-ui && npm run build && cd ../..

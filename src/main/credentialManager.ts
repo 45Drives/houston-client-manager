@@ -360,6 +360,190 @@ export class CredentialManager {
     }
   }
 
+  // ── Unified Server List (used by useServers composable) ──────────────
+
+  /**
+   * List all stored servers, deduplicated.
+   * When the same host+username has both a '*' (server-level) entry and a real
+   * share entry, only the real-share entry is returned (with metadata merged from '*').
+   * This prevents duplicates from legacy code paths that create both.
+   */
+  listAllServers(): {
+    id: string; host: string; shareName: string; username: string;
+    name?: string; favorite?: boolean; lastUsedAt?: number;
+    createdAt?: string; updatedAt?: string;
+  }[] {
+    const entries = Object.values(this.vault.credentials);
+
+    // Group by host+username to detect duplicates
+    const grouped = new Map<string, typeof entries>();
+    for (const e of entries) {
+      const groupKey = `${e.host.toLowerCase()}\0${e.username.toLowerCase()}`;
+      const list = grouped.get(groupKey) ?? [];
+      list.push(e);
+      grouped.set(groupKey, list);
+    }
+
+    const result: {
+      id: string; host: string; shareName: string; username: string;
+      name?: string; favorite?: boolean; lastUsedAt?: number;
+      createdAt?: string; updatedAt?: string;
+    }[] = [];
+
+    for (const group of grouped.values()) {
+      const wildcard = group.find(e => e.share === '*');
+      const realShares = group.filter(e => e.share !== '*');
+
+      if (realShares.length > 0) {
+        // Emit real-share entries, merging metadata from wildcard if present
+        for (const e of realShares) {
+          result.push({
+            id: `${e.host}|${e.share}|${e.username}`,
+            host: e.host,
+            shareName: e.share,
+            username: e.username,
+            name: e.name || wildcard?.name,
+            favorite: e.favorite ?? wildcard?.favorite,
+            lastUsedAt: Math.max(e.lastUsedAt ?? 0, wildcard?.lastUsedAt ?? 0) || undefined,
+            createdAt: e.createdAt,
+            updatedAt: e.updatedAt,
+          });
+        }
+      } else if (wildcard) {
+        // No real-share entry exists — show the wildcard as a server (no share)
+        result.push({
+          id: `${wildcard.host}|*|${wildcard.username}`,
+          host: wildcard.host,
+          shareName: '',
+          username: wildcard.username,
+          name: wildcard.name,
+          favorite: wildcard.favorite,
+          lastUsedAt: wildcard.lastUsedAt,
+          createdAt: wildcard.createdAt,
+          updatedAt: wildcard.updatedAt,
+        });
+      }
+    }
+
+    return result;
+  }
+
+  /**
+   * Add a unified server entry (stores the credential with real share name).
+   * If a wildcard ('*') entry already exists for the same host+user, inherits
+   * its metadata (name, favorite) into the new entry to avoid duplicates.
+   */
+  addServerEntry(host: string, shareName: string, username: string, password: string, opts?: { name?: string; favorite?: boolean }): string {
+    const share = shareName || '*';
+
+    // Inherit metadata from existing wildcard entry if present
+    const wildcardKey = makeKey(host, '*', username);
+    const wildcardEntry = this.vault.credentials[wildcardKey];
+
+    this.store(host, share, username, password);
+    const key = makeKey(host, share, username);
+    const entry = this.vault.credentials[key];
+
+    // Merge: explicit opts > existing entry > wildcard fallback
+    if (opts?.name !== undefined) entry.name = opts.name;
+    else if (!entry.name && wildcardEntry?.name) entry.name = wildcardEntry.name;
+
+    if (opts?.favorite !== undefined) entry.favorite = opts.favorite;
+    else if (entry.favorite === undefined && wildcardEntry?.favorite) entry.favorite = wildcardEntry.favorite;
+
+    entry.lastUsedAt = Date.now();
+    this.save();
+    return `${host}|${share}|${username}`;
+  }
+
+  /**
+   * Update a server entry by its composite ID.
+   * If key fields change, removes old entry and creates new one.
+   */
+  updateServerEntry(
+    oldId: string,
+    update: { host?: string; shareName?: string; username?: string; password?: string; name?: string; favorite?: boolean }
+  ): string {
+    const [oldHost, oldShare, oldUsername] = oldId.split('|');
+    if (!oldHost || !oldShare || !oldUsername) throw new Error('Invalid server ID');
+
+    const oldKey = makeKey(oldHost, oldShare, oldUsername);
+    const existing = this.vault.credentials[oldKey];
+    if (!existing) throw new Error('Server entry not found');
+
+    const newHost = update.host ?? oldHost;
+    const newShare = update.shareName !== undefined ? (update.shareName || '*') : oldShare;
+    const newUsername = update.username ?? oldUsername;
+    const newKey = makeKey(newHost, newShare, newUsername);
+
+    const keyChanged = oldKey !== newKey;
+
+    if (keyChanged) {
+      // Key changed — need new password or use existing
+      const pwd = update.password || decryptPassword(existing.encryptedPassword);
+      delete this.vault.credentials[oldKey];
+      this.vault.credentials[newKey] = {
+        host: newHost,
+        share: newShare,
+        username: newUsername,
+        encryptedPassword: encryptPassword(pwd),
+        createdAt: existing.createdAt,
+        updatedAt: new Date().toISOString(),
+        name: update.name !== undefined ? update.name : existing.name,
+        favorite: update.favorite !== undefined ? update.favorite : existing.favorite,
+        lastUsedAt: existing.lastUsedAt,
+      };
+    } else {
+      // Same key — update in place
+      if (update.password) {
+        existing.encryptedPassword = encryptPassword(update.password);
+      }
+      if (update.name !== undefined) existing.name = update.name || undefined;
+      if (update.favorite !== undefined) existing.favorite = update.favorite;
+      existing.updatedAt = new Date().toISOString();
+    }
+
+    this.save();
+    return `${newHost}|${newShare}|${newUsername}`;
+  }
+
+  /**
+   * Remove a server entry by composite ID (host|share|username).
+   */
+  removeServerEntry(id: string): boolean {
+    const [host, share, username] = id.split('|');
+    if (!host || !share || !username) return false;
+    return this.remove(host, share, username);
+  }
+
+  /**
+   * Set favorite flag by composite ID.
+   */
+  setServerFavorite(id: string, fav: boolean): void {
+    const [host, share, username] = id.split('|');
+    if (!host || !share || !username) return;
+    const key = makeKey(host, share, username);
+    const entry = this.vault.credentials[key];
+    if (entry) {
+      entry.favorite = fav;
+      this.save();
+    }
+  }
+
+  /**
+   * Touch lastUsedAt by composite ID.
+   */
+  touchServer(id: string): void {
+    const [host, share, username] = id.split('|');
+    if (!host || !share || !username) return;
+    const key = makeKey(host, share, username);
+    const entry = this.vault.credentials[key];
+    if (entry) {
+      entry.lastUsedAt = Date.now();
+      this.save();
+    }
+  }
+
   /**
    * Check if any credential exists for a given host+share.
    */

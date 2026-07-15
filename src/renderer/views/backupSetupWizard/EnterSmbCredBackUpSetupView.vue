@@ -42,6 +42,12 @@
           <button type="submit" class="hidden">Submit</button>
         </form>
 
+        <!-- Validation error -->
+        <div v-if="validationError" class="flex items-center gap-2 px-3 py-2 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-sm text-red-700 dark:text-red-300">
+          <ExclamationCircleIcon class="w-4 h-4 shrink-0" />
+          <span>{{ validationError }}</span>
+        </div>
+
         <p class="text-xs text-muted text-center">
           Your login details are stored securely on this computer and only used to connect to the server during backups.
         </p>
@@ -57,7 +63,8 @@
         </button>
 
         <button :disabled="isButtonDisabled" @click="proceedToNextStep" class="btn btn-primary h-fit">
-          Next
+          <template v-if="isValidating">Validating…</template>
+          <template v-else>Next</template>
         </button>
 
       </div>
@@ -71,7 +78,7 @@
 import { CardContainer } from '@45drives/houston-common-ui'
 import { ref, computed, inject } from 'vue';
 import { EyeIcon, EyeSlashIcon } from "@heroicons/vue/20/solid";
-import { LockClosedIcon, ServerIcon } from "@heroicons/vue/24/outline";
+import { LockClosedIcon, ServerIcon, ExclamationCircleIcon } from "@heroicons/vue/24/outline";
 import { useWizardSteps, useAutoFocus, useEnterToAdvance } from '@45drives/houston-common-ui';
 import { backUpSetupConfigKey } from '../../keys/injection-keys';
 import { useHeader } from '../../composables/useHeader'
@@ -84,6 +91,8 @@ const backUpSetupConfig = inject(backUpSetupConfigKey)!;
 
 const openingBackup = ref(false);
 const showPassword = ref(false);
+const validationError = ref('');
+const isValidating = ref(false);
 const togglePassword = () => {
   showPassword.value = !showPassword.value;
 };
@@ -95,24 +104,37 @@ const targetDisplay = computed(() => {
 });
 
 // Check if the "Open" button should be disabled
-const isButtonDisabled = computed(() => !backUpSetupConfig?.username || !backUpSetupConfig?.password || openingBackup.value);
+const isButtonDisabled = computed(() => !backUpSetupConfig?.username || !backUpSetupConfig?.password || openingBackup.value || isValidating.value);
 
 // Method to handle the "Open" button action
-const proceedToNextStep = () => {
+const proceedToNextStep = async () => {
   if (backUpSetupConfig.username && backUpSetupConfig.password) {
-    // Trigger backend logic for opening the server
-    // Pass username, password, and backupTask.target (URL) to backend
-    // For example: openBackupServer(username.value, password.value, props.backupTask.target);
-    //   username: backUpSetupConfig.username,
-    //   password: backUpSetupConfig.password,
-    //   target: backUpSetupConfig.backUpTasks[0].target,
-    // });
-
+    validationError.value = '';
+    isValidating.value = true;
 
     let [host, share] = backUpSetupConfig.backUpTasks[0].target.split(":");
-    share = share.split("/")[0]
+    share = share.split("/")[0];
 
+    try {
+      const result = await window.electron.ipcRenderer.invoke('backup:validate-smb-credentials', {
+        host,
+        share,
+        username: backUpSetupConfig.username,
+        password: backUpSetupConfig.password,
+      });
 
+      if (!result.valid) {
+        validationError.value = result.error || 'Invalid credentials. Please check your username and password.';
+        isValidating.value = false;
+        return;
+      }
+    } catch (err: any) {
+      validationError.value = err?.message || 'Failed to validate credentials.';
+      isValidating.value = false;
+      return;
+    }
+
+    isValidating.value = false;
     nextStep();
   }
 };
@@ -123,13 +145,13 @@ const proceedToPreviousStep = async () => {
 
 useEnterToAdvance(
   () => {
-    if (!isButtonDisabled) {
+    if (!isButtonDisabled.value) {
       proceedToNextStep(); // Enter
     }
   },
   200, // debounce time for Enter
   () => {
-    if (!isButtonDisabled) {
+    if (!isButtonDisabled.value) {
       proceedToNextStep(); // ArrowRight
     }
   },

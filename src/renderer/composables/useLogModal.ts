@@ -3,6 +3,7 @@ import { computed, ref } from 'vue'
 export interface LogTaskContext {
   uuid: string
   description?: string
+  serverIp?: string
 }
 
 const _logModalOpen = ref(false)

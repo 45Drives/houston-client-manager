@@ -21,20 +21,19 @@
 									:message="`This is the designated backup storage location you set up earlier (Either manually or via Setup Wizard).`" />
 							</div>
 							<div class="flex items-center flex-1 gap-2">
-								<select v-model="selectedServerIp"
+								<select v-model="selectedServerId"
 									class="bg-default h-[3rem] text-default rounded-lg px-4 flex-1 border border-default"
-									:disabled="discoveryState.loading && servers.length === 0">
-									<option v-if="discoveryState.loading && servers.length === 0" value="" disabled>
-										Discovering servers…
+									:disabled="!serversLoaded && savedServers.length === 0">
+									<option v-if="!serversLoaded && savedServers.length === 0" value="" disabled>
+										Loading servers…
 									</option>
-									<option v-for="item in servers" :key="item.ip" :value="item.ip">
-										{{ `\\\\${item.name}\\${item.shareName}` }}
+									<option v-for="item in savedServers" :key="item.id" :value="item.id">
+										{{ `\\\\${item.name || item.host}\\${item.shareName}` }}
 									</option>
 								</select>
-								<div v-if="discoveryState.loading" class="spinner-sm shrink-0" title="Discovering servers…"></div>
-								<button v-else @click="rescan"
+								<button @click="refreshServerList"
 									class="w-8 h-8 p-0 rounded-md bg-transparent inline-flex items-center justify-center text-gray-500 hover:text-default hover:bg-neutral-100 dark:hover:bg-neutral-700 transition-colors"
-									title="Re-discover servers">
+									title="Refresh server list">
 									<ArrowPathIcon class="w-4 h-4" />
 								</button>
 							</div>
@@ -163,16 +162,16 @@ import { useWizardSteps } from '@45drives/houston-common-ui';
 import { computed, inject, onMounted, reactive, ref, watch, nextTick } from "vue";
 import { PlusIcon, MinusIcon } from "@heroicons/vue/20/solid";
 import { ArrowPathIcon, CalendarIcon } from "@heroicons/vue/24/outline";
-import { backUpSetupConfigKey, discoveryStateInjectionKey, discoveryRescanInjectionKey, closeWizardModalKey } from "../../keys/injection-keys";
+import { backUpSetupConfigKey, closeWizardModalKey } from "../../keys/injection-keys";
 import MessageDialog from '../../components/MessageDialog.vue';
 import { BackUpTask, IPCRouter, TaskSchedule } from "@45drives/houston-common-lib";
-import { DiscoveryState } from '../../types';
 import { useRouter } from 'vue-router';
 import { SimpleCalendar } from "../../components/calendar";
 import { sanitizeFilePath } from "./utils";
 import { useHeader } from '../../composables/useHeader';
 import { useOnboarding } from '../../composables/useOnboarding';
 import { useTourManager, type TourStep } from '../../composables/useTourManager';
+import { useServers, type StoredServer } from '../../composables/useServers';
 
 useHeader('Create Backup Task');
 const router = useRouter();
@@ -183,7 +182,7 @@ const { requestTour } = useTourManager();
 const tourSteps: TourStep[] = [
 	{
 		target: '[data-tour="backup-location"]',
-		message: 'Select which storage server your backups will be saved to.\n\nThis dropdown shows servers you\'ve already set up via the Setup Wizard.',
+		message: 'Select which storage server your backups will be saved to.\n\nThis dropdown shows your saved backup servers.',
 	},
 	{
 		target: '[data-tour="schedule-type"]',
@@ -217,19 +216,17 @@ const messageFolderAlreadyAdded = ref<InstanceType<typeof MessageDialog> | null>
 const messageSubFolderAlreadyAdded = ref<InstanceType<typeof MessageDialog> | null>(null);
 const messageParentFolderAlreadyAdded = ref<InstanceType<typeof MessageDialog> | null>(null);
 
-const discoveryState = inject<DiscoveryState>(discoveryStateInjectionKey)!;
-const rescan = inject(discoveryRescanInjectionKey, () => {});
+// Unified server list
+const { servers: allServers, loaded: serversLoaded, refresh: refreshServerList } = useServers();
 
-const servers = computed(() =>
-	discoveryState.servers.filter(server =>
-		server.setupComplete === true &&
-		server.status === 'complete'
-	)
+// Only show servers that have a share name (they're usable for backup)
+const savedServers = computed(() =>
+	allServers.value.filter(s => s.shareName)
 );
 
-const selectedServerIp = ref('');
-const selectedServer = computed(() =>
-	servers.value.find(srv => srv.ip === selectedServerIp.value) ?? null
+const selectedServerId = ref('');
+const selectedServer = computed<StoredServer | null>(() =>
+	savedServers.value.find(srv => srv.id === selectedServerId.value) ?? null
 );
 
 // Calendar modal state (custom mode)
@@ -253,16 +250,16 @@ function handleCalendarClose(saved: boolean) {
 }
 
 // Auto-select server
-watch(servers, (discoveredServers) => {
-	if (discoveredServers.length === 0) {
-		selectedServerIp.value = '';
+watch(savedServers, (serverList) => {
+	if (serverList.length === 0) {
+		selectedServerId.value = '';
 		return;
 	}
-	if (!selectedServerIp.value) {
+	if (!selectedServerId.value) {
 		const tasks = backUpSetupConfig?.backUpTasks;
 		const target = tasks?.[0]?.target;
-		const match = discoveredServers.find(srv => target?.includes(srv.ip));
-		selectedServerIp.value = match?.ip ?? discoveredServers[0].ip;
+		const match = serverList.find(srv => target?.includes(srv.host));
+		selectedServerId.value = match?.id ?? serverList[0].id;
 	}
 });
 
@@ -466,10 +463,11 @@ const proceedToNextStep = () => {
 		(backUpSetupConfig as any).planType = scheduleMode.value === 'interval' ? 'simple' : 'custom';
 	}
 
+	const srv = selectedServer.value!;
 	backUpSetupConfig?.backUpTasks.forEach((task: BackUpTask) => {
 		const targetDirForSourcePart = sanitizeFilePath(task.source);
 		const slashOrNotSlash = targetDirForSourcePart.startsWith("/") ? "" : "/";
-		task.target = `${selectedServer.value!.name}:${selectedServer.value!.shareName!}/${task.uuid}/${hostname}${slashOrNotSlash}${targetDirForSourcePart}`;
+		task.target = `${srv.name || srv.host}:${srv.shareName}/${task.uuid}/${hostname}${slashOrNotSlash}${targetDirForSourcePart}`;
 	});
 
 	completeCurrentStep();

@@ -87,7 +87,7 @@ watch(currentServer, (srv) => {
 let unregisterIpcListener: (() => void) | null = null
 
 // IPC → router navigation (uses currentServer IP)
-useIpcActions(() => currentServer.value?.ip)
+useIpcActions(() => currentServer.value)
 
 // (optional) global notifications
 onMounted(() => {
@@ -104,16 +104,21 @@ onMounted(() => {
   })
 
   const isJson = (s: string) => { try { JSON.parse(s); return true } catch { return false } }
-  window.electron?.ipcRenderer.on('notification', (_e, message: string) => {
-    if (message.startsWith('Error')) return reportError(new Error(message))
+  const isErrorMessage = (s: string) => s.startsWith('Error') || /\bfailed\b/i.test(s)
+  const notificationHandler = (_e: any, message: string) => {
+    if (isErrorMessage(message)) return reportError(new Error(message))
     if (isJson(message)) {
       const m = JSON.parse(message)
       m.error ? reportError(new Error(m.error)) : reportSuccess(message)
     } else reportSuccess(message)
-  })
+  }
+  // Remove any stale listener (HMR) before adding
+  window.electron?.ipcRenderer.removeAllListeners?.('notification')
+  window.electron?.ipcRenderer.on('notification', notificationHandler)
 })
 
 onBeforeUnmount(() => {
   unregisterIpcListener?.()
+  window.electron?.ipcRenderer.removeAllListeners?.('notification')
 })
 </script>

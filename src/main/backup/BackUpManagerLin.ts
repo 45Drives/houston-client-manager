@@ -43,6 +43,7 @@ export class BackUpManagerLin implements BackUpManager {
         const startDate = startDateMatch ? new Date(startDateMatch[1]) : new Date();
         const descMatch = content.match(/^DESC='([^']*)'/m);
         const nameMatch = content.match(/^BACKUP_NAME='([^']*)'/m);
+        const disabledMatch = content.match(/^DISABLED='([^']*)'/m);
         if (!uuidMatch || !sourceMatch || !targetMatch || !smbHostMatch || !smbShareMatch || !smbUserMatch) continue;
 
         const cronLines = execSync("crontab -l 2>/dev/null || true").toString().split("\n");
@@ -57,6 +58,7 @@ export class BackUpManagerLin implements BackUpManager {
           share: smbShareMatch[1],
           description: descMatch ? descMatch[1] : "Unnamed",
           name: nameMatch ? nameMatch[1] : undefined,
+          disabled: disabledMatch ? disabledMatch[1] === 'true' : false,
           schedule: parsedSchedule ?? { repeatFrequency: "day", startDate },
           status: "checking",
           smb_user: smbUserMatch[1],
@@ -495,8 +497,15 @@ CRED_FILE=${shellQuote(`/etc/samba/houston-credentials/${key}.cred`)}
 START_DATE=${shellQuote(String(task.schedule.startDate))}
 DESC=${shellQuote(task.description)}
 BACKUP_NAME=${shellQuote(task.name || '')}
+DISABLED='${task.disabled ? 'true' : 'false'}'
 CLIENT_ID_FILE=${shellQuote(path.join(app.getPath("userData"), "client-id.txt"))}
 INSTALL_ID="$(cat "$CLIENT_ID_FILE" 2>/dev/null || true)"
+
+# Skip execution if task is disabled
+if [ "$DISABLED" = "true" ]; then
+  echo "[INFO] Task is disabled, skipping."
+  exit 0
+fi
 
 mkdir -p "$(dirname "$LOG_FILE")"
 
@@ -528,7 +537,17 @@ mkdir -p "$MOUNT_DIR"
 if mountpoint -q "$MOUNT_DIR"; then
   echo "[INFO] Already mounted at $MOUNT_DIR"
 else
-  mount "$MOUNT_DIR"
+  # Try fstab mount first, fall back to direct credentials mount
+  if mount "$MOUNT_DIR" 2>/dev/null; then
+    echo "[INFO] Mounted via fstab entry"
+  elif [ -f "$CRED_FILE" ]; then
+    echo "[INFO] fstab mount failed, trying direct mount with credentials..."
+    mount -t cifs "//$SMB_HOST/$SMB_SHARE" "$MOUNT_DIR" -o "credentials=$CRED_FILE,iocharset=utf8,rw,vers=3.0"
+  else
+    echo "[ERROR] No fstab entry and no credential file found at $CRED_FILE"
+    echo "[ERROR] Please re-run the backup setup to configure the server connection."
+    exit 1
+  fi
 fi
 
 # Verify mount succeeded

@@ -76,10 +76,13 @@ export class BackUpManagerMac implements BackUpManager {
         }
       }
 
+      const disabledMatch = txt ? /#\s*TASK_DISABLED="([^"]*)"/i.exec(txt) : null;
+
       tasks.push({
         uuid,
         description: `Backup ${source || '(unknown)'} → ${target || '(unknown)'}`,
         name: txt ? (/#\s*TASK_NAME="([^"]*)"/i.exec(txt)?.[1] || undefined) : undefined,
+        disabled: disabledMatch ? disabledMatch[1] === 'true' : false,
         schedule,
         source, target, host, share,
         status: 'checking',
@@ -573,6 +576,7 @@ SMB_USER='${username}'
 # TASK_TARGET="${getSmbTargetFromSmbTarget(task.target)}"
 # TASK_SMB_USER="${username}"
 # TASK_NAME="${(task.name || '').replace(/"/g, '')}"
+# TASK_DISABLED="${task.disabled ? 'true' : 'false'}"
 
 mkdir -p "$(dirname "$LOG")"
 # Use unbuffered tee for real-time progress; fall back to regular tee if stdbuf unavailable
@@ -582,6 +586,12 @@ elif command -v gstdbuf &>/dev/null; then
   exec > >(gstdbuf -o0 tee -a "$LOG") 2>&1
 else
   exec > >(tee -a "$LOG") 2>&1
+fi
+
+# Skip execution if task is disabled
+if [ "${task.disabled ? 'true' : 'false'}" = "true" ]; then
+  echo "[INFO] Task is disabled, skipping."
+  exit 0
 fi
 
 echo "===== $(/bin/date -u '+%Y-%m-%dT%H:%M:%SZ') START ${task.uuid} ====="

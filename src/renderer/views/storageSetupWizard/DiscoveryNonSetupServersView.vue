@@ -76,7 +76,8 @@
 
             <p class="text-xs italic opacity-75 mt-2 text-center">
               These credentials are used to securely connect to the server, install required software,
-              and auto-login to the server's management interface.
+              and auto-login to the server's management interface. <br/>
+              <span class="text-sm text-red-600 dark:text-red-400"><b>Admin</b> or <b>sudo</b>-level privileges are required for setup.</span>
             </p>
           </section>
         </div>
@@ -318,6 +319,39 @@ const proceedToNextStep = async () => {
     );
   }
 
+  // Verify credentials and check admin privileges before proceeding
+  isInstalling.value = true;
+  statusMessage.value = "Verifying credentials…";
+  try {
+    const check = await IPCRouter
+      .getInstance()
+      .invoke<{ success: boolean; error?: string; isAdmin?: boolean }>("verify-ssh-credentials", {
+        host: ip,
+        username: user,
+        password: pass,
+      });
+    if (!check.success) {
+      const friendlyMsg = friendlySshError(check.error);
+      statusMessage.value = '';
+      reportError(new Error(friendlyMsg));
+      return;
+    }
+    if (!check.isAdmin) {
+      statusMessage.value = '';
+      reportError(new Error(
+        "Admin privileges are required to set up a server. " +
+        "Please use a root or sudo-enabled account."
+      ));
+      return;
+    }
+  } catch (err: unknown) {
+    statusMessage.value = '';
+    reportError(new Error("Could not verify credentials. Is the server reachable?"));
+    return;
+  } finally {
+    isInstalling.value = false;
+  }
+
   // Determine if we need to run the install module
   // (manual entries and fallback-detected servers always need install)
   const srv = selectedServer.value;
@@ -328,31 +362,6 @@ const proceedToNextStep = async () => {
     // to CockpitWebview for auto-login
     const result = await installModule(ip, user, pass);
     if (!result.success) return;
-  } else {
-    // Verify credentials via SSH before handing off to the webview
-    isInstalling.value = true;
-    statusMessage.value = "Verifying credentials…";
-    try {
-      const check = await IPCRouter
-        .getInstance()
-        .invoke<{ success: boolean; error?: string }>("verify-ssh-credentials", {
-          host: ip,
-          username: user,
-          password: pass,
-        });
-      if (!check.success) {
-        const friendlyMsg = friendlySshError(check.error);
-        statusMessage.value = '';
-        reportError(new Error(friendlyMsg));
-        return;
-      }
-    } catch (err: unknown) {
-      statusMessage.value = '';
-      reportError(new Error("Could not verify credentials. Is the server reachable?"));
-      return;
-    } finally {
-      isInstalling.value = false;
-    }
   }
 
   // Set the current server for the rest of the app

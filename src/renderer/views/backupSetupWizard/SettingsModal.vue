@@ -189,7 +189,8 @@
 <script setup lang="ts">
 import { ref, reactive, computed, watch, nextTick } from 'vue';
 import { reportSuccess } from '@45drives/houston-common-ui';
-import { useSettings, type AppSettings, type SavedServer } from '../../composables/useSettings';
+import { useSettings, type AppSettings } from '../../composables/useSettings';
+import { useServers, type StoredServer } from '../../composables/useServers';
 import { useOnboarding } from '../../composables/useOnboarding';
 import {
     XMarkIcon, TrashIcon, PencilIcon,
@@ -208,7 +209,8 @@ const emit = defineEmits<{
     serversChanged: [];
 }>();
 
-const { settings, load, save, reset, listServers, setServerName, setServerFavorite, removeServer } = useSettings();
+const { settings, load, save, reset } = useSettings();
+const { savedServers: servers, displayServers, refresh: refreshServerList, setFavorite, updateServer, removeServer: removeServerEntry } = useServers();
 const { onboarding, resetAll: resetOnboarding } = useOnboarding();
 
 const allOnboardingDone = computed(() =>
@@ -307,27 +309,20 @@ const dirty = computed(() => {
 
 // ── Server list state ────────────────────────────────────────────────────
 
-const servers = ref<SavedServer[]>([]);
 const editingServerId = ref<string | null>(null);
 const editingName = ref('');
 const nameInputRef = ref<HTMLInputElement[] | null>(null);
 
 async function loadServers() {
-    servers.value = await listServers();
-    // Sort: favorites first, then by last used
-    servers.value.sort((a, b) =>
-        (b.favorite ? 1 : 0) - (a.favorite ? 1 : 0) ||
-        (b.lastUsedAt || 0) - (a.lastUsedAt || 0)
-    );
+    await refreshServerList();
 }
 
-async function toggleFavorite(srv: SavedServer) {
-    await setServerFavorite(srv.id, !srv.favorite);
-    await loadServers();
+async function toggleFavorite(srv: StoredServer) {
+    await setFavorite(srv.id, !srv.favorite);
     emit('serversChanged');
 }
 
-function startEditingName(srv: SavedServer) {
+function startEditingName(srv: StoredServer) {
     editingServerId.value = srv.id;
     editingName.value = srv.name || '';
     nextTick(() => {
@@ -335,20 +330,18 @@ function startEditingName(srv: SavedServer) {
     });
 }
 
-async function saveServerName(srv: SavedServer) {
-    await setServerName(srv.id, editingName.value.trim());
+async function saveServerName(srv: StoredServer) {
+    await updateServer(srv.id, { name: editingName.value.trim() });
     editingServerId.value = null;
-    await loadServers();
     emit('serversChanged');
 }
 
-async function confirmRemoveServer(srv: SavedServer) {
+async function confirmRemoveServer(srv: StoredServer) {
     const ok = window.confirm(
         `Remove saved credentials for ${srv.name || srv.host} (${srv.username})?\n\nYou'll need to log in again next time.`
     );
     if (!ok) return;
-    await removeServer(srv.id);
-    await loadServers();
+    await removeServerEntry(srv.id);
     emit('serversChanged');
 }
 

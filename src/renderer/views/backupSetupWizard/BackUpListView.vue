@@ -97,6 +97,9 @@
             <th class="px-3 py-2 relative table-header-cell" :style="{ width: colWidths[8] + 'px' }">
               Next Run
             </th>
+            <th class="px-3 py-2 relative table-header-cell" :style="{ width: colWidths[9] + 'px' }">
+              Enabled
+            </th>
           </tr>
         </thead>
         <tbody>
@@ -124,6 +127,15 @@
               :title="formatDateTime(getNextBackupDate(task.schedule.startDate, task.schedule.repeatFrequency))">
               {{ formatRelativeTime(getNextBackupDate(task.schedule.startDate, task.schedule.repeatFrequency)) }}
             </td>
+            <td class="px-3 py-1.5" @click.stop>
+              <button @click="toggleTaskDisabled(task)"
+                class="relative inline-flex h-5 w-9 items-center rounded-full transition-colors"
+                :class="task.disabled ? 'bg-neutral-300 dark:bg-neutral-600' : 'bg-green-500'"
+                :title="task.disabled ? 'Enable this task' : 'Disable this task'">
+                <span class="inline-block h-3.5 w-3.5 rounded-full bg-white transition-transform"
+                  :class="task.disabled ? 'translate-x-1' : 'translate-x-[1.125rem]'" />
+              </button>
+            </td>
           </tr>
         </tbody>
       </table>
@@ -136,6 +148,9 @@
         </template>
         <template v-if="backUpTasks.filter(t => taskStatus(t) === 'failed').length > 0">
           · <span class="text-red-500">{{ backUpTasks.filter(t => taskStatus(t) === 'failed').length }} failed</span>
+        </template>
+        <template v-if="backUpTasks.filter(t => t.disabled).length > 0">
+          · <span class="text-neutral-400">{{ backUpTasks.filter(t => t.disabled).length }} disabled</span>
         </template>
       </div>
     </div>
@@ -322,7 +337,7 @@ let resolveCalendarPromise: ((value: boolean) => void) | null = null;
 
 // --- Resizable columns ---
 const tableRef = ref<HTMLTableElement | null>(null);
-const colWidths = ref<number[]>([40, 140, 100, 160, 160, 90, 100, 150, 150]);
+const colWidths = ref<number[]>([40, 140, 100, 160, 160, 90, 100, 150, 150, 70]);
 let resizingCol = -1;
 let resizeStartX = 0;
 let resizeStartW = 0;
@@ -367,7 +382,8 @@ function toggleSelectAll() {
 function rowClass(task: BackUpTask) {
   return [
     'border-b border-neutral-100 dark:border-neutral-700/50 cursor-pointer select-none transition-colors',
-    isSelected(task) ? 'bg-slate-600/5 dark:bg-slate-400/5 border-l-2 border-l-slate-600 dark:border-l-slate-400' : 'border-l-2 border-l-transparent bg-default hover:bg-neutral-50 dark:hover:bg-neutral-700/30'
+    isSelected(task) ? 'bg-slate-600/5 dark:bg-slate-400/5 border-l-2 border-l-slate-600 dark:border-l-slate-400' : 'border-l-2 border-l-transparent bg-default hover:bg-neutral-50 dark:hover:bg-neutral-700/30',
+    task.disabled ? 'opacity-50' : '',
   ];
 }
 
@@ -468,7 +484,8 @@ const eventRunningUuids = ref<string[]>([]);
 // Track last known event status per UUID
 const lastEventStatus = ref<Record<string, string>>({});
 
-function taskStatus(task: BackUpTask): 'running' | 'failed' | 'online' | 'offline' | 'idle' {
+function taskStatus(task: BackUpTask): 'running' | 'failed' | 'online' | 'offline' | 'idle' | 'disabled' {
+  if (task.disabled) return 'disabled';
   // Check if currently running (from props OR event log detection)
   if (props.runningTaskIds.includes(task.uuid) || eventRunningUuids.value.includes(task.uuid)) {
     return 'running';
@@ -488,6 +505,7 @@ function taskStatusLabel(task: BackUpTask): string {
     case 'failed': return 'Failed';
     case 'online': return 'Online';
     case 'offline': return 'Offline';
+    case 'disabled': return 'Disabled';
     default: return 'Idle';
   }
 }
@@ -498,6 +516,7 @@ function taskStatusClass(task: BackUpTask): string {
     case 'failed': return 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300';
     case 'online': return 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300';
     case 'offline': return 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300';
+    case 'disabled': return 'bg-neutral-100 text-neutral-400 dark:bg-neutral-800 dark:text-neutral-500';
     default: return 'bg-neutral-100 text-neutral-500 dark:bg-neutral-800 dark:text-neutral-400';
   }
 }
@@ -508,6 +527,7 @@ function taskStatusDotClass(task: BackUpTask): string {
     case 'failed': return 'bg-red-500';
     case 'online': return 'bg-green-500';
     case 'offline': return 'bg-yellow-500';
+    case 'disabled': return 'bg-neutral-400';
     default: return 'bg-neutral-400';
   }
 }
@@ -623,6 +643,16 @@ function runSelectedNow() {
   selectedBackUps.value.forEach(task => {
     IPCRouter.getInstance().send('backend', 'action', JSON.stringify({ type: 'runBackUpTaskNow', task }));
   });
+}
+
+function toggleTaskDisabled(task: BackUpTask) {
+  const newDisabled = !task.disabled;
+  task.disabled = newDisabled;
+  IPCRouter.getInstance().send('backend', 'action', JSON.stringify({
+    type: 'toggleBackUpTaskDisabled',
+    task,
+    disabled: newDisabled,
+  }));
 }
 
 function cancelSelected() {

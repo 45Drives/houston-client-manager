@@ -157,7 +157,7 @@
             <!-- Scheduler webview (default remote view) -->
             <CockpitWebview v-else-if="currentServer && remoteView === 'backups'" :key="currentServer.ip" ref="cockpitRef"
                 routePath="/scheduler-test" hash="simple" wrapperClass="h-full overflow-hidden"
-                heightClass="h-full" :openDevtoolsInDev="true" />
+                heightClass="h-full" :openDevtoolsInDev="true" :requireAdmin="false" />
 
             <!-- Scheduler mockup shown during the remote tour when not connected -->
             <div v-else-if="showRemoteTour" class="relative h-full" data-tour="scheduler-preview">
@@ -319,22 +319,25 @@ const discoveryState = inject<DiscoveryState>(discoveryStateInjectionKey)!
 const selectedIp = ref<string>('')
 const serversForDropdown = computed(() => {
     const fmt = settings.value?.serverDisplayFormat ?? 'both';
-    return discoveryState.servers
-        .filter(s => s.setupComplete === true)
+    // Use unified list: stored servers + discovered-only servers
+    // Exclude favorites (they have their own optgroup)
+    const favHosts = new Set(savedServers.value.filter(s => s.favorite).map(s => s.host));
+    return unifiedServers.value
+        .filter(s => !favHosts.has(s.host))
         .map(s => {
-            const hasName = s.name && s.name !== s.ip;
+            const hasName = s.name && s.name !== s.host;
             let label: string;
-            if (fmt === 'ip') label = s.ip;
-            else if (fmt === 'hostname' && hasName) label = s.name;
-            else label = hasName ? `${s.name} (${s.ip})` : s.ip;
-            return { ip: s.ip, label };
+            if (fmt === 'ip') label = s.host;
+            else if (fmt === 'hostname' && hasName) label = s.name!;
+            else label = hasName ? `${s.name} (${s.host})` : s.host;
+            return { ip: s.host, label };
         });
 })
 
 const cockpitRef = ref<InstanceType<typeof CockpitWebview> | null>(null);
 
-type SavedServer = { id: string; host: string; name?: string; username: string; favorite?: boolean; lastUsedAt?: number };
-const savedServers = ref<SavedServer[]>([]);
+import { useServers, type StoredServer } from '../../composables/useServers';
+const { servers: unifiedServers, savedServers, refresh: refreshUnifiedServers } = useServers();
 const activeCredId = ref<string | null>(null);
 
 const loginOpen = ref(false);
@@ -363,7 +366,7 @@ const favoriteServers = computed(() => {
 });
 
 async function loadSavedServers() {
-    savedServers.value = await window.electron?.ipcRenderer.invoke('cred:list-servers') ?? [];
+    await refreshUnifiedServers();
 }
 onMounted(async () => {
     await loadSavedServers();
@@ -397,11 +400,14 @@ async function onLoginSubmit({ username, password, remember }:
     { username: string; password: string; remember: boolean }) {
     const ip = selectedIp.value!;
     if (remember) {
-        const res = await window.electron?.ipcRenderer.invoke('cred:save', {
-            host: ip, username, password, favorite: true,
+        // Determine share name from discovery if available
+        const disc = discoveryState.servers.find(s => s.ip === ip);
+        const shareName = disc?.shareName || '';
+        const res = await window.electron?.ipcRenderer.invoke('servers:add', {
+            host: ip, shareName, username, password, favorite: true,
         });
         activeCredId.value = res?.id ?? null;
-        await loadSavedServers();
+        await refreshUnifiedServers();
     }
     // For the remote tab, send creds to webview for cockpit login
     if (activeTab.value === 'remote') {
@@ -414,12 +420,12 @@ async function onLoginSubmit({ username, password, remember }:
     if (srv) currentServer!.value = srv;
     prefillUsername.value = null;
     loginOpen.value = false;
-    if (activeCredId.value) window.electron?.ipcRenderer.invoke('cred:touch', activeCredId.value);
+    if (activeCredId.value) window.electron?.ipcRenderer.invoke('servers:touch', activeCredId.value);
 }
 
 async function forgetActive() {
     if (!activeCredId.value) return;
-    await window.electron?.ipcRenderer.invoke('cred:remove', activeCredId.value);
+    await window.electron?.ipcRenderer.invoke('servers:remove', activeCredId.value);
     activeCredId.value = null;
     await loadSavedServers();
     cockpitRef.value?.logoutFromCurrentServer();
@@ -469,7 +475,9 @@ watch(selectedIp, async (ip) => {
 });
 
 watch(serversForDropdown, (list) => {
-    if (!list.length || (selectedIp.value && !list.some(x => x.ip === selectedIp.value))) {
+    // Check both dropdown lists (favorites + main)
+    const allIps = [...list.map(x => x.ip), ...favoriteServers.value.map(x => x.ip)]
+    if (!allIps.length || (selectedIp.value && !allIps.includes(selectedIp.value))) {
         selectedIp.value = ''
         if (currentServer) currentServer.value = null
     }
@@ -536,6 +544,7 @@ function viewSelectedLog() {
     const tasks = selectedBackUpTasks.value.map(t => ({
         uuid: t.uuid,
         description: t.description || t.target || t.uuid,
+        serverIp: t.host,
     }));
     openLogModal(tasks);
 }

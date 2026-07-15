@@ -308,6 +308,11 @@ watch(logModalOpen, async (open) => {
   if (logTaskContext.value) {
     activeTab.value = 'task'
     fetchTaskLog()
+    // Pre-select the server associated with the task (if any)
+    const taskServerIp = logTaskContext.value.serverIp
+    if (taskServerIp && serverOptions.value.some(s => s.ip === taskServerIp)) {
+      serverIp.value = taskServerIp
+    }
     // Also preload client logs
     fetchClientLogs()
   } else {
