@@ -95,8 +95,13 @@
                                     ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
                                     : credStatus(cred) === 'orphaned'
                                         ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
-                                        : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'">
-                                {{ credStatus(cred) === 'active' ? 'Active' : credStatus(cred) === 'orphaned' ? 'Orphaned' : 'Stale' }}
+                                        : credStatus(cred) === 'hostname-changed'
+                                            ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400'
+                                            : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'">
+                                {{ credStatus(cred) === 'active' ? 'Active'
+                                    : credStatus(cred) === 'orphaned' ? 'Orphaned'
+                                    : credStatus(cred) === 'hostname-changed' ? 'Hostname Changed'
+                                    : 'Stale' }}
                             </span>
 
                             <!-- Info -->
@@ -194,11 +199,11 @@
 
         <!-- Edit credential modal -->
         <Teleport to="body">
-            <div v-if="editTarget" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40" @click.self="editTarget = null">
+            <div v-if="editTarget" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40" @mousedown.self="editTarget = null">
                 <div class="bg-white dark:bg-neutral-800 rounded-lg border border-neutral-200 dark:border-neutral-700 shadow-xl max-w-md w-full mx-4 p-5 space-y-4">
-                    <h3 class="text-sm font-semibold text-default">Edit Credential</h3>
+                    <h3 class="text-sm font-semibold text-default">Edit Server</h3>
                     <p class="text-xs text-gray-400">
-                        Update the saved login for <strong>{{ editTarget.username }}@{{ editTarget.host }}</strong>
+                        Update server details for <strong>{{ editTarget.name || editTarget.host }}</strong>
                     </p>
                     <div class="space-y-3">
                         <div>
@@ -206,30 +211,66 @@
                             <input v-model="editForm.name" type="text" placeholder="e.g. NAS Backups"
                                 class="w-full px-3 py-1.5 text-sm rounded-lg bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 text-default placeholder:text-gray-400 outline-none focus:border-blue-400" />
                         </div>
-                        <div>
-                            <label class="text-xs font-medium text-gray-500 mb-1 block">Host / IP</label>
-                            <input v-model="editForm.host" type="text" placeholder="192.168.2.100"
-                                class="w-full px-3 py-1.5 text-sm rounded-lg bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 text-default placeholder:text-gray-400 outline-none focus:border-blue-400" />
+                        <div class="grid grid-cols-2 gap-2">
+                            <div>
+                                <label class="text-xs font-medium text-gray-500 mb-1 block">Hostname</label>
+                                <input v-model="editForm.hostname" type="text" placeholder="server.local"
+                                    class="w-full px-3 py-1.5 text-sm rounded-lg bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 text-default placeholder:text-gray-400 outline-none focus:border-blue-400" />
+                            </div>
+                            <div>
+                                <label class="text-xs font-medium text-gray-500 mb-1 block">IP Address</label>
+                                <input v-model="editForm.ip" type="text" placeholder="192.168.2.100"
+                                    class="w-full px-3 py-1.5 text-sm rounded-lg bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 text-default placeholder:text-gray-400 outline-none focus:border-blue-400" />
+                            </div>
                         </div>
-                        <div>
-                            <label class="text-xs font-medium text-gray-500 mb-1 block">Samba Share Name</label>
-                            <input v-model="editForm.share" type="text" placeholder="backups"
-                                class="w-full px-3 py-1.5 text-sm rounded-lg bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 text-default placeholder:text-gray-400 outline-none focus:border-blue-400" />
+
+                        <!-- Admin Login -->
+                        <div class="pt-2 border-t border-neutral-100 dark:border-neutral-700/50">
+                            <span class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Admin Login</span>
                         </div>
-                        <div>
-                            <label class="text-xs font-medium text-gray-500 mb-1 block">Username</label>
-                            <input v-model="editForm.username" type="text" placeholder="root"
-                                class="w-full px-3 py-1.5 text-sm rounded-lg bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 text-default placeholder:text-gray-400 outline-none focus:border-blue-400" />
+                        <div class="grid grid-cols-2 gap-2">
+                            <div>
+                                <label class="text-xs font-medium text-gray-500 mb-1 block">Username</label>
+                                <input v-model="editForm.username" type="text" placeholder="root"
+                                    class="w-full px-3 py-1.5 text-sm rounded-lg bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 text-default placeholder:text-gray-400 outline-none focus:border-blue-400" />
+                            </div>
+                            <div class="relative">
+                                <label class="text-xs font-medium text-gray-500 mb-1 block">Password</label>
+                                <input v-model="editForm.password" :type="editShowPassword ? 'text' : 'password'" placeholder="••••••••"
+                                    class="w-full px-3 py-1.5 pr-9 text-sm rounded-lg bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 text-default placeholder:text-gray-400 outline-none focus:border-blue-400" />
+                                <button type="button" @click="editShowPassword = !editShowPassword"
+                                    class="absolute right-2.5 bottom-1.5 text-gray-400 hover:text-default">
+                                    <EyeIcon v-if="!editShowPassword" class="w-4 h-4" />
+                                    <EyeSlashIcon v-if="editShowPassword" class="w-4 h-4" />
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- SMB / Samba -->
+                        <div class="pt-2 border-t border-neutral-100 dark:border-neutral-700/50">
+                            <span class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Samba Share</span>
+                        </div>
+                        <div class="grid grid-cols-2 gap-2">
+                            <div>
+                                <label class="text-xs font-medium text-gray-500 mb-1 block">Share Name</label>
+                                <input v-model="editForm.share" type="text" placeholder="storage"
+                                    class="w-full px-3 py-1.5 text-sm rounded-lg bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 text-default placeholder:text-gray-400 outline-none focus:border-blue-400" />
+                            </div>
+                            <div>
+                                <label class="text-xs font-medium text-gray-500 mb-1 block">SMB Username</label>
+                                <input v-model="editForm.smbUser" type="text" placeholder="backupuser"
+                                    class="w-full px-3 py-1.5 text-sm rounded-lg bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 text-default placeholder:text-gray-400 outline-none focus:border-blue-400" />
+                            </div>
                         </div>
                         <div class="relative">
-                            <label class="text-xs font-medium text-gray-500 mb-1 block">Password <span class="text-gray-400">(leave blank to keep current)</span></label>
-                            <input v-model="editForm.password" :type="editShowPassword ? 'text' : 'password'" placeholder="••••••••"
+                            <label class="text-xs font-medium text-gray-500 mb-1 block">SMB Password</label>
+                            <input v-model="editForm.smbPass" :type="editShowSmbPassword ? 'text' : 'password'" placeholder="••••••••"
                                 class="w-full px-3 py-1.5 pr-9 text-sm rounded-lg bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 text-default placeholder:text-gray-400 outline-none focus:border-blue-400"
                                 @keyup.enter="executeEdit" />
-                            <button type="button" @click="editShowPassword = !editShowPassword"
+                            <button type="button" @click="editShowSmbPassword = !editShowSmbPassword"
                                 class="absolute right-2.5 bottom-1.5 text-gray-400 hover:text-default">
-                                <EyeIcon v-if="!editShowPassword" class="w-4 h-4" />
-                                <EyeSlashIcon v-if="editShowPassword" class="w-4 h-4" />
+                                <EyeIcon v-if="!editShowSmbPassword" class="w-4 h-4" />
+                                <EyeSlashIcon v-if="editShowSmbPassword" class="w-4 h-4" />
                             </button>
                         </div>
                     </div>
@@ -283,8 +324,9 @@ const statusFilter = ref<'all' | 'active' | 'stale' | 'orphaned'>('all')
 const deleteTarget = ref<CredEntry | null>(null)
 const showBulkDelete = ref(false)
 const editTarget = ref<CredEntry | null>(null)
-const editForm = ref({ name: '', host: '', share: '', username: '', password: '' })
+const editForm = ref({ name: '', hostname: '', ip: '', share: '', username: '', password: '', smbUser: '', smbPass: '' })
 const editShowPassword = ref(false)
+const editShowSmbPassword = ref(false)
 const editError = ref('')
 const hostReachability = ref<Record<string, boolean | null>>({})
 
@@ -303,9 +345,22 @@ const THIRTY_DAYS = 30 * 24 * 60 * 60 * 1000
 
 const hostCount = computed(() => new Set(allCreds.value.map(c => c.host)).size)
 
-function credStatus(cred: CredEntry): 'active' | 'stale' | 'orphaned' {
+function credStatus(cred: CredEntry): 'active' | 'stale' | 'orphaned' | 'hostname-changed' {
     const isDiscovered = discoveryState.servers.some(s => s.ip === cred.host || s.name === cred.host)
     if (!isDiscovered && discoveryState.servers.length > 0) return 'orphaned'
+
+    // Check if stored hostname no longer matches the discovered server's current name
+    const storedHostname = (cred as any).hostname as string | undefined
+    if (storedHostname && isDiscovered) {
+        const disc = discoveryState.servers.find(s => s.ip === cred.host || s.name === cred.host)
+        if (disc && disc.name && disc.name !== disc.ip) {
+            // Compare stored hostname (strip .local suffix) with discovered name
+            const storedBase = storedHostname.replace(/\.local$/i, '').toLowerCase()
+            const discBase = disc.name.replace(/\.local$/i, '').toLowerCase()
+            if (storedBase !== discBase) return 'hostname-changed'
+        }
+    }
+
     if (!cred.lastUsedAt) return 'stale'
     if (Date.now() - cred.lastUsedAt > THIRTY_DAYS) return 'stale'
     return 'active'
@@ -428,17 +483,21 @@ function editCredential(cred: CredEntry) {
     editTarget.value = cred
     editForm.value = {
         name: cred.name || '',
-        host: cred.host,
+        hostname: (cred as any).hostname || '',
+        ip: (cred as any).ip || '',
         share: cred.shareName || '',
         username: cred.username,
         password: '',
+        smbUser: (cred as any).smbUser || '',
+        smbPass: '',
     }
     editShowPassword.value = false
+    editShowSmbPassword.value = false
     editError.value = ''
 }
 
 const editCanSave = computed(() =>
-    editForm.value.host.trim() && editForm.value.username.trim()
+    (editForm.value.hostname.trim() || editForm.value.ip.trim()) && editForm.value.username.trim()
 )
 
 async function executeEdit() {
@@ -449,10 +508,13 @@ async function executeEdit() {
 
     try {
         await updateServer(old.id, {
-            host: form.host.trim(),
+            hostname: form.hostname.trim(),
+            ip: form.ip.trim(),
             shareName: form.share.trim(),
             username: form.username.trim(),
             password: form.password || undefined,
+            smbUser: form.smbUser.trim(),
+            smbPass: form.smbPass || undefined,
             name: form.name.trim() || undefined,
         })
         editTarget.value = null

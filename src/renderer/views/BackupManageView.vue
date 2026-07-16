@@ -12,7 +12,7 @@
 
     <!-- New Backup Wizard (modal overlay) -->
     <div v-if="showWizard" class="fixed inset-0 z-[5] flex items-center justify-center bg-black/50">
-        <div class="relative bg-well border border-default rounded-xl shadow-2xl w-[56rem] h-[36rem] max-w-[calc(100vw-3rem)] max-h-[calc(100vh-4rem)] flex flex-col overflow-hidden">
+        <div class="relative bg-well border border-default rounded-xl shadow-2xl w-[56rem] h-[40rem] max-w-[calc(100vw-3rem)] max-h-[calc(100vh-4rem)] flex flex-col overflow-hidden">
             <!-- Close button -->
             <button class="absolute top-3 right-3 z-10 w-8 h-8 p-0 rounded-md bg-transparent inline-flex items-center justify-center text-gray-400 hover:text-default hover:bg-neutral-100 dark:hover:bg-neutral-700 transition-colors"
                 @click="closeWizard">

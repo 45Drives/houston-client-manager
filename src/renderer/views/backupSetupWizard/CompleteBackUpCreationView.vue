@@ -1,42 +1,42 @@
 <template>
   <CardContainer class="overflow-y-auto min-h-0">
 
-    <div class="flex flex-col items-center justify-center text-center w-full h-full py-2">
-      <!-- Complete Section -->
-      <div class="complete-section flex flex-col items-center justify-center text-center">
+    <div class="flex flex-col items-center w-full h-full px-6 py-4 overflow-y-auto">
 
-        <div class="flex flex-col space-y-4 mt-[2rem]">
-          <div class="overflow-y-auto max-h-[40vh] p-2 space-y-4">
-            <div v-for="completedStep in completedSteps" class="w-full max-w-xl text-left">
-              <div class="smallcheckmark ">Done - {{ completedStep.message }}</div>
-            </div>
-          </div>
+      <!-- Progress Steps -->
+      <div v-if="completedSteps.length" class="w-full max-w-lg mb-4 space-y-1">
+        <div v-for="completedStep in completedSteps" :key="completedStep.message" class="text-left">
+          <div class="smallcheckmark">Done - {{ completedStep.message }}</div>
         </div>
-        
-        <div v-if="error" class="text-red-500">
-          {{ error }}
-        </div>
+      </div>
 
-        <div v-if="setupComplete === 'yes' && !error"
-          class="flex flex-col items-center mt-1 px-4 py-4 max-w-6xl">
-          <div class="checkmark text-3xl mb-3">Complete - DONE!</div>
-          <p class="text-2xl mb-2 text-center">
-            Your Backup Plan is Now Active.
-          </p>
-          <p class="text-lg mb-2 text-center leading-relaxed">
+      <!-- Error -->
+      <div v-if="error" class="text-red-500 mb-4">
+        {{ error }}
+      </div>
+
+      <!-- Success Content -->
+      <div v-if="setupComplete === 'yes' && !error"
+        class="flex flex-col items-center flex-1 justify-center max-w-xl text-center">
+        <div class="checkmark text-3xl mb-2">Complete - DONE!</div>
+        <p class="text-xl font-semibold mb-4">
+          Your Backup Plan is Now Active.
+        </p>
+        <div class="space-y-3 text-base leading-relaxed text-muted">
+          <p>
             All backup tasks have been successfully configured. Your data will now be protected automatically through
             scheduled backups.
           </p>
-          <p class="text-lg mb-2 text-center leading-relaxed">
-            You can now monitor and manage your backups through the <strong>Backup Manager</strong>, or configure
+          <p>
+            You can now monitor and manage your backups through the <strong class="text-default">Backup Manager</strong>, or configure
             additional storage servers as needed.
           </p>
-          <p class="text-lg mb-2 text-center leading-relaxed">
+          <p>
             Backups require this computer and the backup server to be powered on at scheduled times.
           </p>
         </div>
-
       </div>
+
     </div>
 
     <!-- Go to Home Button (visible once complete) -->
@@ -171,37 +171,6 @@ useEnterToAdvance(
 </script>
 
 <style scoped>
-.setup-container {
-  max-width: 600px;
-  margin: 0 auto;
-  text-align: center;
-}
-
-/* Step Progress */
-.steps {
-  margin-top: 2rem;
-}
-
-.progress {
-  width: 100%;
-  @apply bg-accent;
-  border-radius: 4px;
-  overflow: hidden;
-  height: 20px;
-  margin: 1rem 0;
-}
-
-.progress-bar {
-  height: 100%;
-  background: var(--btn-success-bg, #22C55E);
-  transition: width 0.4s ease;
-}
-
-/* Complete Section */
-.complete-section {
-  border-radius: 1rem;
-}
-
 .checkmark {
   font-size: 3rem;
   color: var(--btn-success-bg, #22C55E);
@@ -210,43 +179,5 @@ useEnterToAdvance(
 
 .smallcheckmark {
   color: var(--btn-success-bg, #22C55E);
-}
-
-/* Network Storage Section */
-.network-section {
-  margin-top: 2rem;
-  text-align: left;
-  @apply border-t border-default;
-  padding-top: 1rem;
-}
-
-/* Automatic Install Subsection */
-.auto-install {
-  margin-bottom: 1.5rem;
-}
-
-.auto-install h3 {
-  margin-bottom: 0.5rem;
-}
-
-/* Manual Options */
-.manual-options {
-  margin-bottom: 1.5rem;
-}
-
-.manual-buttons button {
-  margin: 0.2rem;
-}
-
-/* Home Button */
-.home-button {
-  margin-top: 1rem;
-}
-
-/* Small info text */
-.small-info {
-  font-size: 0.9rem;
-  @apply text-muted;
-  margin-top: 0.5rem;
 }
 </style>

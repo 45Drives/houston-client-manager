@@ -1,11 +1,11 @@
 /**
- * CredentialManager — Multi-server, multi-user encrypted credential storage
+ * CredentialManager v3 — Flat server record model
  *
- * Architecture:
- *   - Single JSON vault file per OS user, encrypted at rest via Electron safeStorage
- *   - Credentials keyed by composite key: `${host}\0${share}\0${username}`
- *   - Each credential entry stores: username, encrypted password, metadata
- *   - Passwords NEVER appear in logs, IPC serialization, or process arguments
+ * One record per server. Each record holds:
+ *   - Server identity (hostname + IP, synced from discovery)
+ *   - Admin/cockpit login credentials (loginUser + loginPass)
+ *   - SMB credentials for local backups (smbShare + smbUser + smbPass)
+ *   - Metadata (displayName, favorite, source, setupComplete, etc.)
  *
  * Storage locations (per-platform):
  *   Linux:   ~/.config/houston-client-manager/credentials.vault
@@ -13,29 +13,29 @@
  *   Windows: %APPDATA%/houston-client-manager/credentials.vault
  *
  * Encryption:
- *   - Electron safeStorage encrypts each password individually before storage
- *   - safeStorage uses OS-native keychain/credential-store:
- *       Linux:   libsecret (GNOME Keyring / KWallet)
- *       macOS:   Keychain Services
- *       Windows: DPAPI (Data Protection API)
- *   - The vault file itself is not useful without the logged-in OS user session
+ *   Electron safeStorage encrypts each password individually before storage.
+ *   Uses OS-native keychain/credential-store (libsecret / Keychain / DPAPI).
+ *   Passwords NEVER appear in logs, IPC serialization, or process arguments.
  *
- * Backward compatibility:
- *   - importLegacyCredentials() migrates existing plaintext .cred files
- *   - Platform-specific export methods generate the runtime credential files
- *     that cron/Task Scheduler scripts need (fstab entries, .cred files, Keychain)
- *
- * Schema (vault JSON after decryption of individual passwords):
+ * Schema (vault JSON):
  *   {
- *     "version": 1,
- *     "credentials": {
- *       "fileserver.local\0backups\0alice": {
- *         "host": "fileserver.local",
- *         "share": "backups",
- *         "username": "alice",
- *         "encryptedPassword": "<base64 safeStorage blob>",
- *         "createdAt": "2026-03-13T...",
- *         "updatedAt": "2026-03-13T..."
+ *     "version": 3,
+ *     "servers": {
+ *       "<uuid>": {
+ *         "id": "<uuid>",
+ *         "hostname": "f8x1.local",
+ *         "ip": "192.168.207.49",
+ *         "displayName": "f8x1",
+ *         "loginUser": "root",
+ *         "loginPass": "<base64 safeStorage>",
+ *         "smbShare": "storage",
+ *         "smbUser": "jimmy",
+ *         "smbPass": "<base64 safeStorage>",
+ *         "source": "wizard",
+ *         "setupComplete": true,
+ *         "favorite": true,
+ *         "lastUsedAt": 1720000000000,
+ *         "createdAt": "...", "updatedAt": "..."
  *       }
  *     }
  *   }
@@ -46,33 +46,54 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import { execFileSync, execSync } from 'child_process';
+import { randomUUID } from 'crypto';
 import { assertSafeHost, assertSafeShare, assertSafeUsername, shellQuote, toBase64 } from './security';
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
-export interface CredentialEntry {
-  host: string;
-  share: string;
-  username: string;
-  /** Base64-encoded safeStorage-encrypted password blob */
-  encryptedPassword: string;
+export type ServerSource = 'discovered' | 'manual' | 'wizard';
+
+export interface ServerRecord {
+  id: string;
+  hostname: string;       // mDNS/DNS name, can be ""
+  ip: string;             // IP address, can be ""
+  displayName: string;    // User-facing name
+  // Admin/cockpit login
+  loginUser: string;
+  loginPass: string;      // Encrypted (safeStorage base64 blob)
+  // SMB for local backups
+  smbShare: string;       // Share name (e.g. "storage")
+  smbUser: string;        // SMB username (may differ from loginUser)
+  smbPass: string;        // Encrypted (safeStorage base64 blob)
+  // Metadata
+  source: ServerSource;
+  setupComplete: boolean;
+  favorite: boolean;
+  lastUsedAt: number;
   createdAt: string;
   updatedAt: string;
-  /** User-assigned display name for this server */
-  name?: string;
-  /** Whether the user pinned this as a favorite */
-  favorite?: boolean;
-  /** Epoch ms of last time this credential was actively used */
-  lastUsedAt?: number;
 }
 
-export interface CredentialVault {
-  version: number;
-  credentials: Record<string, CredentialEntry>;
+/** What the renderer/IPC sees (no passwords) */
+export interface ServerInfo {
+  id: string;
+  hostname: string;
+  ip: string;
+  displayName: string;
+  loginUser: string;
+  smbShare: string;
+  smbUser: string;
+  source: ServerSource;
+  setupComplete: boolean;
+  favorite: boolean;
+  lastUsedAt: number;
+  createdAt: string;
+  updatedAt: string;
 }
 
+/** Plaintext credential for retrieve()/findByHostAndShare() compat */
 export interface PlaintextCredential {
   host: string;
   share: string;
@@ -80,34 +101,95 @@ export interface PlaintextCredential {
   password: string;
 }
 
+/** Legacy v1 credential entry (for migration) */
+interface LegacyCredentialEntry {
+  host: string;
+  share: string;
+  username: string;
+  encryptedPassword: string;
+  createdAt: string;
+  updatedAt: string;
+  name?: string;
+  favorite?: boolean;
+  lastUsedAt?: number;
+}
+
+interface LegacyVault {
+  version: 1;
+  credentials: Record<string, LegacyCredentialEntry>;
+}
+
+/** v2 SMB credential entry (for migration from v2) */
+interface V2SmbCredentialEntry {
+  host: string;
+  share: string;
+  username: string;
+  encryptedPassword: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface V2Vault {
+  version: 2;
+  servers: Record<string, {
+    id: string;
+    hostname: string;
+    ip: string;
+    displayName: string;
+    loginUser: string;
+    loginPass: string;
+    smbShare: string;
+    source: ServerSource;
+    setupComplete: boolean;
+    favorite: boolean;
+    lastUsedAt: number;
+    createdAt: string;
+    updatedAt: string;
+  }>;
+  credentials: Record<string, V2SmbCredentialEntry>;
+}
+
+export interface CredentialVault {
+  version: number;
+  servers: Record<string, ServerRecord>;
+}
+
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
 const VAULT_FILENAME = 'credentials.vault';
-const VAULT_VERSION = 1;
-const KEY_SEPARATOR = '\0';
+const VAULT_VERSION = 3;
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-function makeKey(host: string, share: string, username: string): string {
-  return [host.toLowerCase(), share.toLowerCase(), username.toLowerCase()].join(KEY_SEPARATOR);
-}
 
 function vaultPath(): string {
   return path.join(app.getPath('userData'), VAULT_FILENAME);
 }
 
 function encryptPassword(plaintext: string): string {
+  if (!plaintext) return '';
   const buf = safeStorage.encryptString(plaintext);
   return buf.toString('base64');
 }
 
 function decryptPassword(base64Blob: string): string {
+  if (!base64Blob) return '';
   const buf = Buffer.from(base64Blob, 'base64');
   return safeStorage.decryptString(buf);
+}
+
+function isIpAddress(s: string): boolean {
+  return /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(s);
+}
+
+function hostMatches(server: ServerRecord, hostOrIp: string): boolean {
+  const lower = hostOrIp.toLowerCase();
+  if (server.ip && server.ip.toLowerCase() === lower) return true;
+  if (server.hostname && server.hostname.toLowerCase() === lower) return true;
+  return false;
 }
 
 // ---------------------------------------------------------------------------
@@ -129,15 +211,34 @@ export class CredentialManager {
     try {
       if (fs.existsSync(this.filePath)) {
         const raw = fs.readFileSync(this.filePath, 'utf-8');
-        const parsed = JSON.parse(raw) as CredentialVault;
-        if (parsed.version === VAULT_VERSION && parsed.credentials) {
-          return parsed;
+        const parsed = JSON.parse(raw);
+
+        if (parsed.version === VAULT_VERSION && parsed.servers) {
+          return parsed as CredentialVault;
+        }
+
+        // Migrate from v2
+        if (parsed.version === 2 && parsed.servers) {
+          const migrated = this.migrateFromV2(parsed as V2Vault);
+          this.vault = migrated;
+          this.filePath = vaultPath();
+          this.save();
+          return migrated;
+        }
+
+        // Migrate from v1
+        if (parsed.version === 1 && parsed.credentials) {
+          const migrated = this.migrateFromV1(parsed as LegacyVault);
+          this.vault = migrated;
+          this.filePath = vaultPath();
+          this.save();
+          return migrated;
         }
       }
     } catch {
       // corrupt file — start fresh
     }
-    return { version: VAULT_VERSION, credentials: {} };
+    return { version: VAULT_VERSION, servers: {} };
   }
 
   private save(): void {
@@ -146,442 +247,672 @@ export class CredentialManager {
       fs.mkdirSync(dir, { recursive: true });
     }
 
-    // Write atomically: write to temp then rename
     const tmp = this.filePath + '.tmp';
     fs.writeFileSync(tmp, JSON.stringify(this.vault, null, 2), { mode: 0o600 });
     fs.renameSync(tmp, this.filePath);
-
-    // Ensure restrictive permissions on the final file
-    try { fs.chmodSync(this.filePath, 0o600); } catch { /* Windows may not support chmod */ }
+    try { fs.chmodSync(this.filePath, 0o600); } catch { /* Windows */ }
   }
 
-  // ── CRUD ─────────────────────────────────────────────────────────────
+  // ── Migration from v2 ───────────────────────────────────────────────
 
-  /**
-   * Store (or update) a credential. The password is encrypted before storage.
-   */
-  store(host: string, share: string, username: string, password: string): void {
+  private migrateFromV2(v2: V2Vault): CredentialVault {
+    const newVault: CredentialVault = { version: VAULT_VERSION, servers: {} };
+
+    for (const old of Object.values(v2.servers)) {
+      // Find the best SMB credential for this server from the v2 credentials map
+      const serverHosts = [old.hostname, old.ip].filter(Boolean).map(h => h.toLowerCase());
+      let smbUser = '';
+      let smbPass = '';
+      let smbShare = old.smbShare || '';
+
+      // Search credentials map for matching SMB entry
+      for (const cred of Object.values(v2.credentials || {})) {
+        if (!serverHosts.includes(cred.host.toLowerCase())) continue;
+        if (cred.share === '*') continue; // wildcard = login cred, not SMB
+        // Prefer entry whose share matches the server's smbShare
+        if (smbShare && cred.share.toLowerCase() === smbShare.toLowerCase()) {
+          smbUser = cred.username;
+          smbPass = cred.encryptedPassword;
+          break;
+        }
+        // Otherwise take first real share match
+        if (!smbUser) {
+          smbShare = cred.share;
+          smbUser = cred.username;
+          smbPass = cred.encryptedPassword;
+        }
+      }
+
+      newVault.servers[old.id] = {
+        id: old.id,
+        hostname: old.hostname,
+        ip: old.ip,
+        displayName: old.displayName,
+        loginUser: old.loginUser,
+        loginPass: old.loginPass,
+        smbShare,
+        smbUser,
+        smbPass,
+        source: old.source,
+        setupComplete: old.setupComplete,
+        favorite: old.favorite,
+        lastUsedAt: old.lastUsedAt,
+        createdAt: old.createdAt,
+        updatedAt: old.updatedAt,
+      };
+    }
+
+    return newVault;
+  }
+
+  // ── Migration from v1 ───────────────────────────────────────────────
+
+  private migrateFromV1(legacy: LegacyVault): CredentialVault {
+    const entries = Object.values(legacy.credentials);
+    const newVault: CredentialVault = { version: VAULT_VERSION, servers: {} };
+
+    // Group entries by host (case-insensitive)
+    const byHost = new Map<string, LegacyCredentialEntry[]>();
+    for (const e of entries) {
+      const key = e.host.toLowerCase();
+      const list = byHost.get(key) ?? [];
+      list.push(e);
+      byHost.set(key, list);
+    }
+
+    for (const [, group] of byHost) {
+      const sorted = [...group].sort((a, b) => (b.lastUsedAt ?? 0) - (a.lastUsedAt ?? 0));
+      const wildcards = sorted.filter(e => e.share === '*');
+      const realShares = sorted.filter(e => e.share !== '*');
+
+      // Login creds: prefer wildcard entry, else most recent
+      const loginEntry = wildcards[0] ?? sorted[0];
+      // SMB creds: first real share entry
+      const smbEntry = realShares[0];
+
+      const host = loginEntry.host;
+      const id = randomUUID();
+      const now = new Date().toISOString();
+
+      const server: ServerRecord = {
+        id,
+        hostname: isIpAddress(host) ? '' : host,
+        ip: isIpAddress(host) ? host : '',
+        displayName: group.find(e => e.name)?.name || '',
+        loginUser: loginEntry.username,
+        loginPass: loginEntry.encryptedPassword,
+        smbShare: smbEntry?.share || '',
+        smbUser: smbEntry?.username || '',
+        smbPass: smbEntry?.encryptedPassword || '',
+        source: 'manual',
+        setupComplete: false,
+        favorite: group.some(e => e.favorite),
+        lastUsedAt: Math.max(...group.map(e => e.lastUsedAt ?? 0)),
+        createdAt: group.map(e => e.createdAt).filter(Boolean).sort()[0] || now,
+        updatedAt: now,
+      };
+      newVault.servers[id] = server;
+    }
+
+    return newVault;
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // SERVER REGISTRY
+  // ═══════════════════════════════════════════════════════════════════════
+
+  findServer(hostOrIp: string): ServerRecord | null {
+    if (!hostOrIp) return null;
+    for (const s of Object.values(this.vault.servers)) {
+      if (hostMatches(s, hostOrIp)) return s;
+    }
+    return null;
+  }
+
+  getServer(id: string): ServerRecord | null {
+    return this.vault.servers[id] ?? null;
+  }
+
+  listServersInfo(): ServerInfo[] {
+    return Object.values(this.vault.servers).map(s => ({
+      id: s.id,
+      hostname: s.hostname,
+      ip: s.ip,
+      displayName: s.displayName,
+      loginUser: s.loginUser,
+      smbShare: s.smbShare,
+      smbUser: s.smbUser,
+      source: s.source,
+      setupComplete: s.setupComplete,
+      favorite: s.favorite,
+      lastUsedAt: s.lastUsedAt,
+      createdAt: s.createdAt,
+      updatedAt: s.updatedAt,
+    }));
+  }
+
+  addServer(opts: {
+    hostname?: string;
+    ip?: string;
+    displayName?: string;
+    loginUser: string;
+    loginPass: string;
+    smbShare?: string;
+    smbUser?: string;
+    smbPass?: string;
+    source?: ServerSource;
+    setupComplete?: boolean;
+    favorite?: boolean;
+  }): string {
     if (!safeStorage.isEncryptionAvailable()) {
       throw new Error('OS credential encryption is not available. Cannot store credentials securely.');
     }
 
-    const key = makeKey(host, share, username);
+    // Dedup: check if server already exists
+    let existing: ServerRecord | null = null;
+    if (opts.ip) existing = this.findServer(opts.ip);
+    if (!existing && opts.hostname) existing = this.findServer(opts.hostname);
+
+    if (existing) {
+      const changes: Parameters<typeof this.updateServer>[1] = {};
+      if (opts.hostname && !existing.hostname) changes.hostname = opts.hostname;
+      if (opts.ip && !existing.ip) changes.ip = opts.ip;
+      if (opts.displayName !== undefined) changes.displayName = opts.displayName;
+      changes.loginUser = opts.loginUser;
+      changes.loginPass = opts.loginPass;
+      if (opts.smbShare !== undefined) changes.smbShare = opts.smbShare;
+      if (opts.smbUser !== undefined) changes.smbUser = opts.smbUser;
+      if (opts.smbPass !== undefined) changes.smbPass = opts.smbPass;
+      if (opts.source !== undefined) changes.source = opts.source;
+      if (opts.setupComplete !== undefined) changes.setupComplete = opts.setupComplete;
+      if (opts.favorite !== undefined) changes.favorite = opts.favorite;
+      return this.updateServer(existing.id, changes);
+    }
+
     const now = new Date().toISOString();
-    const existing = this.vault.credentials[key];
+    const id = randomUUID();
 
-    this.vault.credentials[key] = {
-      host,
-      share,
-      username,
-      encryptedPassword: encryptPassword(password),
-      createdAt: existing?.createdAt ?? now,
+    this.vault.servers[id] = {
+      id,
+      hostname: opts.hostname || '',
+      ip: opts.ip || '',
+      displayName: opts.displayName || '',
+      loginUser: opts.loginUser,
+      loginPass: encryptPassword(opts.loginPass),
+      smbShare: opts.smbShare || '',
+      smbUser: opts.smbUser || '',
+      smbPass: opts.smbPass ? encryptPassword(opts.smbPass) : '',
+      source: opts.source || 'manual',
+      setupComplete: opts.setupComplete ?? false,
+      favorite: opts.favorite ?? false,
+      lastUsedAt: Date.now(),
+      createdAt: now,
       updatedAt: now,
-      name: existing?.name,
-      favorite: existing?.favorite,
-      lastUsedAt: existing?.lastUsedAt ?? Date.now(),
     };
+    this.save();
+    return id;
+  }
 
+  updateServer(id: string, update: {
+    hostname?: string;
+    ip?: string;
+    displayName?: string;
+    loginUser?: string;
+    loginPass?: string;
+    smbShare?: string;
+    smbUser?: string;
+    smbPass?: string;
+    source?: ServerSource;
+    setupComplete?: boolean;
+    favorite?: boolean;
+  }): string {
+    const s = this.vault.servers[id];
+    if (!s) throw new Error(`Server not found: ${id}`);
+
+    if (update.hostname !== undefined) s.hostname = update.hostname;
+    if (update.ip !== undefined) s.ip = update.ip;
+    if (update.displayName !== undefined) s.displayName = update.displayName;
+    if (update.loginUser !== undefined) s.loginUser = update.loginUser;
+    if (update.loginPass !== undefined) s.loginPass = encryptPassword(update.loginPass);
+    if (update.smbShare !== undefined) s.smbShare = update.smbShare;
+    if (update.smbUser !== undefined) s.smbUser = update.smbUser;
+    if (update.smbPass !== undefined) s.smbPass = encryptPassword(update.smbPass);
+    if (update.source !== undefined) s.source = update.source;
+    if (update.setupComplete !== undefined) s.setupComplete = update.setupComplete;
+    if (update.favorite !== undefined) s.favorite = update.favorite;
+
+    s.lastUsedAt = Date.now();
+    s.updatedAt = new Date().toISOString();
+    this.save();
+    return id;
+  }
+
+  removeServer(id: string): boolean {
+    if (!this.vault.servers[id]) return false;
+    delete this.vault.servers[id];
+    this.save();
+    return true;
+  }
+
+  setFavorite(id: string, fav: boolean): void {
+    const s = this.vault.servers[id];
+    if (s) { s.favorite = fav; this.save(); }
+  }
+
+  setName(id: string, name: string): void {
+    const s = this.vault.servers[id];
+    if (s) { s.displayName = name || ''; this.save(); }
+  }
+
+  setDisplayName(id: string, name: string): void {
+    this.setName(id, name);
+  }
+
+  touch(id: string): void {
+    const s = this.vault.servers[id];
+    if (s) { s.lastUsedAt = Date.now(); this.save(); }
+  }
+
+  /**
+   * Get admin/cockpit login credentials for a server.
+   */
+  getLoginCredentials(hostOrIp: string): { id: string; username: string; password: string } | null {
+    const s = this.findServer(hostOrIp);
+    if (!s || !s.loginUser) return null;
+    return { id: s.id, username: s.loginUser, password: decryptPassword(s.loginPass) };
+  }
+
+  /**
+   * Get SMB credentials for a server (for local backup mounts).
+   */
+  getSmbCredentials(hostOrIp: string): { id: string; share: string; username: string; password: string } | null {
+    const s = this.findServer(hostOrIp);
+    if (!s || !s.smbUser || !s.smbPass) return null;
+    return { id: s.id, share: s.smbShare, username: s.smbUser, password: decryptPassword(s.smbPass) };
+  }
+
+  // ── Discovery sync ──────────────────────────────────────────────────
+
+  syncDiscovery(hostname: string, ip: string, opts?: { shareName?: string; setupComplete?: boolean }): void {
+    const byHostname = hostname ? this.findServer(hostname) : null;
+    const byIp = ip ? this.findServer(ip) : null;
+
+    if (byHostname && byIp && byHostname.id !== byIp.id) {
+      // Two records for same machine — merge them
+      this.mergeServers(byHostname.id, byIp.id);
+      const merged = this.vault.servers[byHostname.id];
+      if (merged) {
+        if (!merged.hostname) merged.hostname = hostname;
+        if (!merged.ip) merged.ip = ip;
+        if (opts?.shareName && !merged.smbShare) merged.smbShare = opts.shareName;
+        if (opts?.setupComplete !== undefined) merged.setupComplete = opts.setupComplete;
+        merged.updatedAt = new Date().toISOString();
+        this.save();
+      }
+    } else if (byHostname) {
+      let changed = false;
+      if (ip && !byHostname.ip) { byHostname.ip = ip; changed = true; }
+      if (opts?.shareName && !byHostname.smbShare) { byHostname.smbShare = opts.shareName; changed = true; }
+      if (opts?.setupComplete !== undefined && byHostname.setupComplete !== opts.setupComplete) {
+        byHostname.setupComplete = opts.setupComplete; changed = true;
+      }
+      if (changed) { byHostname.updatedAt = new Date().toISOString(); this.save(); }
+    } else if (byIp) {
+      let changed = false;
+      if (hostname && !byIp.hostname) { byIp.hostname = hostname; changed = true; }
+      if (opts?.shareName && !byIp.smbShare) { byIp.smbShare = opts.shareName; changed = true; }
+      if (opts?.setupComplete !== undefined && byIp.setupComplete !== opts.setupComplete) {
+        byIp.setupComplete = opts.setupComplete; changed = true;
+      }
+      if (changed) { byIp.updatedAt = new Date().toISOString(); this.save(); }
+    }
+  }
+
+  private mergeServers(keepId: string, mergeId: string): void {
+    const keep = this.vault.servers[keepId];
+    const merge = this.vault.servers[mergeId];
+    if (!keep || !merge) return;
+
+    if (!keep.hostname && merge.hostname) keep.hostname = merge.hostname;
+    if (!keep.ip && merge.ip) keep.ip = merge.ip;
+    if (!keep.displayName && merge.displayName) keep.displayName = merge.displayName;
+    if (!keep.loginUser && merge.loginUser) {
+      keep.loginUser = merge.loginUser;
+      keep.loginPass = merge.loginPass;
+    }
+    if (!keep.smbShare && merge.smbShare) keep.smbShare = merge.smbShare;
+    if (!keep.smbUser && merge.smbUser) {
+      keep.smbUser = merge.smbUser;
+      keep.smbPass = merge.smbPass;
+    }
+    keep.favorite = keep.favorite || merge.favorite;
+    keep.lastUsedAt = Math.max(keep.lastUsedAt, merge.lastUsedAt);
+    if (merge.setupComplete) keep.setupComplete = true;
+
+    delete this.vault.servers[mergeId];
     this.save();
   }
 
+  // ═══════════════════════════════════════════════════════════════════════
+  // CREDENTIAL RESOLUTION — used by backup handlers
+  // ═══════════════════════════════════════════════════════════════════════
+
   /**
-   * Retrieve a credential with decrypted password.
-   * Returns null if not found.
+   * retrieve(host, share, user) — resolve credentials for backup operations.
+   * Returns SMB creds if share matches, otherwise falls back to login creds.
    */
   retrieve(host: string, share: string, username: string): PlaintextCredential | null {
-    const key = makeKey(host, share, username);
-    const entry = this.vault.credentials[key];
-    if (!entry) return null;
+    const server = this.findServer(host);
+    if (!server) return null;
 
-    return {
-      host: entry.host,
-      share: entry.share,
-      username: entry.username,
-      password: decryptPassword(entry.encryptedPassword),
-    };
+    // If asking for SMB creds and we have them
+    if (share && share !== '*' && server.smbUser && server.smbPass) {
+      if (!username || server.smbUser.toLowerCase() === username.toLowerCase()) {
+        const pass = decryptPassword(server.smbPass);
+        if (pass) return { host, share: server.smbShare, username: server.smbUser, password: pass };
+      }
+    }
+
+    // Fall back to login credentials (if username matches or not specified)
+    if (server.loginUser && (!username || server.loginUser.toLowerCase() === username.toLowerCase())) {
+      const pass = decryptPassword(server.loginPass);
+      if (pass) return { host, share, username: server.loginUser, password: pass };
+    }
+
+    return null;
   }
 
   /**
-   * Remove a credential.
-   * Returns true if it existed and was removed.
+   * findByHostAndShare(host, share) — find creds for a host+share combo.
+   * Prefers SMB creds, falls back to login creds.
    */
-  remove(host: string, share: string, username: string): boolean {
-    const key = makeKey(host, share, username);
-    if (!(key in this.vault.credentials)) return false;
-    delete this.vault.credentials[key];
+  findByHostAndShare(host: string, share: string): PlaintextCredential | null {
+    const server = this.findServer(host);
+    if (!server) return null;
+
+    // If the server has SMB creds for this share
+    if (server.smbUser && server.smbPass && (!share || share === '*' || server.smbShare.toLowerCase() === share.toLowerCase())) {
+      const pass = decryptPassword(server.smbPass);
+      if (pass) return { host, share: server.smbShare, username: server.smbUser, password: pass };
+    }
+
+    // Fall back to login creds
+    if (server.loginUser) {
+      const pass = decryptPassword(server.loginPass);
+      if (pass) return { host, share, username: server.loginUser, password: pass };
+    }
+
+    return null;
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // IPC-FACING METHODS
+  // ═══════════════════════════════════════════════════════════════════════
+
+  // ── servers:list ─────────────────────────────────────────────────────
+
+  listAllServers(): {
+    id: string; host: string; shareName: string; username: string;
+    name?: string; favorite?: boolean; lastUsedAt?: number;
+    createdAt?: string; updatedAt?: string;
+    hostname?: string; ip?: string;
+    smbUser?: string;
+    source?: ServerSource; setupComplete?: boolean;
+  }[] {
+    return Object.values(this.vault.servers).map(s => ({
+      id: s.id,
+      host: s.ip || s.hostname,
+      shareName: s.smbShare,
+      username: s.loginUser,
+      name: s.displayName || s.hostname || '',
+      favorite: s.favorite,
+      lastUsedAt: s.lastUsedAt,
+      createdAt: s.createdAt,
+      updatedAt: s.updatedAt,
+      hostname: s.hostname,
+      ip: s.ip,
+      smbUser: s.smbUser,
+      source: s.source,
+      setupComplete: s.setupComplete,
+    }));
+  }
+
+  // ── servers:add ──────────────────────────────────────────────────────
+
+  addServerEntry(
+    host: string,
+    shareName: string,
+    username: string,
+    password: string,
+    opts?: { name?: string; favorite?: boolean; smbUser?: string; smbPass?: string }
+  ): string {
+    const hostname = isIpAddress(host) ? '' : host;
+    const ip = isIpAddress(host) ? host : '';
+
+    return this.addServer({
+      hostname, ip,
+      displayName: opts?.name,
+      loginUser: username,
+      loginPass: password,
+      smbShare: (shareName && shareName !== '*') ? shareName : undefined,
+      smbUser: opts?.smbUser,
+      smbPass: opts?.smbPass,
+      favorite: opts?.favorite,
+    });
+  }
+
+  // ── servers:update ───────────────────────────────────────────────────
+
+  updateServerEntry(
+    id: string,
+    update: {
+      host?: string; hostname?: string; ip?: string;
+      shareName?: string; username?: string; password?: string;
+      smbUser?: string; smbPass?: string;
+      name?: string; favorite?: boolean;
+    }
+  ): string {
+    const server = this.vault.servers[id];
+    if (!server) throw new Error('Server not found: ' + id);
+
+    const changes: Parameters<typeof this.updateServer>[1] = {};
+
+    if (update.hostname !== undefined) changes.hostname = update.hostname;
+    if (update.ip !== undefined) changes.ip = update.ip;
+    if (update.host !== undefined) {
+      if (isIpAddress(update.host)) changes.ip = update.host;
+      else changes.hostname = update.host;
+    }
+    if (update.shareName !== undefined) changes.smbShare = update.shareName === '*' ? '' : update.shareName;
+    if (update.username !== undefined) changes.loginUser = update.username;
+    if (update.password !== undefined) changes.loginPass = update.password;
+    if (update.smbUser !== undefined) changes.smbUser = update.smbUser;
+    if (update.smbPass !== undefined) changes.smbPass = update.smbPass;
+    if (update.name !== undefined) changes.displayName = update.name;
+    if (update.favorite !== undefined) changes.favorite = update.favorite;
+
+    return this.updateServer(id, changes);
+  }
+
+  removeServerEntry(id: string): boolean {
+    return this.removeServer(id);
+  }
+
+  setServerFavorite(id: string, fav: boolean): void {
+    this.setFavorite(id, fav);
+  }
+
+  touchServer(id: string): void {
+    this.touch(id);
+  }
+
+  // ── cred:* IPC compat (used by older code paths) ────────────────────
+
+  storeServer(host: string, username: string, password: string, opts?: { name?: string; favorite?: boolean }): string {
+    return this.addServerEntry(host, '', username, password, opts);
+  }
+
+  listServers(): { id: string; host: string; name?: string; username: string; favorite?: boolean; lastUsedAt?: number }[] {
+    return Object.values(this.vault.servers).map(s => ({
+      id: s.id,
+      host: s.ip || s.hostname,
+      name: s.displayName,
+      username: s.loginUser,
+      favorite: s.favorite,
+      lastUsedAt: s.lastUsedAt,
+    }));
+  }
+
+  getForHost(host: string): { id: string; username: string; password: string } | null {
+    return this.getLoginCredentials(host);
+  }
+
+  removeById(id: string): boolean {
+    if (this.vault.servers[id]) return this.removeServer(id);
+    // Legacy: id might be "host|share|user" format
+    const parts = id.split('|');
+    const host = parts[0];
+    if (!host) return false;
+    const server = this.findServer(host);
+    return server ? this.removeServer(server.id) : false;
+  }
+
+  setFavoriteById(id: string, fav: boolean): void {
+    if (this.vault.servers[id]) { this.setFavorite(id, fav); return; }
+    const host = id.split('|')[0];
+    if (!host) return;
+    const s = this.findServer(host);
+    if (s) this.setFavorite(s.id, fav);
+  }
+
+  setNameById(id: string, name: string): void {
+    if (this.vault.servers[id]) { this.setName(id, name); return; }
+    const host = id.split('|')[0];
+    if (!host) return;
+    const s = this.findServer(host);
+    if (s) this.setName(s.id, name);
+  }
+
+  touchById(id: string): void {
+    if (this.vault.servers[id]) { this.touch(id); return; }
+    const host = id.split('|')[0];
+    if (!host) return;
+    const s = this.findServer(host);
+    if (s) this.touch(s.id);
+  }
+
+  /**
+   * store(host, share, user, pass) — legacy store compat.
+   * If share is '*' or empty, updates login creds.
+   * Otherwise updates SMB creds on the server record.
+   */
+  store(host: string, share: string, username: string, password: string): void {
+    if (share === '*' || !share) {
+      const existing = this.findServer(host);
+      if (existing) {
+        existing.loginUser = username;
+        existing.loginPass = encryptPassword(password);
+        existing.lastUsedAt = Date.now();
+        existing.updatedAt = new Date().toISOString();
+        this.save();
+      } else {
+        this.addServer({
+          hostname: isIpAddress(host) ? '' : host,
+          ip: isIpAddress(host) ? host : '',
+          loginUser: username,
+          loginPass: password,
+        });
+      }
+    } else {
+      // SMB credential — store on server record
+      const existing = this.findServer(host);
+      if (existing) {
+        existing.smbShare = share;
+        existing.smbUser = username;
+        existing.smbPass = encryptPassword(password);
+        existing.lastUsedAt = Date.now();
+        existing.updatedAt = new Date().toISOString();
+        this.save();
+      } else {
+        this.addServer({
+          hostname: isIpAddress(host) ? '' : host,
+          ip: isIpAddress(host) ? host : '',
+          loginUser: username,
+          loginPass: password,
+          smbShare: share,
+          smbUser: username,
+          smbPass: password,
+        });
+      }
+    }
+  }
+
+  /**
+   * remove(host, share, user) — legacy remove compat.
+   */
+  remove(host: string, share: string, _username: string): boolean {
+    const s = this.findServer(host);
+    if (!s) return false;
+    if (share === '*' || !share) {
+      return this.removeServer(s.id);
+    }
+    // Just clear SMB creds from the server record
+    s.smbShare = '';
+    s.smbUser = '';
+    s.smbPass = '';
+    s.updatedAt = new Date().toISOString();
     this.save();
     return true;
   }
 
   /**
-   * List all stored credentials (without passwords).
+   * list() — legacy list compat. Returns server entries in old format.
    */
-  list(): Omit<CredentialEntry, 'encryptedPassword'>[] {
-    return Object.values(this.vault.credentials).map(
-      ({ encryptedPassword, ...rest }) => rest
-    );
+  list(): { host: string; share: string; username: string; name?: string; favorite?: boolean; lastUsedAt?: number; createdAt?: string; updatedAt?: string }[] {
+    return Object.values(this.vault.servers).map(s => ({
+      host: s.ip || s.hostname,
+      share: s.smbShare || '*',
+      username: s.smbUser || s.loginUser,
+      name: s.displayName,
+      favorite: s.favorite,
+      lastUsedAt: s.lastUsedAt,
+      createdAt: s.createdAt,
+      updatedAt: s.updatedAt,
+    }));
   }
 
   /**
-   * List credentials for a specific host.
+   * listForHost(host) — legacy: list creds for a host (resolves aliases).
    */
-  listForHost(host: string): Omit<CredentialEntry, 'encryptedPassword'>[] {
-    const lowerHost = host.toLowerCase();
-    return Object.values(this.vault.credentials)
-      .filter(e => e.host.toLowerCase() === lowerHost)
-      .map(({ encryptedPassword, ...rest }) => rest);
+  listForHost(host: string): { host: string; share: string; username: string; name?: string; favorite?: boolean; lastUsedAt?: number }[] {
+    const server = this.findServer(host);
+    if (!server) return [];
+    return [{
+      host: server.ip || server.hostname,
+      share: server.smbShare || '*',
+      username: server.smbUser || server.loginUser,
+      name: server.displayName,
+      favorite: server.favorite,
+      lastUsedAt: server.lastUsedAt,
+    }];
   }
 
   /**
-   * Get a credential for a host+share, regardless of which user stored it.
-   * Useful when only one credential exists per share.
-   * Returns the first match.
+   * has(host) — check if a server exists.
    */
-  findByHostAndShare(host: string, share: string): PlaintextCredential | null {
-    const lowerHost = host.toLowerCase();
-    const lowerShare = share.toLowerCase();
-
-    for (const entry of Object.values(this.vault.credentials)) {
-      if (entry.host.toLowerCase() === lowerHost && entry.share.toLowerCase() === lowerShare) {
-        return {
-          host: entry.host,
-          share: entry.share,
-          username: entry.username,
-          password: decryptPassword(entry.encryptedPassword),
-        };
-      }
-    }
-    return null;
+  has(host: string, _share?: string, _username?: string): boolean {
+    return !!this.findServer(host);
   }
 
-  // ── Server-level helpers (used by renderer for saved-server UX) ──────
+  // ═══════════════════════════════════════════════════════════════════════
+  // LEGACY FILE MIGRATION
+  // ═══════════════════════════════════════════════════════════════════════
 
-  /**
-   * Store or update a server-level credential (share defaults to '*').
-   * Includes UX metadata: name, favorite, lastUsedAt.
-   */
-  storeServer(host: string, username: string, password: string, opts?: { name?: string; favorite?: boolean }): string {
-    const share = '*';
-    this.store(host, share, username, password);
-    const key = makeKey(host, share, username);
-    const entry = this.vault.credentials[key];
-    if (opts?.name !== undefined) entry.name = opts.name;
-    if (opts?.favorite !== undefined) entry.favorite = opts.favorite;
-    entry.lastUsedAt = Date.now();
-    this.save();
-    return `${host}|${username}`;
-  }
-
-  /**
-   * List all server-level credentials (share='*') with metadata, no passwords.
-   */
-  listServers(): { id: string; host: string; name?: string; username: string; favorite?: boolean; lastUsedAt?: number }[] {
-    return Object.values(this.vault.credentials)
-      .filter(e => e.share === '*')
-      .map(e => ({
-        id: `${e.host}|${e.username}`,
-        host: e.host,
-        name: e.name,
-        username: e.username,
-        favorite: e.favorite,
-        lastUsedAt: e.lastUsedAt,
-      }));
-  }
-
-  /**
-   * Get credential for a host (best match: favorite first, then most-recently-used).
-   * Returns decrypted password.
-   */
-  getForHost(host: string): { id: string; username: string; password: string } | null {
-    const lowerHost = host.toLowerCase();
-    const matches = Object.values(this.vault.credentials)
-      .filter(e => e.host.toLowerCase() === lowerHost && e.share === '*');
-    if (!matches.length) return null;
-    matches.sort((a, b) =>
-      (b.favorite ? 1 : 0) - (a.favorite ? 1 : 0) ||
-      (b.lastUsedAt || 0) - (a.lastUsedAt || 0)
-    );
-    const best = matches[0];
-    return {
-      id: `${best.host}|${best.username}`,
-      username: best.username,
-      password: decryptPassword(best.encryptedPassword),
-    };
-  }
-
-  /**
-   * Remove a server credential by composite id ("host|username").
-   */
-  removeById(id: string): boolean {
-    const [host, username] = id.split('|');
-    if (!host || !username) return false;
-    return this.remove(host, '*', username);
-  }
-
-  /**
-   * Set favorite flag for a server credential.
-   */
-  setFavorite(id: string, fav: boolean): void {
-    const [host, username] = id.split('|');
-    if (!host || !username) return;
-    const key = makeKey(host, '*', username);
-    const entry = this.vault.credentials[key];
-    if (entry) {
-      entry.favorite = fav;
-      this.save();
-    }
-  }
-
-  /**
-   * Set display name for a server credential.
-   */
-  setName(id: string, name: string): void {
-    const [host, username] = id.split('|');
-    if (!host || !username) return;
-    const key = makeKey(host, '*', username);
-    const entry = this.vault.credentials[key];
-    if (entry) {
-      entry.name = name || undefined;
-      this.save();
-    }
-  }
-
-  /**
-   * Touch lastUsedAt timestamp for a server credential.
-   */
-  touch(id: string): void {
-    const [host, username] = id.split('|');
-    if (!host || !username) return;
-    const key = makeKey(host, '*', username);
-    const entry = this.vault.credentials[key];
-    if (entry) {
-      entry.lastUsedAt = Date.now();
-      this.save();
-    }
-  }
-
-  // ── Unified Server List (used by useServers composable) ──────────────
-
-  /**
-   * List all stored servers, deduplicated.
-   * When the same host+username has both a '*' (server-level) entry and a real
-   * share entry, only the real-share entry is returned (with metadata merged from '*').
-   * This prevents duplicates from legacy code paths that create both.
-   */
-  listAllServers(): {
-    id: string; host: string; shareName: string; username: string;
-    name?: string; favorite?: boolean; lastUsedAt?: number;
-    createdAt?: string; updatedAt?: string;
-  }[] {
-    const entries = Object.values(this.vault.credentials);
-
-    // Group by host+username to detect duplicates
-    const grouped = new Map<string, typeof entries>();
-    for (const e of entries) {
-      const groupKey = `${e.host.toLowerCase()}\0${e.username.toLowerCase()}`;
-      const list = grouped.get(groupKey) ?? [];
-      list.push(e);
-      grouped.set(groupKey, list);
-    }
-
-    const result: {
-      id: string; host: string; shareName: string; username: string;
-      name?: string; favorite?: boolean; lastUsedAt?: number;
-      createdAt?: string; updatedAt?: string;
-    }[] = [];
-
-    for (const group of grouped.values()) {
-      const wildcard = group.find(e => e.share === '*');
-      const realShares = group.filter(e => e.share !== '*');
-
-      if (realShares.length > 0) {
-        // Emit real-share entries, merging metadata from wildcard if present
-        for (const e of realShares) {
-          result.push({
-            id: `${e.host}|${e.share}|${e.username}`,
-            host: e.host,
-            shareName: e.share,
-            username: e.username,
-            name: e.name || wildcard?.name,
-            favorite: e.favorite ?? wildcard?.favorite,
-            lastUsedAt: Math.max(e.lastUsedAt ?? 0, wildcard?.lastUsedAt ?? 0) || undefined,
-            createdAt: e.createdAt,
-            updatedAt: e.updatedAt,
-          });
-        }
-      } else if (wildcard) {
-        // No real-share entry exists — show the wildcard as a server (no share)
-        result.push({
-          id: `${wildcard.host}|*|${wildcard.username}`,
-          host: wildcard.host,
-          shareName: '',
-          username: wildcard.username,
-          name: wildcard.name,
-          favorite: wildcard.favorite,
-          lastUsedAt: wildcard.lastUsedAt,
-          createdAt: wildcard.createdAt,
-          updatedAt: wildcard.updatedAt,
-        });
-      }
-    }
-
-    return result;
-  }
-
-  /**
-   * Add a unified server entry (stores the credential with real share name).
-   * If a wildcard ('*') entry already exists for the same host+user, inherits
-   * its metadata (name, favorite) into the new entry to avoid duplicates.
-   */
-  addServerEntry(host: string, shareName: string, username: string, password: string, opts?: { name?: string; favorite?: boolean }): string {
-    const share = shareName || '*';
-
-    // Inherit metadata from existing wildcard entry if present
-    const wildcardKey = makeKey(host, '*', username);
-    const wildcardEntry = this.vault.credentials[wildcardKey];
-
-    this.store(host, share, username, password);
-    const key = makeKey(host, share, username);
-    const entry = this.vault.credentials[key];
-
-    // Merge: explicit opts > existing entry > wildcard fallback
-    if (opts?.name !== undefined) entry.name = opts.name;
-    else if (!entry.name && wildcardEntry?.name) entry.name = wildcardEntry.name;
-
-    if (opts?.favorite !== undefined) entry.favorite = opts.favorite;
-    else if (entry.favorite === undefined && wildcardEntry?.favorite) entry.favorite = wildcardEntry.favorite;
-
-    entry.lastUsedAt = Date.now();
-    this.save();
-    return `${host}|${share}|${username}`;
-  }
-
-  /**
-   * Update a server entry by its composite ID.
-   * If key fields change, removes old entry and creates new one.
-   */
-  updateServerEntry(
-    oldId: string,
-    update: { host?: string; shareName?: string; username?: string; password?: string; name?: string; favorite?: boolean }
-  ): string {
-    const [oldHost, oldShare, oldUsername] = oldId.split('|');
-    if (!oldHost || !oldShare || !oldUsername) throw new Error('Invalid server ID');
-
-    const oldKey = makeKey(oldHost, oldShare, oldUsername);
-    const existing = this.vault.credentials[oldKey];
-    if (!existing) throw new Error('Server entry not found');
-
-    const newHost = update.host ?? oldHost;
-    const newShare = update.shareName !== undefined ? (update.shareName || '*') : oldShare;
-    const newUsername = update.username ?? oldUsername;
-    const newKey = makeKey(newHost, newShare, newUsername);
-
-    const keyChanged = oldKey !== newKey;
-
-    if (keyChanged) {
-      // Key changed — need new password or use existing
-      const pwd = update.password || decryptPassword(existing.encryptedPassword);
-      delete this.vault.credentials[oldKey];
-      this.vault.credentials[newKey] = {
-        host: newHost,
-        share: newShare,
-        username: newUsername,
-        encryptedPassword: encryptPassword(pwd),
-        createdAt: existing.createdAt,
-        updatedAt: new Date().toISOString(),
-        name: update.name !== undefined ? update.name : existing.name,
-        favorite: update.favorite !== undefined ? update.favorite : existing.favorite,
-        lastUsedAt: existing.lastUsedAt,
-      };
-    } else {
-      // Same key — update in place
-      if (update.password) {
-        existing.encryptedPassword = encryptPassword(update.password);
-      }
-      if (update.name !== undefined) existing.name = update.name || undefined;
-      if (update.favorite !== undefined) existing.favorite = update.favorite;
-      existing.updatedAt = new Date().toISOString();
-    }
-
-    this.save();
-    return `${newHost}|${newShare}|${newUsername}`;
-  }
-
-  /**
-   * Remove a server entry by composite ID (host|share|username).
-   */
-  removeServerEntry(id: string): boolean {
-    const [host, share, username] = id.split('|');
-    if (!host || !share || !username) return false;
-    return this.remove(host, share, username);
-  }
-
-  /**
-   * Set favorite flag by composite ID.
-   */
-  setServerFavorite(id: string, fav: boolean): void {
-    const [host, share, username] = id.split('|');
-    if (!host || !share || !username) return;
-    const key = makeKey(host, share, username);
-    const entry = this.vault.credentials[key];
-    if (entry) {
-      entry.favorite = fav;
-      this.save();
-    }
-  }
-
-  /**
-   * Touch lastUsedAt by composite ID.
-   */
-  touchServer(id: string): void {
-    const [host, share, username] = id.split('|');
-    if (!host || !share || !username) return;
-    const key = makeKey(host, share, username);
-    const entry = this.vault.credentials[key];
-    if (entry) {
-      entry.lastUsedAt = Date.now();
-      this.save();
-    }
-  }
-
-  /**
-   * Check if any credential exists for a given host+share.
-   */
-  has(host: string, share: string, username?: string): boolean {
-    if (username) {
-      return makeKey(host, share, username) in this.vault.credentials;
-    }
-    const lowerHost = host.toLowerCase();
-    const lowerShare = share.toLowerCase();
-    return Object.values(this.vault.credentials).some(
-      e => e.host.toLowerCase() === lowerHost && e.share.toLowerCase() === lowerShare
-    );
-  }
-
-  // ── Legacy Migration ─────────────────────────────────────────────────
-
-  /**
-   * Import credentials from legacy plaintext .cred files.
-   * Call once during app startup migration.
-   *
-   * Linux:   /etc/samba/houston-credentials/*.cred
-   * Windows: C:\ProgramData\houston-backups\credentials\*.cred
-   * macOS:   Keychain entries with "houston-smb-" prefix (skipped — already encrypted)
-   *
-   * Returns number of credentials imported.
-   */
   importLegacyCredentials(): number {
     const platform = os.platform();
-    let imported = 0;
-
-    if (platform === 'linux') {
-      imported = this.importLegacyLinux();
-    } else if (platform === 'win32') {
-      imported = this.importLegacyWindows();
-    }
-    // macOS: Keychain is already secure; no migration needed
-
-    return imported;
+    if (platform === 'linux') return this.importLegacyLinux();
+    if (platform === 'win32') return this.importLegacyWindows();
+    return 0;
   }
 
   private importLegacyLinux(): number {
@@ -590,12 +921,8 @@ export class CredentialManager {
 
     let imported = 0;
     let files: string[];
-    try {
-      files = fs.readdirSync(credDir).filter(f => f.endsWith('.cred'));
-    } catch {
-      // Directory exists but user lacks list permission (mode 711) — expected
-      return 0;
-    }
+    try { files = fs.readdirSync(credDir).filter(f => f.endsWith('.cred')); }
+    catch { return 0; }
 
     for (const file of files) {
       try {
@@ -603,23 +930,24 @@ export class CredentialManager {
         const content = fs.readFileSync(path.join(credDir, file), 'utf-8');
         const usernameMatch = content.match(/^username=(.+)$/m);
         const passwordMatch = content.match(/^password=(.+)$/m);
-
         if (usernameMatch && passwordMatch) {
-          // We need host from fstab to complete the key
           const host = this.findHostForShareInFstab(share);
-          if (host) {
-            // Only import if not already in vault
-            if (!this.has(host, share, usernameMatch[1])) {
-              this.store(host, share, usernameMatch[1], passwordMatch[1]);
-              imported++;
-            }
+          if (host && !this.findServer(host)) {
+            this.addServer({
+              hostname: isIpAddress(host) ? '' : host,
+              ip: isIpAddress(host) ? host : '',
+              loginUser: usernameMatch[1],
+              loginPass: passwordMatch[1],
+              smbShare: share,
+              smbUser: usernameMatch[1],
+              smbPass: passwordMatch[1],
+              source: 'manual',
+            });
+            imported++;
           }
         }
-      } catch {
-        // Skip unreadable files
-      }
+      } catch { /* skip */ }
     }
-
     return imported;
   }
 
@@ -639,67 +967,59 @@ export class CredentialManager {
         const content = fs.readFileSync(path.join(credDir, file), 'utf-8');
         const usernameMatch = content.match(/^username=(.+)$/m);
         const passwordMatch = content.match(/^password=(.+)$/m);
-
-        if (usernameMatch && passwordMatch) {
-          // On Windows, try to find host from scheduled tasks or use share name as fallback
-          // For now, import with share as a placeholder host (will be corrected on next use)
-          if (!this.has(share, share, usernameMatch[1])) {
-            this.store(share, share, usernameMatch[1], passwordMatch[1]);
-            imported++;
-          }
+        if (usernameMatch && passwordMatch && !this.findServer(share)) {
+          this.addServer({
+            displayName: share,
+            loginUser: usernameMatch[1],
+            loginPass: passwordMatch[1],
+            smbShare: share,
+            smbUser: usernameMatch[1],
+            smbPass: passwordMatch[1],
+            source: 'manual',
+          });
+          imported++;
         }
-      } catch {
-        // Skip unreadable files
-      }
+      } catch { /* skip */ }
     }
-
     return imported;
   }
 
   private findHostForShareInFstab(share: string): string | null {
     try {
       const fstab = fs.readFileSync('/etc/fstab', 'utf-8');
-      // Match: //hostname/sharename ... credentials=.../sharename.cred
       const rx = new RegExp(`^//([^/\\s]+)/${share}\\s`, 'm');
       const m = rx.exec(fstab);
       return m ? m[1] : null;
-    } catch {
-      return null;
-    }
+    } catch { return null; }
   }
 
-  // ── Platform Export (for unattended backup execution) ─────────────────
+  // ═══════════════════════════════════════════════════════════════════════
+  // PLATFORM EXPORT — runtime cred files for cron/Task Scheduler
+  // ═══════════════════════════════════════════════════════════════════════
 
-  /**
-   * Export a credential to the platform-native format that cron/Task Scheduler
-   * scripts need at runtime. This writes the minimal runtime credential file.
-   *
-   * This is called by BackupManager when scheduling a task, replacing the
-   * old ensureFstabEntry() credential-writing logic.
-   */
   exportForRuntime(host: string, share: string, username: string): void {
-    const cred = this.retrieve(host, share, username);
-    if (!cred) {
-      throw new Error(`No stored credential for ${username}@${host}/${share}`);
-    }
+    const server = this.findServer(host);
+    if (!server) throw new Error(`No stored credential for ${username}@${host}/${share}`);
 
-    const platform = os.platform();
-    if (platform === 'linux') {
-      this.exportLinuxCredFile(cred);
-    } else if (platform === 'win32') {
-      this.exportWindowsCredFile(cred);
-    } else if (platform === 'darwin') {
-      this.exportMacKeychain(cred);
+    let password: string;
+    // Prefer SMB creds if user matches
+    if (server.smbUser && server.smbUser.toLowerCase() === username.toLowerCase()) {
+      password = decryptPassword(server.smbPass);
+    } else {
+      password = decryptPassword(server.loginPass);
     }
+    if (!password) throw new Error(`No stored credential for ${username}@${host}/${share}`);
+
+    const cred: PlaintextCredential = { host, share, username, password };
+    const platform = os.platform();
+    if (platform === 'linux') this.exportLinuxCredFile(cred);
+    else if (platform === 'win32') this.exportWindowsCredFile(cred);
+    else if (platform === 'darwin') this.exportMacKeychain(cred);
   }
 
   private exportLinuxCredFile(cred: PlaintextCredential): void {
-    // This still writes the runtime .cred file that fstab references,
-    // but now keyed by host+share+user to avoid collisions
     const credDir = '/etc/samba/houston-credentials';
     const credFile = path.join(credDir, `${cred.host}_${cred.share}_${cred.username}.cred`);
-
-    // Build a helper script that pkexec can run
     const safeHost = assertSafeHost(cred.host);
     const safeShare = assertSafeShare(cred.share);
     const safeUser = assertSafeUsername(cred.username);
@@ -717,11 +1037,8 @@ printf 'password=%s\\n' "$PASSWORD" >> ${shellQuote(credFile)}
 chown ${localUser}:${localUser} ${shellQuote(credFile)}
 chmod 600 ${shellQuote(credFile)}
 `;
-
     fs.writeFileSync(tempScript, scriptContent, { mode: 0o700 });
     execFileSync('pkexec', ['bash', tempScript]);
-
-    // Clean up temp script
     try { fs.unlinkSync(tempScript); } catch { /* best effort */ }
   }
 
@@ -730,29 +1047,15 @@ chmod 600 ${shellQuote(credFile)}
       process.env.ProgramData || 'C:\\ProgramData',
       'houston-backups', 'credentials'
     );
-    if (!fs.existsSync(credDir)) {
-      fs.mkdirSync(credDir, { recursive: true });
-    }
-
+    if (!fs.existsSync(credDir)) fs.mkdirSync(credDir, { recursive: true });
     const credFile = path.join(credDir, `${cred.host}_${cred.share}_${cred.username}.cred`);
-    const content = `username=${cred.username}\npassword=${cred.password}\n`;
-    fs.writeFileSync(credFile, content, { mode: 0o600 });
+    fs.writeFileSync(credFile, `username=${cred.username}\npassword=${cred.password}\n`, { mode: 0o600 });
   }
 
   private exportMacKeychain(cred: PlaintextCredential): void {
-
     const svc = `houston-smb-${cred.host}-${cred.share}-${cred.username}`;
-
-    // Remove old entry if present, then add new
-    execSync(
-      `security delete-generic-password -s ${shellQuote(svc)} -a ${shellQuote(cred.username)} 2>/dev/null || true`
-    );
-
-    // Use stdin to pass password (avoids ps visibility)
-    execSync(
-      `security add-generic-password -s ${shellQuote(svc)} -a ${shellQuote(cred.username)} -w -U`,
-      { input: cred.password }
-    );
+    execSync(`security delete-generic-password -s ${shellQuote(svc)} -a ${shellQuote(cred.username)} 2>/dev/null || true`);
+    execSync(`security add-generic-password -s ${shellQuote(svc)} -a ${shellQuote(cred.username)} -w -U`, { input: cred.password });
   }
 }
 

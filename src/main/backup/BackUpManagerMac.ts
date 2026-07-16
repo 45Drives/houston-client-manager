@@ -594,6 +594,16 @@ if [ "${task.disabled ? 'true' : 'false'}" = "true" ]; then
   exit 0
 fi
 
+BACKUP_ENDED=false
+write_backup_end() {
+  local end_status="\${1:-failure}"
+  if [ "$BACKUP_ENDED" = "false" ]; then
+    BACKUP_ENDED=true
+    echo '{"event":"backup_end","timestamp":"'"$(date -u +%Y-%m-%dT%H:%M:%SZ)"'","uuid":"'"${task.uuid}"'","host":"'"$HOST"'","share":"'"$SHARE"'","source":"'"$SOURCE"'","target":"'"$TARGET"'","status":"'"$end_status"'","install_id":"'"$INSTALL_ID"'","smb_user":"'"$SMB_USER"'"}' >> "$EVENT_LOG"
+  fi
+}
+trap 'write_backup_end failure' EXIT
+
 echo "===== $(/bin/date -u '+%Y-%m-%dT%H:%M:%SZ') START ${task.uuid} ====="
 
 # --- backup_start (with install_id + smb_user) ------------------------------
@@ -636,12 +646,12 @@ printf '{"install_id":"%s","smb_user":"%s","source":"%s","user":"%s","host":"%s"
 # ---------- copy -------------------------------------------------------------
 mkdir -p "${dir}"
 echo "[INFO] rsync to ${dir}"
-${rsyncCmd}
-ST=$?
+${rsyncCmd} || true
+ST=\${PIPESTATUS[0]:-$?}
 
 # --- backup_end (with install_id + smb_user) --------------------------------
 STATUS=$([ $ST -eq 0 ] && echo success || echo failure)
-echo '{"event":"backup_end","timestamp":"'"$(date -u +%Y-%m-%dT%H:%M:%SZ)"'","uuid":"'"${task.uuid}"'","host":"'"$HOST"'","share":"'"$SHARE"'","source":"'"$SOURCE"'","target":"'"$TARGET"'","status":"'"$STATUS"'","install_id":"'"$INSTALL_ID"'","smb_user":"'"$SMB_USER"'"}' >> "$EVENT_LOG"
+write_backup_end "$STATUS"
 
 _BCAST_STATUS="$STATUS"
 _BCAST_ERROR=""

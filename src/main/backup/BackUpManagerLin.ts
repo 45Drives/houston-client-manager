@@ -517,7 +517,18 @@ echo '{"event":"backup_start","timestamp":"'$(date -Iseconds)'","uuid":"'"${task
 # Report start event to broadcaster API (best-effort)
 ${bashEventSnippet(smbHost, 'start', task.uuid)}
 
+BACKUP_ENDED=false
+write_backup_end() {
+  local end_status="\${1:-failure}"
+  if [ "$BACKUP_ENDED" = "false" ]; then
+    BACKUP_ENDED=true
+    echo '{"event":"backup_end","timestamp":"'"$(date -Iseconds)"'","uuid":"'"${task.uuid}"'","host":"'"$SMB_HOST"'","share":"'"$SMB_SHARE"'","source":"'"$SOURCE"'","target":"'"$TARGET"'","status":"'"$end_status"'","install_id":"'"$INSTALL_ID"'","smb_user":"'"$SMB_USER"'"}' >> "$EVENT_LOG"
+  fi
+}
+
 cleanup() {
+  # Write backup_end if it wasn't written (script crashed/errored early)
+  write_backup_end "failure"
   # Only attempt unmount if it's actually mounted
   if mountpoint -q "$MOUNT_DIR"; then
     echo "[CLEANUP] Unmounting $MOUNT_DIR"
@@ -566,8 +577,8 @@ printf '{"install_id":"%s","smb_user":"%s","source":"%s","user":"%s","host":"%s"
 
 mkdir -p "$MOUNT_DIR/$TARGET"
 echo "[INFO] Running rsync..."
-rsync -az --compress-level=1 --info=progress2 --no-inc-recursive "$SOURCE" "$MOUNT_DIR/$TARGET"
-RSYNC_STATUS=$?
+rsync -az --compress-level=1 --info=progress2 --no-inc-recursive "$SOURCE" "$MOUNT_DIR/$TARGET" || true
+RSYNC_STATUS=\${PIPESTATUS[0]:-$?}
 
 if [ $RSYNC_STATUS -ne 0 ]; then
   echo "[ERROR] rsync failed with exit code $RSYNC_STATUS"
@@ -580,7 +591,7 @@ else
 fi
 
 STATUS=$([ $RSYNC_STATUS -eq 0 ] && echo "success" || echo "failure")
-echo '{"event":"backup_end","timestamp":"'"$(date -Iseconds)"'","uuid":"'"${task.uuid}"'","host":"'"$SMB_HOST"'","share":"'"$SMB_SHARE"'","source":"'"$SOURCE"'","target":"'"$TARGET"'","status":"'"$STATUS"'","install_id":"'"$INSTALL_ID"'","smb_user":"'"$SMB_USER"'"}' >> "$EVENT_LOG"
+write_backup_end "$STATUS"
 
 # Report end event to broadcaster API (best-effort)
 ${bashEventSnippet(smbHost, 'end', task.uuid)}

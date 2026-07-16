@@ -130,7 +130,7 @@
                                 class="h-full bg-primary rounded-full transition-all duration-300"
                                 :style="{ width: info.percent + '%' }" />
                             <div v-else
-                                class="h-full bg-primary rounded-full animate-pulse w-full" />
+                                class="h-full bg-primary/40 rounded-full animate-indeterminate-bar" />
                         </div>
                         <span class="text-sm text-muted whitespace-nowrap min-w-[80px] text-right">
                             {{ info.percent != null ? info.percent + '%' : info.message || 'Working…' }}
@@ -603,8 +603,22 @@ const actionHandler = (raw: string) => {
             // by the notification handler (maybeClearFromNotification)
         }
         // Restore running state from event log (backup_start without backup_end)
-        if (msg?.type === 'sendBackupEvents' && Array.isArray(msg.runningUuids) && msg.runningUuids.length > 0) {
-            for (const uuid of msg.runningUuids) {
+        if (msg?.type === 'sendBackupEvents' && 'runningUuids' in msg) {
+            const currentRunning: string[] = Array.isArray(msg.runningUuids) ? msg.runningUuids : [];
+
+            // Remove tasks that are no longer reported as running by the backend
+            // (their backup_end was written since the last poll)
+            for (const uuid of Object.keys(taskProgressMap.value)) {
+                // Only auto-remove event-log-detected tasks (percent is still null),
+                // not tasks started via Run Now that are actively reporting progress.
+                const entry = taskProgressMap.value[uuid];
+                if (entry && entry.percent == null && !currentRunning.includes(uuid)) {
+                    removeFinishedTask(uuid);
+                }
+            }
+
+            // Add newly-detected running tasks
+            for (const uuid of currentRunning) {
                 if (!runningTaskIds.value.includes(uuid)) {
                     runningTaskIds.value.push(uuid);
                 }
@@ -613,21 +627,9 @@ const actionHandler = (raw: string) => {
                     taskProgressMap.value[uuid] = { name: resolvedName, percent: null, message: 'In progress…' };
                 }
             }
-            isRunningNow.value = true;
-
-            // If no backupProgress events arrive within 30s for event-log-restored
-            // tasks, they're almost certainly stale (process crashed/app was closed
-            // mid-backup). Clear them so the UI doesn't show phantom running tasks.
-            const restoredUuids = new Set(msg.runningUuids as string[]);
-            setTimeout(() => {
-                for (const uuid of restoredUuids) {
-                    const entry = taskProgressMap.value[uuid];
-                    // Only clear if percent is still null (never received real progress)
-                    if (entry && entry.percent == null) {
-                        removeFinishedTask(uuid);
-                    }
-                }
-            }, 30_000);
+            if (currentRunning.length > 0) {
+                isRunningNow.value = true;
+            }
         }
     } catch (e) { console.debug('actionHandler parse error:', e); }
 };

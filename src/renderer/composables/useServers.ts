@@ -11,12 +11,18 @@ import { discoveryStateInjectionKey } from '../keys/injection-keys'
 import type { DiscoveryState } from '../types'
 
 export interface StoredServer {
-  /** Composite ID: `${host}|${share}|${username}` or `discovered:${ip}` for unsaved */
   id: string
   host: string
   shareName: string
+  /** Admin/cockpit login username */
   username: string
   name?: string
+  /** Resolved hostname (e.g. greenbastard.local) */
+  hostname?: string
+  /** Resolved IP address */
+  ip?: string
+  /** SMB username for local backups (may differ from login username) */
+  smbUser?: string
   favorite?: boolean
   lastUsedAt?: number
   createdAt?: string
@@ -165,9 +171,13 @@ export function useServers() {
 
   async function updateServer(id: string, opts: {
     host?: string
+    hostname?: string
+    ip?: string
     shareName?: string
     username?: string
     password?: string
+    smbUser?: string
+    smbPass?: string
     name?: string
     favorite?: boolean
   }): Promise<void> {

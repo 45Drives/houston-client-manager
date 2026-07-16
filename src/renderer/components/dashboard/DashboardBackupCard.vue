@@ -53,7 +53,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onBeforeUnmount } from 'vue'
 import { CheckCircleIcon, XCircleIcon, ClockIcon } from '@heroicons/vue/24/outline'
 import { ArrowPathIcon } from '@heroicons/vue/24/solid'
 import { IPCRouter } from '@45drives/houston-common-lib'
@@ -119,59 +119,93 @@ function formatNextRun(date: Date): string {
 }
 
 onMounted(() => {
+    let cachedTasks: any[] = []
+
+    function updateFromTasks(tasks: any[]) {
+        // Find last run task
+        let latest: any = null
+        let latestTime = 0
+        for (const t of tasks) {
+            const ts = t.lastRunAt ? new Date(t.lastRunAt).getTime() : 0
+            if (ts > latestTime) {
+                latestTime = ts
+                latest = t
+            }
+        }
+
+        if (latest && latestTime > 0) {
+            lastBackup.value = {
+                name: latest.name || latest.source?.split('/').pop() || latest.uuid?.slice(0, 8),
+                status: latest.status?.startsWith('offline') || latest.status === 'missing_folder'
+                    ? 'failed'
+                    : latest.status === 'running' ? 'running' : 'success',
+                timeAgo: formatTimeAgo(new Date(latestTime)),
+                lastRunAt: latestTime,
+            }
+        }
+
+        // Find next scheduled task
+        let soonest: { name: string; next: Date } | null = null
+        for (const t of tasks) {
+            if (!t.schedule) continue
+            const next = computeNextRun(t.schedule)
+            if (next && (!soonest || next < soonest.next)) {
+                soonest = {
+                    name: t.name || t.source?.split('/').pop() || t.uuid?.slice(0, 8),
+                    next,
+                }
+            }
+        }
+
+        if (soonest) {
+            nextScheduled.value = {
+                name: soonest.name,
+                when: formatNextRun(soonest.next),
+            }
+        }
+    }
+
     const handler = (raw: string) => {
         try {
             const msg = JSON.parse(raw)
             if (msg.type === 'sendBackupTasks') {
-                const tasks = msg.tasks || []
-
-                // Find last run task
-                let latest: any = null
-                let latestTime = 0
-                for (const t of tasks) {
-                    const ts = t.lastRunAt ? new Date(t.lastRunAt).getTime() : 0
-                    if (ts > latestTime) {
-                        latestTime = ts
-                        latest = t
-                    }
-                }
-
-                if (latest && latestTime > 0) {
-                    lastBackup.value = {
-                        name: latest.name || latest.source?.split('/').pop() || latest.uuid?.slice(0, 8),
-                        status: latest.status?.startsWith('offline') || latest.status === 'missing_folder'
-                            ? 'failed'
-                            : latest.status === 'running' ? 'running' : 'success',
-                        timeAgo: formatTimeAgo(new Date(latestTime)),
-                        lastRunAt: latestTime,
-                    }
-                }
-
-                // Find next scheduled task
-                let soonest: { name: string; next: Date } | null = null
-                for (const t of tasks) {
-                    if (!t.schedule) continue
-                    const next = computeNextRun(t.schedule)
-                    if (next && (!soonest || next < soonest.next)) {
-                        soonest = {
-                            name: t.name || t.source?.split('/').pop() || t.uuid?.slice(0, 8),
-                            next,
+                cachedTasks = msg.tasks || []
+                updateFromTasks(cachedTasks)
+                // Now fetch events to get lastRunAt timestamps
+                IPCRouter.getInstance().send('backend', 'action', JSON.stringify({ type: 'fetchBackupEvents' }))
+            } else if (msg.type === 'sendBackupEvents') {
+                // Merge event timestamps into cached tasks
+                const latest: Record<string, Date> = {}
+                const statuses: Record<string, string> = {}
+                for (const ev of (msg.events ?? [])) {
+                    if (ev?.uuid && ev?.timestamp) {
+                        const ts = new Date(ev.timestamp)
+                        if (!Number.isNaN(ts.getTime())) {
+                            const prev = latest[ev.uuid]
+                            if (!prev || ts > prev) {
+                                latest[ev.uuid] = ts
+                                statuses[ev.uuid] = ev.status ?? ''
+                            }
                         }
                     }
                 }
-
-                if (soonest) {
-                    nextScheduled.value = {
-                        name: soonest.name,
-                        when: formatNextRun(soonest.next),
-                    }
-                }
-
-                IPCRouter.getInstance().removeEventListener('action', handler)
+                cachedTasks = cachedTasks.map(t =>
+                    latest[t.uuid] ? { ...t, lastRunAt: latest[t.uuid] } : t
+                )
+                updateFromTasks(cachedTasks)
             }
         } catch { /* ignore */ }
     }
     IPCRouter.getInstance().addEventListener('action', handler)
     IPCRouter.getInstance().send('backend', 'action', 'requestBackUpTasks')
+
+    const pollInterval = setInterval(() => {
+        IPCRouter.getInstance().send('backend', 'action', 'requestBackUpTasks')
+    }, 60_000)
+
+    onBeforeUnmount(() => {
+        IPCRouter.getInstance().removeEventListener('action', handler)
+        clearInterval(pollInterval)
+    })
 })
 </script>

@@ -71,6 +71,7 @@ import mdns from 'multicast-dns';
 import os from 'os';
 import fs from 'fs';
 import net from 'net';
+import http from 'http';
 import { Server } from './types';
 import mountSmbPopup from './smbMountPopup';
 import { IPCRouter } from '../../houston-common/houston-common-lib/lib/electronIPC/IPCRouter';
@@ -108,111 +109,55 @@ ipcMain.on('renderer-ready', (e) => {
 // request/response path
 ipcMain.handle('get-client-ident', async () => ({ installId }))
 
-// OAuth popup: open a real BrowserWindow so postMessage works
+// OAuth: open system browser + local loopback server to receive token.
+// Google blocks embedded Chromium browsers, so we must use the real browser.
 ipcMain.handle('oauth:open', async (_event, url: string) => {
-  // Use a dedicated session partition so the OAuth window doesn't trigger
-  // the TOFU cert-pinning prompts from the default session.
-  const oauthSession = session.fromPartition('persist:oauth');
-
-  const win = new BrowserWindow({
-    width: 520,
-    height: 920,
-    webPreferences: {
-      nodeIntegration: false,
-      contextIsolation: true,
-      session: oauthSession,
-    },
-  });
-
-  let resolved = false;
-  let resolvePromise: (val: any) => void;
-  const promise = new Promise<any>((r) => { resolvePromise = r; });
-
-  const OPENER_POLYFILL = `
-    (function() {
-      if (window.__oauthPatched) return;
-      window.__oauthPatched = true;
-      if (!window.opener) {
-        Object.defineProperty(window, 'opener', {
-          value: {
-            postMessage: function(data) {
-              console.log('__OAUTH_TOKEN__:' + JSON.stringify(data));
-            }
-          },
-          configurable: true
-        });
+  return new Promise<any>((resolve) => {
+    const srv = http.createServer((req, res) => {
+      if (!req.url?.startsWith('/oauth/callback')) {
+        res.writeHead(404);
+        res.end();
+        return;
       }
-    })();
-  `;
+      const params = new URL(req.url, 'http://127.0.0.1').searchParams;
+      const token = {
+        service: params.get('service') || '',
+        accessToken: params.get('accessToken') || '',
+        refreshToken: params.get('refreshToken') || '',
+        expiry: params.get('expiry') || '',
+        userId: params.get('userId') || '',
+      };
 
-  function handleTokenMessage(_e: any, _level: any, message: string) {
-    if (resolved) return;
-    if (typeof message === 'string' && message.startsWith('__OAUTH_TOKEN__:')) {
-      try {
-        const data = JSON.parse(message.slice('__OAUTH_TOKEN__:'.length));
-        resolved = true;
-        resolvePromise({ success: true, token: data });
-        try { win.close(); } catch {}
-      } catch { /* ignore parse errors */ }
-    }
-  }
+      // Send a friendly page back to the browser
+      res.writeHead(200, { 'Content-Type': 'text/html' });
+      res.end(`<!DOCTYPE html><html><body>
+        <h2>Authentication Successful</h2>
+        <p>You may close this tab and return to the app.</p>
+        <script>setTimeout(function(){ window.close(); }, 1000);</script>
+      </body></html>`);
 
-  // Re-run the callback page's inline script after polyfilling window.opener.
-  // The server callback page is just a <script> that checks window.opener and
-  // calls postMessage.  It runs during HTML parsing (before dom-ready), so the
-  // polyfill isn't in place yet.  On dom-ready we inject the polyfill and then
-  // re-execute the inline script — this time window.opener exists and the token
-  // is sent via console.log for our listener to pick up.
-  async function rerunCallbackScript(wc: Electron.WebContents) {
-    await wc.executeJavaScript(OPENER_POLYFILL).catch(() => {});
-    const currentUrl = wc.getURL();
-    if (!resolved && currentUrl.includes('/callback')) {
-      try {
-        const script = await wc.executeJavaScript(
-          'document.querySelector("script") ? document.querySelector("script").textContent : ""'
-        );
-        if (script && script.includes('postMessage')) {
-          await wc.executeJavaScript(script);
-        }
-      } catch { /* ignore — token may already have been captured */ }
-    }
-  }
-
-  win.webContents.on('dom-ready', () => { rerunCallbackScript(win.webContents); });
-  win.webContents.on('console-message', handleTokenMessage);
-  win.on('closed', () => { if (!resolved) resolvePromise({ success: false }); });
-
-  // Handle child popups (e.g. "Sign in with Google" from Dropbox's page)
-  win.webContents.setWindowOpenHandler(({ url: popupUrl }) => {
-    const child = new BrowserWindow({
-      width: 500,
-      height: 700,
-      parent: win,
-      webPreferences: {
-        nodeIntegration: false,
-        contextIsolation: true,
-        session: oauthSession,
-      },
-    });
-    child.loadURL(popupUrl);
-    child.webContents.on('dom-ready', () => { rerunCallbackScript(child.webContents); });
-    child.webContents.on('console-message', (_e: any, _level: any, msg: string) => {
-      if (resolved) return;
-      if (typeof msg === 'string' && msg.startsWith('__OAUTH_TOKEN__:')) {
-        try {
-          const data = JSON.parse(msg.slice('__OAUTH_TOKEN__:'.length));
-          resolved = true;
-          resolvePromise({ success: true, token: data });
-          try { child.close(); } catch {}
-          try { win.close(); } catch {}
-        } catch { /* ignore */ }
+      srv.close();
+      if (token.accessToken && token.refreshToken) {
+        resolve({ success: true, token });
+      } else {
+        resolve({ success: false });
       }
     });
-    return { action: 'deny' }; // we opened it manually
-  });
 
-  win.loadURL(url);
-  return promise;
+    // Listen on a random available port on loopback
+    srv.listen(0, '127.0.0.1', () => {
+      const port = (srv.address() as any).port;
+      const separator = url.includes('?') ? '&' : '?';
+      const oauthUrl = `${url}${separator}loopback_port=${port}`;
+      shell.openExternal(oauthUrl);
+    });
+
+    // Timeout after 5 minutes if user never completes auth
+    setTimeout(() => {
+      srv.close();
+      resolve({ success: false });
+    }, 5 * 60 * 1000);
+  });
 });
 
 app.commandLine.appendSwitch('ignore-certificate-errors', 'true');
@@ -860,6 +805,12 @@ function createWindow() {
             });
           }
 
+          // Sync discovery hostname↔IP into credential vault to merge duplicate server records
+          getCredentialManager().syncDiscovery(server.name, server.ip, {
+            shareName: server.shareName,
+            setupComplete: server.setupComplete,
+          });
+
           break server_search;
         }
       }
@@ -1100,8 +1051,21 @@ app.whenReady().then(() => {
 
   ipcMain.handle('cred:save', (event, p: { host: string; name?: string; username: string; password: string; favorite?: boolean }) => {
     assertMainWindowSender(event);
+    const safeHost = assertSafeHost(p.host);
+
+    // Cross-reference discovery to merge hostname↔IP before dedup
+    const discovered = discoveredServers.find(s =>
+      s.ip === safeHost || s.name?.toLowerCase() === safeHost.toLowerCase()
+    );
+    if (discovered) {
+      getCredentialManager().syncDiscovery(discovered.name, discovered.ip, {
+        shareName: discovered.shareName,
+        setupComplete: discovered.setupComplete,
+      });
+    }
+
     const id = getCredentialManager().storeServer(
-      assertSafeHost(p.host),
+      safeHost,
       assertSafeUsername(p.username),
       p.password,
       { name: p.name, favorite: p.favorite }
@@ -1142,26 +1106,48 @@ app.whenReady().then(() => {
     return getCredentialManager().listAllServers();
   });
 
-  ipcMain.handle('servers:add', (event, p: { host: string; shareName: string; username: string; password: string; name?: string; favorite?: boolean }) => {
+  ipcMain.handle('servers:add', (event, p: { host: string; shareName: string; username: string; password: string; smbUser?: string; smbPass?: string; name?: string; favorite?: boolean }) => {
     assertMainWindowSender(event);
+    const safeHost = assertSafeHost(p.host);
+
+    // Cross-reference discovery to fill in hostname↔IP before dedup check
+    const discovered = discoveredServers.find(s =>
+      s.ip === safeHost || s.name?.toLowerCase() === safeHost.toLowerCase()
+    );
+    if (discovered) {
+      getCredentialManager().syncDiscovery(discovered.name, discovered.ip, {
+        shareName: discovered.shareName,
+        setupComplete: discovered.setupComplete,
+      });
+    }
+
     const id = getCredentialManager().addServerEntry(
-      assertSafeHost(p.host),
+      safeHost,
       p.shareName ? assertSafeShare(p.shareName) : '',
       assertSafeUsername(p.username),
       p.password,
-      { name: p.name, favorite: p.favorite }
+      {
+        name: p.name,
+        favorite: p.favorite,
+        smbUser: p.smbUser ? assertSafeUsername(p.smbUser) : undefined,
+        smbPass: p.smbPass,
+      }
     );
     jsonLogger.info({ event: 'servers:add', host: p.host, shareName: p.shareName, username: p.username });
     return { ok: true, id };
   });
 
-  ipcMain.handle('servers:update', (event, p: { id: string; host?: string; shareName?: string; username?: string; password?: string; name?: string; favorite?: boolean }) => {
+  ipcMain.handle('servers:update', (event, p: { id: string; host?: string; hostname?: string; ip?: string; shareName?: string; username?: string; password?: string; smbUser?: string; smbPass?: string; name?: string; favorite?: boolean }) => {
     assertMainWindowSender(event);
     const newId = getCredentialManager().updateServerEntry(p.id, {
       host: p.host ? assertSafeHost(p.host) : undefined,
+      hostname: p.hostname !== undefined ? (p.hostname ? assertSafeHost(p.hostname) : '') : undefined,
+      ip: p.ip !== undefined ? (p.ip ? assertSafeHost(p.ip) : '') : undefined,
       shareName: p.shareName !== undefined ? (p.shareName ? assertSafeShare(p.shareName) : '') : undefined,
       username: p.username ? assertSafeUsername(p.username) : undefined,
       password: p.password,
+      smbUser: p.smbUser !== undefined ? (p.smbUser ? assertSafeUsername(p.smbUser) : '') : undefined,
+      smbPass: p.smbPass,
       name: p.name,
       favorite: p.favorite,
     });

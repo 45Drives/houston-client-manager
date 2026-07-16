@@ -599,6 +599,21 @@ export async function handleBackupMessage(message: any, ctx: IPCHandlerContext):
         }
       }
 
+      // Verify a backup process is actually running for each UUID.
+      // If the script crashed without writing backup_end, the event log
+      // will have a stale backup_start. Check for the actual process.
+      if (startedUuids.size > 0 && getOS() !== 'win') {
+        for (const uuid of [...startedUuids.keys()]) {
+          try {
+            execFileSync('pgrep', ['-f', `Houston_Backup_Task_${uuid}`], { stdio: 'ignore' });
+            // pgrep succeeded — process is running, keep it
+          } catch {
+            // pgrep failed (exit code 1) — no matching process, stale entry
+            startedUuids.delete(uuid);
+          }
+        }
+      }
+
       router.send('renderer', 'action', JSON.stringify({
         type: 'sendBackupEvents',
         events,

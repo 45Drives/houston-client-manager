@@ -55,6 +55,7 @@ const serverAliasStyle = computed(() => currentServer.value?.serverInfo?.aliasSt
 const manualCreds = ref<{ ip: string; username: string; password: string } | null>(null)
 const clientIp = ref('')
 const clientId = ref('');
+const disconnected = ref(false);
 
 const webview = ref<any>(null)
 const loadingWebview = ref(true)
@@ -241,7 +242,7 @@ const onWebViewLoaded = async () => {
 
     // If manualCreds are missing, try hydrating from the in-memory store
     // (covers tab-switch: component is recreated but the store still has creds).
-    if (!manualCreds.value) {
+    if (!manualCreds.value && !disconnected.value) {
         const ip = currentServer.value?.ip
         if (ip) {
             const stored = getCredentials(ip)
@@ -251,7 +252,7 @@ const onWebViewLoaded = async () => {
         }
     }
 
-    if (!manualCreds.value) { loadingWebview.value = false; return; }
+    if (!manualCreds.value || disconnected.value) { loadingWebview.value = false; return; }
     const { username: user, password: pass } = manualCreds.value;
 
     try {
@@ -299,12 +300,14 @@ watch(currentUrl, (url) => {
 
 window.electron?.ipcRenderer.on('store-manual-creds', (_e, creds: { ip: string; username: string; password: string }) => {
     if (currentServer.value?.ip === creds.ip) {
+        disconnected.value = false;
         manualCreds.value = creds;
     }
 });
 
 // When currentServer changes, check the shared credential store
 watch(() => currentServer.value?.ip, (ip) => {
+    disconnected.value = false;
     if (!ip || manualCreds.value?.ip === ip) return
     const stored = getCredentials(ip)
     if (stored) {
@@ -315,7 +318,7 @@ watch(() => currentServer.value?.ip, (ip) => {
 // If credentials arrive after the webview has already loaded (e.g. favorite
 // auto-connect), trigger login now instead of showing the Cockpit login screen.
 watch(manualCreds, async (creds) => {
-    if (!creds || !webview.value) return;
+    if (!creds || !webview.value || disconnected.value) return;
     // Still loading → onWebViewLoaded will handle it
     if (loadingWebview.value) return;
 
@@ -361,7 +364,8 @@ async function logoutFromCurrentServer() {
         console.error('session:clear-origin error:', e)
     }
 
-    // 4. Drop in-memory creds and reload so the login screen reappears
+    // 4. Drop in-memory creds and suppress auto-login
+    disconnected.value = true;
     manualCreds.value = null;
     loadingWebview.value = true;
     webview.value.reload();

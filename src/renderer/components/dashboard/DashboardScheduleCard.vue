@@ -37,7 +37,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { ClockIcon } from '@heroicons/vue/24/outline'
 import { IPCRouter } from '@45drives/houston-common-lib'
 import DashboardCard from './DashboardCard.vue'
@@ -104,8 +104,9 @@ const upcomingTasks = computed(() => {
             const next = computeNextRun(t.schedule)
             if (!next || next.getTime() > weekFromNow) return null
             const diff = next.getTime() - now
-            const hours = Math.floor(diff / 3600000)
-            const when = hours < 1 ? 'soon' : hours < 24 ? `in ${hours}h` : `in ${Math.floor(hours / 24)}d`
+            const mins = Math.floor(diff / 60000)
+            const hours = Math.floor(mins / 60)
+            const when = mins < 1 ? 'any moment' : mins < 60 ? `in ${mins}m` : hours < 24 ? `in ${hours}h` : `in ${Math.floor(hours / 24)}d`
             return { name: t.name, when, nextTime: next.getTime() }
         })
         .filter((t): t is NonNullable<typeof t> => t !== null)
@@ -126,11 +127,19 @@ onMounted(() => {
                         schedule: t.schedule,
                     }))
                 loaded.value = true
-                IPCRouter.getInstance().removeEventListener('action', handler)
             }
         } catch { /* ignore */ }
     }
     IPCRouter.getInstance().addEventListener('action', handler)
     IPCRouter.getInstance().send('backend', 'action', 'requestBackUpTasks')
+
+    const pollInterval = setInterval(() => {
+        IPCRouter.getInstance().send('backend', 'action', 'requestBackUpTasks')
+    }, 60_000)
+
+    onBeforeUnmount(() => {
+        IPCRouter.getInstance().removeEventListener('action', handler)
+        clearInterval(pollInterval)
+    })
 })
 </script>
