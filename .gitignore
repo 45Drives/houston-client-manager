@@ -3,6 +3,9 @@ dist
 build
 builds
 
+# Generated bundle
+src/main/static/easysetup-bundle.js
+
 .yarn/
 yarn.lock
 .vscode

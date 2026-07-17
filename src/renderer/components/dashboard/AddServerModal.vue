@@ -54,29 +54,55 @@
                             class="w-full p-2 input-textlike rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                             placeholder="e.g. 192.168.2.100 or myserver.local" />
                     </div>
-                    <div>
-                        <label class="text-xs font-medium text-gray-500 mb-1 block">Username</label>
-                        <input v-model="username" type="text"
-                            class="w-full p-2 input-textlike rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                            placeholder="root" />
+                    <div class="grid grid-cols-2 gap-2">
+                        <div>
+                            <label class="text-xs font-medium text-gray-500 mb-1 block">Admin Username</label>
+                            <input v-model="username" type="text"
+                                class="w-full p-2 input-textlike rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                placeholder="root" />
+                        </div>
+                        <div class="relative">
+                            <label class="text-xs font-medium text-gray-500 mb-1 block">Admin Password</label>
+                            <input v-model="password" :type="showPassword ? 'text' : 'password'"
+                                class="w-full p-2 pr-10 input-textlike rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                placeholder="Enter password" />
+                            <button type="button" @click="showPassword = !showPassword"
+                                class="absolute right-3 bottom-2 text-muted">
+                                <EyeIcon v-if="!showPassword" class="w-4 h-4" />
+                                <EyeSlashIcon v-if="showPassword" class="w-4 h-4" />
+                            </button>
+                        </div>
                     </div>
-                    <div class="relative">
-                        <label class="text-xs font-medium text-gray-500 mb-1 block">Password</label>
-                        <input v-model="password" :type="showPassword ? 'text' : 'password'"
-                            class="w-full p-2 pr-10 input-textlike rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                            placeholder="Enter password" @keyup.enter="submit" />
-                        <button type="button" @click="showPassword = !showPassword"
-                            class="absolute right-3 bottom-2 text-muted">
-                            <EyeIcon v-if="!showPassword" class="w-4 h-4" />
-                            <EyeSlashIcon v-if="showPassword" class="w-4 h-4" />
-                        </button>
+
+                    <!-- SMB / Samba section -->
+                    <div class="pt-2 border-t border-neutral-100 dark:border-neutral-700/50">
+                        <span class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Samba Share</span>
                     </div>
                     <div>
-                        <label class="text-xs font-medium text-gray-500 mb-1 block">Samba Share Name</label>
+                        <label class="text-xs font-medium text-gray-500 mb-1 block">Share Name</label>
                         <input v-model="shareName" type="text"
                             class="w-full p-2 input-textlike rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                            placeholder="e.g. backups" />
-                        <p class="text-[11px] text-gray-400 mt-0.5">The SMB share on the server used for backups.</p>
+                            placeholder="e.g. storage" />
+                    </div>
+                    <div class="grid grid-cols-2 gap-2">
+                        <div>
+                            <label class="text-xs font-medium text-gray-500 mb-1 block">SMB Username</label>
+                            <input v-model="smbUser" type="text"
+                                class="w-full p-2 input-textlike rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                placeholder="backupuser" />
+                            <p class="text-[11px] text-gray-400 mt-0.5">Leave blank if same as admin</p>
+                        </div>
+                        <div class="relative">
+                            <label class="text-xs font-medium text-gray-500 mb-1 block">SMB Password</label>
+                            <input v-model="smbPass" :type="showSmbPassword ? 'text' : 'password'"
+                                class="w-full p-2 pr-10 input-textlike rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                placeholder="Leave blank if same" />
+                            <button type="button" @click="showSmbPassword = !showSmbPassword"
+                                class="absolute right-3 bottom-2 text-muted">
+                                <EyeIcon v-if="!showSmbPassword" class="w-4 h-4" />
+                                <EyeSlashIcon v-if="showSmbPassword" class="w-4 h-4" />
+                            </button>
+                        </div>
                     </div>
                     <div>
                         <label class="text-xs font-medium text-gray-500 mb-1 block">Nickname <span class="text-gray-400">(optional)</span></label>
@@ -180,8 +206,11 @@ const host = ref('')
 const username = ref('root')
 const password = ref('')
 const shareName = ref('')
+const smbUser = ref('')
+const smbPass = ref('')
 const nickname = ref('')
 const showPassword = ref(false)
+const showSmbPassword = ref(false)
 const testing = ref(false)
 const error = ref('')
 
@@ -246,6 +275,7 @@ async function runServerSetup() {
         { label: 'Checking & installing server dependencies…', status: 'active' },
         { label: 'Waiting for server API to become available…', status: 'pending' },
         { label: 'Registering application on server…', status: 'pending' },
+        { label: 'Validating Samba share credentials…', status: 'pending' },
         { label: 'Saving credentials & finalizing…', status: 'pending' },
     ]
 
@@ -254,6 +284,8 @@ async function runServerSetup() {
     const p = password.value
     const share = shareName.value.trim()
     const name = nickname.value.trim() || h
+    const resolvedSmbUser = smbUser.value.trim() || u
+    const resolvedSmbPass = smbPass.value || p
 
     try {
         // Step 1: Install server dependencies (SSH bootstrap)
@@ -295,8 +327,25 @@ async function runServerSetup() {
         }
         setStepStatus(2, 'done')
 
-        // Step 4: Save unified server entry and inject into discovery
+        // Step 4: Validate SMB credentials
         setStepStatus(3, 'active')
+        if (share) {
+            const smbResult = await window.electron.ipcRenderer.invoke('backup:validate-smb-credentials', {
+                host: h,
+                share,
+                username: resolvedSmbUser,
+                password: resolvedSmbPass,
+            })
+            if (!smbResult?.valid) {
+                setStepStatus(3, 'error')
+                error.value = smbResult?.error || `Could not authenticate to share "${share}". Check the SMB username and password.`
+                return
+            }
+        }
+        setStepStatus(3, 'done')
+
+        // Step 5: Save unified server entry and inject into discovery
+        setStepStatus(4, 'active')
 
         await addServer({
             host: h,
@@ -305,6 +354,8 @@ async function runServerSetup() {
             password: p,
             name: name,
             favorite: false,
+            smbUser: resolvedSmbUser,
+            smbPass: resolvedSmbPass,
         })
 
         await window.electron.ipcRenderer.invoke('add-manual-server', {
@@ -313,7 +364,7 @@ async function runServerSetup() {
             shareName: share,
         })
 
-        setStepStatus(3, 'done')
+        setStepStatus(4, 'done')
         emit('added')
 
         // Auto-close after brief success display
@@ -336,8 +387,11 @@ function open() {
     username.value = 'root'
     password.value = ''
     shareName.value = ''
+    smbUser.value = ''
+    smbPass.value = ''
     nickname.value = ''
     showPassword.value = false
+    showSmbPassword.value = false
     error.value = ''
     testing.value = false
     progressSteps.value = []
@@ -351,8 +405,11 @@ function openForServer(srv: { ip: string; name?: string; shareName?: string }) {
     username.value = 'root'
     password.value = ''
     shareName.value = srv.shareName || ''
+    smbUser.value = ''
+    smbPass.value = ''
     nickname.value = srv.name || ''
     showPassword.value = false
+    showSmbPassword.value = false
     error.value = ''
     testing.value = false
     progressSteps.value = []

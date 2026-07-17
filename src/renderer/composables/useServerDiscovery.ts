@@ -10,6 +10,19 @@ export function useServerDiscovery() {
   })
 
   function onDiscovered(_evt:any, mdnsList: Server[]) {
+    // Build set of IPs the main process currently considers active
+    const activeIps = new Set(mdnsList.map(m => m.ip))
+
+    // Remove servers no longer in the main process list (timed out / offline)
+    // Keep manually-added and fallback servers since main process manages their lifecycle
+    for (let i = discoveryState.servers.length - 1; i >= 0; i--) {
+      const s = discoveryState.servers[i]
+      if (!activeIps.has(s.ip) && !s.manuallyAdded && !s.fallbackAdded) {
+        discoveryState.servers.splice(i, 1)
+      }
+    }
+
+    // Update or add servers from the main process list
     mdnsList.forEach(m => {
       const idx = discoveryState.servers.findIndex(s => s.ip === m.ip)
       if (idx > -1) {

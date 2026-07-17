@@ -72,7 +72,9 @@ export function useServers() {
     const merged: StoredServer[] = _servers.value.map(s => ({
       ...s,
       discovered: false,
-      online: discoveryState.servers.some(d => d.ip === s.host || d.name === s.host),
+      online: discoveryState.servers.some(d =>
+        d.ip === s.host || d.name === s.host || (s.ip && d.ip === s.ip)
+      ),
     }))
 
     // Add discovered servers that have no stored entry (by IP match)
@@ -120,7 +122,9 @@ export function useServers() {
 
         // ── Sync name from discovery (handles hostname changes after reboot) ──
         if (!s.online) continue
-        const disc = discoveryState.servers.find(d => d.ip === s.host || d.name === s.host)
+        const disc = discoveryState.servers.find(d =>
+          d.ip === s.host || d.name === s.host || (s.ip && d.ip === s.ip)
+        )
         if (!disc) continue
         const discoveredName = disc.name || disc.serverName || ''
         const discoveredShare = disc.shareName || ''
@@ -129,10 +133,12 @@ export function useServers() {
           // Prevent firing the same update repeatedly
           if (_syncedNames.get(s.id) === discoveredName) continue
           _syncedNames.set(s.id, discoveredName)
-          // Fire-and-forget update to persist the new name
+          // Fire-and-forget update to persist the new name + hostname
           window.electron?.ipcRenderer.invoke('servers:update', {
             id: s.id,
             name: discoveredName,
+            hostname: discoveredName,
+            ...(disc.ip && disc.ip !== s.host ? { ip: disc.ip } : {}),
             ...(discoveredShare && !s.shareName ? { shareName: discoveredShare } : {}),
           }).then(() => refresh()).catch(e => console.error('Failed to sync server name:', e))
         }
@@ -161,6 +167,8 @@ export function useServers() {
     shareName: string
     username: string
     password: string
+    smbUser?: string
+    smbPass?: string
     name?: string
     favorite?: boolean
   }): Promise<StoredServer> {

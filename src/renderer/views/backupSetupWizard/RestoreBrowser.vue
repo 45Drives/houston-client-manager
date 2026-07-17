@@ -244,7 +244,7 @@
                             <div v-if="restore.progress.currentFile" class="text-xs text-muted truncate mt-1">
                                 {{ restore.progress.currentFile }}
                             </div>
-                            <button class="btn btn-sm btn-ghost h-fit text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20 mt-2" @click="restore.cancelRestore()">
+                            <button class="btn btn-sm btn-secondary h-fit text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20 mt-2" @click="restore.cancelRestore()">
                                 Cancel
                             </button>
                         </div>

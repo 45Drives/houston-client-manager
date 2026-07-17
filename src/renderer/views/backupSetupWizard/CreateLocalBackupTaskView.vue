@@ -28,7 +28,7 @@
 										Loading servers…
 									</option>
 									<option v-for="item in savedServers" :key="item.id" :value="item.id">
-										{{ `\\\\${item.name || item.host}\\${item.shareName}` }}
+										  {{ `\\\\${item.name || item.hostname || item.host}\\${item.shareName}` }}
 									</option>
 								</select>
 								<button @click="refreshServerList"
@@ -365,7 +365,7 @@ const handleFolderSelect = async () => {
 				description: `Backup task for ${folderName}`,
 				name: folderName,
 				source: folderPath,
-				target: `\\\\${selectedServer.value?.name}\\${selectedServer.value?.shareName}`,
+				target: `\\\\${selectedServer.value?.hostname || selectedServer.value?.host}\\${selectedServer.value?.shareName}`,
 				mirror: false,
 				uuid: crypto.randomUUID(),
 			};
@@ -467,7 +467,7 @@ const proceedToNextStep = () => {
 	backUpSetupConfig?.backUpTasks.forEach((task: BackUpTask) => {
 		const targetDirForSourcePart = sanitizeFilePath(task.source);
 		const slashOrNotSlash = targetDirForSourcePart.startsWith("/") ? "" : "/";
-		task.target = `${srv.name || srv.host}:${srv.shareName}/${task.uuid}/${hostname}${slashOrNotSlash}${targetDirForSourcePart}`;
+		task.target = `${srv.hostname || srv.host}:${srv.shareName}/${task.uuid}/${hostname}${slashOrNotSlash}${targetDirForSourcePart}`;
 	});
 
 	completeCurrentStep();

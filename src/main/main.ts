@@ -89,6 +89,7 @@ import { handleBackupMessage } from './ipc/backupHandlers';
 import { handleDiscoveryMessage } from './ipc/discoveryHandlers';
 import { registerLogHandlers } from './ipc/logHandlers';
 import { registerRestoreHandlers } from './ipc/restoreHandlers';
+import { registerBulkSetupHandlers } from './ipc/bulkSetupHandlers';
 import type { IPCHandlerContext } from './ipc/types';
 
 let discoveredServers: Server[] = [];
@@ -605,6 +606,7 @@ function createWindow() {
   };
 
   registerRestoreHandlers(handlerCtx);
+  registerBulkSetupHandlers({ mainWindow: mainWindow!, jsonLogger });
 
   IPCRouter.getInstance().addEventListener('action', async (data) => {
     if (data === "requestBackUpTasks") {
@@ -1172,6 +1174,16 @@ app.whenReady().then(() => {
     assertMainWindowSender(event);
     getCredentialManager().touchServer(id);
     return { ok: true };
+  });
+
+  ipcMain.handle('servers:get-smb-creds', (event, { host }: { host: string }) => {
+    assertMainWindowSender(event);
+    const safeHost = assertSafeHost(host);
+    const creds = getCredentialManager().getSmbCredentials(safeHost);
+    if (creds) {
+      return { found: true, share: creds.share, username: creds.username, password: creds.password };
+    }
+    return { found: false };
   });
 
   // ── App Settings IPC ──────────────────────────────────────────────────

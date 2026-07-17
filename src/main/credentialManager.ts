@@ -559,7 +559,7 @@ export class CredentialManager {
       if (changed) { byHostname.updatedAt = new Date().toISOString(); this.save(); }
     } else if (byIp) {
       let changed = false;
-      if (hostname && !byIp.hostname) { byIp.hostname = hostname; changed = true; }
+      if (hostname && byIp.hostname !== hostname) { byIp.hostname = hostname; changed = true; }
       if (opts?.shareName && !byIp.smbShare) { byIp.smbShare = opts.shareName; changed = true; }
       if (opts?.setupComplete !== undefined && byIp.setupComplete !== opts.setupComplete) {
         byIp.setupComplete = opts.setupComplete; changed = true;

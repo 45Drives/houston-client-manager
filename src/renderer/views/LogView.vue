@@ -14,7 +14,7 @@
                 :title="loading ? 'Refreshing…' : 'Refresh'" @click="refresh" :disabled="loading">
                 <ArrowPathIcon class="w-4 h-4" />
               </button>
-              <button class="btn btn-sm btn-ghost h-fit" type="button" @click="goHome">
+              <button class="btn btn-sm btn-secondary h-fit" type="button" @click="goHome">
                 Back
               </button>
             </div>

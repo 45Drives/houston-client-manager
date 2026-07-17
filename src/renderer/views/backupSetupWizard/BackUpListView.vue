@@ -32,7 +32,7 @@
           Logs
         </button>
 
-        <button class="btn btn-sm btn-ghost h-fit text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20"
+        <button class="btn btn-sm btn-secondary h-fit text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20"
           :disabled="selectedBackUps.length < 1" @click="$emit('delete')">
           <TrashIcon class="w-4 h-4" />
         </button>

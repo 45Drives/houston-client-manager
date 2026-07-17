@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "servers": [
+    {
+      "host": "192.168.1.101",
+      "username": "root",
+      "password": "",
+      "mode": "simple",
+      "serverName": "storage-01",
+      "shareName": "share",
+      "smbUser": "mediauser",
+      "smbPass": "",
+      "clearExistingData": false
+    },
+    {
+      "host": "192.168.1.102",
+      "username": "root",
+      "password": "",
+      "mode": "simple",
+      "serverName": "storage-02",
+      "shareName": "share",
+      "smbUser": "mediauser",
+      "smbPass": "",
+      "clearExistingData": false
+    },
+    {
+      "host": "192.168.1.103",
+      "username": "root",
+      "password": "",
+      "mode": "simple",
+      "serverName": "backup-01",
+      "shareName": "backups",
+      "smbUser": "backupuser",
+      "smbPass": "",
+      "clearExistingData": false
+    }
+  ]
+}

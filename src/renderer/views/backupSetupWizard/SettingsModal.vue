@@ -54,7 +54,7 @@
                                         @keydown.enter="saveServerName(srv)"
                                         @keydown.esc="editingServerId = null" />
                                     <button class="btn btn-sm btn-primary h-fit px-2" @click="saveServerName(srv)">Save</button>
-                                    <button class="btn btn-sm btn-ghost h-fit px-2" @click="editingServerId = null">Cancel</button>
+                                    <button class="btn btn-sm btn-secondary h-fit px-2" @click="editingServerId = null">Cancel</button>
                                 </div>
                                 <div v-else class="flex items-center gap-2">
                                     <span class="text-sm font-medium truncate">
@@ -162,7 +162,7 @@
                     </div>
 
                     <div class="pt-4 mt-4 border-t border-default">
-                        <button class="btn btn-sm btn-ghost h-fit text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20" @click="confirmReset">
+                        <button class="btn btn-sm btn-secondary h-fit text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20" @click="confirmReset">
                             Reset All Settings
                         </button>
                         <p class="text-xs text-muted mt-1">This resets all preferences to their defaults. Saved servers are not affected.</p>

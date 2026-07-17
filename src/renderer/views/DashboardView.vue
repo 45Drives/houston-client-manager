@@ -33,7 +33,7 @@
                 <span class="text-amber-800 dark:text-amber-300 flex-1">
                     {{ stats.failedBackups }} backup task{{ stats.failedBackups > 1 ? 's' : '' }} failed recently.
                 </span>
-                <button class="btn btn-sm btn-ghost text-amber-700 dark:text-amber-300 h-fit"
+                <button class="btn btn-sm btn-secondary text-amber-700 dark:text-amber-300 h-fit"
                     @click="goBackup()">View Backups</button>
             </div>
 
@@ -92,6 +92,10 @@
                             <button @click="goSetup()" class="quick-action-card group">
                                 <ServerIcon class="w-4 h-4 icon-secondary group-hover:icon-primary shrink-0" />
                                 <span class="text-xs font-medium text-default truncate">Setup Server</span>
+                            </button>
+                            <button @click="goBulkSetup()" class="quick-action-card group">
+                                <ServerIcon class="w-4 h-4 icon-secondary group-hover:icon-primary shrink-0" />
+                                <span class="text-xs font-medium text-default truncate">Bulk Setup</span>
                             </button>
                             <div class="flex gap-1.5">
                                 <button @click="openLogModal()" class="quick-action-card group flex-1">
@@ -180,6 +184,7 @@ const { onboarding, markDone } = useOnboarding()
 const { requestTour } = useTourManager()
 
 const goSetup = () => router.push({ name: 'setup' })
+const goBulkSetup = () => router.push({ name: 'bulk-setup' })
 const goBackup = () => router.push({ name: 'backup-manage' })
 const goVault = () => router.push({ name: 'vault' })
 
@@ -361,7 +366,7 @@ onMounted(() => {
 .quick-action-card {
     @apply flex items-center gap-2 px-2.5 py-2 rounded-lg
            bg-accent border border-default
-           hover:bg-hover hover:shadow-sm
+           hover:bg-neutral-200 dark:hover:bg-neutral-700/50 hover:shadow-sm
            transition-all text-left relative;
 }
 </style>

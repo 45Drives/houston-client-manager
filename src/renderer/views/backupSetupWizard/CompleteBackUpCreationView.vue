@@ -17,8 +17,8 @@
 
       <!-- Success Content -->
       <div v-if="setupComplete === 'yes' && !error"
-        class="flex flex-col items-center flex-1 justify-center max-w-xl text-center">
-        <div class="checkmark text-3xl mb-2">Complete - DONE!</div>
+        class="flex flex-col items-center flex-1 justify-center max-w-xl text-left">
+        <div class="checkmark text-3xl mb-2">Complete!</div>
         <p class="text-xl font-semibold mb-4">
           Your Backup Plan is Now Active.
         </p>
@@ -39,7 +39,6 @@
 
     </div>
 
-    <!-- Go to Home Button (visible once complete) -->
     <template #footer>
 
       <div class="button-group-row justify-end">

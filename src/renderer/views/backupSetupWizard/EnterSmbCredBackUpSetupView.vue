@@ -6,9 +6,9 @@
         <!-- Header -->
         <div class="text-center space-y-2">
           <LockClosedIcon class="w-8 h-8 mx-auto text-muted" />
-          <h2 class="text-xl font-semibold">Server Login</h2>
+          <h2 class="text-xl font-semibold">Samba Login</h2>
           <p class="text-sm text-muted">
-            Enter the username and password for the server where your backups will be stored.
+            Enter the Samba username and password for the backup share. If stored credentials are found, they'll be filled in automatically.
           </p>
         </div>
 
@@ -76,13 +76,13 @@
 <script setup lang="ts">
 
 import { CardContainer } from '@45drives/houston-common-ui'
-import { ref, computed, inject } from 'vue';
+import { ref, computed, inject, onMounted } from 'vue';
 import { EyeIcon, EyeSlashIcon } from "@heroicons/vue/20/solid";
 import { LockClosedIcon, ServerIcon, ExclamationCircleIcon } from "@heroicons/vue/24/outline";
 import { useWizardSteps, useAutoFocus, useEnterToAdvance } from '@45drives/houston-common-ui';
 import { backUpSetupConfigKey } from '../../keys/injection-keys';
 import { useHeader } from '../../composables/useHeader'
-useHeader('Server Login')
+useHeader('Samba Login')
 
 useAutoFocus();
 
@@ -93,6 +93,7 @@ const openingBackup = ref(false);
 const showPassword = ref(false);
 const validationError = ref('');
 const isValidating = ref(false);
+const autoFilling = ref(false);
 const togglePassword = () => {
   showPassword.value = !showPassword.value;
 };
@@ -101,6 +102,30 @@ const targetDisplay = computed(() => {
   const target = backUpSetupConfig?.backUpTasks?.[0]?.target;
   if (!target) return '';
   return target;
+});
+
+// Try to auto-fill SMB credentials from the stored server entry
+onMounted(async () => {
+  if (backUpSetupConfig.username && backUpSetupConfig.password) return; // already filled
+
+  const target = backUpSetupConfig?.backUpTasks?.[0]?.target;
+  if (!target) return;
+
+  const [host] = target.split(':');
+  if (!host) return;
+
+  autoFilling.value = true;
+  try {
+    const result = await window.electron.ipcRenderer.invoke('servers:get-smb-creds', { host });
+    if (result?.found && result.username && result.password) {
+      backUpSetupConfig.username = result.username;
+      backUpSetupConfig.password = result.password;
+    }
+  } catch {
+    // Couldn't auto-fill, user will enter manually
+  } finally {
+    autoFilling.value = false;
+  }
 });
 
 // Check if the "Open" button should be disabled

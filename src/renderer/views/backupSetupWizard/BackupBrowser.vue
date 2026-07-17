@@ -3,7 +3,7 @@
         <!-- Header -->
         <div class="flex items-center justify-between mb-3 shrink-0">
             <div class="flex items-center gap-3">
-                <button class="btn btn-sm btn-ghost h-fit flex items-center gap-1.5 text-gray-500 hover:text-default" @click="proceedToPreviousStep">
+                <button class="btn btn-sm btn-secondary h-fit flex items-center gap-1.5 text-gray-500 hover:text-default" @click="proceedToPreviousStep">
                     <ArrowLeftIcon class="w-4 h-4" />
                     Backups
                 </button>
@@ -228,7 +228,7 @@
                             <FolderOpenIcon class="w-4 h-4" />
                             Open {{ restoredFolders.length > 1 ? 'All' : 'Folder' }}
                         </button>
-                        <button class="btn btn-sm btn-ghost h-fit" @click="showOpenFolderPrompt = false">Dismiss</button>
+                        <button class="btn btn-sm btn-secondary h-fit" @click="showOpenFolderPrompt = false">Dismiss</button>
                     </div>
                 </div>
 
@@ -246,7 +246,7 @@
                             <FolderOpenIcon class="w-4 h-4" />
                             Open Folder
                         </button>
-                        <button class="btn btn-sm btn-ghost flex-1 h-fit flex items-center justify-center gap-1.5 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20"
+                        <button class="btn btn-sm btn-secondary flex-1 h-fit flex items-center justify-center gap-1.5 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20"
                             @click="deleteSingleBackup">
                             <TrashIcon class="w-4 h-4" />
                             Delete

@@ -5,6 +5,7 @@ export const router = createRouter({
   routes: [
     { path: '/', name: 'dashboard', component: () => import('../renderer/views/DashboardView.vue') },
     { path: '/setup', name: 'setup', component: () => import('../renderer/views/SetupWizardView.vue') },
+    { path: '/setup/bulk', name: 'bulk-setup', component: () => import('../renderer/views/bulkSetup/BulkSetupView.vue') },
     { path: '/backup/manage', name: 'backup-manage', component: () => import('../renderer/views/BackupManageView.vue') },
     { path: '/connections', name: 'vault', component: () => import('../renderer/views/CredentialVaultView.vue') },
     {

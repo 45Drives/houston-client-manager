@@ -3,7 +3,7 @@
         <!-- Tab bar + actions header -->
         <div class="flex flex-wrap items-center gap-3 mb-4 shrink-0">
             <!-- Left-aligned group -->
-            <button class="btn btn-sm btn-ghost h-fit flex items-center gap-1.5 text-gray-500 hover:text-default shrink-0" @click="router.push({ name: 'dashboard' })">
+            <button class="btn btn-sm btn-secondary h-fit flex items-center gap-1.5 text-gray-500 hover:text-default shrink-0" @click="router.push({ name: 'dashboard' })">
                 <ArrowLeftIcon class="w-4 h-4" />
                 Dashboard
             </button>
@@ -47,7 +47,7 @@
                         <ArrowRightOnRectangleIcon class="w-4 h-4" />
                         Disconnect
                     </button>
-                    <button class="btn btn-sm btn-ghost h-fit flex items-center gap-1.5 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20"
+                    <button class="btn btn-sm btn-secondary h-fit flex items-center gap-1.5 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20"
                         :class="(activeCredId && currentServer) || showRemoteTour ? '' : 'invisible pointer-events-none'"
                         :disabled="!(activeCredId && currentServer)"
                         @click="forgetActive">

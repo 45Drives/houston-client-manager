@@ -4,7 +4,7 @@
             <!-- Header -->
             <div class="flex items-center justify-between">
                 <div class="flex items-center gap-3">
-                    <button class="btn btn-sm btn-ghost h-fit text-gray-500 hover:text-default"
+                    <button class="btn btn-sm btn-secondary h-fit text-gray-500 hover:text-default"
                         @click="router.push({ name: 'dashboard' })">
                         <ArrowLeftIcon class="w-4 h-4" />
                     </button>
@@ -166,7 +166,7 @@
                         Backup tasks using this login may stop working.
                     </p>
                     <div class="flex justify-end gap-2">
-                        <button class="btn btn-sm btn-ghost h-fit" @click="deleteTarget = null">Cancel</button>
+                        <button class="btn btn-sm btn-secondary h-fit" @click="deleteTarget = null">Cancel</button>
                         <button class="btn btn-sm h-fit bg-red-500 hover:bg-red-600 text-white border-red-500"
                             @click="executeDelete">Delete</button>
                     </div>
@@ -189,7 +189,7 @@
                         </li>
                     </ul>
                     <div class="flex justify-end gap-2">
-                        <button class="btn btn-sm btn-ghost h-fit" @click="showBulkDelete = false">Cancel</button>
+                        <button class="btn btn-sm btn-secondary h-fit" @click="showBulkDelete = false">Cancel</button>
                         <button class="btn btn-sm h-fit bg-red-500 hover:bg-red-600 text-white border-red-500"
                             @click="executeBulkDelete">Delete All Stale</button>
                     </div>
@@ -278,7 +278,7 @@
                         {{ editError }}
                     </div>
                     <div class="flex justify-end gap-2">
-                        <button class="btn btn-sm btn-ghost h-fit" @click="editTarget = null">Cancel</button>
+                        <button class="btn btn-sm btn-secondary h-fit" @click="editTarget = null">Cancel</button>
                         <button class="btn btn-sm btn-primary h-fit" :disabled="!editCanSave" @click="executeEdit">Save</button>
                     </div>
                 </div>
@@ -346,13 +346,17 @@ const THIRTY_DAYS = 30 * 24 * 60 * 60 * 1000
 const hostCount = computed(() => new Set(allCreds.value.map(c => c.host)).size)
 
 function credStatus(cred: CredEntry): 'active' | 'stale' | 'orphaned' | 'hostname-changed' {
-    const isDiscovered = discoveryState.servers.some(s => s.ip === cred.host || s.name === cred.host)
+    const isDiscovered = discoveryState.servers.some(s =>
+        s.ip === cred.host || s.name === cred.host || (cred.ip && s.ip === cred.ip)
+    )
     if (!isDiscovered && discoveryState.servers.length > 0) return 'orphaned'
 
     // Check if stored hostname no longer matches the discovered server's current name
     const storedHostname = (cred as any).hostname as string | undefined
     if (storedHostname && isDiscovered) {
-        const disc = discoveryState.servers.find(s => s.ip === cred.host || s.name === cred.host)
+        const disc = discoveryState.servers.find(s =>
+            s.ip === cred.host || s.name === cred.host || (cred.ip && s.ip === cred.ip)
+        )
         if (disc && disc.name && disc.name !== disc.ip) {
             // Compare stored hostname (strip .local suffix) with discovered name
             const storedBase = storedHostname.replace(/\.local$/i, '').toLowerCase()

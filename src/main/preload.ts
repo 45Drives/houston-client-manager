@@ -53,6 +53,11 @@ const INVOKE_CHANNELS = new Set([
   'settings:get',
   'settings:set',
   'settings:reset',
+  // Bulk Setup
+  'bulk-setup:validate',
+  'bulk-setup:probe',
+  'bulk-setup:run',
+  'bulk-setup:cancel',
   // Restore operations
   'restore:list-remotes',
   'restore:browse-remote',
@@ -81,6 +86,9 @@ const RECEIVE_CHANNELS = new Set([
   'store-manual-creds',
   'setup-progress',
   'client-ident',
+  'bulk-setup:progress',
+  'bulk-setup:result',
+  'bulk-setup:complete',
 ]);
 
 function assertAllowed(channel: string, set: Set<string>) {
