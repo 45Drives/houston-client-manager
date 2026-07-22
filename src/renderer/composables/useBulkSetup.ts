@@ -11,6 +11,7 @@ import type {
   BulkSetupStep,
 } from '../../shared/bulkSetupTypes';
 import { validateServerEntry, isEntryValid, type FieldErrors } from '../../shared/bulkSetupValidation';
+import { useServers } from './useServers';
 
 export type BulkServerState = BulkServerEntry & {
   progress?: BulkSetupProgress;
@@ -28,6 +29,13 @@ const isRunning = ref(false);
 const isValidating = ref(false);
 
 export function useBulkSetup() {
+  // Get refresh function from useServers at setup time (while in component context)
+  let refreshServersList: (() => Promise<any>) | null = null;
+  try {
+    const { refresh } = useServers();
+    refreshServersList = refresh;
+  } catch { /* ok — may not be in component context */ }
+
   // ── Listeners for IPC events ──────────────────────────────────────────
 
   function onProgress(_event: any, progress: BulkSetupProgress) {
@@ -87,11 +95,67 @@ export function useBulkSetup() {
       if (result.finalHostname && result.finalHostname !== srv.serverName) {
         srv.serverName = result.finalHostname;
       }
+      // Auto-save successfully setup servers to the saved servers list
+      if (result.success) {
+        saveServerToVault(srv);
+      }
     }
   }
 
   function onComplete(_event: any, summary: any) {
     isRunning.value = false;
+    // Process any results from the summary as a fallback
+    // (handles cases where individual result events were missed)
+    if (summary?.results && Array.isArray(summary.results)) {
+      for (const result of summary.results) {
+        if (!result.success) continue;
+        const srv = servers.value.find(s => s.host === result.host);
+        if (srv && !srv.result?.success) {
+          srv.result = result;
+          if (result.finalHostname && result.finalHostname !== srv.serverName) {
+            srv.serverName = result.finalHostname;
+          }
+          saveServerToVault(srv);
+        }
+      }
+    }
+  }
+
+  /**
+   * Save a successfully setup server to the credential vault (saved servers list).
+   * Uses servers:add which deduplicates by host automatically.
+   */
+  async function saveServerToVault(srv: BulkServerState) {
+    try {
+      const smbUser = srv.mode === 'custom' && srv.customConfig?.smbUser
+        ? srv.customConfig.smbUser
+        : srv.smbUser;
+      const smbPass = srv.mode === 'custom' && srv.customConfig?.smbPass
+        ? srv.customConfig.smbPass
+        : srv.smbPass;
+      const shareName = srv.mode === 'custom' && srv.customConfig?.folderName
+        ? srv.customConfig.folderName
+        : srv.shareName;
+      const serverName = srv.mode === 'custom' && srv.customConfig?.srvrName
+        ? srv.customConfig.srvrName
+        : srv.serverName;
+
+      await window.electron?.ipcRenderer.invoke('servers:add', {
+        host: srv.host,
+        shareName: shareName || 'share',
+        username: srv.username,
+        password: srv.password,
+        smbUser: smbUser || undefined,
+        smbPass: smbPass || undefined,
+        name: serverName || undefined,
+        setupComplete: true,
+      });
+
+      // Refresh the saved servers list so the UI updates immediately
+      refreshServersList?.().catch(() => {});
+    } catch (e) {
+      console.error('[BulkSetup] Failed to save server to vault:', srv.host, e);
+    }
   }
 
   function startListening() {
@@ -173,6 +237,8 @@ export function useBulkSetup() {
         useSameRootPass: srv.useSameRootPass,
         rootPass: srv.rootPass,
         rootPassConfirm: srv.rootPassConfirm,
+        mode: srv.mode,
+        customConfig: srv.customConfig,
       });
       srv.fieldErrors = errors;
       if (!isEntryValid(errors)) allValid = false;
@@ -227,7 +293,7 @@ export function useBulkSetup() {
       password: s.password,
     }));
 
-    const results: Array<{ host: string; diskInfo?: BulkDiskInfo; serverModel?: string; chassisSize?: string; error?: string }> =
+    const results: Array<{ host: string; diskInfo?: BulkDiskInfo; serverModel?: string; chassisSize?: string; existingGroups?: string[]; existingUsers?: string[]; error?: string }> =
       await window.electron.ipcRenderer.invoke('bulk-setup:probe', JSON.parse(JSON.stringify(toProbe)));
 
     for (const r of results) {
@@ -236,8 +302,68 @@ export function useBulkSetup() {
         srv.diskInfo = r.diskInfo;
         srv.serverModel = r.serverModel;
         srv.chassisSize = r.chassisSize;
+        srv.existingGroups = r.existingGroups;
+        srv.existingUsers = r.existingUsers;
       }
     }
+  }
+
+  /**
+   * Validate SSH + probe disks for a single server.
+   * Returns true if connection succeeded and disks were probed.
+   */
+  async function connectAndProbe(serverId: string): Promise<boolean> {
+    const srv = servers.value.find(s => s.id === serverId);
+    if (!srv || !srv.host || !srv.password) return false;
+
+    srv.validated = undefined;
+    srv.validationError = undefined;
+
+    // Validate SSH
+    const validateResults: Array<{ host: string; reachable: boolean; isAdmin?: boolean; error?: string }> =
+      await window.electron.ipcRenderer.invoke('bulk-setup:validate', JSON.parse(JSON.stringify([{
+        host: srv.host,
+        username: srv.username,
+        password: srv.password,
+      }])));
+
+    const vr = validateResults[0];
+    if (!vr || !vr.reachable || vr.error) {
+      srv.validated = false;
+      srv.validationError = vr?.error || 'Not reachable';
+      return false;
+    }
+    if (!vr.isAdmin) {
+      srv.validated = false;
+      srv.validationError = 'User does not have root/admin privileges';
+      return false;
+    }
+    srv.validated = true;
+    srv.validationError = undefined;
+
+    // Probe disks, existing groups and users
+    const probeResults: Array<{ host: string; diskInfo?: BulkDiskInfo; serverModel?: string; chassisSize?: string; existingGroups?: string[]; existingUsers?: string[]; error?: string }> =
+      await window.electron.ipcRenderer.invoke('bulk-setup:probe', JSON.parse(JSON.stringify([{
+        host: srv.host,
+        username: srv.username,
+        password: srv.password,
+      }])));
+
+    const pr = probeResults[0];
+    if (pr) {
+      srv.diskInfo = pr.diskInfo;
+      srv.serverModel = pr.serverModel;
+      srv.chassisSize = pr.chassisSize;
+      srv.existingGroups = pr.existingGroups;
+      srv.existingUsers = pr.existingUsers;
+    }
+
+    // Auto-disable splitPools if not enough disks
+    if (srv.splitPools && srv.diskInfo && srv.diskInfo.availableDisks.length <= 4) {
+      srv.splitPools = false;
+    }
+
+    return true;
   }
 
   // ── Deploy ─────────────────────────────────────────────────────────────
@@ -275,6 +401,13 @@ export function useBulkSetup() {
     const missingDisks = servers.value.filter(s => !s.diskInfo || !s.diskInfo.availableDisks?.length);
     if (missingDisks.length > 0) {
       return false;
+    }
+
+    // Auto-disable splitPools if server doesn't have enough disks
+    for (const srv of servers.value) {
+      if (srv.splitPools && srv.diskInfo && srv.diskInfo.availableDisks.length <= 4) {
+        srv.splitPools = false;
+      }
     }
 
     return true;
@@ -444,6 +577,7 @@ export function useBulkSetup() {
     validateFields,
     validateAll,
     probeAll,
+    connectAndProbe,
     preflightCheck,
     deploy,
     cancel,

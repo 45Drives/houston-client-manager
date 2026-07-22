@@ -131,6 +131,12 @@ async function probeServerDisks(host: string, username: string, password: string
               serial: d.serial?.trim() || undefined,
               alias: devToAlias[d.name] || undefined,
             }));
+          // Sort by alias numerically (e.g. 1-1, 1-2, 1-3, 1-4, 2-1, 2-2, 2-3)
+          availableDisks.sort((a, b) => {
+            const pa = (a.alias || '').split('-').map(Number);
+            const pb = (b.alias || '').split('-').map(Number);
+            return (pa[0]! - pb[0]!) || (pa[1]! - pb[1]!);
+          });
         } else {
           // Non-45Drives: include all disks except boot/OS
           availableDisks = blockdevices
@@ -186,6 +192,83 @@ async function probeServerInfo(host: string, username: string, password: string)
       } catch { /* ignore */ }
     }
     return {};
+  } finally {
+    ssh.dispose();
+  }
+}
+
+/**
+ * Probe existing system groups (gid >= 1000, excluding system/nologin groups)
+ */
+const EXCLUDED_GROUPS = new Set([
+  'nobody', 'nogroup', 'nfsnobody', 'systemd-coredump', 'systemd-journal',
+  'systemd-network', 'systemd-resolve', 'systemd-timesync', 'input', 'render',
+  'sgx', 'polkitd', '_ssh', 'ssh', 'landscape', 'lxd', 'snap_daemon',
+]);
+
+async function probeServerGroups(host: string, username: string, password: string): Promise<string[]> {
+  const ssh = new NodeSSH();
+  const keyDir = getKeyDir();
+  const privateKeyPath = path.join(keyDir, 'id_rsa');
+
+  try {
+    await ssh.connect({
+      host,
+      username,
+      privateKey: fs.existsSync(privateKeyPath) ? fs.readFileSync(privateKeyPath, 'utf-8') : undefined,
+      password,
+      readyTimeout: loadSettings().sshTimeoutMs,
+    });
+
+    // Get all groups with gid >= 1000 and < 65534
+    const result = await ssh.execCommand(
+      "awk -F: '$3 >= 1000 && $3 < 65534 { print $1 }' /etc/group 2>/dev/null"
+    );
+    if (result.code === 0 && result.stdout.trim()) {
+      return result.stdout.trim().split('\n')
+        .filter(Boolean)
+        .filter(g => !EXCLUDED_GROUPS.has(g));
+    }
+    return [];
+  } catch {
+    return [];
+  } finally {
+    ssh.dispose();
+  }
+}
+
+/**
+ * Probe existing system users (uid >= 1000, excluding nobody/nfsnobody)
+ */
+const EXCLUDED_USERS = new Set([
+  'nobody', 'nfsnobody', 'systemd-coredump',
+]);
+
+async function probeServerUsers(host: string, username: string, password: string): Promise<string[]> {
+  const ssh = new NodeSSH();
+  const keyDir = getKeyDir();
+  const privateKeyPath = path.join(keyDir, 'id_rsa');
+
+  try {
+    await ssh.connect({
+      host,
+      username,
+      privateKey: fs.existsSync(privateKeyPath) ? fs.readFileSync(privateKeyPath, 'utf-8') : undefined,
+      password,
+      readyTimeout: loadSettings().sshTimeoutMs,
+    });
+
+    const result = await ssh.execCommand(
+      "awk -F: '$3 >= 1000 && $3 < 65534 { print $1 }' /etc/passwd 2>/dev/null"
+    );
+    if (result.code === 0 && result.stdout.trim()) {
+      return result.stdout.trim().split('\n')
+        .filter(Boolean)
+        .filter(u => !EXCLUDED_USERS.has(u));
+    }
+    return [];
+  } catch {
+    return [];
   } finally {
     ssh.dispose();
   }
@@ -416,15 +499,33 @@ async function verifySetup(ssh: NodeSSH, entry: BulkServerEntry): Promise<{ succ
   const checks: string[] = [];
   const failures: string[] = [];
 
+  // Resolve effective server name (custom mode uses customConfig.srvrName)
+  const effectiveServerName = entry.mode === 'custom' && entry.customConfig?.srvrName
+    ? entry.customConfig.srvrName
+    : entry.serverName;
+
+  // Resolve effective SMB user (custom mode uses customConfig.smbUser)
+  const effectiveSmbUser = entry.mode === 'custom' && entry.customConfig?.smbUser
+    ? entry.customConfig.smbUser
+    : entry.smbUser;
+
+  // Resolve effective share/pool info for custom mode
+  const effectivePoolName = entry.mode === 'custom' && entry.customConfig?.zfsConfigs?.[0]?.pool?.name
+    ? entry.customConfig.zfsConfigs[0].pool.name
+    : 'tank';
+  const effectiveShareName = entry.mode === 'custom' && entry.customConfig?.zfsConfigs?.[0]?.dataset?.name
+    ? entry.customConfig.zfsConfigs[0].dataset.name
+    : (entry.shareName || 'share');
+
   // Check hostname
-  if (entry.serverName) {
+  if (effectiveServerName) {
     const hostnameResult = await ssh.execCommand('hostname');
     const actual = hostnameResult.stdout.trim();
-    if (actual === entry.serverName) {
+    if (actual === effectiveServerName) {
       checks.push(`hostname=${actual}`);
     } else {
       // Hostname might not apply until reboot — warn but don't fail
-      checks.push(`hostname=${actual} (expected ${entry.serverName}, may need reboot)`);
+      checks.push(`hostname=${actual} (expected ${effectiveServerName}, may need reboot)`);
     }
   }
 
@@ -448,23 +549,22 @@ async function verifySetup(ssh: NodeSSH, entry: BulkServerEntry): Promise<{ succ
   }
 
   // Check SMB user exists (if configured)
-  if (entry.smbUser) {
-    const userCheck = await ssh.execCommand(`id "${entry.smbUser}" 2>/dev/null`);
+  if (effectiveSmbUser) {
+    const userCheck = await ssh.execCommand(`id "${effectiveSmbUser}" 2>/dev/null`);
     if (userCheck.code === 0) {
-      checks.push(`user=${entry.smbUser}`);
+      checks.push(`user=${effectiveSmbUser}`);
     } else {
-      failures.push(`SMB user "${entry.smbUser}" not found`);
+      failures.push(`SMB user "${effectiveSmbUser}" not found`);
     }
   }
 
   // Check share path exists
-  const shareName = entry.shareName || 'share';
-  const shareCheck = await ssh.execCommand(`test -d /tank/${shareName} && echo exists`);
+  const shareCheck = await ssh.execCommand(`test -d /${effectivePoolName}/${effectiveShareName} && echo exists`);
   if (shareCheck.stdout.trim() === 'exists') {
-    checks.push(`share=/tank/${shareName}`);
+    checks.push(`share=/${effectivePoolName}/${effectiveShareName}`);
   } else {
     // Not a hard failure — pool might use different mountpoint
-    checks.push(`share=/tank/${shareName} (not found, may use different path)`);
+    checks.push(`share=/${effectivePoolName}/${effectiveShareName} (not found, may use different path)`);
   }
 
   if (failures.length > 0) {
@@ -479,12 +579,49 @@ async function verifySetup(ssh: NodeSSH, entry: BulkServerEntry): Promise<{ succ
  */
 function buildEasySetupConfig(entry: BulkServerEntry): Record<string, any> {
   if (entry.mode === 'custom' && entry.customConfig) {
-    return {
-      ...entry.customConfig,
-      srvrName: entry.customConfig.srvrName || entry.serverName,
-      smbUser: entry.customConfig.smbUser || entry.smbUser,
-      smbPass: entry.customConfig.smbPass || entry.smbPass,
-    };
+    // Custom mode: use the full config from the UI, with fallbacks
+    const cfg = { ...entry.customConfig };
+    cfg.srvrName = cfg.srvrName || entry.serverName;
+    cfg.smbUser = cfg.smbUser || entry.smbUser;
+    cfg.smbPass = cfg.smbPass || entry.smbPass;
+    cfg.skipClearExisting = !entry.clearExistingData;
+
+    // Ensure serverConfig has adminUser/adminPass from SSH creds if not set
+    if (cfg.serverConfig) {
+      cfg.serverConfig.adminUser = cfg.serverConfig.adminUser || entry.username;
+      cfg.serverConfig.adminPass = cfg.serverConfig.adminPass || entry.password;
+    } else {
+      cfg.serverConfig = {
+        adminUser: entry.username,
+        adminPass: entry.password,
+        disableRootSSH: false,
+        useNTP: true,
+      };
+    }
+
+    // Add advancedOptions to samba shares/global for compatibility with EasySetupConfigurator
+    if (cfg.sambaConfig) {
+      if (cfg.sambaConfig.global) {
+        (cfg.sambaConfig.global as any).advancedOptions = (cfg.sambaConfig.global as any).advancedOptions || {};
+      }
+      if (cfg.sambaConfig.shares) {
+        for (const share of cfg.sambaConfig.shares) {
+          (share as any).advancedOptions = (share as any).advancedOptions || {};
+        }
+      }
+    }
+
+    // Convert recordsize from KB (UI dropdown) to bytes (ZFS expects bytes)
+    if (cfg.zfsConfigs) {
+      for (const zfsCfg of cfg.zfsConfigs) {
+        if (zfsCfg.poolOptions && typeof zfsCfg.poolOptions.recordsize === 'number' && zfsCfg.poolOptions.recordsize < 65536) {
+          // Value is in KB (e.g. 128 = 128K), convert to bytes
+          zfsCfg.poolOptions.recordsize = zfsCfg.poolOptions.recordsize * 1024;
+        }
+      }
+    }
+
+    return cfg;
   }
 
   const shareName = entry.shareName || 'share';
@@ -510,15 +647,16 @@ function buildEasySetupConfig(entry: BulkServerEntry): Record<string, any> {
     throw new Error(`No suitable disks found on ${entry.host}. Probe returned ${allDisks.length} disk(s) but none are eligible for ZFS pool creation.`);
   }
 
-  const useSplitPools = entry.splitPools === true && disks.length >= 4;
+  const useSplitPools = entry.splitPools === true && disks.length > 4;
 
-  // Split disks for active backup mode
+  // Split disks for active backup mode (even split, odd disk left as spare)
   let storageDisks = disks;
   let backupDisks: typeof disks = [];
   if (useSplitPools) {
-    const half = Math.ceil(disks.length / 2);
+    const spare = disks.length % 2;
+    const half = Math.floor((disks.length - spare) / 2);
     storageDisks = disks.slice(0, half);
-    backupDisks = disks.slice(half);
+    backupDisks = disks.slice(half, half * 2);
   }
 
   // Pick RAID level based on disk count
@@ -632,7 +770,11 @@ async function setupSingleServer(
 ): Promise<BulkSetupResult> {
   const host = entry.host;
   const startTime = Date.now();
-  const serverLabel = entry.serverName || host;
+  // Resolve effective server name (custom mode may use customConfig.srvrName)
+  const effectiveServerName = entry.mode === 'custom' && entry.customConfig?.srvrName
+    ? entry.customConfig.srvrName
+    : entry.serverName;
+  const serverLabel = effectiveServerName || host;
 
   try {
     emitNotification(ctx, `🔧 Starting setup for ${serverLabel}...`);
@@ -678,7 +820,7 @@ async function setupSingleServer(
 
     // Phase 3: Reboot if hostname was changed (required for mDNS/avahi/samba to pick up new name)
     if (setup.hostnameChanged) {
-      emitProgress(ctx, { host, status: 'configuring', step: 9, totalSteps: 10, label: `Rebooting to apply new hostname (${entry.serverName})...` });
+      emitProgress(ctx, { host, status: 'configuring', step: 9, totalSteps: 10, label: `Rebooting to apply new hostname (${effectiveServerName})...` });
       emitNotification(ctx, `🔄 ${serverLabel}: Rebooting to apply hostname change...`);
 
       const ssh2 = new NodeSSH();
@@ -716,7 +858,7 @@ async function setupSingleServer(
       }
 
       if (cameBack) {
-        emitProgress(ctx, { host, status: 'configuring', step: 9, totalSteps: 10, label: `Server is back online with hostname "${entry.serverName}"` });
+        emitProgress(ctx, { host, status: 'configuring', step: 9, totalSteps: 10, label: `Server is back online with hostname "${effectiveServerName}"` });
         emitNotification(ctx, `✅ ${serverLabel}: Back online after hostname reboot`);
       } else {
         emitProgress(ctx, { host, status: 'configuring', step: 9, totalSteps: 10, label: `⚠ Server did not come back after reboot within 3 minutes` });
@@ -727,10 +869,10 @@ async function setupSingleServer(
 
     const duration = Date.now() - startTime;
     const summary = [
-      entry.serverName ? `Hostname: ${entry.serverName}` : null,
+      effectiveServerName ? `Hostname: ${effectiveServerName}` : null,
       `Pool: tank (${entry.diskInfo?.availableDisks?.length || '?'} disks)`,
-      `Share: ${entry.shareName || 'share'}`,
-      `SMB User: ${entry.smbUser}`,
+      `Share: ${entry.shareName || entry.customConfig?.folderName || 'share'}`,
+      `SMB User: ${entry.smbUser || entry.customConfig?.smbUser || '—'}`,
       setup.hostnameChanged ? 'Rebooted for hostname change' : null,
     ].filter(Boolean).join(' · ');
 
@@ -741,7 +883,7 @@ async function setupSingleServer(
       success: true,
       durationMs: duration,
       summary,
-      finalHostname: entry.serverName || undefined,
+      finalHostname: effectiveServerName || undefined,
       reboot: setup.hostnameChanged,
     };
   } catch (err: any) {
@@ -796,18 +938,20 @@ export function registerBulkSetupHandlers(ctx: BulkSetupContext) {
     return results;
   });
 
-  // Probe: get disk info and server model for all servers
+  // Probe: get disk info, server model, existing groups and users for all servers
   ipcMain.handle('bulk-setup:probe', async (event, servers: Array<{ host: string; username: string; password: string }>) => {
-    const results: Array<{ host: string; diskInfo?: BulkDiskInfo; serverModel?: string; chassisSize?: string; error?: string }> = [];
+    const results: Array<{ host: string; diskInfo?: BulkDiskInfo; serverModel?: string; chassisSize?: string; existingGroups?: string[]; existingUsers?: string[]; error?: string }> = [];
 
     await Promise.allSettled(servers.map(async (srv) => {
       try {
         const host = assertSafeHost(srv.host);
-        const [diskInfo, serverInfo] = await Promise.all([
+        const [diskInfo, serverInfo, existingGroups, existingUsers] = await Promise.all([
           probeServerDisks(host, srv.username, srv.password),
           probeServerInfo(host, srv.username, srv.password),
+          probeServerGroups(host, srv.username, srv.password),
+          probeServerUsers(host, srv.username, srv.password),
         ]);
-        results.push({ host, diskInfo, ...serverInfo });
+        results.push({ host, diskInfo, ...serverInfo, existingGroups, existingUsers });
       } catch (e: any) {
         results.push({ host: srv.host, error: e?.message || 'Probe failed' });
       }
@@ -836,7 +980,9 @@ export function registerBulkSetupHandlers(ctx: BulkSetupContext) {
           batch.map(entry => setupSingleServer(ctx, entry, signal))
         );
         for (const r of batchResults) {
-          results.push(r.status === 'fulfilled' ? r.value : { host: 'unknown', success: false, error: 'Unexpected error' });
+          const result = r.status === 'fulfilled' ? r.value : { host: 'unknown', success: false, error: 'Unexpected error' };
+          results.push(result);
+          emitResult(ctx, result);
         }
       }
     } else {

@@ -23,6 +23,13 @@ export interface FieldErrors {
   rootPassConfirm?: string;
   shareName?: string;
   password?: string;
+  // Custom mode errors
+  customAdminUser?: string;
+  customAdminPass?: string;
+  customSmbUser?: string;
+  customSmbPass?: string;
+  customPoolName?: string;
+  customDisks?: string;
 }
 
 export function validateHostname(value: string): string | undefined {
@@ -88,24 +95,73 @@ export function validateServerEntry(entry: {
   rootPass?: string;
   rootPassConfirm?: string;
   useSameRootPass?: boolean;
+  mode?: 'simple' | 'custom';
+  customConfig?: any;
 }): FieldErrors {
   const errors: FieldErrors = {};
 
+  // Connection fields always required
   errors.host = validateHost(entry.host);
   errors.password = validateSshPassword(entry.password);
-  errors.serverName = validateHostname(entry.serverName);
-  errors.smbUser = validateUsername(entry.smbUser);
-  errors.smbPass = validatePassword(entry.smbPass);
-  errors.shareName = validateShareName(entry.shareName);
 
-  if (entry.smbPassConfirm !== undefined) {
-    errors.smbPassConfirm = validatePasswordMatch(entry.smbPass, entry.smbPassConfirm);
-  }
+  if (entry.mode === 'custom') {
+    // Custom mode validates from customConfig
+    const cfg = entry.customConfig;
+    if (cfg) {
+      if (cfg.srvrName) {
+        errors.serverName = validateHostname(cfg.srvrName);
+      }
+      if (cfg.serverConfig) {
+        if (!cfg.serverConfig.adminUser) {
+          errors.customAdminUser = 'Admin username is required';
+        }
+        if (cfg.serverConfig.adminPass) {
+          errors.customAdminPass = validatePassword(cfg.serverConfig.adminPass);
+        } else {
+          errors.customAdminPass = 'Admin password is required';
+        }
+      }
+      if (cfg.smbUser) {
+        errors.customSmbUser = validateUsername(cfg.smbUser);
+      } else {
+        errors.customSmbUser = 'SMB username is required';
+      }
+      if (cfg.smbPass) {
+        errors.customSmbPass = validatePassword(cfg.smbPass);
+      } else {
+        errors.customSmbPass = 'SMB password is required';
+      }
+      // ZFS: must have at least one pool with disks
+      if (!cfg.zfsConfigs || cfg.zfsConfigs.length === 0) {
+        errors.customDisks = 'At least one ZFS pool with disks is required';
+      } else {
+        const firstPool = cfg.zfsConfigs[0];
+        if (!firstPool.pool?.vdevs?.length || !firstPool.pool.vdevs[0]?.disks?.length) {
+          errors.customDisks = 'Select at least one disk for the storage pool';
+        }
+        if (!firstPool.pool?.name) {
+          errors.customPoolName = 'Pool name is required';
+        }
+      }
+    } else {
+      errors.customAdminUser = 'Custom configuration is incomplete';
+    }
+  } else {
+    // Simple mode validation (existing behavior)
+    errors.serverName = validateHostname(entry.serverName);
+    errors.smbUser = validateUsername(entry.smbUser);
+    errors.smbPass = validatePassword(entry.smbPass);
+    errors.shareName = validateShareName(entry.shareName);
 
-  if (!entry.useSameRootPass && entry.rootPass !== undefined) {
-    errors.rootPass = validatePassword(entry.rootPass);
-    if (entry.rootPassConfirm !== undefined) {
-      errors.rootPassConfirm = validatePasswordMatch(entry.rootPass, entry.rootPassConfirm);
+    if (entry.smbPassConfirm !== undefined) {
+      errors.smbPassConfirm = validatePasswordMatch(entry.smbPass, entry.smbPassConfirm);
+    }
+
+    if (!entry.useSameRootPass && entry.rootPass !== undefined) {
+      errors.rootPass = validatePassword(entry.rootPass);
+      if (entry.rootPassConfirm !== undefined) {
+        errors.rootPassConfirm = validatePasswordMatch(entry.rootPass, entry.rootPassConfirm);
+      }
     }
   }
 

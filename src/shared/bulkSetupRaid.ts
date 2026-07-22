@@ -99,11 +99,12 @@ export function getSinglePoolPreview(disks: BulkDisk[]): RaidPreview {
   return previewForDisks(disks);
 }
 
-/** Get RAID preview for split pools (active backup) — splits disks evenly */
+/** Get RAID preview for split pools (active backup) — even split, odd disk is spare */
 export function getSplitPoolPreview(disks: BulkDisk[]): SplitPoolPreview {
-  const half = Math.ceil(disks.length / 2);
+  const spare = disks.length % 2;
+  const half = Math.floor((disks.length - spare) / 2);
   const storageDisks = disks.slice(0, half);
-  const backupDisks = disks.slice(half);
+  const backupDisks = disks.slice(half, half * 2);
 
   return {
     storage: previewForDisks(storageDisks),

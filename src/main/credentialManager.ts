@@ -415,7 +415,7 @@ export class CredentialManager {
 
     if (existing) {
       const changes: Parameters<typeof this.updateServer>[1] = {};
-      if (opts.hostname && !existing.hostname) changes.hostname = opts.hostname;
+      if (opts.hostname) changes.hostname = opts.hostname;
       if (opts.ip && !existing.ip) changes.ip = opts.ip;
       if (opts.displayName !== undefined) changes.displayName = opts.displayName;
       changes.loginUser = opts.loginUser;
@@ -684,7 +684,7 @@ export class CredentialManager {
     shareName: string,
     username: string,
     password: string,
-    opts?: { name?: string; favorite?: boolean; smbUser?: string; smbPass?: string }
+    opts?: { name?: string; favorite?: boolean; smbUser?: string; smbPass?: string; setupComplete?: boolean }
   ): string {
     const hostname = isIpAddress(host) ? '' : host;
     const ip = isIpAddress(host) ? host : '';
@@ -698,6 +698,7 @@ export class CredentialManager {
       smbUser: opts?.smbUser,
       smbPass: opts?.smbPass,
       favorite: opts?.favorite,
+      setupComplete: opts?.setupComplete,
     });
   }
 

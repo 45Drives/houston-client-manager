@@ -42,9 +42,7 @@ export function useIpcActions(getServer: () => Server | null | undefined) {
       case 'show_wizard':
       case 'wizard_go_back': {
         const map: Record<string, string> = { storage: 'setup', backup: 'backup-manage', 'restore-backup': 'restore' }
-        if (msg.wizard === 'backup') {
-          await autoSaveCurrentServer()
-        }
+        await autoSaveCurrentServer()
         if (map[msg.wizard]) router.push({ name: map[msg.wizard] })
         break
       }
@@ -52,22 +50,22 @@ export function useIpcActions(getServer: () => Server | null | undefined) {
         const srv = getServer()
         if (!srv?.ip) return
         const map: Record<string, string> = { storage: 'setup', backup: 'backup-manage', 'restore-backup': 'restore' }
+        await autoSaveCurrentServer()
         waitFor(srv.ip).then(async (ok) => {
           if (ok && map[msg.wizard]) {
-            if (msg.wizard === 'backup') {
-              await autoSaveCurrentServer()
-            }
             router.push({ name: map[msg.wizard] })
           }
         })
         break
       }
       case 'show_webview':
+        await autoSaveCurrentServer()
         router.push({ name: 'houston' })
         break
       case 'reboot_and_show_webview': {
         const srv = getServer()
         if (!srv?.ip) return
+        await autoSaveCurrentServer()
         waitFor(srv.ip).then(ok => { if (ok) router.push({ name: 'houston' }) })
         break
       }

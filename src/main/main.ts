@@ -1108,7 +1108,7 @@ app.whenReady().then(() => {
     return getCredentialManager().listAllServers();
   });
 
-  ipcMain.handle('servers:add', (event, p: { host: string; shareName: string; username: string; password: string; smbUser?: string; smbPass?: string; name?: string; favorite?: boolean }) => {
+  ipcMain.handle('servers:add', (event, p: { host: string; shareName: string; username: string; password: string; smbUser?: string; smbPass?: string; name?: string; favorite?: boolean; setupComplete?: boolean }) => {
     assertMainWindowSender(event);
     const safeHost = assertSafeHost(p.host);
 
@@ -1133,6 +1133,7 @@ app.whenReady().then(() => {
         favorite: p.favorite,
         smbUser: p.smbUser ? assertSafeUsername(p.smbUser) : undefined,
         smbPass: p.smbPass,
+        setupComplete: p.setupComplete,
       }
     );
     jsonLogger.info({ event: 'servers:add', host: p.host, shareName: p.shareName, username: p.username });

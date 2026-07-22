@@ -67,22 +67,43 @@
               class="w-full input-textlike rounded-lg px-3 py-1.5 text-sm pr-8"
               :class="server.fieldErrors?.password ? 'border-red-400 dark:border-red-600' : ''" />
             <button type="button" @click="showSshPass = !showSshPass"
-              class="absolute right-2 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 text-xs select-none">
-              {{ showSshPass ? 'Hide' : 'Show' }}
+              class="absolute right-2 top-1/2 -translate-y-1/2 text-muted">
+              <EyeIcon v-if="!showSshPass" class="w-4 h-4" />
+              <EyeSlashIcon v-if="showSshPass" class="w-4 h-4" />
             </button>
           </div>
           <span v-if="server.fieldErrors?.password" class="text-xs text-red-500 dark:text-red-400 mt-0.5 block">{{ server.fieldErrors.password }}</span>
         </div>
       </div>
 
-      <!-- Discovery server picker (separate row) -->
-      <div v-if="discoveredServers.length" class="flex items-center gap-2">
-        <label class="text-xs font-medium text-muted shrink-0">Or pick from discovery:</label>
-        <select @change="onPickDiscovered($event)" :value="server.host"
-          class="input-textlike rounded-lg px-3 py-1.5 text-sm flex-1 max-w-xs">
-          <option value="" disabled>— Select a discovered server —</option>
-          <option v-for="s in discoveredServers" :key="s.ip" :value="s.ip">{{ s.name }} ({{ s.ip }})</option>
-        </select>
+      <!-- Discovery server picker + Connect & Probe -->
+      <div class="flex items-center gap-2">
+        <div v-if="discoveredServers.length" class="flex items-center gap-2 flex-1">
+          <label class="text-xs font-medium text-muted shrink-0">Or pick from discovery:</label>
+          <select @change="onPickDiscovered($event)" :value="server.host"
+            class="input-textlike rounded-lg px-3 py-1.5 text-sm flex-1 max-w-xs">
+            <option value="" disabled>— Select a discovered server —</option>
+            <option v-for="s in discoveredServers" :key="s.ip" :value="s.ip">{{ s.name }} ({{ s.ip }})</option>
+          </select>
+        </div>
+        <button @click="$emit('connectAndProbe', server.id)" :disabled="!server.host || !server.password || isProbing"
+          class="h-fit px-3 py-1.5 text-xs font-medium shrink-0 rounded-lg border transition-colors"
+          :class="server.validated === true && server.diskInfo
+            ? 'bg-green-600 hover:bg-green-700 text-white border-green-600 dark:bg-green-600 dark:hover:bg-green-700 dark:border-green-600'
+            : 'btn btn-secondary border-blue-400 dark:border-blue-500'">
+          <span v-if="isProbing" class="inline-flex items-center gap-1">
+            <span class="inline-block w-3 h-3 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+            Connecting &amp; detecting disks...
+          </span>
+          <span v-else-if="server.validated === true && server.diskInfo">✓ Connected &amp; Probed</span>
+          <span v-else>Connect &amp; Probe Disks</span>
+        </button>
+      </div>
+
+      <!-- Connect hint (shown only when not yet probed) -->
+      <div v-if="!server.validated && !server.validationError && server.host && server.password" class="text-xs text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 px-3 py-2 rounded flex items-center gap-2">
+        <span class="text-sm">💡</span>
+        <span>Click <strong>Connect &amp; Probe Disks</strong> to verify SSH access and detect available storage drives before deploying.</span>
       </div>
 
       <!-- Validation error -->
@@ -119,12 +140,12 @@
       <div v-if="server.mode === 'simple'" class="flex items-center gap-2">
         <label class="flex items-center gap-2 cursor-pointer">
           <input type="checkbox" v-model="server.splitPools"
-            :disabled="!server.diskInfo || server.diskInfo.availableDisks.length < 4"
+            :disabled="server.diskInfo && server.diskInfo.availableDisks.length <= 4"
             class="rounded border-neutral-400 dark:border-neutral-500 text-blue-500 focus:ring-blue-500" />
           <span class="text-xs font-medium" :class="server.splitPools ? 'text-blue-600 dark:text-blue-400' : 'text-muted'">Active Backup (split disks into storage + backup pools)</span>
         </label>
-        <span v-if="server.diskInfo && server.diskInfo.availableDisks.length < 4 && !server.splitPools"
-          class="text-xs text-neutral-400 dark:text-neutral-500">Requires 4+ disks</span>
+        <span v-if="server.diskInfo && server.diskInfo.availableDisks.length <= 4"
+          class="text-xs text-red-500 dark:text-red-400">Not enough disks (need more than 4)</span>
       </div>
 
       <!-- Simple mode fields -->
@@ -146,163 +167,183 @@
           </div>
         </div>
 
-        <!-- SMB User + Password row -->
+        <!-- SMB + Root password 2-column layout -->
         <div class="grid grid-cols-2 gap-3">
-          <div>
-            <label class="text-xs font-medium text-muted mb-1 block">SMB Username</label>
-            <input v-model="server.smbUser" type="text" placeholder="user"
-              class="w-full input-textlike rounded-lg px-3 py-1.5 text-sm"
-              :class="server.fieldErrors?.smbUser ? 'border-red-400 dark:border-red-600' : ''" />
-            <span v-if="server.fieldErrors?.smbUser" class="text-xs text-red-500 dark:text-red-400 mt-0.5 block">{{ server.fieldErrors.smbUser }}</span>
-          </div>
-          <div>
-            <label class="text-xs font-medium text-muted mb-1 block">SMB Password</label>
-            <div class="relative">
-              <input v-model="server.smbPass" :type="showSmbPass ? 'text' : 'password'" placeholder="••••••••"
-                class="w-full input-textlike rounded-lg px-3 py-1.5 text-sm pr-8"
-                :class="server.fieldErrors?.smbPass ? 'border-red-400 dark:border-red-600' : ''" />
-              <button type="button" @click="showSmbPass = !showSmbPass"
-                class="absolute right-2 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 text-xs select-none">
-                {{ showSmbPass ? 'Hide' : 'Show' }}
-              </button>
-            </div>
-            <span v-if="server.fieldErrors?.smbPass" class="text-xs text-red-500 dark:text-red-400 mt-0.5 block">{{ server.fieldErrors.smbPass }}</span>
-          </div>
-        </div>
-
-        <!-- Confirm SMB password -->
-        <div class="grid grid-cols-2 gap-3">
-          <div>
-            <label class="text-xs font-medium text-muted mb-1 block">Confirm SMB Password</label>
-            <div class="relative">
-              <input v-model="server.smbPassConfirm" :type="showSmbPass ? 'text' : 'password'" placeholder="••••••••"
-                class="w-full input-textlike rounded-lg px-3 py-1.5 text-sm pr-8"
-                :class="server.fieldErrors?.smbPassConfirm ? 'border-red-400 dark:border-red-600' : ''" />
-              <button type="button" @click="showSmbPass = !showSmbPass"
-                class="absolute right-2 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 text-xs select-none">
-                {{ showSmbPass ? 'Hide' : 'Show' }}
-              </button>
-            </div>
-            <span v-if="server.fieldErrors?.smbPassConfirm" class="text-xs text-red-500 dark:text-red-400 mt-0.5 block">{{ server.fieldErrors.smbPassConfirm }}</span>
-          </div>
-          <div class="flex items-end pb-1">
-            <span v-if="server.smbPassConfirm && !server.fieldErrors?.smbPassConfirm && server.smbPass === server.smbPassConfirm"
-              class="text-xs text-green-600 dark:text-green-400">✓ Passwords match</span>
-          </div>
-        </div>
-
-        <!-- Root password option -->
-        <div class="space-y-2">
-          <label class="flex items-center gap-2 cursor-pointer">
-            <input type="checkbox" v-model="server.useSameRootPass"
-              class="rounded border-neutral-400 dark:border-neutral-500" />
-            <span class="text-xs font-medium text-muted">Use same password for root</span>
-          </label>
-
-          <div v-if="server.useSameRootPass === false" class="grid grid-cols-2 gap-3">
+          <!-- Left column: SMB User, SMB Pass, Confirm SMB Pass -->
+          <div class="space-y-2">
             <div>
-              <label class="text-xs font-medium text-muted mb-1 block">Root Password</label>
-              <div class="relative">
-                <input v-model="server.rootPass" :type="showRootPass ? 'text' : 'password'" placeholder="••••••••"
-                  class="w-full input-textlike rounded-lg px-3 py-1.5 text-sm pr-8"
-                  :class="server.fieldErrors?.rootPass ? 'border-red-400 dark:border-red-600' : ''" />
-                <button type="button" @click="showRootPass = !showRootPass"
-                  class="absolute right-2 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 text-xs select-none">
-                  {{ showRootPass ? 'Hide' : 'Show' }}
-                </button>
-              </div>
-              <span v-if="server.fieldErrors?.rootPass" class="text-xs text-red-500 dark:text-red-400 mt-0.5 block">{{ server.fieldErrors.rootPass }}</span>
+              <label class="text-xs font-medium text-muted mb-1 block">SMB Username</label>
+              <input v-model="server.smbUser" type="text" placeholder="user"
+                class="w-full input-textlike rounded-lg px-3 py-1.5 text-sm"
+                :class="server.fieldErrors?.smbUser ? 'border-red-400 dark:border-red-600' : ''" />
+              <span v-if="server.fieldErrors?.smbUser" class="text-xs text-red-500 dark:text-red-400 mt-0.5 block">{{ server.fieldErrors.smbUser }}</span>
             </div>
             <div>
-              <label class="text-xs font-medium text-muted mb-1 block">Confirm Root Password</label>
+              <label class="text-xs font-medium text-muted mb-1 block">SMB Password</label>
               <div class="relative">
-                <input v-model="server.rootPassConfirm" :type="showRootPass ? 'text' : 'password'" placeholder="••••••••"
+                <input v-model="server.smbPass" :type="showSmbPass ? 'text' : 'password'" placeholder="••••••••"
                   class="w-full input-textlike rounded-lg px-3 py-1.5 text-sm pr-8"
-                  :class="server.fieldErrors?.rootPassConfirm ? 'border-red-400 dark:border-red-600' : ''" />
-                <button type="button" @click="showRootPass = !showRootPass"
-                  class="absolute right-2 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 text-xs select-none">
-                  {{ showRootPass ? 'Hide' : 'Show' }}
+                  :class="server.fieldErrors?.smbPass ? 'border-red-400 dark:border-red-600' : ''" />
+                <button type="button" @click="showSmbPass = !showSmbPass"
+                  class="absolute right-2 top-1/2 -translate-y-1/2 text-muted">
+                  <EyeIcon v-if="!showSmbPass" class="w-4 h-4" />
+                  <EyeSlashIcon v-if="showSmbPass" class="w-4 h-4" />
                 </button>
               </div>
-              <span v-if="server.fieldErrors?.rootPassConfirm" class="text-xs text-red-500 dark:text-red-400 mt-0.5 block">{{ server.fieldErrors.rootPassConfirm }}</span>
+              <span v-if="server.fieldErrors?.smbPass" class="text-xs text-red-500 dark:text-red-400 mt-0.5 block">{{ server.fieldErrors.smbPass }}</span>
             </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Custom mode placeholder -->
-      <div v-if="server.mode === 'custom'" class="p-4 rounded-lg bg-neutral-50 dark:bg-neutral-900/50 border border-dashed border-neutral-300 dark:border-neutral-600">
-        <p class="text-sm text-muted text-center">
-          Custom configuration (ZFS layout, users/groups, Samba shares) — coming soon.
-          <br />
-          <span class="text-xs">For now, use Simple mode or import a template with custom configs.</span>
-        </p>
-      </div>
-
-      <!-- Disk info (if probed) -->
-      <div v-if="server.diskInfo" class="text-xs">
-        <div class="font-medium text-muted mb-1">Detected Disks:</div>
-        <div class="flex flex-wrap gap-1.5">
-          <span v-for="disk in server.diskInfo.availableDisks" :key="disk.name"
-            class="px-2 py-0.5 rounded bg-neutral-100 dark:bg-neutral-700 text-default font-mono">
-            {{ disk.alias || disk.name }} ({{ disk.size }}, {{ disk.type }})
-          </span>
-        </div>
-        <div v-if="server.diskInfo.existingPools.length" class="mt-1.5 text-amber-600 dark:text-amber-400">
-          ⚠ Existing pools: {{ server.diskInfo.existingPools.join(', ') }}
-        </div>
-      </div>
-
-      <!-- RAID Preview (only when disks probed and simple mode) -->
-      <div v-if="server.diskInfo && server.diskInfo.availableDisks.length > 0 && server.mode === 'simple'" class="rounded-lg border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-900/50 p-3 text-xs space-y-2">
-        <div class="font-medium text-default text-sm">Storage Preview</div>
-
-        <!-- Single pool preview -->
-        <template v-if="!server.splitPools">
-          <div class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1">
-            <span class="text-muted">Pool:</span>
-            <span class="text-default font-mono">tank</span>
-            <span class="text-muted">RAID:</span>
-            <span class="text-default">{{ raidPreview.raidLabel }} ({{ raidPreview.diskCount }} disks)</span>
-            <span class="text-muted">Usable:</span>
-            <span class="text-default font-medium">~{{ raidPreview.usableCapacity }}</span>
-            <span class="text-muted">Raw:</span>
-            <span class="text-default">{{ raidPreview.rawCapacity }}</span>
-          </div>
-        </template>
-
-        <!-- Split pool preview -->
-        <template v-else>
-          <div class="grid grid-cols-2 gap-3">
-            <div class="space-y-1 p-2 rounded bg-default border border-neutral-200 dark:border-neutral-700">
-              <div class="font-medium text-blue-600 dark:text-blue-400">Storage Pool</div>
-              <div class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5">
-                <span class="text-muted">Pool:</span>
-                <span class="text-default font-mono">tank</span>
-                <span class="text-muted">RAID:</span>
-                <span class="text-default">{{ splitPreview.storage.raidLabel }}</span>
-                <span class="text-muted">Disks:</span>
-                <span class="text-default">{{ splitPreview.storage.diskCount }}</span>
-                <span class="text-muted">Usable:</span>
-                <span class="text-default font-medium">~{{ splitPreview.storage.usableCapacity }}</span>
+            <div>
+              <label class="text-xs font-medium text-muted mb-1 block">Confirm SMB Password</label>
+              <div class="relative">
+                <input v-model="server.smbPassConfirm" :type="showSmbPass ? 'text' : 'password'" placeholder="••••••••"
+                  class="w-full input-textlike rounded-lg px-3 py-1.5 text-sm pr-8"
+                  :class="server.fieldErrors?.smbPassConfirm ? 'border-red-400 dark:border-red-600' : ''" />
+                <button type="button" @click="showSmbPass = !showSmbPass"
+                  class="absolute right-2 top-1/2 -translate-y-1/2 text-muted">
+                  <EyeIcon v-if="!showSmbPass" class="w-4 h-4" />
+                  <EyeSlashIcon v-if="showSmbPass" class="w-4 h-4" />
+                </button>
               </div>
-            </div>
-            <div class="space-y-1 p-2 rounded bg-default border border-neutral-200 dark:border-neutral-700">
-              <div class="font-medium text-green-600 dark:text-green-400">Backup Pool</div>
-              <div class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5">
-                <span class="text-muted">Pool:</span>
-                <span class="text-default font-mono">tank-backup</span>
-                <span class="text-muted">RAID:</span>
-                <span class="text-default">{{ splitPreview.backup.raidLabel }}</span>
-                <span class="text-muted">Disks:</span>
-                <span class="text-default">{{ splitPreview.backup.diskCount }}</span>
-                <span class="text-muted">Usable:</span>
-                <span class="text-default font-medium">~{{ splitPreview.backup.usableCapacity }}</span>
-              </div>
+              <span v-if="server.fieldErrors?.smbPassConfirm" class="text-xs text-red-500 dark:text-red-400 mt-0.5 block">{{ server.fieldErrors.smbPassConfirm }}</span>
+              <span v-else-if="server.smbPassConfirm && server.smbPass === server.smbPassConfirm"
+                class="text-xs text-green-600 dark:text-green-400 mt-0.5 block">✓ Passwords match</span>
             </div>
           </div>
-          <div class="text-muted">ZFS replication will sync storage → backup automatically</div>
-        </template>
+
+          <!-- Right column: Use same password toggle, Root Pass, Confirm Root Pass -->
+          <div class="space-y-2">
+            <div>
+              <label class="text-xs font-medium text-muted mb-1 block">&nbsp;</label>
+              <label class="flex items-center gap-2 cursor-pointer w-fit mt-2.5 py-1.5">
+                <input type="checkbox" v-model="server.useSameRootPass"
+                  class="rounded border-neutral-400 dark:border-neutral-500" />
+                <span class="text-xs font-medium text-muted">Use same password for root</span>
+              </label>
+            </div>
+            <template v-if="server.useSameRootPass === false">
+              <div>
+                <label class="text-xs font-medium text-muted mb-1 block">Root Password</label>
+                <div class="relative">
+                  <input v-model="server.rootPass" :type="showRootPass ? 'text' : 'password'" placeholder="••••••••"
+                    class="w-full input-textlike rounded-lg px-3 py-1.5 text-sm pr-8"
+                    :class="server.fieldErrors?.rootPass ? 'border-red-400 dark:border-red-600' : ''" />
+                  <button type="button" @click="showRootPass = !showRootPass"
+                    class="absolute right-2 top-1/2 -translate-y-1/2 text-muted">
+                    <EyeIcon v-if="!showRootPass" class="w-4 h-4" />
+                    <EyeSlashIcon v-if="showRootPass" class="w-4 h-4" />
+                  </button>
+                </div>
+                <span v-if="server.fieldErrors?.rootPass" class="text-xs text-red-500 dark:text-red-400 mt-0.5 block">{{ server.fieldErrors.rootPass }}</span>
+              </div>
+              <div>
+                <label class="text-xs font-medium text-muted mb-1 block">Confirm Root Password</label>
+                <div class="relative">
+                  <input v-model="server.rootPassConfirm" :type="showRootPass ? 'text' : 'password'" placeholder="••••••••"
+                    class="w-full input-textlike rounded-lg px-3 py-1.5 text-sm pr-8"
+                    :class="server.fieldErrors?.rootPassConfirm ? 'border-red-400 dark:border-red-600' : ''" />
+                  <button type="button" @click="showRootPass = !showRootPass"
+                    class="absolute right-2 top-1/2 -translate-y-1/2 text-muted">
+                    <EyeIcon v-if="!showRootPass" class="w-4 h-4" />
+                    <EyeSlashIcon v-if="showRootPass" class="w-4 h-4" />
+                  </button>
+                </div>
+                <span v-if="server.fieldErrors?.rootPassConfirm" class="text-xs text-red-500 dark:text-red-400 mt-0.5 block">{{ server.fieldErrors.rootPassConfirm }}</span>
+              </div>
+            </template>
+          </div>
+        </div>
+      </div>
+
+      <!-- Custom mode config -->
+      <BulkCustomConfig
+        v-if="server.mode === 'custom'"
+        :modelValue="server.customConfig || {}"
+        :diskInfo="server.diskInfo"
+        :existingGroups="server.existingGroups"
+        :existingUsers="server.existingUsers"
+        @update:modelValue="server.customConfig = $event"
+      />
+
+      <!-- Custom mode validation errors -->
+      <div v-if="server.mode === 'custom' && hasCustomErrors" class="space-y-1">
+        <div v-for="err in customErrorMessages" :key="err" class="text-xs text-red-500 dark:text-red-400">
+          • {{ err }}
+        </div>
+      </div>
+
+      <!-- Storage info: Preview (left) + Detected Disks (right) -->
+      <div v-if="server.diskInfo && server.mode === 'simple'" class="grid grid-cols-2 gap-4 items-start">
+        <!-- Left: Storage Preview -->
+        <div v-if="server.diskInfo.availableDisks.length > 0" class="rounded-lg border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-900/50 p-3 text-xs space-y-2 text-left">
+          <div class="font-medium text-default text-sm">Storage Preview</div>
+
+          <!-- Single pool preview -->
+          <template v-if="!server.splitPools">
+            <div class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1">
+              <span class="text-muted">Pool:</span>
+              <span class="text-default font-mono">tank</span>
+              <span class="text-muted">RAID:</span>
+              <span class="text-default">{{ raidPreview.raidLabel }} ({{ raidPreview.diskCount }} disks)</span>
+              <span class="text-muted">Usable:</span>
+              <span class="text-default font-medium">~{{ raidPreview.usableCapacity }}</span>
+              <span class="text-muted">Raw:</span>
+              <span class="text-default">{{ raidPreview.rawCapacity }}</span>
+            </div>
+          </template>
+
+          <!-- Split pool preview -->
+          <template v-else>
+            <div class="space-y-2">
+              <div class="space-y-1 p-2 rounded bg-default border border-neutral-200 dark:border-neutral-700">
+                <div class="font-medium text-blue-600 dark:text-blue-400">Storage Pool</div>
+                <div class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5">
+                  <span class="text-muted">Pool:</span>
+                  <span class="text-default font-mono">tank</span>
+                  <span class="text-muted">RAID:</span>
+                  <span class="text-default">{{ splitPreview.storage.raidLabel }}</span>
+                  <span class="text-muted">Disks:</span>
+                  <span class="text-default">{{ splitPreview.storage.diskCount }}</span>
+                  <span class="text-muted">Usable:</span>
+                  <span class="text-default font-medium">~{{ splitPreview.storage.usableCapacity }}</span>
+                </div>
+              </div>
+              <div class="space-y-1 p-2 rounded bg-default border border-neutral-200 dark:border-neutral-700">
+                <div class="font-medium text-green-600 dark:text-green-400">Backup Pool</div>
+                <div class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5">
+                  <span class="text-muted">Pool:</span>
+                  <span class="text-default font-mono">tank-backup</span>
+                  <span class="text-muted">RAID:</span>
+                  <span class="text-default">{{ splitPreview.backup.raidLabel }}</span>
+                  <span class="text-muted">Disks:</span>
+                  <span class="text-default">{{ splitPreview.backup.diskCount }}</span>
+                  <span class="text-muted">Usable:</span>
+                  <span class="text-default font-medium">~{{ splitPreview.backup.usableCapacity }}</span>
+                </div>
+              </div>
+              <div class="text-muted text-xs">ZFS replication will sync storage → backup automatically</div>
+            </div>
+          </template>
+        </div>
+        <div v-else />
+
+        <!-- Right: Detected Disks -->
+        <div class="text-xs">
+          <div class="font-medium text-muted mb-1">Detected Disks:</div>
+          <div class="flex flex-wrap gap-1.5">
+            <span v-for="(disk, di) in server.diskInfo.availableDisks" :key="disk.name"
+              class="px-2 py-0.5 rounded font-mono"
+              :class="diskBadgeClass(di)"
+              :title="diskTooltip(di)">
+              {{ disk.alias || disk.name }} ({{ disk.size }}, {{ disk.type }})
+            </span>
+          </div>
+          <div v-if="server.splitPools && spareCount > 0" class="mt-1.5 text-amber-500 dark:text-amber-400">
+            {{ spareCount }} disk unassigned (odd number — left as spare)
+          </div>
+          <div v-if="server.diskInfo.existingPools.length" class="mt-1.5 text-amber-600 dark:text-amber-400">
+            ⚠ Existing pools: {{ server.diskInfo.existingPools.join(', ') }}
+          </div>
+        </div>
       </div>
     </div>
 
@@ -349,7 +390,8 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue';
-import { ChevronDownIcon, XMarkIcon, ArrowPathIcon } from '@heroicons/vue/20/solid';
+import { ChevronDownIcon, XMarkIcon, ArrowPathIcon, EyeIcon, EyeSlashIcon } from '@heroicons/vue/20/solid';
+import BulkCustomConfig from './BulkCustomConfig.vue';
 import type { BulkServerState } from '../../composables/useBulkSetup';
 import type { Server } from '../../types';
 import { getSinglePoolPreview, getSplitPoolPreview } from '../../../shared/bulkSetupRaid';
@@ -358,12 +400,14 @@ const props = defineProps<{
   server: BulkServerState;
   index: number;
   isRunning: boolean;
+  isProbing: boolean;
   discoveredServers: Server[];
 }>();
 
-defineEmits<{
+const emit = defineEmits<{
   remove: [index: number];
   retry: [host: string];
+  connectAndProbe: [serverId: string];
 }>();
 
 const expanded = ref(!props.server.host); // Auto-expand new empty entries
@@ -373,7 +417,13 @@ const showRootPass = ref(false);
 
 function onPickDiscovered(event: Event) {
   const val = (event.target as HTMLSelectElement).value;
-  if (val) props.server.host = val;
+  if (val) {
+    props.server.host = val;
+    // Auto-trigger connect & probe if credentials are filled
+    if (props.server.password) {
+      emit('connectAndProbe', props.server.id);
+    }
+  }
 }
 
 const progressPercent = computed(() => {
@@ -432,6 +482,58 @@ const raidPreview = computed(() => {
 const splitPreview = computed(() => {
   const disks = props.server.diskInfo?.availableDisks || [];
   return getSplitPoolPreview(disks);
+});
+
+/** Index where backup pool disks start (first half is storage, second half is backup) */
+const splitHalf = computed(() => {
+  const count = props.server.diskInfo?.availableDisks.length || 0;
+  const spare = count % 2;
+  return Math.floor((count - spare) / 2);
+});
+
+function diskBadgeClass(index: number): string {
+  if (!props.server.splitPools) {
+    return 'bg-neutral-100 dark:bg-neutral-700 text-default';
+  }
+  const half = splitHalf.value;
+  if (index < half) {
+    // Storage pool — blue
+    return 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300';
+  }
+  if (index < half * 2) {
+    // Backup pool — green
+    return 'bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300';
+  }
+  // Spare (odd disk out) — neutral/amber
+  return 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300';
+}
+
+function diskTooltip(index: number): string {
+  if (!props.server.splitPools) return '';
+  const half = splitHalf.value;
+  if (index < half) return 'Storage Pool (tank)';
+  if (index < half * 2) return 'Backup Pool (tank-backup)';
+  return 'Unassigned spare (odd disk count)';
+}
+
+const spareCount = computed(() => {
+  if (!props.server.splitPools) return 0;
+  const count = props.server.diskInfo?.availableDisks.length || 0;
+  return count % 2;
+});
+
+const customErrorFields = ['customAdminUser', 'customAdminPass', 'customSmbUser', 'customSmbPass', 'customPoolName', 'customDisks'] as const;
+
+const hasCustomErrors = computed(() => {
+  if (!props.server.fieldErrors) return false;
+  return customErrorFields.some(k => (props.server.fieldErrors as any)?.[k]);
+});
+
+const customErrorMessages = computed(() => {
+  if (!props.server.fieldErrors) return [];
+  return customErrorFields
+    .map(k => (props.server.fieldErrors as any)?.[k])
+    .filter(Boolean);
 });
 
 const borderClass = computed(() => {

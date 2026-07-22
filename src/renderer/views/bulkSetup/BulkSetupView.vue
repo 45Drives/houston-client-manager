@@ -66,9 +66,11 @@
           :server="srv"
           :index="i"
           :isRunning="isRunning"
+          :isProbing="probingServers.has(srv.id)"
           :discoveredServers="discoveryState.servers"
           @remove="removeServer(i)"
           @retry="retryServer($event)"
+          @connectAndProbe="onConnectAndProbe($event)"
         />
       </div>
 
@@ -83,6 +85,9 @@
         class="sticky bottom-0 bg-white/80 dark:bg-neutral-900/80 backdrop-blur-sm border-t border-neutral-200 dark:border-neutral-700 -mx-6 px-6 py-4 flex items-center justify-between">
         <div class="flex items-center gap-3 text-sm">
           <span class="text-default font-medium">{{ totalServers }} server{{ totalServers > 1 ? 's' : '' }}</span>
+          <span v-if="!isRunning && !isComplete && !allProbed" class="text-amber-600 dark:text-amber-400 text-xs">
+            (probe all servers before deploying)
+          </span>
           <span v-if="completedServers > 0" class="text-green-600 dark:text-green-400 font-medium">✓ {{ completedServers }} done</span>
           <span v-if="failedServers > 0" class="text-red-600 dark:text-red-400 font-medium">✗ {{ failedServers }} failed</span>
           <span v-if="isRunning && currentServerLabel" class="text-blue-600 dark:text-blue-400 animate-pulse">
@@ -98,17 +103,18 @@
             Parallel mode
           </label>
 
-          <button v-if="!isRunning && !isComplete" @click="onValidateAll" :disabled="isValidating || servers.length === 0"
-            class="btn btn-secondary h-fit px-4 py-2 text-sm">
-            {{ isValidating ? 'Validating...' : 'Validate All' }}
+          <button v-if="!isRunning && !isComplete" @click="onProbeAll" :disabled="servers.length === 0 || allProbed || isProbingAll"
+            class="btn btn-secondary h-fit px-4 py-2 text-sm font-medium"
+            :class="allProbed ? 'text-green-600 dark:text-green-400' : ''">
+            <span v-if="isProbingAll" class="inline-flex items-center gap-1">
+              <span class="inline-block w-3 h-3 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+              Probing...
+            </span>
+            <span v-else-if="allProbed">✓ All Connected</span>
+            <span v-else>Connect &amp; Probe All</span>
           </button>
 
-          <button v-if="!isRunning && !isComplete" @click="onProbeAll" :disabled="servers.length === 0"
-            class="btn btn-secondary h-fit px-4 py-2 text-sm">
-            Probe Disks
-          </button>
-
-          <button v-if="!isRunning && !isComplete" @click="onDeploy" :disabled="servers.length === 0"
+          <button v-if="!isRunning && !isComplete" @click="onDeploy" :disabled="servers.length === 0 || !allProbed"
             class="btn btn-primary h-fit px-6 py-2 text-sm font-semibold">
             Deploy All
           </button>
@@ -205,7 +211,6 @@ const { discoveryState } = useServerDiscovery();
 const {
   servers,
   isRunning,
-  isValidating,
   isComplete,
   totalServers,
   completedServers,
@@ -213,8 +218,7 @@ const {
   addServer,
   removeServer,
   applyGlobalDefaults,
-  validateAll,
-  probeAll,
+  connectAndProbe,
   preflightCheck,
   deploy,
   cancel,
@@ -225,8 +229,14 @@ const {
   clearAll,
 } = useBulkSetup();
 
-const parallel = ref(false);
+const parallel = ref(true);
 const showConfirmModal = ref(false);
+const probingServers = ref(new Set<string>());
+const isProbingAll = ref(false);
+
+const allProbed = computed(() =>
+  servers.value.length > 0 && servers.value.every(s => s.validated === true && s.diskInfo)
+);
 
 const globalDefaults = ref({
   username: 'root',
@@ -284,12 +294,31 @@ function onApplyDefaults() {
   applyGlobalDefaults(globalDefaults.value);
 }
 
-async function onValidateAll() {
-  await validateAll();
+async function onConnectAndProbe(serverId: string) {
+  probingServers.value.add(serverId);
+  try {
+    await connectAndProbe(serverId);
+  } finally {
+    probingServers.value.delete(serverId);
+  }
 }
 
 async function onProbeAll() {
-  await probeAll();
+  isProbingAll.value = true;
+  try {
+    for (const srv of servers.value) {
+      if (!srv.validated || !srv.diskInfo) {
+        probingServers.value.add(srv.id);
+        try {
+          await connectAndProbe(srv.id);
+        } finally {
+          probingServers.value.delete(srv.id);
+        }
+      }
+    }
+  } finally {
+    isProbingAll.value = false;
+  }
 }
 
 async function onDeploy() {

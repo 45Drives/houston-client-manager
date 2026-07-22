@@ -46,6 +46,10 @@ export interface BulkServerEntry {
   serverModel?: string;
   /** Chassis size from server_info */
   chassisSize?: string;
+  /** Existing system groups (gid >= 1000) discovered during probe */
+  existingGroups?: string[];
+  /** Existing system users (uid >= 1000) discovered during probe */
+  existingUsers?: string[];
   /** Whether to destroy existing ZFS pools and Samba shares before setup (default: false) */
   clearExistingData?: boolean;
   /** Active Backup: split disks into storage + backup pool with ZFS replication (default: false) */
@@ -69,36 +73,119 @@ export interface BulkDisk {
   alias?: string;
 }
 
-/** Simplified version of EasySetupConfig for the bulk setup JSON contract */
+/** Full EasySetupConfig for the bulk setup JSON contract (custom mode) */
 export interface BulkEasySetupConfig {
   srvrName?: string;
   folderName?: string;
   smbUser?: string;
   smbPass?: string;
   splitPools?: boolean;
-  serverConfig?: {
-    adminUser: string;
-    adminPass: string;
-    disableRootSSH: boolean;
-    newRootPass?: string;
-    timezone?: string;
-    setTimezone?: boolean;
-    useNTP?: boolean;
+  serverConfig?: BulkServerConfig;
+  usersAndGroups?: BulkUsersAndGroupsConfig;
+  zfsConfigs?: BulkZFSConfig[];
+  sambaConfig?: BulkSambaConfig;
+  /** If true, skip destruction of existing ZFS pools and Samba shares */
+  skipClearExisting?: boolean;
+}
+
+export interface BulkServerConfig {
+  adminUser: string;
+  adminPass: string;
+  disableRootSSH: boolean;
+  newRootPass?: string;
+  timezone?: string;
+  setTimezone?: boolean;
+  useNTP?: boolean;
+}
+
+export interface BulkUsersAndGroupsConfig {
+  users: BulkUserSpec[];
+  groups: BulkGroupSpec[];
+}
+
+export interface BulkUserSpec {
+  username: string;
+  password: string;
+  groups: string[];
+  sshKey?: string;
+}
+
+export interface BulkGroupSpec {
+  name: string;
+  members?: string[];
+}
+
+// ── ZFS Types (mirrors houston-common-lib ZFS types for serialization) ──
+
+export type BulkVDevType = 'mirror' | 'raidz1' | 'raidz2' | 'raidz3' | 'disk' | 'stripe';
+
+export interface BulkVDevDisk {
+  path: string;
+  name?: string;
+  alias?: string;
+}
+
+export interface BulkVDev {
+  type: BulkVDevType | string;
+  disks: BulkVDevDisk[];
+}
+
+export interface BulkPoolOptions {
+  autoexpand?: string;
+  autoreplace?: string;
+  autotrim?: string;
+  compression?: string;
+  recordsize?: number;
+  dedup?: string;
+  forceCreate?: boolean;
+}
+
+export interface BulkDatasetOptions {
+  encryption?: string;
+  atime?: string;
+  casesensitivity?: string;
+  compression?: string;
+  dedup?: string;
+  recordsize?: string;
+}
+
+export interface BulkZFSConfig {
+  pool: {
+    name: string;
+    vdevs: BulkVDev[];
   };
-  usersAndGroups?: {
-    users: Array<{
-      username: string;
-      password: string;
-      groups: string[];
-      sshKey?: string;
-    }>;
-    groups: Array<{
-      name: string;
-      members?: string[];
-    }>;
+  poolOptions: BulkPoolOptions;
+  dataset: {
+    name: string;
   };
-  // ZFS and Samba configs are auto-generated from disk probe + simple fields
-  // unless mode=custom with full overrides
+  datasetOptions: BulkDatasetOptions;
+  additionalDatasets?: Array<{
+    dataset: { name: string };
+    datasetOptions: BulkDatasetOptions;
+  }>;
+}
+
+// ── Samba Types (mirrors houston-common-lib Samba types for serialization) ──
+
+export interface BulkSambaGlobalConfig {
+  logLevel: number;
+  workgroup: string;
+  serverString: string;
+}
+
+export interface BulkSambaShareConfig {
+  name: string;
+  description: string;
+  path: string;
+  guestOk: boolean;
+  readOnly: boolean;
+  browseable: boolean;
+  inheritPermissions: boolean;
+}
+
+export interface BulkSambaConfig {
+  global: BulkSambaGlobalConfig;
+  shares: BulkSambaShareConfig[];
 }
 
 export interface BulkSetupProgress {
