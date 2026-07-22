@@ -26,7 +26,8 @@
                     :class="server.host === props.selectedHost
                         ? 'bg-selected border-l-2 border-selected'
                         : 'hover:bg-hover'"
-                    @click="$emit('connect', server)">
+                    @click="$emit('connect', server)"
+                    @dblclick="$emit('open-manage', server)">
                     <!-- Online indicator -->
                     <span class="status-dot shrink-0"
                         :class="server.online ? 'status-dot-ok' : 'status-dot-idle'"
@@ -90,6 +91,7 @@ defineEmits<{
     'go-setup': []
     'connect': [server: StoredServer]
     'manage': []
+    'open-manage': [server: StoredServer]
 }>()
 
 const { savedServers, displayServers, loaded, refresh } = useServers()

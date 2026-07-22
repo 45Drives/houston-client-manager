@@ -49,7 +49,8 @@
                             :selectedHost="selectedServer?.host ?? ''"
                             @go-setup="goSetup()"
                             @connect="onConnectServer"
-                            @manage="goVault()" />
+                            @manage="goVault()"
+                            @open-manage="goManageServer" />
                     </div>
                     <!-- Storage + System Health -->
                     <div class="grid grid-cols-2 gap-5" data-tour="storage-health">
@@ -192,6 +193,10 @@ const goVault = () => {
     } else {
         router.push({ name: 'vault' })
     }
+}
+
+const goManageServer = (server: { id: string }) => {
+    router.push({ name: 'server-manage', params: { id: server.id } })
 }
 
 const { displayServers } = useServers()
