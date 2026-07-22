@@ -484,20 +484,8 @@ async function executeBulkDelete() {
 }
 
 function editCredential(cred: CredEntry) {
-    editTarget.value = cred
-    editForm.value = {
-        name: cred.name || '',
-        hostname: (cred as any).hostname || '',
-        ip: (cred as any).ip || '',
-        share: cred.shareName || '',
-        username: cred.username,
-        password: '',
-        smbUser: (cred as any).smbUser || '',
-        smbPass: '',
-    }
-    editShowPassword.value = false
-    editShowSmbPassword.value = false
-    editError.value = ''
+    // Navigate to the dedicated server management view
+    router.push({ name: 'server-manage', params: { id: cred.id } })
 }
 
 const editCanSave = computed(() =>

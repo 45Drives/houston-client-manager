@@ -53,6 +53,11 @@ const INVOKE_CHANNELS = new Set([
   'settings:get',
   'settings:set',
   'settings:reset',
+  // Server Management
+  'server:probe',
+  'server:apply-changes',
+  'server:reboot',
+  'server:manage',
   // Bulk Setup
   'bulk-setup:validate',
   'bulk-setup:probe',

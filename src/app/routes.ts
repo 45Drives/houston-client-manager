@@ -8,6 +8,7 @@ export const router = createRouter({
     { path: '/setup/bulk', name: 'bulk-setup', component: () => import('../renderer/views/bulkSetup/BulkSetupView.vue') },
     { path: '/backup/manage', name: 'backup-manage', component: () => import('../renderer/views/BackupManageView.vue') },
     { path: '/connections', name: 'vault', component: () => import('../renderer/views/CredentialVaultView.vue') },
+    { path: '/server/:id', name: 'server-manage', component: () => import('../renderer/views/ServerManageView.vue'), props: true },
     {
       path: '/houston',
       name: 'houston',

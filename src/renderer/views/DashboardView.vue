@@ -186,7 +186,13 @@ const { requestTour } = useTourManager()
 const goSetup = () => router.push({ name: 'setup' })
 const goBulkSetup = () => router.push({ name: 'bulk-setup' })
 const goBackup = () => router.push({ name: 'backup-manage' })
-const goVault = () => router.push({ name: 'vault' })
+const goVault = () => {
+    if (selectedServer.value && !selectedServer.value.discovered) {
+        router.push({ name: 'server-manage', params: { id: selectedServer.value.id } })
+    } else {
+        router.push({ name: 'vault' })
+    }
+}
 
 const { displayServers } = useServers()
 
