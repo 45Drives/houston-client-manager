@@ -231,7 +231,7 @@
                                     <span v-if="!editing" class="text-default">{{ selectedDatasetProps.mountpoint.value }}</span>
                                     <input v-else v-model="datasetPropEdits.mountpoint"
                                         class="flex-1 px-2 py-0.5 text-xs rounded bg-white dark:bg-neutral-900 border border-blue-300 dark:border-blue-600/50 text-default outline-none focus:border-blue-400"
-                                        @change="saveDatasetProp(selectedDatasetName!, 'mountpoint', datasetPropEdits.mountpoint)" />
+                                        @change="stageDatasetProp('mountpoint', datasetPropEdits.mountpoint)" />
                                 </div>
                                 <!-- Compression -->
                                 <div v-if="selectedDatasetProps.compression" class="flex items-center gap-2 text-xs">
@@ -239,7 +239,7 @@
                                     <span v-if="!editing" class="text-default">{{ selectedDatasetProps.compression.value }}</span>
                                     <select v-else v-model="datasetPropEdits.compression"
                                         class="flex-1 px-2 py-0.5 text-xs rounded bg-white dark:bg-neutral-900 border border-blue-300 dark:border-blue-600/50 text-default outline-none focus:border-blue-400"
-                                        @change="saveDatasetProp(selectedDatasetName!, 'compression', datasetPropEdits.compression)">
+                                        @change="stageDatasetProp('compression', datasetPropEdits.compression)">
                                         <option value="lz4">lz4</option>
                                         <option value="zstd">zstd</option>
                                         <option value="gzip">gzip</option>
@@ -252,7 +252,7 @@
                                     <span v-if="!editing" class="text-default">{{ selectedDatasetProps.recordsize.value }}</span>
                                     <select v-else v-model="datasetPropEdits.recordsize"
                                         class="flex-1 px-2 py-0.5 text-xs rounded bg-white dark:bg-neutral-900 border border-blue-300 dark:border-blue-600/50 text-default outline-none focus:border-blue-400"
-                                        @change="saveDatasetProp(selectedDatasetName!, 'recordsize', datasetPropEdits.recordsize)">
+                                        @change="stageDatasetProp('recordsize', datasetPropEdits.recordsize)">
                                         <option value="4K">4K</option>
                                         <option value="8K">8K</option>
                                         <option value="16K">16K</option>
@@ -271,10 +271,10 @@
                                     <template v-else>
                                         <input v-model="quotaNum" type="number" min="0" placeholder="0"
                                             class="w-20 px-2 py-0.5 text-xs rounded bg-white dark:bg-neutral-900 border border-blue-300 dark:border-blue-600/50 text-default outline-none focus:border-blue-400"
-                                            @change="saveQuotaProp('quota')" />
+                                            @change="stageQuotaProp('quota')" />
                                         <select v-model="quotaUnit"
                                             class="px-1 py-0.5 text-xs rounded bg-white dark:bg-neutral-900 border border-blue-300 dark:border-blue-600/50 text-default outline-none"
-                                            @change="saveQuotaProp('quota')">
+                                            @change="stageQuotaProp('quota')">
                                             <option value="none">none</option>
                                             <option value="M">MiB</option>
                                             <option value="G">GiB</option>
@@ -289,10 +289,10 @@
                                     <template v-else>
                                         <input v-model="refresNum" type="number" min="0" placeholder="0"
                                             class="w-20 px-2 py-0.5 text-xs rounded bg-white dark:bg-neutral-900 border border-blue-300 dark:border-blue-600/50 text-default outline-none focus:border-blue-400"
-                                            @change="saveQuotaProp('refreservation')" />
+                                            @change="stageQuotaProp('refreservation')" />
                                         <select v-model="refresUnit"
                                             class="px-1 py-0.5 text-xs rounded bg-white dark:bg-neutral-900 border border-blue-300 dark:border-blue-600/50 text-default outline-none"
-                                            @change="saveQuotaProp('refreservation')">
+                                            @change="stageQuotaProp('refreservation')">
                                             <option value="none">none</option>
                                             <option value="M">MiB</option>
                                             <option value="G">GiB</option>
@@ -980,14 +980,28 @@ function stageChange(change: {
 function unstageChange(id: string) {
     const change = stagedChanges.value.find(c => c.id === id)
     if (change) {
-        // Reset the edit form field to original value
-        const key = change.field as keyof typeof editForm.value
-        if (key in editForm.value) {
-            // For password fields, reset to empty (original is masked)
-            if (key === 'password' || key === 'smbPass') {
-                editForm.value[key] = ''
-            } else {
-                editForm.value[key] = change.oldValue
+        if (change.field.startsWith('dataset-prop:')) {
+            // Reset dataset prop edit value
+            const parts = change.field.split(':')
+            const prop = parts[2]
+            datasetPropEdits[prop] = change.oldValue
+            // Reset quota/refreservation number+unit
+            if (prop === 'quota') {
+                const q = parseZfsSize(change.oldValue)
+                quotaNum.value = q.num; quotaUnit.value = q.unit
+            } else if (prop === 'refreservation') {
+                const r = parseZfsSize(change.oldValue)
+                refresNum.value = r.num; refresUnit.value = r.unit
+            }
+        } else {
+            // Reset the edit form field to original value
+            const key = change.field as keyof typeof editForm.value
+            if (key in editForm.value) {
+                if (key === 'password' || key === 'smbPass') {
+                    editForm.value[key] = ''
+                } else {
+                    editForm.value[key] = change.oldValue
+                }
             }
         }
     }
@@ -1040,7 +1054,8 @@ async function applyChanges() {
 
     try {
         const localChanges = stagedChanges.value.filter(c => c.type === 'local')
-        const remoteChanges = stagedChanges.value.filter(c => c.type === 'remote')
+        const datasetPropChanges = stagedChanges.value.filter(c => c.field.startsWith('dataset-prop:'))
+        const remoteChanges = stagedChanges.value.filter(c => c.type === 'remote' && !c.field.startsWith('dataset-prop:'))
 
         // Apply local changes (update stored server)
         if (localChanges.length > 0) {
@@ -1054,6 +1069,26 @@ async function applyChanges() {
                 }
             }
             await updateServer(s.id, updatePayload)
+        }
+
+        // Apply dataset property changes via server:manage IPC
+        if (datasetPropChanges.length > 0) {
+            const dpResult = await applyDatasetPropChanges(datasetPropChanges)
+            if (dpResult.applied.length > 0) {
+                pushNotification(new Notification(
+                    'Dataset Properties Updated',
+                    `${dpResult.applied.length} property change(s) applied.`,
+                    'success'
+                ))
+            }
+            if (dpResult.failed.length > 0) {
+                pushNotification(new Notification(
+                    'Some Dataset Property Changes Failed',
+                    dpResult.failed.map(f => `${f.label}: ${f.error}`).join(', '),
+                    'error',
+                    10000
+                ))
+            }
         }
 
         // Apply remote changes (SSH to server)
@@ -1111,6 +1146,10 @@ async function applyChanges() {
         stagedChanges.value = []
         editing.value = false
         await refreshServers()
+        // Reload dataset props if any were changed
+        if (datasetPropChanges.length > 0 && selectedDatasetName.value) {
+            viewDatasetProps(selectedDatasetName.value)
+        }
         if (!showRebootPrompt.value) {
             pushNotification(new Notification('Saved', 'Server settings updated.', 'success', 3000))
         }
@@ -1279,13 +1318,45 @@ function parseZfsSize(val: string): { num: number | string; unit: string } {
     return { num: '', unit: 'none' }
 }
 
-function saveQuotaProp(prop: 'quota' | 'refreservation') {
+function stageQuotaProp(prop: 'quota' | 'refreservation') {
     const num = prop === 'quota' ? quotaNum.value : refresNum.value
     const unit = prop === 'quota' ? quotaUnit.value : refresUnit.value
     const value = unit === 'none' || !num ? 'none' : `${num}${unit}`
     if (selectedDatasetName.value) {
-        saveDatasetProp(selectedDatasetName.value, prop, value)
+        stageDatasetProp(prop, value)
     }
+}
+
+function stageDatasetProp(prop: string, value: string) {
+    if (!selectedDatasetName.value || !selectedDatasetProps.value) return
+    const oldValue = selectedDatasetProps.value[prop]?.value || ''
+    const field = `dataset-prop:${selectedDatasetName.value}:${prop}`
+    stageChange({
+        field,
+        tab: 'Storage',
+        label: `${selectedDatasetName.value} → ${prop}`,
+        oldValue,
+        newValue: value,
+        type: 'remote',
+    })
+}
+
+async function applyDatasetPropChanges(changes: StagedChange[]): Promise<{ applied: string[]; failed: Array<{ label: string; error: string }> }> {
+    const applied: string[] = []
+    const failed: Array<{ label: string; error: string }> = []
+    for (const c of changes) {
+        // field format: dataset-prop:<dataset>:<property>
+        const parts = c.field.split(':')
+        const dataset = parts[1]
+        const property = parts[2]
+        const r = await mgmt.run('zfs:dataset-set-prop', { name: dataset, property, value: c.newValue })
+        if (r.success) {
+            applied.push(c.label)
+        } else {
+            failed.push({ label: c.label, error: r.error || 'Failed' })
+        }
+    }
+    return { applied, failed }
 }
 
 async function viewDatasetProps(name: string) {
@@ -1309,11 +1380,6 @@ async function viewDatasetProps(name: string) {
         const rr = parseZfsSize(filtered.refreservation?.value || '')
         refresNum.value = rr.num; refresUnit.value = rr.unit
     }
-}
-
-async function saveDatasetProp(dataset: string, prop: string, value: string) {
-    const r = await mgmt.runWithNotify('zfs:dataset-set-prop', { name: dataset, property: prop, value }, `Set ${prop} = ${value}`)
-    if (r.success) viewDatasetProps(dataset) // reload
 }
 
 async function doCreateDataset() {
