@@ -169,6 +169,8 @@ export function useServers() {
     password: string
     smbUser?: string
     smbPass?: string
+    sshKeyPath?: string
+    sshPassphrase?: string
     name?: string
     favorite?: boolean
   }): Promise<StoredServer> {

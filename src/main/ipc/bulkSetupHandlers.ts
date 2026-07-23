@@ -4,7 +4,9 @@ import { NodeSSH } from 'node-ssh';
 import fs from 'fs';
 import path from 'path';
 import type { Logger } from 'winston';
-import { checkSSH, setupSshKey, runBootstrapScript, checkRemoteDeps } from '../setupSsh';
+import { checkSSH, setupSshKey, runBootstrapScript, checkRemoteDeps, buildSshConnectOptions } from '../setupSsh';
+import type { SshAuth } from '../setupSsh';
+import { getCredentialManager } from '../credentialManager';
 import { assertSafeHost, assertSafeUsername } from '../security';
 import { getAgentSocket, getKeyDir, ensureKeyPair } from '../crossPlatformSsh';
 import { getAsset } from '../utils';
@@ -21,6 +23,15 @@ import type {
 interface BulkSetupContext {
   mainWindow: BrowserWindow;
   jsonLogger: Logger;
+}
+
+interface ProbeServer {
+  host: string;
+  username: string;
+  password: string;
+  authMethod?: 'password' | 'key';
+  sshKeyPath?: string;
+  sshPassphrase?: string;
 }
 
 let abortController: AbortController | null = null;
@@ -46,19 +57,21 @@ function emitNotification(ctx: BulkSetupContext, message: string) {
 /**
  * Probe a single server for disk info via SSH
  */
-async function probeServerDisks(host: string, username: string, password: string): Promise<BulkDiskInfo> {
+function buildProbeAuth(srv: ProbeServer): SshAuth {
+  return {
+    username: srv.username,
+    method: srv.authMethod === 'key' ? 'key' : 'password',
+    password: srv.password || undefined,
+    privateKeyPath: srv.sshKeyPath || undefined,
+    passphrase: srv.sshPassphrase || undefined,
+  };
+}
+
+async function probeServerDisks(srv: ProbeServer): Promise<BulkDiskInfo> {
   const ssh = new NodeSSH();
-  const keyDir = getKeyDir();
-  const privateKeyPath = path.join(keyDir, 'id_rsa');
 
   try {
-    await ssh.connect({
-      host,
-      username,
-      privateKey: fs.existsSync(privateKeyPath) ? fs.readFileSync(privateKeyPath, 'utf-8') : undefined,
-      password,
-      readyTimeout: loadSettings().sshTimeoutMs,
-    });
+    await ssh.connect(buildSshConnectOptions(srv.host, buildProbeAuth(srv)));
 
     // Strategy 1: Use 45Drives vdev_id.conf to identify storage-slot drives (authoritative on 45Drives hardware)
     // Entries look like: alias 1-1 /dev/disk/by-path/pci-0000:51:00.0-sas-phy0-lun-0
@@ -167,19 +180,11 @@ async function probeServerDisks(host: string, username: string, password: string
 /**
  * Probe server model/chassis info
  */
-async function probeServerInfo(host: string, username: string, password: string): Promise<{ serverModel?: string; chassisSize?: string }> {
+async function probeServerInfo(srv: ProbeServer): Promise<{ serverModel?: string; chassisSize?: string }> {
   const ssh = new NodeSSH();
-  const keyDir = getKeyDir();
-  const privateKeyPath = path.join(keyDir, 'id_rsa');
 
   try {
-    await ssh.connect({
-      host,
-      username,
-      privateKey: fs.existsSync(privateKeyPath) ? fs.readFileSync(privateKeyPath, 'utf-8') : undefined,
-      password,
-      readyTimeout: loadSettings().sshTimeoutMs,
-    });
+    await ssh.connect(buildSshConnectOptions(srv.host, buildProbeAuth(srv)));
 
     const result = await ssh.execCommand('cat /etc/45drives/server_info/server_info.json 2>/dev/null');
     if (result.code === 0) {
@@ -206,19 +211,11 @@ const EXCLUDED_GROUPS = new Set([
   'sgx', 'polkitd', '_ssh', 'ssh', 'landscape', 'lxd', 'snap_daemon',
 ]);
 
-async function probeServerGroups(host: string, username: string, password: string): Promise<string[]> {
+async function probeServerGroups(srv: ProbeServer): Promise<string[]> {
   const ssh = new NodeSSH();
-  const keyDir = getKeyDir();
-  const privateKeyPath = path.join(keyDir, 'id_rsa');
 
   try {
-    await ssh.connect({
-      host,
-      username,
-      privateKey: fs.existsSync(privateKeyPath) ? fs.readFileSync(privateKeyPath, 'utf-8') : undefined,
-      password,
-      readyTimeout: loadSettings().sshTimeoutMs,
-    });
+    await ssh.connect(buildSshConnectOptions(srv.host, buildProbeAuth(srv)));
 
     // Get all groups with gid >= 1000 and < 65534
     const result = await ssh.execCommand(
@@ -244,19 +241,11 @@ const EXCLUDED_USERS = new Set([
   'nobody', 'nfsnobody', 'systemd-coredump',
 ]);
 
-async function probeServerUsers(host: string, username: string, password: string): Promise<string[]> {
+async function probeServerUsers(srv: ProbeServer): Promise<string[]> {
   const ssh = new NodeSSH();
-  const keyDir = getKeyDir();
-  const privateKeyPath = path.join(keyDir, 'id_rsa');
 
   try {
-    await ssh.connect({
-      host,
-      username,
-      privateKey: fs.existsSync(privateKeyPath) ? fs.readFileSync(privateKeyPath, 'utf-8') : undefined,
-      password,
-      readyTimeout: loadSettings().sshTimeoutMs,
-    });
+    await ssh.connect(buildSshConnectOptions(srv.host, buildProbeAuth(srv)));
 
     const result = await ssh.execCommand(
       "awk -F: '$3 >= 1000 && $3 < 65534 { print $1 }' /etc/passwd 2>/dev/null"
@@ -301,7 +290,7 @@ async function bootstrapServer(
   // Setup SSH key
   emitProgress(ctx, {
     host, status: 'bootstrapping', step: 1, totalSteps: 10,
-    label: 'Setting up SSH key...',
+    label: entry.authMethod === 'key' ? 'Connecting via SSH key...' : 'Setting up SSH key...',
   });
 
   let hasAuth = false;
@@ -317,7 +306,8 @@ async function bootstrapServer(
   }
 
   if (!hasAuth) {
-    await setupSshKey(host, username, entry.password);
+    const auth = buildProbeAuth({ host, username, password: entry.password, authMethod: entry.authMethod, sshKeyPath: entry.sshKeyPath, sshPassphrase: entry.sshPassphrase });
+    await setupSshKey(host, username, entry.password, auth);
   }
 
   const keyDir = getKeyDir();
@@ -876,6 +866,25 @@ async function setupSingleServer(
       setup.hostnameChanged ? 'Rebooted for hostname change' : null,
     ].filter(Boolean).join(' · ');
 
+    // Save credentials so manage-server can connect later
+    try {
+      const loginPass = entry.mode === 'custom' && entry.customConfig?.serverConfig?.adminPass
+        ? entry.customConfig.serverConfig.adminPass
+        : entry.password;
+      const loginUser = entry.mode === 'custom' && entry.customConfig?.serverConfig?.adminUser
+        ? entry.customConfig.serverConfig.adminUser
+        : entry.username;
+      if (loginPass || entry.sshKeyPath) {
+        getCredentialManager().storeServer(host, loginUser, loginPass || '', {
+          name: effectiveServerName || undefined,
+          sshKeyPath: entry.sshKeyPath,
+          sshPassphrase: entry.sshPassphrase,
+        });
+      }
+    } catch (e: any) {
+      ctx.jsonLogger.warn({ event: 'bulk-setup:cred-save-failed', host, error: String(e) });
+    }
+
     emitProgress(ctx, { host, status: 'done', step: 10, totalSteps: 10, label: 'Setup complete and verified!' });
     emitNotification(ctx, `✅ ${serverLabel}: Setup complete (${Math.round(duration / 1000)}s)`);
     return {
@@ -902,7 +911,7 @@ export function registerBulkSetupHandlers(ctx: BulkSetupContext) {
   const { mainWindow, jsonLogger } = ctx;
 
   // Validate: probe SSH reachability for all servers
-  ipcMain.handle('bulk-setup:validate', async (event, servers: Array<{ host: string; username: string; password: string }>) => {
+  ipcMain.handle('bulk-setup:validate', async (event, servers: ProbeServer[]) => {
     const results: Array<{ host: string; reachable: boolean; isAdmin?: boolean; error?: string }> = [];
 
     for (const srv of servers) {
@@ -917,12 +926,7 @@ export function registerBulkSetupHandlers(ctx: BulkSetupContext) {
         // Quick credential check
         const ssh = new NodeSSH();
         try {
-          await ssh.connect({
-            host,
-            username: srv.username,
-            password: srv.password,
-            readyTimeout: 10000,
-          });
+          await ssh.connect(buildSshConnectOptions(host, buildProbeAuth(srv)));
           const uidResult = await ssh.execCommand('id -u');
           const isAdmin = uidResult.stdout.trim() === '0';
           results.push({ host, reachable: true, isAdmin });
@@ -939,17 +943,18 @@ export function registerBulkSetupHandlers(ctx: BulkSetupContext) {
   });
 
   // Probe: get disk info, server model, existing groups and users for all servers
-  ipcMain.handle('bulk-setup:probe', async (event, servers: Array<{ host: string; username: string; password: string }>) => {
+  ipcMain.handle('bulk-setup:probe', async (event, servers: ProbeServer[]) => {
     const results: Array<{ host: string; diskInfo?: BulkDiskInfo; serverModel?: string; chassisSize?: string; existingGroups?: string[]; existingUsers?: string[]; error?: string }> = [];
 
     await Promise.allSettled(servers.map(async (srv) => {
       try {
         const host = assertSafeHost(srv.host);
+        const probeSrv = { ...srv, host };
         const [diskInfo, serverInfo, existingGroups, existingUsers] = await Promise.all([
-          probeServerDisks(host, srv.username, srv.password),
-          probeServerInfo(host, srv.username, srv.password),
-          probeServerGroups(host, srv.username, srv.password),
-          probeServerUsers(host, srv.username, srv.password),
+          probeServerDisks(probeSrv),
+          probeServerInfo(probeSrv),
+          probeServerGroups(probeSrv),
+          probeServerUsers(probeSrv),
         ]);
         results.push({ host, diskInfo, ...serverInfo, existingGroups, existingUsers });
       } catch (e: any) {

@@ -20,6 +20,12 @@ export interface BulkServerEntry {
   username: string;
   /** SSH password */
   password: string;
+  /** SSH auth method: 'password' (default) or 'key' */
+  authMethod?: 'password' | 'key';
+  /** Absolute path to user-supplied SSH private key file */
+  sshKeyPath?: string;
+  /** Passphrase for the SSH private key (optional) */
+  sshPassphrase?: string;
   /** Setup mode (simple uses defaults, custom allows full control) */
   mode: BulkSetupMode;
   /** Server name (hostname to assign) */

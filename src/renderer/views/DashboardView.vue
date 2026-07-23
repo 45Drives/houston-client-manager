@@ -92,11 +92,15 @@
                         <div class="grid grid-cols-2 gap-1.5">
                             <button @click="goSetup()" class="quick-action-card group">
                                 <ServerIcon class="w-4 h-4 icon-secondary group-hover:icon-primary shrink-0" />
-                                <span class="text-xs font-medium text-default truncate">Setup Server</span>
+                                <span class="text-xs font-medium text-default truncate">Setup Single Server</span>
                             </button>
                             <button @click="goBulkSetup()" class="quick-action-card group">
                                 <ServerIcon class="w-4 h-4 icon-secondary group-hover:icon-primary shrink-0" />
-                                <span class="text-xs font-medium text-default truncate">Bulk Setup</span>
+                                <span class="text-xs font-medium text-default truncate">Setup Multiple Servers</span>
+                            </button>
+                            <button @click="goBackup()" class="quick-action-card group">
+                                <CircleStackIcon class="w-4 h-4 icon-secondary group-hover:icon-primary shrink-0" />
+                                <span class="text-xs font-medium text-default truncate">Manage Backups</span>
                             </button>
                             <div class="flex gap-1.5">
                                 <button @click="openLogModal()" class="quick-action-card group flex-1">
@@ -110,21 +114,18 @@
                                 </button>
                             </div>
                       
-                            <button @click="goBackup()" class="quick-action-card group">
-                                <CircleStackIcon class="w-4 h-4 icon-secondary group-hover:icon-primary shrink-0" />
-                                <span class="text-xs font-medium text-default truncate">Manage Backups</span>
-                            </button>
+                        
                             <!-- <button @click="goBackup()" class="quick-action-card group">
                                 <ArrowDownTrayIcon class="w-4 h-4 icon-secondary group-hover:icon-primary shrink-0" />
                                 <span class="text-xs font-medium text-default truncate">Restore Files</span>
                             </button> -->
                       
-
+<!-- 
                             <div class="quick-action-card card-disabled">
                                 <WrenchScrewdriverIcon class="w-4 h-4 text-gray-400 shrink-0" />
                                 <span class="text-xs font-medium text-default truncate">Manage Server</span>
                                 <span class="badge-coming-soon">Soon</span>
-                            </div>                            
+                            </div>                             -->
                       
                         </div>
                     </div>

@@ -22,6 +22,7 @@ const INVOKE_CHANNELS = new Set([
   'discovery:setEnabled',
   'is-dev',
   'dialog:openFolder',
+  'dialog:openSshKey',
   'logs:list-client-files',
   'logs:read-client',
   'logs:read-server',

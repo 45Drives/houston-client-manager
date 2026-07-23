@@ -212,10 +212,13 @@ export function useBulkSetup() {
 
   // ── Global defaults ────────────────────────────────────────────────────
 
-  function applyGlobalDefaults(defaults: { username?: string; password?: string; smbUser?: string; smbPass?: string }) {
+  function applyGlobalDefaults(defaults: { username?: string; password?: string; authMethod?: 'password' | 'key'; sshKeyPath?: string; sshPassphrase?: string; smbUser?: string; smbPass?: string }) {
     for (const srv of servers.value) {
       if (defaults.username && !srv.username) srv.username = defaults.username;
       if (defaults.password && !srv.password) srv.password = defaults.password;
+      if (defaults.authMethod && !srv.authMethod) srv.authMethod = defaults.authMethod;
+      if (defaults.sshKeyPath && !srv.sshKeyPath) srv.sshKeyPath = defaults.sshKeyPath;
+      if (defaults.sshPassphrase && !srv.sshPassphrase) srv.sshPassphrase = defaults.sshPassphrase;
       if (defaults.smbUser && !srv.smbUser) srv.smbUser = defaults.smbUser;
       if (defaults.smbPass && !srv.smbPass) srv.smbPass = defaults.smbPass;
     }
@@ -239,6 +242,8 @@ export function useBulkSetup() {
         rootPassConfirm: srv.rootPassConfirm,
         mode: srv.mode,
         customConfig: srv.customConfig,
+        authMethod: srv.authMethod,
+        sshKeyPath: srv.sshKeyPath,
       });
       srv.fieldErrors = errors;
       if (!isEntryValid(errors)) allValid = false;
@@ -255,6 +260,9 @@ export function useBulkSetup() {
         host: s.host,
         username: s.username,
         password: s.password,
+        authMethod: s.authMethod,
+        sshKeyPath: s.sshKeyPath,
+        sshPassphrase: s.sshPassphrase,
       }));
 
       const results: Array<{ host: string; reachable: boolean; isAdmin?: boolean; error?: string }> =
@@ -291,6 +299,9 @@ export function useBulkSetup() {
       host: s.host,
       username: s.username,
       password: s.password,
+      authMethod: s.authMethod,
+      sshKeyPath: s.sshKeyPath,
+      sshPassphrase: s.sshPassphrase,
     }));
 
     const results: Array<{ host: string; diskInfo?: BulkDiskInfo; serverModel?: string; chassisSize?: string; existingGroups?: string[]; existingUsers?: string[]; error?: string }> =
@@ -314,7 +325,8 @@ export function useBulkSetup() {
    */
   async function connectAndProbe(serverId: string): Promise<boolean> {
     const srv = servers.value.find(s => s.id === serverId);
-    if (!srv || !srv.host || !srv.password) return false;
+    if (!srv || !srv.host) return false;
+    if (srv.authMethod !== 'key' && !srv.password) return false;
 
     srv.validated = undefined;
     srv.validationError = undefined;
@@ -325,6 +337,9 @@ export function useBulkSetup() {
         host: srv.host,
         username: srv.username,
         password: srv.password,
+        authMethod: srv.authMethod,
+        sshKeyPath: srv.sshKeyPath,
+        sshPassphrase: srv.sshPassphrase,
       }])));
 
     const vr = validateResults[0];
@@ -347,6 +362,9 @@ export function useBulkSetup() {
         host: srv.host,
         username: srv.username,
         password: srv.password,
+        authMethod: srv.authMethod,
+        sshKeyPath: srv.sshKeyPath,
+        sshPassphrase: srv.sshPassphrase,
       }])));
 
     const pr = probeResults[0];
@@ -464,6 +482,9 @@ export function useBulkSetup() {
         host: s.host,
         username: s.username,
         password: s.password,
+        authMethod: s.authMethod,
+        sshKeyPath: s.sshKeyPath,
+        sshPassphrase: s.sshPassphrase,
         mode: s.mode,
         serverName: s.serverName,
         shareName: s.shareName,
@@ -508,6 +529,9 @@ export function useBulkSetup() {
         host: srv.host,
         username: srv.username,
         password: srv.password,
+        authMethod: srv.authMethod,
+        sshKeyPath: srv.sshKeyPath,
+        sshPassphrase: srv.sshPassphrase,
         mode: srv.mode,
         serverName: srv.serverName,
         shareName: srv.shareName,

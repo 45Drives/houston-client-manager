@@ -74,6 +74,7 @@
               </div>
             </label>
 
+            <!-- Advanced: SSH Key Auth -->
             <p class="text-xs italic opacity-75 mt-2 text-center">
               These credentials are used to securely connect to the server, install required software,
               and auto-login to the server's management interface. <br/>

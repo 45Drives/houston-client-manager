@@ -97,12 +97,18 @@ export function validateServerEntry(entry: {
   useSameRootPass?: boolean;
   mode?: 'simple' | 'custom';
   customConfig?: any;
+  authMethod?: 'password' | 'key';
+  sshKeyPath?: string;
 }): FieldErrors {
   const errors: FieldErrors = {};
 
   // Connection fields always required
   errors.host = validateHost(entry.host);
-  errors.password = validateSshPassword(entry.password);
+  if (entry.authMethod === 'key') {
+    if (!entry.sshKeyPath) errors.password = 'SSH private key path is required';
+  } else {
+    errors.password = validateSshPassword(entry.password);
+  }
 
   if (entry.mode === 'custom') {
     // Custom mode validates from customConfig
@@ -116,7 +122,8 @@ export function validateServerEntry(entry: {
           errors.customAdminUser = 'Admin username is required';
         }
         if (cfg.serverConfig.adminPass) {
-          errors.customAdminPass = validatePassword(cfg.serverConfig.adminPass);
+          const passErr = validatePassword(cfg.serverConfig.adminPass);
+          if (passErr) errors.customAdminPass = `Admin password: ${passErr}`;
         } else {
           errors.customAdminPass = 'Admin password is required';
         }
@@ -127,7 +134,8 @@ export function validateServerEntry(entry: {
         errors.customSmbUser = 'SMB username is required';
       }
       if (cfg.smbPass) {
-        errors.customSmbPass = validatePassword(cfg.smbPass);
+        const passErr = validatePassword(cfg.smbPass);
+        if (passErr) errors.customSmbPass = `SMB password: ${passErr}`;
       } else {
         errors.customSmbPass = 'SMB password is required';
       }
@@ -151,6 +159,7 @@ export function validateServerEntry(entry: {
     errors.serverName = validateHostname(entry.serverName);
     errors.smbUser = validateUsername(entry.smbUser);
     errors.smbPass = validatePassword(entry.smbPass);
+    if (errors.smbPass) errors.smbPass = `SMB password: ${errors.smbPass}`;
     errors.shareName = validateShareName(entry.shareName);
 
     if (entry.smbPassConfirm !== undefined) {
@@ -159,6 +168,7 @@ export function validateServerEntry(entry: {
 
     if (!entry.useSameRootPass && entry.rootPass !== undefined) {
       errors.rootPass = validatePassword(entry.rootPass);
+      if (errors.rootPass) errors.rootPass = `Root password: ${errors.rootPass}`;
       if (entry.rootPassConfirm !== undefined) {
         errors.rootPassConfirm = validatePasswordMatch(entry.rootPass, entry.rootPassConfirm);
       }

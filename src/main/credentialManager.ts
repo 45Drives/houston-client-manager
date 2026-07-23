@@ -63,6 +63,9 @@ export interface ServerRecord {
   // Admin/cockpit login
   loginUser: string;
   loginPass: string;      // Encrypted (safeStorage base64 blob)
+  // SSH key auth (alternative to password)
+  sshKeyPath: string;     // Absolute path to user-supplied private key file (or "")
+  sshPassphrase: string;  // Encrypted passphrase for the key (or "")
   // SMB for local backups
   smbShare: string;       // Share name (e.g. "storage")
   smbUser: string;        // SMB username (may differ from loginUser)
@@ -83,6 +86,7 @@ export interface ServerInfo {
   ip: string;
   displayName: string;
   loginUser: string;
+  sshKeyPath: string;
   smbShare: string;
   smbUser: string;
   source: ServerSource;
@@ -290,6 +294,8 @@ export class CredentialManager {
         displayName: old.displayName,
         loginUser: old.loginUser,
         loginPass: old.loginPass,
+        sshKeyPath: '',
+        sshPassphrase: '',
         smbShare,
         smbUser,
         smbPass,
@@ -341,6 +347,8 @@ export class CredentialManager {
         displayName: group.find(e => e.name)?.name || '',
         loginUser: loginEntry.username,
         loginPass: loginEntry.encryptedPassword,
+        sshKeyPath: '',
+        sshPassphrase: '',
         smbShare: smbEntry?.share || '',
         smbUser: smbEntry?.username || '',
         smbPass: smbEntry?.encryptedPassword || '',
@@ -380,6 +388,7 @@ export class CredentialManager {
       ip: s.ip,
       displayName: s.displayName,
       loginUser: s.loginUser,
+      sshKeyPath: s.sshKeyPath || '',
       smbShare: s.smbShare,
       smbUser: s.smbUser,
       source: s.source,
@@ -397,6 +406,8 @@ export class CredentialManager {
     displayName?: string;
     loginUser: string;
     loginPass: string;
+    sshKeyPath?: string;
+    sshPassphrase?: string;
     smbShare?: string;
     smbUser?: string;
     smbPass?: string;
@@ -420,6 +431,8 @@ export class CredentialManager {
       if (opts.displayName !== undefined) changes.displayName = opts.displayName;
       changes.loginUser = opts.loginUser;
       changes.loginPass = opts.loginPass;
+      if (opts.sshKeyPath !== undefined) changes.sshKeyPath = opts.sshKeyPath;
+      if (opts.sshPassphrase !== undefined) changes.sshPassphrase = opts.sshPassphrase;
       if (opts.smbShare !== undefined) changes.smbShare = opts.smbShare;
       if (opts.smbUser !== undefined) changes.smbUser = opts.smbUser;
       if (opts.smbPass !== undefined) changes.smbPass = opts.smbPass;
@@ -439,6 +452,8 @@ export class CredentialManager {
       displayName: opts.displayName || '',
       loginUser: opts.loginUser,
       loginPass: encryptPassword(opts.loginPass),
+      sshKeyPath: opts.sshKeyPath || '',
+      sshPassphrase: opts.sshPassphrase ? encryptPassword(opts.sshPassphrase) : '',
       smbShare: opts.smbShare || '',
       smbUser: opts.smbUser || '',
       smbPass: opts.smbPass ? encryptPassword(opts.smbPass) : '',
@@ -459,6 +474,8 @@ export class CredentialManager {
     displayName?: string;
     loginUser?: string;
     loginPass?: string;
+    sshKeyPath?: string;
+    sshPassphrase?: string;
     smbShare?: string;
     smbUser?: string;
     smbPass?: string;
@@ -474,6 +491,8 @@ export class CredentialManager {
     if (update.displayName !== undefined) s.displayName = update.displayName;
     if (update.loginUser !== undefined) s.loginUser = update.loginUser;
     if (update.loginPass !== undefined) s.loginPass = encryptPassword(update.loginPass);
+    if (update.sshKeyPath !== undefined) s.sshKeyPath = update.sshKeyPath;
+    if (update.sshPassphrase !== undefined) s.sshPassphrase = update.sshPassphrase ? encryptPassword(update.sshPassphrase) : '';
     if (update.smbShare !== undefined) s.smbShare = update.smbShare;
     if (update.smbUser !== undefined) s.smbUser = update.smbUser;
     if (update.smbPass !== undefined) s.smbPass = encryptPassword(update.smbPass);
@@ -516,10 +535,16 @@ export class CredentialManager {
   /**
    * Get admin/cockpit login credentials for a server.
    */
-  getLoginCredentials(hostOrIp: string): { id: string; username: string; password: string } | null {
+  getLoginCredentials(hostOrIp: string): { id: string; username: string; password: string; sshKeyPath?: string; sshPassphrase?: string } | null {
     const s = this.findServer(hostOrIp);
     if (!s || !s.loginUser) return null;
-    return { id: s.id, username: s.loginUser, password: decryptPassword(s.loginPass) };
+    return {
+      id: s.id,
+      username: s.loginUser,
+      password: decryptPassword(s.loginPass),
+      sshKeyPath: s.sshKeyPath || undefined,
+      sshPassphrase: s.sshPassphrase ? decryptPassword(s.sshPassphrase) : undefined,
+    };
   }
 
   /**
@@ -684,7 +709,7 @@ export class CredentialManager {
     shareName: string,
     username: string,
     password: string,
-    opts?: { name?: string; favorite?: boolean; smbUser?: string; smbPass?: string; setupComplete?: boolean }
+    opts?: { name?: string; favorite?: boolean; smbUser?: string; smbPass?: string; sshKeyPath?: string; sshPassphrase?: string; setupComplete?: boolean }
   ): string {
     const hostname = isIpAddress(host) ? '' : host;
     const ip = isIpAddress(host) ? host : '';
@@ -694,6 +719,8 @@ export class CredentialManager {
       displayName: opts?.name,
       loginUser: username,
       loginPass: password,
+      sshKeyPath: opts?.sshKeyPath,
+      sshPassphrase: opts?.sshPassphrase,
       smbShare: (shareName && shareName !== '*') ? shareName : undefined,
       smbUser: opts?.smbUser,
       smbPass: opts?.smbPass,
@@ -749,7 +776,7 @@ export class CredentialManager {
 
   // ── cred:* IPC compat (used by older code paths) ────────────────────
 
-  storeServer(host: string, username: string, password: string, opts?: { name?: string; favorite?: boolean }): string {
+  storeServer(host: string, username: string, password: string, opts?: { name?: string; favorite?: boolean; sshKeyPath?: string; sshPassphrase?: string }): string {
     return this.addServerEntry(host, '', username, password, opts);
   }
 
@@ -764,7 +791,7 @@ export class CredentialManager {
     }));
   }
 
-  getForHost(host: string): { id: string; username: string; password: string } | null {
+  getForHost(host: string): { id: string; username: string; password: string; sshKeyPath?: string; sshPassphrase?: string } | null {
     return this.getLoginCredentials(host);
   }
 

@@ -13,24 +13,28 @@ export function useServerManage(getHost: () => string, getUsername: () => string
   const busy = ref(false)
   const lastError = ref<string | null>(null)
 
-  async function getPassword(): Promise<string> {
+  async function getCredentials(): Promise<{ password: string; sshKeyPath?: string; sshPassphrase?: string }> {
     const cred = await window.electron.ipcRenderer.invoke('cred:get-for', getHost())
-    return cred?.password || ''
+    return {
+      password: cred?.password || '',
+      sshKeyPath: cred?.sshKeyPath,
+      sshPassphrase: cred?.sshPassphrase,
+    }
   }
 
   async function run(action: string, params: Record<string, any> = {}): Promise<ActionResult> {
     busy.value = true
     lastError.value = null
     try {
-      const password = await getPassword()
-      if (!password) {
-        lastError.value = 'No stored credentials found.'
+      const creds = await getCredentials()
+      if (!creds.password && !creds.sshKeyPath) {
+        lastError.value = 'No stored credentials found. Please update the server password.'
         return { success: false, error: lastError.value }
       }
       const result: ActionResult = await window.electron.ipcRenderer.invoke('server:manage', {
         host: getHost(),
         username: getUsername(),
-        password,
+        password: creds.password,
         action,
         params,
       })

@@ -120,6 +120,10 @@
                             <span class="text-xs text-muted ml-1">sec</span>
                         </SettingRow>
 
+                        <SettingRow label="Fast SSH ciphers" description="Use AES-128-GCM for faster LAN transfers (requires AES-NI on both ends).">
+                            <ToggleSwitch v-model="draft.sshFastCiphers" />
+                        </SettingRow>
+
                         <SettingRow label="Fallback network scan" description="Scan the network when automatic discovery fails.">
                             <ToggleSwitch v-model="draft.discoveryFallbackEnabled" />
                         </SettingRow>
@@ -267,6 +271,7 @@ const draft = reactive<AppSettings>({
     discoveryInactivityTimeoutMs: 60000,
     discoveryFallbackEnabled: true,
     sshTimeoutMs: 20000,
+    sshFastCiphers: false,
     logRetentionDays: 14,
     showNotifications: true,
     onboarding: {

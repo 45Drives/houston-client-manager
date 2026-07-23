@@ -9,6 +9,7 @@ export interface AppSettings {
   discoveryInactivityTimeoutMs: number;
   discoveryFallbackEnabled: boolean;
   sshTimeoutMs: number;
+  sshFastCiphers: boolean;
   logRetentionDays: number;
   showNotifications: boolean;
   onboarding: {

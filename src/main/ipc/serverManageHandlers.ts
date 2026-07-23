@@ -9,6 +9,8 @@ import type { Logger } from 'winston';
 import { assertSafeHost, assertSafeUsername } from '../security';
 import { getAgentSocket, getKeyDir, ensureKeyPair } from '../crossPlatformSsh';
 import { loadSettings } from '../settingsStore';
+import { connectWithFallback, type SshAuth } from '../setupSsh';
+import { getCredentialManager } from '../credentialManager';
 
 interface ServerManageContext {
   jsonLogger: Logger;
@@ -69,38 +71,11 @@ export interface StagedChange {
 
 // ── SSH helpers ────────────────────────────────────────────────────────────
 
-async function connectSSH(host: string, username: string, password: string): Promise<NodeSSH> {
-  const ssh = new NodeSSH();
-  const keyDir = getKeyDir();
-  const privateKeyPath = path.join(keyDir, 'id_rsa');
-  const publicKeyPath = `${privateKeyPath}.pub`;
-  await ensureKeyPair(privateKeyPath, publicKeyPath);
-
-  const agentSock = getAgentSocket();
-  const timeout = loadSettings().sshTimeoutMs;
-
-  try {
-    await ssh.connect({
-      host, username,
-      ...(agentSock ? { agent: agentSock } : { privateKey: fs.readFileSync(privateKeyPath, 'utf8') }),
-      readyTimeout: timeout,
-    });
-  } catch {
-    // Agent/key failed — try key file directly, then password
-    try {
-      if (agentSock) {
-        await ssh.connect({ host, username, privateKey: fs.readFileSync(privateKeyPath, 'utf8'), readyTimeout: timeout });
-      } else throw new Error('skip');
-    } catch {
-      await ssh.connect({
-        host, username, password,
-        tryKeyboard: true,
-        onKeyboardInteractive(_n, _i, _l, prompts, finish) { finish(prompts.map(() => password)); },
-        readyTimeout: timeout,
-      });
-    }
+async function connectSSH(host: string, username: string, password: string, sshKeyPath?: string, sshPassphrase?: string): Promise<NodeSSH> {
+  if (sshKeyPath) {
+    return connectWithFallback(host, { username, method: 'key', privateKeyPath: sshKeyPath, passphrase: sshPassphrase });
   }
-  return ssh;
+  return connectWithFallback(host, { username, method: 'password', password });
 }
 
 async function cmd(ssh: NodeSSH, command: string): Promise<string> {
@@ -822,7 +797,18 @@ export function registerServerManageHandlers(ctx: ServerManageContext) {
     const safeHost = assertSafeHost(host);
     jsonLogger.info({ event: 'server:probe', host: safeHost });
 
-    const ssh = await connectSSH(safeHost, username, password);
+    // If no password provided, check credential store for SSH key
+    let sshKeyPath: string | undefined;
+    let sshPassphrase: string | undefined;
+    if (!password) {
+      const stored = getCredentialManager().getForHost(safeHost);
+      if (stored) {
+        sshKeyPath = stored.sshKeyPath || undefined;
+        sshPassphrase = stored.sshPassphrase || undefined;
+      }
+    }
+
+    const ssh = await connectSSH(safeHost, username, password, sshKeyPath, sshPassphrase);
     try {
       // Run probes sequentially to avoid exceeding SSH channel limits
       const system = await probeSystem(ssh);
@@ -914,7 +900,18 @@ export function registerServerManageHandlers(ctx: ServerManageContext) {
     const safeHost = assertSafeHost(host);
     jsonLogger.info({ event: 'server:manage', host: safeHost, action });
 
-    const ssh = await connectSSH(safeHost, username, password);
+    // If no password provided, check credential store for SSH key
+    let sshKeyPath: string | undefined;
+    let sshPassphrase: string | undefined;
+    if (!password) {
+      const stored = getCredentialManager().getForHost(safeHost);
+      if (stored) {
+        sshKeyPath = stored.sshKeyPath || undefined;
+        sshPassphrase = stored.sshPassphrase || undefined;
+      }
+    }
+
+    const ssh = await connectSSH(safeHost, username, password, sshKeyPath, sshPassphrase);
     try {
       const result = await executeManageAction(ssh, action, params, jsonLogger);
       jsonLogger.info({ event: 'server:manage_done', host: safeHost, action, success: result.success });

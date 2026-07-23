@@ -352,12 +352,15 @@ function createWindow() {
     mainWindow?.webContents.send('store-manual-creds', creds);
   });
 
-  ipcMain.handle('verify-ssh-credentials', async (event, { host, username, password }) => {
+  ipcMain.handle('verify-ssh-credentials', async (event, { host, username, password, authMethod, sshKeyPath, sshPassphrase }) => {
     assertMainWindowSender(event);
-    return verifySshCredentials(host, username, password);
+    const auth = authMethod === 'key'
+      ? { username, method: 'key' as const, privateKeyPath: sshKeyPath, passphrase: sshPassphrase, password }
+      : undefined;
+    return verifySshCredentials(host, username, password, auth);
   });
 
-  ipcMain.handle('install-cockpit-module', async (event, { host, username, password }) => {
+  ipcMain.handle('install-cockpit-module', async (event, { host, username, password, authMethod, sshKeyPath, sshPassphrase }) => {
     assertMainWindowSender(event);
     jsonLogger.info({ event: 'install-cockpit-module', host });
     // 4. Store manual creds for login UI (if needed)
@@ -368,7 +371,7 @@ function createWindow() {
     });
 
     try {
-      const res = await installServerDepsRemotely({ host, username, password });
+      const res = await installServerDepsRemotely({ host, username, password, authMethod, sshKeyPath, sshPassphrase });
       console.debug(" install-cockpit-module →", res);
       jsonLogger.info({ event: 'install-cockpit-module_success', host });
       return res;
@@ -381,7 +384,7 @@ function createWindow() {
 
   // ── Add Existing Server: install deps, wait for API, register app ───────
 
-  ipcMain.handle('setup-existing-server', async (event, { host, username, password }: { host: string; username: string; password: string }) => {
+  ipcMain.handle('setup-existing-server', async (event, { host, username, password, authMethod, sshKeyPath, sshPassphrase }: { host: string; username: string; password: string; authMethod?: string; sshKeyPath?: string; sshPassphrase?: string }) => {
     assertMainWindowSender(event);
     jsonLogger.info({ event: 'setup-existing-server', host });
     const logs: string[] = [];
@@ -390,6 +393,9 @@ function createWindow() {
         host,
         username,
         password,
+        authMethod: authMethod as any,
+        sshKeyPath,
+        sshPassphrase,
         onProgress: (p) => {
           if (p.step === 'bootstrap-log') logs.push(p.label);
         },
@@ -1042,6 +1048,18 @@ app.whenReady().then(() => {
     return result.canceled ? null : result.filePaths[0]; // Return full folder path
   });
 
+  ipcMain.handle('dialog:openSshKey', async (event) => {
+    assertMainWindowSender(event);
+    const result = await dialog.showOpenDialog({
+      title: 'Select SSH Private Key',
+      properties: ['openFile', 'showHiddenFiles'],
+      filters: [
+        { name: 'All Files', extensions: ['*'] },
+      ],
+    });
+    return result.canceled ? null : result.filePaths[0];
+  });
+
   // ── Server Credential IPC (replaces keytar-based creds.ipc) ────────
   ipcMain.handle('cred:list-servers', (event) => {
     assertMainWindowSender(event);
@@ -1053,7 +1071,7 @@ app.whenReady().then(() => {
     return getCredentialManager().getForHost(assertSafeHost(host));
   });
 
-  ipcMain.handle('cred:save', (event, p: { host: string; name?: string; username: string; password: string; favorite?: boolean }) => {
+  ipcMain.handle('cred:save', (event, p: { host: string; name?: string; username: string; password: string; favorite?: boolean; sshKeyPath?: string; sshPassphrase?: string }) => {
     assertMainWindowSender(event);
     const safeHost = assertSafeHost(p.host);
 
@@ -1072,7 +1090,7 @@ app.whenReady().then(() => {
       safeHost,
       assertSafeUsername(p.username),
       p.password,
-      { name: p.name, favorite: p.favorite }
+      { name: p.name, favorite: p.favorite, sshKeyPath: p.sshKeyPath, sshPassphrase: p.sshPassphrase }
     );
     jsonLogger.info({ event: 'cred:save', host: p.host, username: p.username });
     return { ok: true, id };
@@ -1110,7 +1128,7 @@ app.whenReady().then(() => {
     return getCredentialManager().listAllServers();
   });
 
-  ipcMain.handle('servers:add', (event, p: { host: string; shareName: string; username: string; password: string; smbUser?: string; smbPass?: string; name?: string; favorite?: boolean; setupComplete?: boolean }) => {
+  ipcMain.handle('servers:add', (event, p: { host: string; shareName: string; username: string; password: string; smbUser?: string; smbPass?: string; sshKeyPath?: string; sshPassphrase?: string; name?: string; favorite?: boolean; setupComplete?: boolean }) => {
     assertMainWindowSender(event);
     const safeHost = assertSafeHost(p.host);
 
@@ -1135,6 +1153,8 @@ app.whenReady().then(() => {
         favorite: p.favorite,
         smbUser: p.smbUser ? assertSafeUsername(p.smbUser) : undefined,
         smbPass: p.smbPass,
+        sshKeyPath: p.sshKeyPath,
+        sshPassphrase: p.sshPassphrase,
         setupComplete: p.setupComplete,
       }
     );

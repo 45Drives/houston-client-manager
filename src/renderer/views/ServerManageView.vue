@@ -1018,9 +1018,9 @@ async function probeServer() {
     probeError.value = ''
 
     try {
-        // Get password from credential store
+        // Get credentials from credential store
         const cred = await window.electron.ipcRenderer.invoke('cred:get-for', s.host)
-        if (!cred?.password) {
+        if (!cred?.password && !cred?.sshKeyPath) {
             probeError.value = 'No stored credentials found. Please update the server password.'
             return
         }
@@ -1028,7 +1028,7 @@ async function probeServer() {
         const result = await window.electron.ipcRenderer.invoke('server:probe', {
             host: s.host,
             username: s.username,
-            password: cred.password,
+            password: cred.password || '',
         })
 
         if (result.success) {

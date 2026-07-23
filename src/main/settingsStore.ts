@@ -30,6 +30,9 @@ export interface AppSettings {
   /** Default SSH connection timeout in ms */
   sshTimeoutMs: number;
 
+  /** Use fast SSH ciphers (AES-128-GCM) for transfers — recommended for LAN */
+  sshFastCiphers: boolean;
+
   /** Log retention in days */
   logRetentionDays: number;
 
@@ -73,6 +76,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   discoveryInactivityTimeoutMs: 60000,
   discoveryFallbackEnabled: true,
   sshTimeoutMs: 20000,
+  sshFastCiphers: false,
   logRetentionDays: 14,
   showNotifications: true,
   onboarding: {

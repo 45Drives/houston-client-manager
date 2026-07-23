@@ -1,6 +1,6 @@
 import path from "path";
 import { NodeSSH } from "node-ssh";
-import { checkSSH, setupSshKey, runBootstrapScript, checkRemoteDeps } from "./setupSsh";
+import { checkSSH, setupSshKey, runBootstrapScript, checkRemoteDeps, type SshAuth, type SshAuthMethod } from "./setupSsh";
 import { assertSafeHost, assertSafeUsername } from "./security";
 import { getAgentSocket, getKeyDir, ensureKeyPair } from "./crossPlatformSsh";
 
@@ -10,15 +10,30 @@ export async function installServerDepsRemotely({
     host,
     username,
     password,
+    authMethod,
+    sshKeyPath,
+    sshPassphrase,
     onProgress,
 }: {
     host: string;
     username: string;
     password: string;
+    authMethod?: SshAuthMethod;
+    sshKeyPath?: string;
+    sshPassphrase?: string;
     onProgress?: ProgressFn;
 }) {
     const safeHost = assertSafeHost(host);
     const safeUser = assertSafeUsername(username);
+
+    // Build SshAuth for the new helper
+    const auth: SshAuth = {
+        username: safeUser,
+        method: authMethod || 'password',
+        password,
+        privateKeyPath: sshKeyPath,
+        passphrase: sshPassphrase,
+    };
 
     const send = (step: string, label: string) => {
         onProgress?.({ step, label });
@@ -58,7 +73,7 @@ export async function installServerDepsRemotely({
 
         if (!hasAuth) {
             send("key", "Generating SSH key and copying it to the server…");
-            await setupSshKey(safeHost, safeUser, password);
+            await setupSshKey(safeHost, safeUser, password, auth);
             send("key", "SSH key installed on server.");
         } else {
             send("key", "Reusing existing SSH key / agent credentials.");

@@ -136,7 +136,7 @@
             <label class="text-xs font-medium text-muted mb-1 block">RAID Level</label>
             <select v-model="storagePool.raidLevel" class="w-full input-textlike rounded-lg px-3 py-1.5 text-sm">
               <option value="auto">Auto (best practice)</option>
-              <option value="stripe">Stripe (no redundancy)</option>
+              <option value="disk">Disk (no redundancy)</option>
               <option value="mirror">Mirror</option>
               <option value="raidz1">RAIDZ1</option>
               <option value="raidz2">RAIDZ2</option>
@@ -318,7 +318,7 @@
                 <label class="text-xs font-medium text-muted mb-1 block">RAID Level</label>
                 <select v-model="backupPool.raidLevel" class="w-full input-textlike rounded-lg px-3 py-1.5 text-sm">
                   <option value="auto">Auto (best practice)</option>
-                  <option value="stripe">Stripe</option>
+                  <option value="disk">Disk (no redundancy)</option>
                   <option value="mirror">Mirror</option>
                   <option value="raidz1">RAIDZ1</option>
                   <option value="raidz2">RAIDZ2</option>
@@ -365,6 +365,9 @@
           </div>
         </template>
       </div>
+
+      <!-- ZFS validation error -->
+      <p v-if="zfsError" class="text-xs text-red-500 dark:text-red-400 font-medium text-center">{{ zfsError }}</p>
     </div>
 
     <!-- Users & Groups -->
@@ -621,8 +624,39 @@ const activeTab = ref<TabId>('server');
 
 const tabIndex = computed(() => tabs.findIndex(t => t.id === activeTab.value));
 
+const zfsError = ref('');
+
+function validateRaidVsDiskCount(raidLevel: string, diskCount: number, poolLabel: string): string | undefined {
+  if (raidLevel === 'auto' || raidLevel === 'disk') return undefined;
+  if (raidLevel === 'mirror' && diskCount < 2) return `${poolLabel}: Mirror requires at least 2 disks (${diskCount} selected)`;
+  if (raidLevel === 'raidz1' && diskCount < 3) return `${poolLabel}: RAIDZ1 requires at least 3 disks (${diskCount} selected)`;
+  if (raidLevel === 'raidz2' && diskCount < 4) return `${poolLabel}: RAIDZ2 requires at least 4 disks (${diskCount} selected)`;
+  if (raidLevel === 'raidz3' && diskCount < 5) return `${poolLabel}: RAIDZ3 requires at least 5 disks (${diskCount} selected)`;
+  return undefined;
+}
+
 function nextTab() {
   const idx = tabIndex.value;
+
+  // Validate ZFS before leaving that tab
+  if (activeTab.value === 'zfs') {
+    zfsError.value = '';
+    if (selectedStorageDisks.value.length === 0) {
+      zfsError.value = 'Select at least one disk for the storage pool';
+      return;
+    }
+    const storageErr = validateRaidVsDiskCount(storagePool.raidLevel, selectedStorageDisks.value.length, 'Storage pool');
+    if (storageErr) { zfsError.value = storageErr; return; }
+    if (enableBackupPool.value) {
+      if (selectedBackupDisks.value.length === 0) {
+        zfsError.value = 'Select at least one disk for the backup pool';
+        return;
+      }
+      const backupErr = validateRaidVsDiskCount(backupPool.raidLevel, selectedBackupDisks.value.length, 'Backup pool');
+      if (backupErr) { zfsError.value = backupErr; return; }
+    }
+  }
+
   if (idx < tabs.length - 1) {
     activeTab.value = tabs[idx + 1].id;
   }
@@ -739,6 +773,7 @@ function isSelectedFor(disk: BulkDisk, pool: 'storage' | 'backup'): boolean {
 }
 
 function toggleDisk(disk: BulkDisk, pool: 'storage' | 'backup') {
+  zfsError.value = '';
   const targetSet = pool === 'storage' ? selectedStorageDiskNames.value : selectedBackupDiskNames.value;
   const otherSet = pool === 'storage' ? selectedBackupDiskNames.value : selectedStorageDiskNames.value;
 
@@ -963,8 +998,8 @@ function hydrateFromConfig(cfg: BulkEasySetupConfig) {
       }
       // Detect RAID level from vdev type
       const vdevType = storageCfg.pool.vdevs[0].type;
-      if (['mirror', 'raidz1', 'raidz2', 'raidz3', 'stripe', 'disk'].includes(vdevType)) {
-        storagePool.raidLevel = vdevType === 'disk' ? 'stripe' : vdevType as any;
+      if (['mirror', 'raidz1', 'raidz2', 'raidz3', 'disk'].includes(vdevType)) {
+        storagePool.raidLevel = vdevType as any;
       }
     }
 

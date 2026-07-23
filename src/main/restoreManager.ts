@@ -3,7 +3,7 @@ import path from 'path';
 import fs from 'fs';
 import os from 'os';
 import { spawn, execSync } from 'child_process';
-import { checkSSH } from './setupSsh';
+import { checkSSH, connectWithFallback } from './setupSsh';
 import { getAgentSocket, getKeyDir, ensureKeyPair } from './crossPlatformSsh';
 import { assertSafeHost, assertSafeUsername, shellQuote } from './security';
 import { loadSettings } from './settingsStore';
@@ -150,69 +150,7 @@ export type RestoreProgressCallback = (progress: {
 async function connectSSH(host: string, username: string, password?: string): Promise<NodeSSH> {
   const safeHost = assertSafeHost(host);
   const safeUser = assertSafeUsername(username);
-
-  const ssh = new NodeSSH();
-  const keyDir = getKeyDir();
-  const privateKeyPath = path.join(keyDir, 'id_rsa');
-  const publicKeyPath = `${privateKeyPath}.pub`;
-  await ensureKeyPair(privateKeyPath, publicKeyPath);
-
-  const agentSock = getAgentSocket();
-
-  try {
-    await ssh.connect({
-      host: safeHost,
-      username: safeUser,
-      ...(agentSock
-        ? { agent: agentSock }
-        : { privateKey: fs.readFileSync(privateKeyPath, 'utf8') }),
-      readyTimeout: loadSettings().sshTimeoutMs,
-    });
-  } catch {
-    // If agent fails, fall back to key file
-    if (agentSock) {
-      try {
-        await ssh.connect({
-          host: safeHost,
-          username: safeUser,
-          privateKey: fs.readFileSync(privateKeyPath, 'utf8'),
-          readyTimeout: loadSettings().sshTimeoutMs,
-        });
-      } catch {
-        // Key file also failed — try password if available
-        if (password) {
-          await ssh.connect({
-            host: safeHost,
-            username: safeUser,
-            password,
-            tryKeyboard: true,
-            onKeyboardInteractive(_name, _instr, _lang, prompts, finish) {
-              finish(prompts.map(() => password));
-            },
-            readyTimeout: loadSettings().sshTimeoutMs,
-          });
-        } else {
-          throw new Error(`SSH connection to ${safeHost} failed`);
-        }
-      }
-    } else if (password) {
-      // Key auth failed — try password
-      await ssh.connect({
-        host: safeHost,
-        username: safeUser,
-        password,
-        tryKeyboard: true,
-        onKeyboardInteractive(_name, _instr, _lang, prompts, finish) {
-          finish(prompts.map(() => password));
-        },
-        readyTimeout: loadSettings().sshTimeoutMs,
-      });
-    } else {
-      throw new Error(`SSH connection to ${safeHost} failed`);
-    }
-  }
-
-  return ssh;
+  return connectWithFallback(safeHost, { username: safeUser, method: 'password', password });
 }
 
 function assertCommandSuccess(result: SSHExecCommandResponse, context: string): string {

@@ -1,10 +1,139 @@
 import path from "path"
 import fs from "fs";
 import { getAsset } from "./utils";
-import { getKeyDir, ensureKeyPair } from "./crossPlatformSsh";
+import { getAgentSocket, getKeyDir, ensureKeyPair } from "./crossPlatformSsh";
 import { NodeSSH } from 'node-ssh';
+import type { CipherAlgorithm } from 'ssh2';
 import net from 'net';
 import { loadSettings } from './settingsStore';
+
+// ── Shared SSH auth types ────────────────────────────────────────────────────
+
+export type SshAuthMethod = 'password' | 'key';
+
+export interface SshAuth {
+  username: string;
+  /** Auth method — 'password' (default) or 'key' (user-supplied private key file) */
+  method?: SshAuthMethod;
+  /** Password for 'password' method, or used as fallback when key auth fails */
+  password?: string;
+  /** Absolute path to user-supplied private key file (for 'key' method) */
+  privateKeyPath?: string;
+  /** Optional passphrase for the private key */
+  passphrase?: string;
+}
+
+/**
+ * Build ssh2/node-ssh ConnectConfig for any auth scenario.
+ * Supports: user-supplied key, app-managed key, SSH agent, password fallback.
+ */
+export function buildSshConnectOptions(host: string, auth: SshAuth): Record<string, any> {
+  const settings = loadSettings();
+  const timeout = settings.sshTimeoutMs;
+
+  const base: Record<string, any> = {
+    host,
+    username: auth.username,
+    readyTimeout: timeout,
+  };
+
+  // Fast cipher preference
+  if (settings.sshFastCiphers) {
+    base.algorithms = {
+      cipher: ['aes128-gcm@openssh.com', 'aes256-gcm@openssh.com', 'aes128-ctr', 'aes256-ctr'] as CipherAlgorithm[],
+    };
+  }
+
+  if (auth.method === 'key' && auth.privateKeyPath) {
+    // User-supplied private key
+    base.privateKey = fs.readFileSync(auth.privateKeyPath, 'utf-8');
+    if (auth.passphrase) base.passphrase = auth.passphrase;
+    return base;
+  }
+
+  // Default: password mode
+  if (auth.password) {
+    base.password = auth.password;
+    base.tryKeyboard = true;
+    base.onKeyboardInteractive = (_name: any, _instr: any, _lang: any, prompts: any[], finish: (responses: string[]) => void) => {
+      finish(prompts.map(() => auth.password!));
+    };
+  }
+
+  return base;
+}
+
+/**
+ * Connect with full fallback chain: agent → app key → user-supplied key/password.
+ * Use this for operations that happen after initial setup (key already deployed).
+ */
+export async function connectWithFallback(host: string, auth: SshAuth): Promise<NodeSSH> {
+  const ssh = new NodeSSH();
+  const keyDir = getKeyDir();
+  const appKeyPath = path.join(keyDir, 'id_rsa');
+  const appPubPath = `${appKeyPath}.pub`;
+  await ensureKeyPair(appKeyPath, appPubPath);
+
+  const settings = loadSettings();
+  const timeout = settings.sshTimeoutMs;
+  const algos = settings.sshFastCiphers
+    ? { cipher: ['aes128-gcm@openssh.com', 'aes256-gcm@openssh.com', 'aes128-ctr', 'aes256-ctr'] as CipherAlgorithm[] }
+    : undefined;
+
+  const agentSock = getAgentSocket();
+
+  // Tier 1: SSH agent
+  if (agentSock) {
+    try {
+      await ssh.connect({
+        host, username: auth.username, agent: agentSock,
+        readyTimeout: timeout, ...(algos && { algorithms: algos }),
+      });
+      return ssh;
+    } catch { /* fall through */ }
+  }
+
+  // Tier 2: App-managed key (id_rsa)
+  if (fs.existsSync(appKeyPath)) {
+    try {
+      await ssh.connect({
+        host, username: auth.username,
+        privateKey: fs.readFileSync(appKeyPath, 'utf8'),
+        readyTimeout: timeout, ...(algos && { algorithms: algos }),
+      });
+      return ssh;
+    } catch { /* fall through */ }
+  }
+
+  // Tier 3: User-supplied key
+  if (auth.method === 'key' && auth.privateKeyPath) {
+    try {
+      await ssh.connect({
+        host, username: auth.username,
+        privateKey: fs.readFileSync(auth.privateKeyPath, 'utf-8'),
+        ...(auth.passphrase && { passphrase: auth.passphrase }),
+        readyTimeout: timeout, ...(algos && { algorithms: algos }),
+      });
+      return ssh;
+    } catch { /* fall through */ }
+  }
+
+  // Tier 4: Password
+  if (auth.password) {
+    await ssh.connect({
+      host, username: auth.username,
+      password: auth.password,
+      tryKeyboard: true,
+      onKeyboardInteractive(_n: any, _i: any, _l: any, prompts: any[], finish: (r: string[]) => void) {
+        finish(prompts.map(() => auth.password!));
+      },
+      readyTimeout: timeout, ...(algos && { algorithms: algos }),
+    });
+    return ssh;
+  }
+
+  throw new Error(`SSH connection to ${host} failed: no valid auth method available`);
+}
 
 export function checkSSH(host: string, timeout = 3000): Promise<boolean> {
   return new Promise((resolve) => {
@@ -21,19 +150,14 @@ export async function verifySshCredentials(
   host: string,
   username: string,
   password: string,
+  auth?: SshAuth,
 ): Promise<{ success: boolean; error?: string; isAdmin?: boolean }> {
   const ssh = new NodeSSH();
   try {
-    await ssh.connect({
-      host,
-      username,
-      password,
-      tryKeyboard: true,
-      onKeyboardInteractive(_name, _instr, _lang, prompts, finish) {
-        finish(prompts.map(() => password));
-      },
-      readyTimeout: loadSettings().sshTimeoutMs,
-    });
+    const connectOpts = auth
+      ? buildSshConnectOptions(host, auth)
+      : buildSshConnectOptions(host, { username, password, method: 'password' });
+    await ssh.connect(connectOpts);
 
     // Check if user has admin privileges (root or wheel/sudo group)
     let isAdmin = false;
@@ -64,9 +188,14 @@ export async function verifySshCredentials(
 export async function setupSshKey(
   host: string,
   username: string,
-  password: string
+  password: string,
+  auth?: SshAuth,
 ): Promise<void> {
-  const ssh = await connectWithPassword({ host, username, password });
+  const connectOpts = auth
+    ? buildSshConnectOptions(host, auth)
+    : buildSshConnectOptions(host, { username, password, method: 'password' });
+  const ssh = new NodeSSH();
+  await ssh.connect(connectOpts);
 
   const keyDir = getKeyDir();
   await fs.promises.mkdir(keyDir, { recursive: true });
@@ -89,34 +218,6 @@ export async function setupSshKey(
   `);
 
   ssh.dispose();
-}
-
-
-async function connectWithPassword({
-  host,
-  username,
-  password,
-}: {
-  host: string;
-  username: string;
-  password: string;
-}) {
-  const ssh = new NodeSSH();
-  await ssh.connect({
-    host,
-    username,
-    password,                   // plain “password” auth
-    tryKeyboard: true,          // allow keyboard-interactive fallback
-    // debug: info => console.debug('⎇ SSH DEBUG:', info),
-    onKeyboardInteractive(
-      _name, _instr, _lang, prompts, finish,
-    ) {
-      // answer every prompt with the same password
-      finish(prompts.map(() => password));
-    },
-    readyTimeout: loadSettings().sshTimeoutMs,
-  });
-  return ssh;
 }
 
 export async function checkRemoteDeps(

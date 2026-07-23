@@ -40,7 +40,8 @@
           <div>
             <label class="text-xs font-medium text-muted mb-1 block">SSH Password</label>
             <input v-model="globalDefaults.password" type="password" placeholder="Shared password"
-              class="w-full input-textlike rounded-lg px-3 py-1.5 text-sm" />
+              class="w-full input-textlike rounded-lg px-3 py-1.5 text-sm"
+              :disabled="globalDefaults.authMethod === 'key'" />
           </div>
           <div>
             <label class="text-xs font-medium text-muted mb-1 block">SMB Username</label>
@@ -53,6 +54,33 @@
               class="w-full input-textlike rounded-lg px-3 py-1.5 text-sm" />
           </div>
         </div>
+        <!-- Advanced: SSH Key (global) -->
+        <details class="text-xs mt-2">
+          <summary class="cursor-pointer text-muted hover:text-default select-none font-medium">Advanced: Use SSH Key</summary>
+          <div class="mt-2 space-y-2 pl-2 border-l-2 border-neutral-200 dark:border-neutral-700">
+            <label class="flex items-center gap-2 cursor-pointer">
+              <input type="checkbox" :checked="globalDefaults.authMethod === 'key'"
+                @change="globalDefaults.authMethod = ($event.target as HTMLInputElement).checked ? 'key' : 'password'"
+                class="rounded border-neutral-400 dark:border-neutral-500 text-blue-500 focus:ring-blue-500" />
+              <span class="text-xs text-default">Authenticate with SSH private key instead of password</span>
+            </label>
+            <div v-if="globalDefaults.authMethod === 'key'" class="space-y-2">
+              <div class="flex items-center gap-2">
+                <input v-model="globalDefaults.sshKeyPath" type="text" placeholder="/path/to/id_rsa" readonly
+                  class="flex-1 input-textlike rounded-lg px-3 py-1.5 text-sm bg-neutral-50 dark:bg-neutral-800 max-w-sm" />
+                <button type="button" @click="browseGlobalSshKey"
+                  class="px-3 py-1.5 text-xs font-medium rounded-lg border border-neutral-300 dark:border-neutral-600 hover:bg-hover transition-colors">
+                  Browse…
+                </button>
+              </div>
+              <div>
+                <label class="text-xs text-muted mb-1 block">Key Passphrase (optional)</label>
+                <input v-model="globalDefaults.sshPassphrase" type="password" placeholder="Leave empty if none"
+                  class="w-full input-textlike rounded-lg px-3 py-1.5 text-sm max-w-xs" />
+              </div>
+            </div>
+          </div>
+        </details>
         <button @click="onApplyDefaults" class="mt-2 text-xs text-blue-600 dark:text-blue-400 hover:underline">
           Apply to all servers missing values
         </button>
@@ -241,9 +269,19 @@ const allProbed = computed(() =>
 const globalDefaults = ref({
   username: 'root',
   password: '',
+  authMethod: 'password' as 'password' | 'key',
+  sshKeyPath: '',
+  sshPassphrase: '',
   smbUser: '',
   smbPass: '',
 });
+
+async function browseGlobalSshKey() {
+  const filePath = await window.electron?.ipcRenderer.invoke('dialog:openSshKey');
+  if (filePath) {
+    globalDefaults.value.sshKeyPath = filePath;
+  }
+}
 
 onMounted(() => {
   startListening();

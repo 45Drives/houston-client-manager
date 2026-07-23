@@ -172,7 +172,7 @@
     </div>
 
     <ServerLoginModal :open="loginOpen" :host="selectedIp || null" :displayName="selectedOptionLabel"
-        :presetUsername="prefillUsername" @cancel="closeLogin" @submit="onLoginSubmit" />
+        :presetUsername="prefillUsername" :requirePassword="true" @cancel="closeLogin" @submit="onLoginSubmit" />
 </template>
 
 <script setup lang="ts">

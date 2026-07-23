@@ -16,9 +16,9 @@
           <span v-if="server.serverModel" class="text-xs px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300">
             {{ server.serverModel }}
           </span>
-        </div>
-        <div v-if="statusLabel" class="text-xs mt-0.5" :class="statusTextClass">
-          {{ statusLabel }}
+          <span v-if="statusLabel" class="text-xs ml-2" :class="statusTextClass">
+            {{ statusLabel }}
+          </span>
         </div>
       </div>
 
@@ -65,7 +65,8 @@
           <div class="relative">
             <input v-model="server.password" :type="showSshPass ? 'text' : 'password'" placeholder="••••••••"
               class="w-full input-textlike rounded-lg px-3 py-1.5 text-sm pr-8"
-              :class="server.fieldErrors?.password ? 'border-red-400 dark:border-red-600' : ''" />
+              :class="server.fieldErrors?.password ? 'border-red-400 dark:border-red-600' : ''"
+              :disabled="server.authMethod === 'key'" />
             <button type="button" @click="showSshPass = !showSshPass"
               class="absolute right-2 top-1/2 -translate-y-1/2 text-muted">
               <EyeIcon v-if="!showSshPass" class="w-4 h-4" />
@@ -75,6 +76,36 @@
           <span v-if="server.fieldErrors?.password" class="text-xs text-red-500 dark:text-red-400 mt-0.5 block">{{ server.fieldErrors.password }}</span>
         </div>
       </div>
+
+      <!-- Advanced: SSH Key Auth -->
+      <details class="text-xs">
+        <summary class="cursor-pointer text-muted hover:text-default select-none font-medium">Advanced: Use SSH Key</summary>
+        <div class="mt-2 space-y-2 pl-2 border-l-2 border-neutral-200 dark:border-neutral-700">
+          <label class="flex items-center gap-2 cursor-pointer">
+            <input type="checkbox" :checked="server.authMethod === 'key'"
+              @change="server.authMethod = ($event.target as HTMLInputElement).checked ? 'key' : 'password'"
+              class="rounded border-neutral-400 dark:border-neutral-500 text-blue-500 focus:ring-blue-500" />
+            <span class="text-xs text-default">Authenticate with SSH private key instead of password</span>
+          </label>
+          <div v-if="server.authMethod === 'key'" class="flex items-center gap-2">
+            <input v-model="server.sshKeyPath" type="text" placeholder="/path/to/id_rsa" readonly
+              class="w-1/2 input-textlike rounded-lg px-3 py-1.5 text-sm bg-neutral-50 dark:bg-neutral-800" />
+            <button type="button" @click="browseSshKey"
+              class="shrink-0 px-3 py-1.5 text-xs font-medium rounded-lg border border-neutral-300 dark:border-neutral-600 hover:bg-hover transition-colors">
+              Browse…
+            </button>
+            <div class="w-1/3 ml-auto relative">
+              <input v-model="server.sshPassphrase" :type="showKeyPass ? 'text' : 'password'" placeholder="Passphrase (optional)"
+                class="w-full input-textlike rounded-lg px-3 py-1.5 text-sm pr-8" />
+              <button type="button" @click="showKeyPass = !showKeyPass"
+                class="absolute right-2 top-1/2 -translate-y-1/2 text-muted">
+                <EyeIcon v-if="!showKeyPass" class="w-4 h-4" />
+                <EyeSlashIcon v-if="showKeyPass" class="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        </div>
+      </details>
 
       <!-- Discovery server picker + Connect & Probe -->
       <div class="flex items-center gap-2">
@@ -86,7 +117,7 @@
             <option v-for="s in discoveredServers" :key="s.ip" :value="s.ip">{{ s.name }} ({{ s.ip }})</option>
           </select>
         </div>
-        <button @click="$emit('connectAndProbe', server.id)" :disabled="!server.host || !server.password || isProbing"
+        <button @click="$emit('connectAndProbe', server.id)" :disabled="!server.host || (!server.password && server.authMethod !== 'key') || (server.authMethod === 'key' && !server.sshKeyPath) || isProbing"
           class="h-fit px-3 py-1.5 text-xs font-medium shrink-0 rounded-lg border transition-colors"
           :class="server.validated === true && server.diskInfo
             ? 'bg-green-600 hover:bg-green-700 text-white border-green-600 dark:bg-green-600 dark:hover:bg-green-700 dark:border-green-600'
@@ -412,8 +443,16 @@ const emit = defineEmits<{
 
 const expanded = ref(!props.server.host); // Auto-expand new empty entries
 const showSshPass = ref(false);
+const showKeyPass = ref(false);
 const showSmbPass = ref(false);
 const showRootPass = ref(false);
+
+async function browseSshKey() {
+  const filePath = await window.electron?.ipcRenderer.invoke('dialog:openSshKey');
+  if (filePath) {
+    props.server.sshKeyPath = filePath;
+  }
+}
 
 function onPickDiscovered(event: Event) {
   const val = (event.target as HTMLSelectElement).value;
@@ -437,7 +476,7 @@ const statusLabel = computed(() => {
   if (props.server.progress?.status === 'failed') return props.server.progress.error || 'Failed';
   if (props.server.progress?.status === 'done') return 'Setup complete';
   if (props.server.progress?.label) return props.server.progress.label;
-  if (props.server.validated === false) return props.server.validationError;
+  if (props.server.validated === false && !expanded.value) return 'Connection failed';
   return '';
 });
 
@@ -531,9 +570,10 @@ const hasCustomErrors = computed(() => {
 
 const customErrorMessages = computed(() => {
   if (!props.server.fieldErrors) return [];
-  return customErrorFields
+  const msgs = customErrorFields
     .map(k => (props.server.fieldErrors as any)?.[k])
     .filter(Boolean);
+  return [...new Set(msgs)];
 });
 
 const borderClass = computed(() => {

@@ -65,7 +65,7 @@
                             <label class="text-xs font-medium text-gray-500 mb-1 block">Admin Password</label>
                             <input v-model="password" :type="showPassword ? 'text' : 'password'"
                                 class="w-full p-2 pr-10 input-textlike rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                placeholder="Enter password" />
+                                placeholder="Enter password" :disabled="authMethod === 'key'" />
                             <button type="button" @click="showPassword = !showPassword"
                                 class="absolute right-3 bottom-2 text-muted">
                                 <EyeIcon v-if="!showPassword" class="w-4 h-4" />
@@ -73,6 +73,34 @@
                             </button>
                         </div>
                     </div>
+
+                    <!-- Advanced: SSH Key Auth -->
+                    <details class="text-xs">
+                        <summary class="cursor-pointer text-muted hover:text-default select-none font-medium">Advanced: Use SSH Key</summary>
+                        <div class="mt-2 space-y-2 pl-2 border-l-2 border-neutral-200 dark:border-neutral-700">
+                            <label class="flex items-center gap-2 cursor-pointer">
+                                <input type="checkbox" :checked="authMethod === 'key'"
+                                    @change="authMethod = ($event.target as HTMLInputElement).checked ? 'key' : 'password'"
+                                    class="rounded border-neutral-400 dark:border-neutral-500 text-blue-500 focus:ring-blue-500" />
+                                <span class="text-xs text-default">Authenticate with SSH private key instead of password</span>
+                            </label>
+                            <div v-if="authMethod === 'key'" class="space-y-2">
+                                <div class="flex items-center gap-2">
+                                    <input v-model="sshKeyPath" type="text" placeholder="/path/to/id_rsa" readonly
+                                        class="flex-1 input-textlike rounded-md px-2 py-1.5 text-sm bg-neutral-50 dark:bg-neutral-800" />
+                                    <button type="button" @click="browseSshKey"
+                                        class="px-2 py-1.5 text-xs font-medium rounded-md border border-neutral-300 dark:border-neutral-600 hover:bg-hover transition-colors">
+                                        Browse…
+                                    </button>
+                                </div>
+                                <div>
+                                    <label class="text-xs text-muted mb-1 block">Key Passphrase (optional)</label>
+                                    <input v-model="sshPassphrase" type="password" placeholder="Leave empty if none"
+                                        class="w-full input-textlike rounded-md px-2 py-1.5 text-sm" />
+                                </div>
+                            </div>
+                        </div>
+                    </details>
 
                     <!-- SMB / Samba section -->
                     <div class="pt-2 border-t border-neutral-100 dark:border-neutral-700/50">
@@ -205,6 +233,9 @@ const step = ref<'choose' | 'form' | 'configuring'>('choose')
 const host = ref('')
 const username = ref('root')
 const password = ref('')
+const authMethod = ref<'password' | 'key'>('password')
+const sshKeyPath = ref('')
+const sshPassphrase = ref('')
 const shareName = ref('')
 const smbUser = ref('')
 const smbPass = ref('')
@@ -214,6 +245,11 @@ const showSmbPassword = ref(false)
 const testing = ref(false)
 const error = ref('')
 
+async function browseSshKey() {
+    const filePath = await window.electron?.ipcRenderer.invoke('dialog:openSshKey')
+    if (filePath) sshKeyPath.value = filePath
+}
+
 // Configuring step state
 interface ProgressStep {
     label: string
@@ -222,7 +258,11 @@ interface ProgressStep {
 const progressSteps = ref<ProgressStep[]>([])
 const setupLogs = ref<string[]>([])
 
-const canSubmit = computed(() => host.value.trim() && username.value.trim() && password.value && shareName.value.trim())
+const canSubmit = computed(() => {
+    if (!host.value.trim() || !username.value.trim() || !shareName.value.trim()) return false
+    if (authMethod.value === 'key') return !!sshKeyPath.value
+    return !!password.value
+})
 
 // Show discovered servers not already saved
 const discoveredUnregistered = computed(() => {
@@ -250,6 +290,9 @@ async function submit() {
             host: host.value.trim(),
             username: username.value.trim(),
             password: password.value,
+            authMethod: authMethod.value,
+            sshKeyPath: sshKeyPath.value || undefined,
+            sshPassphrase: sshPassphrase.value || undefined,
         })
 
         if (!result?.success) {
@@ -293,6 +336,9 @@ async function runServerSetup() {
             host: h,
             username: u,
             password: p,
+            authMethod: authMethod.value,
+            sshKeyPath: sshKeyPath.value || undefined,
+            sshPassphrase: sshPassphrase.value || undefined,
         })
 
         if (!installResult?.success) {
@@ -356,6 +402,8 @@ async function runServerSetup() {
             favorite: false,
             smbUser: resolvedSmbUser,
             smbPass: resolvedSmbPass,
+            sshKeyPath: authMethod.value === 'key' ? sshKeyPath.value : undefined,
+            sshPassphrase: authMethod.value === 'key' ? sshPassphrase.value : undefined,
         })
 
         await window.electron.ipcRenderer.invoke('add-manual-server', {
@@ -386,6 +434,9 @@ function open() {
     host.value = ''
     username.value = 'root'
     password.value = ''
+    authMethod.value = 'password'
+    sshKeyPath.value = ''
+    sshPassphrase.value = ''
     shareName.value = ''
     smbUser.value = ''
     smbPass.value = ''
@@ -404,6 +455,9 @@ function openForServer(srv: { ip: string; name?: string; shareName?: string }) {
     host.value = srv.ip
     username.value = 'root'
     password.value = ''
+    authMethod.value = 'password'
+    sshKeyPath.value = ''
+    sshPassphrase.value = ''
     shareName.value = srv.shareName || ''
     smbUser.value = ''
     smbPass.value = ''
