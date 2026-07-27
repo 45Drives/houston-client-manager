@@ -43,7 +43,7 @@
                     <button class="btn btn-sm btn-outline-shadow h-fit flex items-center gap-1.5"
                         :class="currentServer || showRemoteTour ? '' : 'invisible pointer-events-none'"
                         :disabled="!currentServer"
-                        @click="showRestoreView ? disconnectRestore() : cockpitRef?.logoutFromCurrentServer()">
+                        @click="disconnect()">
                         <ArrowRightOnRectangleIcon class="w-4 h-4" />
                         Disconnect
                     </button>
@@ -300,11 +300,16 @@ const restoreUsername = ref('');
 // Compat: showRestoreView used in disconnect logic
 const showRestoreView = computed(() => remoteView.value !== 'backups');
 
-function disconnectRestore() {
-    remoteView.value = 'backups';
+function disconnect() {
+    if (showRestoreView.value) {
+        remoteView.value = 'backups';
+    } else {
+        cockpitRef.value?.logoutFromCurrentServer();
+    }
     restoreConnected.value = false;
     restoreUsername.value = '';
     if (currentServer) currentServer.value = null;
+    selectedIp.value = '';
 }
 
 const handleBackUpTaskSelected = (tasks: BackUpTask[]) => {

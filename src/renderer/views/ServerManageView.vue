@@ -131,6 +131,48 @@
                                 :label="`DNS ${i + 1}`" :value="dns" />
                         </div>
                         <div v-else class="text-xs text-gray-400">No DNS servers configured.</div>
+
+                        <!-- VPN Tunnels -->
+                        <SectionDivider label="VPN Tunnels (WireGuard)" />
+                        <div v-if="vpnLoading" class="text-xs text-gray-400 flex items-center gap-2">
+                            <ArrowPathIcon class="w-3.5 h-3.5 animate-spin" /> Checking…
+                        </div>
+                        <template v-else-if="vpnStatus">
+                            <div v-if="!vpnStatus.installed" class="text-xs text-gray-400">
+                                Wire Wizard is not installed on this server.
+                            </div>
+                            <template v-else>
+                                <div v-if="vpnStatus.interfaces.length" class="space-y-2">
+                                    <div v-for="iface in vpnStatus.interfaces" :key="iface.name"
+                                        class="bg-white dark:bg-neutral-800 rounded-lg border border-neutral-200 dark:border-neutral-700 p-3">
+                                        <div class="flex items-center justify-between mb-1">
+                                            <span class="text-sm font-semibold font-mono text-default">{{ iface.name }}</span>
+                                            <div class="flex items-center gap-2">
+                                                <span v-if="iface.peers.length && iface.peers[0].latestHandshake > 0"
+                                                    class="text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
+                                                    Connected
+                                                </span>
+                                                <span v-else class="text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
+                                                    No handshake
+                                                </span>
+                                                <button v-if="editing" @click="teardownTunnel(iface.name)"
+                                                    class="text-xs text-red-500 hover:text-red-700">Remove</button>
+                                            </div>
+                                        </div>
+                                        <div class="grid grid-cols-2 gap-1 text-xs" v-if="iface.peers.length">
+                                            <div><span class="text-gray-400">Port:</span> <span class="text-default">{{ iface.listenPort }}</span></div>
+                                            <div><span class="text-gray-400">Endpoint:</span> <span class="text-default font-mono">{{ iface.peers[0].endpoint || '—' }}</span></div>
+                                            <div><span class="text-gray-400">Rx:</span> <span class="text-default">{{ formatBytes(iface.peers[0].transferRx) }}</span></div>
+                                            <div><span class="text-gray-400">Tx:</span> <span class="text-default">{{ formatBytes(iface.peers[0].transferTx) }}</span></div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div v-else class="text-xs text-gray-400">No active tunnels.</div>
+                                <button @click="showPairModal = true" class="btn btn-sm btn-primary h-fit inline-flex items-center gap-1 mt-2">
+                                    <PlusIcon class="w-3 h-3" /> New Tunnel
+                                </button>
+                            </template>
+                        </template>
                     </div>
 
                     <!-- ═══ Storage ═══ -->
@@ -853,6 +895,16 @@
                 </div>
             </div>
         </Teleport>
+
+        <!-- Wire Wizard Pairing Modal -->
+        <PairRemoteServerModal
+            :show="showPairModal"
+            :server-host="server?.host || ''"
+            :server-username="server?.username || 'root'"
+            :server-name="server?.name || server?.host"
+            @close="showPairModal = false"
+            @paired="showPairModal = false; loadVpnStatus()"
+        />
     </div>
 </template>
 
@@ -868,8 +920,10 @@ import {
 import { useHeader } from '../composables/useHeader'
 import { useServers, type StoredServer } from '../composables/useServers'
 import { useServerManage } from '../composables/useServerManage'
+import { useWireWizard, type WireWizardStatus } from '../composables/useWireWizard'
 import { Notification, pushNotification } from '@45drives/houston-common-ui'
 import type { ServerProbeResult, StagedChange } from '../../main/ipc/serverManageHandlers'
+import PairRemoteServerModal from '../components/PairRemoteServerModal.vue'
 
 useHeader('Server Management')
 
@@ -900,6 +954,41 @@ const server = computed<StoredServer | undefined>(() =>
 const probing = ref(false)
 const probeError = ref('')
 const probe = ref<ServerProbeResult | null>(null)
+
+// ── VPN / Wire Wizard ──────────────────────────────────────────────────────
+
+const vpnLoading = ref(false)
+const vpnStatus = ref<WireWizardStatus | null>(null)
+const showPairModal = ref(false)
+
+const ww = useWireWizard(
+    () => server.value?.host || '',
+    () => server.value?.username || 'root',
+)
+
+async function loadVpnStatus() {
+    vpnLoading.value = true
+    const result = await ww.fetchStatus()
+    vpnStatus.value = result
+    vpnLoading.value = false
+}
+
+async function teardownTunnel(iface: string) {
+    const ok = await ww.teardown(iface)
+    if (ok) {
+        pushNotification(new Notification('Removed', `Tunnel ${iface} removed.`, 'success', 4000))
+        await loadVpnStatus()
+    } else {
+        pushNotification(new Notification('Error', ww.lastError.value || 'Teardown failed', 'error', 5000))
+    }
+}
+
+function formatBytes(bytes: number): string {
+    if (!bytes || bytes < 1024) return `${bytes || 0} B`
+    if (bytes < 1048576) return `${(bytes / 1024).toFixed(1)} KB`
+    if (bytes < 1073741824) return `${(bytes / 1048576).toFixed(1)} MB`
+    return `${(bytes / 1073741824).toFixed(2)} GB`
+}
 
 // ── Edit mode ──────────────────────────────────────────────────────────────
 
@@ -1562,6 +1651,7 @@ async function doSetSambaPassword() {
 onMounted(() => {
     if (server.value) {
         probeServer()
+        loadVpnStatus()
     }
 })
 

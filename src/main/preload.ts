@@ -59,6 +59,14 @@ const INVOKE_CHANNELS = new Set([
   'server:apply-changes',
   'server:reboot',
   'server:manage',
+  // Wire Wizard
+  'wirewizard:status',
+  'wirewizard:initiate',
+  'wirewizard:join',
+  'wirewizard:poll',
+  'wirewizard:complete',
+  'wirewizard:teardown',
+  'wirewizard:preflight',
   // Bulk Setup
   'bulk-setup:validate',
   'bulk-setup:probe',

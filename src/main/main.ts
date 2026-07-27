@@ -91,6 +91,7 @@ import { registerLogHandlers } from './ipc/logHandlers';
 import { registerRestoreHandlers } from './ipc/restoreHandlers';
 import { registerBulkSetupHandlers } from './ipc/bulkSetupHandlers';
 import { registerServerManageHandlers } from './ipc/serverManageHandlers';
+import { registerWireWizardHandlers } from './ipc/wireWizardHandlers';
 import type { IPCHandlerContext } from './ipc/types';
 
 let discoveredServers: Server[] = [];
@@ -615,6 +616,7 @@ function createWindow() {
   registerRestoreHandlers(handlerCtx);
   registerBulkSetupHandlers({ mainWindow: mainWindow!, jsonLogger });
   registerServerManageHandlers({ jsonLogger });
+  registerWireWizardHandlers({ jsonLogger });
 
   IPCRouter.getInstance().addEventListener('action', async (data) => {
     if (data === "requestBackUpTasks") {

@@ -19,8 +19,17 @@
                     autocomplete="username" />
 
                 <label class="block text-sm mt-2">Password</label>
-                <input v-model="model.password" class="input-textlike w-full" placeholder="••••••••" type="password"
-                    autocomplete="current-password" :disabled="!requirePassword && model.authMethod === 'key'" />
+                <div class="relative">
+                    <input v-model="model.password" class="input-textlike w-full pr-10" placeholder="••••••••"
+                        :type="showPassword ? 'text' : 'password'"
+                        autocomplete="current-password" :disabled="!requirePassword && model.authMethod === 'key'" />
+                    <button type="button" tabindex="-1"
+                        class="absolute inset-y-0 right-0 flex items-center px-2.5 text-muted hover:text-default transition-colors"
+                        @click="showPassword = !showPassword">
+                        <EyeSlashIcon v-if="showPassword" class="w-5 h-5" />
+                        <EyeIcon v-else class="w-5 h-5" />
+                    </button>
+                </div>
 
                 <!-- Advanced: SSH Key Auth (hidden when password is required for Cockpit) -->
                 <details v-if="!requirePassword" class="text-xs mt-2">
@@ -67,7 +76,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, watch, toRefs } from 'vue';
+import { computed, reactive, ref, watch, toRefs } from 'vue';
+import { EyeIcon, EyeSlashIcon } from '@heroicons/vue/24/outline';
 
 const props = defineProps<{
     open: boolean;
@@ -82,6 +92,8 @@ const emit = defineEmits<{
     cancel: [];
     submit: [{ username: string; password: string; remember: boolean; authMethod?: 'password' | 'key'; sshKeyPath?: string; sshPassphrase?: string }];
 }>();
+
+const showPassword = ref(false);
 
 const model = reactive({
     username: props.presetUsername || '',
