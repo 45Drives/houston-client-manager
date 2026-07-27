@@ -29,6 +29,7 @@ import BackupWelcomeScreen from './backupSetupWizard/BackupWelcomeScreen.vue';
 import LocalBackupWizard from './backupSetupWizard/LocalBackupWizard.vue';
 import { XMarkIcon } from '@heroicons/vue/24/outline';
 import { provide, reactive, ref, computed } from 'vue';
+import { useHeaderTitle } from '../composables/useHeaderTitle';
 import { backUpSetupConfigKey, reviewBackUpSetupKey, closeWizardModalKey } from '../keys/injection-keys';
 import { useOnboarding } from '../composables/useOnboarding';
 import { useSettings } from '../composables/useSettings';
@@ -55,12 +56,16 @@ const setupConfig = reactive({
 provide(backUpSetupConfigKey, setupConfig);
 provide(reviewBackUpSetupKey, reactive({ tasks: [] }));
 
+const { setHeaderTitle } = useHeaderTitle();
+
 function closeWizard() {
     showWizard.value = false;
     // Reset the config for next use
     setupConfig.backUpTasks = [];
     setupConfig.username = '';
     setupConfig.password = '';
+    // Restore header title since wizard may have changed it
+    setHeaderTitle('Backup Manager');
     // Refresh the backup list to pick up newly created tasks
     manageRef.value?.refreshBackups();
 }

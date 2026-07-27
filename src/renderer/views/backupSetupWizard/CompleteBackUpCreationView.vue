@@ -43,10 +43,12 @@
 
       <div class="button-group-row justify-end">
 
-        <button :disabled="setupComplete !== 'yes'" class="btn btn-secondary h-fit" @click="goToSetupWizard">
+        <!-- <button :disabled="setupComplete !== 'yes'" class="btn btn-secondary h-fit" @click="goToSetupWizard">
           Setup More Storage Servers
+        </button> -->
+        <button :disabled="setupComplete !== 'yes'" class="btn btn-secondary h-fit" @click="goToSetupWizard">
+          Go to Dashboard
         </button>
-
         <button :disabled="setupComplete !== 'yes'" class="btn btn-primary h-fit" @click="goToBackupWizard">
           Go To Backup Manager
         </button>
@@ -98,10 +100,13 @@ function goToBackupWizard(): void {
 }
 
 function goToSetupWizard(): void {
-  IPCRouter.getInstance().send('renderer', 'action', JSON.stringify({
-    type: 'show_wizard',
-    wizard: 'storage'
-  }));
+  if (backUpSetupConfig) {
+    backUpSetupConfig.backUpTasks = [];
+    backUpSetupConfig.username = '';
+    backUpSetupConfig.password = '';
+  }
+  closeWizardModal();
+  router.push({ name: 'dashboard' });
 }
 
 
