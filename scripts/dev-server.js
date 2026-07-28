@@ -99,9 +99,17 @@ function copy(path) {
 }
 
 function stop() {
+    if (electronProcess) {
+        electronProcess.removeAllListeners('exit');
+        electronProcess.kill();
+        electronProcess = null;
+    }
     viteServer.close();
     process.exit();
 }
+
+process.on('SIGINT', stop);
+process.on('SIGTERM', stop);
 
 async function start() {
     console.log(`${Chalk.greenBright('=======================================')}`);
