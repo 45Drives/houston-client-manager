@@ -20,3 +20,4 @@ scripts/test-pkg.sh
 .yarn/install-state.gz
 .DS_Store
 .claude/CLAUDE.md
+.electron-dev-userdata/

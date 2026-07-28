@@ -12,6 +12,7 @@ export interface AppSettings {
   sshFastCiphers: boolean;
   logRetentionDays: number;
   showNotifications: boolean;
+  guidedToursEnabled: boolean;
   onboarding: {
     dashboardTourDone: boolean;
     backupManagerSeen: boolean;

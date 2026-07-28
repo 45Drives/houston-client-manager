@@ -1,4 +1,5 @@
 import { ref, readonly, type Ref } from 'vue';
+import { useSettings } from './useSettings';
 
 export interface TourStep {
   /** CSS selector for the target element to highlight */
@@ -28,8 +29,12 @@ const _queue: TourRegistration[] = [];
  * when the user finishes or skips the active tour.
  */
 export function useTourManager() {
+  const { settings } = useSettings();
+
   /** Request a tour. Starts immediately if nothing else is active, otherwise queues. */
   function requestTour(id: string, steps: TourStep[], onDone: () => void | Promise<void>) {
+    // Skip if guided tours are disabled
+    if (settings.value?.guidedToursEnabled === false) return;
     // Don't double-register the same tour
     if (_activeTour.value?.id === id || _queue.some(t => t.id === id)) return;
 

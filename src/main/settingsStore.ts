@@ -39,6 +39,9 @@ export interface AppSettings {
   /** Show notification toasts in-app */
   showNotifications: boolean;
 
+  /** Whether guided tours are enabled */
+  guidedToursEnabled: boolean;
+
   /** First-time user onboarding flags */
   onboarding: {
     dashboardTourDone: boolean;
@@ -79,6 +82,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   sshFastCiphers: false,
   logRetentionDays: 14,
   showNotifications: true,
+  guidedToursEnabled: true,
   onboarding: {
     dashboardTourDone: false,
     backupManagerSeen: false,

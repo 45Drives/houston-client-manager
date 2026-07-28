@@ -27,6 +27,11 @@ process.on('unhandledRejection', (reason, promise) => {
 });
 
 import { app, BrowserWindow, ipcMain, dialog, shell, session } from 'electron';
+
+if (process.env.ELECTRON_USER_DATA_DIR) {
+  app.setPath('userData', process.env.ELECTRON_USER_DATA_DIR);
+}
+
 import { createLogger, format } from 'winston';
 import { initAutoUpdates } from './updates';
 
@@ -677,7 +682,7 @@ function createWindow() {
 
   if (process.env.NODE_ENV === 'development') {
     mainWindow.webContents.openDevTools();
-    const rendererPort = process.argv[2];
+    const rendererPort = process.env.ELECTRON_RENDERER_PORT || process.argv[2];
 
     mainWindow.loadURL(`http://localhost:${rendererPort}`);
   } else {

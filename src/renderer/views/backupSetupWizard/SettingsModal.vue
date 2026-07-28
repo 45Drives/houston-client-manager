@@ -99,7 +99,11 @@
                             <ToggleSwitch v-model="draft.showNotifications" />
                         </SettingRow>
 
-                        <SettingRow label="Re-enable first-time tips" description="Reset onboarding walkthroughs and welcome screens so they show again.">
+                        <SettingRow label="Guided tours" description="Show step-by-step guided tours for new features and views.">
+                            <ToggleSwitch v-model="draft.guidedToursEnabled" />
+                        </SettingRow>
+
+                        <SettingRow label="Reset guided tours" description="Re-show all onboarding walkthroughs and welcome screens.">
                             <button class="btn btn-sm btn-outline-shadow h-fit" :disabled="allOnboardingDone === false" @click="handleResetOnboarding">
                                 Reset
                             </button>
@@ -227,7 +231,9 @@ async function handleResetOnboarding() {
     if (settings.value) {
         Object.assign(draft.onboarding, settings.value.onboarding);
     }
-    reportSuccess('First-time tips have been reset');
+    // Re-enable guided tours if they were off
+    draft.guidedToursEnabled = true;
+    reportSuccess('Guided tours have been reset');
 }
 
 // ── Section nav ──────────────────────────────────────────────────────────
@@ -274,6 +280,7 @@ const draft = reactive<AppSettings>({
     sshFastCiphers: false,
     logRetentionDays: 14,
     showNotifications: true,
+    guidedToursEnabled: true,
     onboarding: {
         dashboardTourDone: false,
         backupManagerSeen: false,

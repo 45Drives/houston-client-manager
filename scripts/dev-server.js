@@ -41,11 +41,17 @@ async function startElectron() {
     }
 
     const args = [
+        "--inspect=9230",
+        "--user-data-dir=" + Path.join(__dirname, '..', '.electron-dev-userdata'),
         Path.join(__dirname, '..', 'build', 'main', 'src', 'main', 'main.js'),
-        rendererPort,
-        "--inspect=9230"
     ];
-    electronProcess = ChildProcess.spawn(Electron, args);
+    electronProcess = ChildProcess.spawn(Electron, args, {
+        env: {
+            ...process.env,
+            ELECTRON_RENDERER_PORT: String(rendererPort),
+            ELECTRON_USER_DATA_DIR: Path.join(__dirname, '..', '.electron-dev-userdata'),
+        }
+    });
     electronProcessLocker = false;
 
     electronProcess.stdout.on('data', data => {
