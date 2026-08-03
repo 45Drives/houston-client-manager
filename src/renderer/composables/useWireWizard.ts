@@ -49,6 +49,7 @@ export interface PollResult {
     publicKey: string
     endpoint: string
     localEndpoint?: string
+    natEndpoint?: string
     allowedIPs: string
   }
 }
@@ -145,7 +146,7 @@ export function useWireWizard(getHost: () => string, getUsername: () => string) 
   }
 
   // Complete pairing (initiator side, after joiner claims)
-  async function complete(code: string, peer: { publicKey: string; endpoint: string; localEndpoint?: string }): Promise<PairCompleteResult | null> {
+  async function complete(code: string, peer: { publicKey: string; endpoint: string; localEndpoint?: string; natEndpoint?: string }): Promise<PairCompleteResult | null> {
     busy.value = true
     lastError.value = null
     try {
@@ -158,6 +159,7 @@ export function useWireWizard(getHost: () => string, getUsername: () => string) 
         peerPubkey: peer.publicKey,
         peerEndpoint: peer.endpoint,
         peerLocalEndpoint: peer.localEndpoint,
+        peerNatEndpoint: peer.natEndpoint,
       })
       if (result.success) return result.data!
       lastError.value = result.error || 'Complete failed'
@@ -205,6 +207,89 @@ export function useWireWizard(getHost: () => string, getUsername: () => string) 
     }
   }
 
+  // Restart a tunnel
+  async function restart(iface: string): Promise<boolean> {
+    busy.value = true
+    lastError.value = null
+    try {
+      const password = await getPassword()
+      const result: ActionResult = await window.electron.ipcRenderer.invoke('wirewizard:restart', {
+        host: getHost(),
+        username: getUsername(),
+        password,
+        iface,
+      })
+      if (result.success) return true
+      lastError.value = result.error || 'Restart failed'
+      return false
+    } finally {
+      busy.value = false
+    }
+  }
+
+  // Add a peer to an interface
+  async function addPeer(iface: string, peer: { pubkey: string; endpoint?: string; allowedIPs?: string; keepalive?: number }): Promise<boolean> {
+    busy.value = true
+    lastError.value = null
+    try {
+      const password = await getPassword()
+      const result: ActionResult = await window.electron.ipcRenderer.invoke('wirewizard:addPeer', {
+        host: getHost(),
+        username: getUsername(),
+        password,
+        iface,
+        ...peer,
+      })
+      if (result.success) return true
+      lastError.value = result.error || 'Add peer failed'
+      return false
+    } finally {
+      busy.value = false
+    }
+  }
+
+  // Edit a peer on an interface
+  async function editPeer(iface: string, peer: { pubkey: string; endpoint?: string; allowedIPs?: string; keepalive?: number }): Promise<boolean> {
+    busy.value = true
+    lastError.value = null
+    try {
+      const password = await getPassword()
+      const result: ActionResult = await window.electron.ipcRenderer.invoke('wirewizard:editPeer', {
+        host: getHost(),
+        username: getUsername(),
+        password,
+        iface,
+        ...peer,
+      })
+      if (result.success) return true
+      lastError.value = result.error || 'Edit peer failed'
+      return false
+    } finally {
+      busy.value = false
+    }
+  }
+
+  // Remove a peer from an interface
+  async function removePeer(iface: string, pubkey: string): Promise<boolean> {
+    busy.value = true
+    lastError.value = null
+    try {
+      const password = await getPassword()
+      const result: ActionResult = await window.electron.ipcRenderer.invoke('wirewizard:removePeer', {
+        host: getHost(),
+        username: getUsername(),
+        password,
+        iface,
+        pubkey,
+      })
+      if (result.success) return true
+      lastError.value = result.error || 'Remove peer failed'
+      return false
+    } finally {
+      busy.value = false
+    }
+  }
+
   return {
     busy,
     lastError,
@@ -216,5 +301,9 @@ export function useWireWizard(getHost: () => string, getUsername: () => string) 
     complete,
     teardown,
     preflight,
+    restart,
+    addPeer,
+    editPeer,
+    removePeer,
   }
 }

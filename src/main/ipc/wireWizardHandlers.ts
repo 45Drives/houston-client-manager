@@ -207,9 +207,9 @@ export function registerWireWizardHandlers(ctx: WireWizardContext) {
   });
 
   // Complete the initiator side after joiner has claimed the code
-  ipcMain.handle('wirewizard:complete', async (_event, { host, username, password, code, peerPubkey, peerEndpoint, peerLocalEndpoint }: {
+  ipcMain.handle('wirewizard:complete', async (_event, { host, username, password, code, peerPubkey, peerEndpoint, peerLocalEndpoint, peerNatEndpoint }: {
     host: string; username: string; password?: string; code: string;
-    peerPubkey: string; peerEndpoint: string; peerLocalEndpoint?: string;
+    peerPubkey: string; peerEndpoint: string; peerLocalEndpoint?: string; peerNatEndpoint?: string;
   }) => {
     const safeHost = assertSafeHost(host);
     jsonLogger.info({ event: 'wirewizard:complete', host: safeHost });
@@ -220,6 +220,7 @@ export function registerWireWizardHandlers(ctx: WireWizardContext) {
       args += ` --peer-pubkey ${shellQuote(peerPubkey)}`;
       args += ` --peer-endpoint ${shellQuote(peerEndpoint)}`;
       if (peerLocalEndpoint) args += ` --peer-local-endpoint ${shellQuote(peerLocalEndpoint)}`;
+      if (peerNatEndpoint) args += ` --peer-nat-endpoint ${shellQuote(peerNatEndpoint)}`;
 
       const result = await ssh.execCommand(args);
       if (result.code !== 0) {
@@ -282,6 +283,133 @@ export function registerWireWizardHandlers(ctx: WireWizardContext) {
         data: { healthy: result.code === 0, output: result.stdout.trim(), error: result.stderr.trim() },
       };
     } catch (e: any) {
+      return { success: false, error: e?.message };
+    } finally {
+      ssh.dispose();
+    }
+  });
+
+  // Restart a tunnel on a remote server
+  ipcMain.handle('wirewizard:restart', async (_event, { host, username, password, iface }: {
+    host: string; username: string; password?: string; iface: string;
+  }) => {
+    const safeHost = assertSafeHost(host);
+    jsonLogger.info({ event: 'wirewizard:restart', host: safeHost, iface });
+
+    if (!iface || !/^wg-/.test(iface)) {
+      return { success: false, error: 'Invalid interface name' };
+    }
+
+    const ssh = await connectSSH(safeHost, username, password);
+    try {
+      const result = await ssh.execCommand(`sudo bash ${SCRIPTS}/restart.sh ${shellQuote(iface)} --json`);
+      if (result.code !== 0) {
+        throw new Error(result.stderr || result.stdout || 'restart failed');
+      }
+
+      const data = JSON.parse(result.stdout.trim());
+      jsonLogger.info({ event: 'wirewizard:restart_success', host: safeHost, iface });
+      return { success: true, data };
+    } catch (e: any) {
+      jsonLogger.error({ event: 'wirewizard:restart_error', host: safeHost, error: String(e) });
+      return { success: false, error: e?.message };
+    } finally {
+      ssh.dispose();
+    }
+  });
+
+  // Add a peer to an existing interface
+  ipcMain.handle('wirewizard:addPeer', async (_event, { host, username, password, iface, pubkey, endpoint, allowedIPs, keepalive }: {
+    host: string; username: string; password?: string; iface: string;
+    pubkey: string; endpoint?: string; allowedIPs?: string; keepalive?: number;
+  }) => {
+    const safeHost = assertSafeHost(host);
+    jsonLogger.info({ event: 'wirewizard:addPeer', host: safeHost, iface });
+
+    if (!iface || !/^wg-/.test(iface)) {
+      return { success: false, error: 'Invalid interface name' };
+    }
+
+    const ssh = await connectSSH(safeHost, username, password);
+    try {
+      let args = `sudo bash ${SCRIPTS}/add-peer.sh --interface ${shellQuote(iface)} --pubkey ${shellQuote(pubkey)} --json`;
+      if (endpoint) args += ` --endpoint ${shellQuote(endpoint)}`;
+      if (allowedIPs) args += ` --allowed-ips ${shellQuote(allowedIPs)}`;
+      if (keepalive) args += ` --keepalive ${Number(keepalive)}`;
+
+      const result = await ssh.execCommand(args);
+      if (result.code !== 0) {
+        throw new Error(result.stderr || result.stdout || 'add-peer failed');
+      }
+
+      jsonLogger.info({ event: 'wirewizard:addPeer_success', host: safeHost, iface });
+      return { success: true, data: JSON.parse(result.stdout.trim()) };
+    } catch (e: any) {
+      jsonLogger.error({ event: 'wirewizard:addPeer_error', host: safeHost, error: String(e) });
+      return { success: false, error: e?.message };
+    } finally {
+      ssh.dispose();
+    }
+  });
+
+  // Edit an existing peer
+  ipcMain.handle('wirewizard:editPeer', async (_event, { host, username, password, iface, pubkey, endpoint, allowedIPs, keepalive }: {
+    host: string; username: string; password?: string; iface: string;
+    pubkey: string; endpoint?: string; allowedIPs?: string; keepalive?: number;
+  }) => {
+    const safeHost = assertSafeHost(host);
+    jsonLogger.info({ event: 'wirewizard:editPeer', host: safeHost, iface });
+
+    if (!iface || !/^wg-/.test(iface)) {
+      return { success: false, error: 'Invalid interface name' };
+    }
+
+    const ssh = await connectSSH(safeHost, username, password);
+    try {
+      let args = `sudo bash ${SCRIPTS}/edit-peer.sh --interface ${shellQuote(iface)} --pubkey ${shellQuote(pubkey)} --json`;
+      if (endpoint) args += ` --endpoint ${shellQuote(endpoint)}`;
+      if (allowedIPs) args += ` --allowed-ips ${shellQuote(allowedIPs)}`;
+      if (keepalive !== undefined) args += ` --keepalive ${Number(keepalive)}`;
+
+      const result = await ssh.execCommand(args);
+      if (result.code !== 0) {
+        throw new Error(result.stderr || result.stdout || 'edit-peer failed');
+      }
+
+      jsonLogger.info({ event: 'wirewizard:editPeer_success', host: safeHost, iface });
+      return { success: true, data: JSON.parse(result.stdout.trim()) };
+    } catch (e: any) {
+      jsonLogger.error({ event: 'wirewizard:editPeer_error', host: safeHost, error: String(e) });
+      return { success: false, error: e?.message };
+    } finally {
+      ssh.dispose();
+    }
+  });
+
+  // Remove a peer from an interface
+  ipcMain.handle('wirewizard:removePeer', async (_event, { host, username, password, iface, pubkey }: {
+    host: string; username: string; password?: string; iface: string; pubkey: string;
+  }) => {
+    const safeHost = assertSafeHost(host);
+    jsonLogger.info({ event: 'wirewizard:removePeer', host: safeHost, iface });
+
+    if (!iface || !/^wg-/.test(iface)) {
+      return { success: false, error: 'Invalid interface name' };
+    }
+
+    const ssh = await connectSSH(safeHost, username, password);
+    try {
+      const args = `sudo bash ${SCRIPTS}/remove-peer.sh --interface ${shellQuote(iface)} --pubkey ${shellQuote(pubkey)} --teardown-empty --json`;
+
+      const result = await ssh.execCommand(args);
+      if (result.code !== 0) {
+        throw new Error(result.stderr || result.stdout || 'remove-peer failed');
+      }
+
+      jsonLogger.info({ event: 'wirewizard:removePeer_success', host: safeHost, iface });
+      return { success: true };
+    } catch (e: any) {
+      jsonLogger.error({ event: 'wirewizard:removePeer_error', host: safeHost, error: String(e) });
       return { success: false, error: e?.message };
     } finally {
       ssh.dispose();

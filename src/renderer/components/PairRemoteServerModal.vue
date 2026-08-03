@@ -22,8 +22,9 @@
 
                 <div>
                     <label class="block text-sm font-medium text-default mb-1">Tunnel Name <span class="text-muted">(optional)</span></label>
-                    <input v-model="tunnelName" type="text" maxlength="20" placeholder="e.g. offsite-backup"
+                    <input v-model="tunnelName" type="text" maxlength="12" placeholder="e.g. offsite-bkp"
                         class="w-full input-textlike rounded-md px-3 py-2 text-sm bg-default" />
+                    <p class="text-xs text-muted mt-1">Max 12 characters.</p>
                 </div>
 
                 <div>
@@ -68,8 +69,9 @@
                 <p class="text-sm text-muted">Enter the 6-character code from the other server.</p>
                 <div>
                     <label class="block text-sm font-medium text-default mb-1">Tunnel Name <span class="text-muted">(optional)</span></label>
-                    <input v-model="tunnelName" type="text" maxlength="20" placeholder="e.g. main-server"
+                    <input v-model="tunnelName" type="text" maxlength="12" placeholder="e.g. main-srv"
                         class="w-full input-textlike rounded-md px-3 py-2 text-sm bg-default" />
+                    <p class="text-xs text-muted mt-1">Max 12 characters.</p>
                 </div>
                 <input v-model="joinCode" type="text" maxlength="6" placeholder="ABC123"
                     class="w-full input-textlike rounded-md px-4 py-3 text-center text-2xl font-mono tracking-widest uppercase bg-default"
@@ -185,6 +187,7 @@ async function doComplete(code: string, claimer: NonNullable<PollResult['claimer
         publicKey: claimer.publicKey,
         endpoint: claimer.endpoint,
         localEndpoint: claimer.localEndpoint,
+        natEndpoint: claimer.natEndpoint,
     })
     if (!result) {
         error.value = ww.lastError.value || 'Failed to complete pairing'
