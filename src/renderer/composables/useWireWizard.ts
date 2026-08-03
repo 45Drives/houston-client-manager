@@ -87,7 +87,7 @@ export function useWireWizard(getHost: () => string, getUsername: () => string) 
   }
 
   // Initiate pairing (generates code on the server)
-  async function initiate(opts: { name?: string; ttl?: number } = {}): Promise<PairInitiateResult | null> {
+  async function initiate(opts: { name?: string; ttl?: number; port?: number; endpoint?: string } = {}): Promise<PairInitiateResult | null> {
     busy.value = true
     lastError.value = null
     try {
@@ -98,6 +98,8 @@ export function useWireWizard(getHost: () => string, getUsername: () => string) 
         password,
         name: opts.name,
         ttl: opts.ttl,
+        port: opts.port,
+        endpoint: opts.endpoint,
       })
       if (result.success) return result.data!
       lastError.value = result.error || 'Initiate failed'
@@ -108,7 +110,7 @@ export function useWireWizard(getHost: () => string, getUsername: () => string) 
   }
 
   // Join a pairing code (configures tunnel on server)
-  async function join(code: string, opts: { name?: string } = {}): Promise<PairCompleteResult | null> {
+  async function join(code: string, opts: { name?: string; port?: number; endpoint?: string } = {}): Promise<PairCompleteResult | null> {
     busy.value = true
     lastError.value = null
     try {
@@ -119,6 +121,8 @@ export function useWireWizard(getHost: () => string, getUsername: () => string) 
         password,
         code,
         name: opts.name,
+        port: opts.port,
+        endpoint: opts.endpoint,
       })
       if (result.success) return result.data!
       lastError.value = result.error || 'Join failed'
@@ -290,6 +294,52 @@ export function useWireWizard(getHost: () => string, getUsername: () => string) 
     }
   }
 
+  // Invite a peer to an existing tunnel (generates code)
+  async function invite(iface: string, opts: { ttl?: number } = {}): Promise<{ code: string; interface: string } | null> {
+    busy.value = true
+    lastError.value = null
+    try {
+      const password = await getPassword()
+      const result: ActionResult<{ code: string; interface: string }> =
+        await window.electron.ipcRenderer.invoke('wirewizard:invite', {
+          host: getHost(),
+          username: getUsername(),
+          password,
+          iface,
+          ttl: opts.ttl,
+        })
+      if (result.success) return result.data!
+      lastError.value = result.error || 'Invite failed'
+      return null
+    } finally {
+      busy.value = false
+    }
+  }
+
+  // Complete an invite (add the accepted peer to existing interface)
+  async function inviteComplete(code: string, peer: { publicKey: string; endpoint: string; localEndpoint?: string; natEndpoint?: string }): Promise<boolean> {
+    busy.value = true
+    lastError.value = null
+    try {
+      const password = await getPassword()
+      const result: ActionResult = await window.electron.ipcRenderer.invoke('wirewizard:inviteComplete', {
+        host: getHost(),
+        username: getUsername(),
+        password,
+        code,
+        peerPubkey: peer.publicKey,
+        peerEndpoint: peer.endpoint,
+        peerLocalEndpoint: peer.localEndpoint,
+        peerNatEndpoint: peer.natEndpoint,
+      })
+      if (result.success) return true
+      lastError.value = result.error || 'Invite complete failed'
+      return false
+    } finally {
+      busy.value = false
+    }
+  }
+
   return {
     busy,
     lastError,
@@ -305,5 +355,7 @@ export function useWireWizard(getHost: () => string, getUsername: () => string) 
     addPeer,
     editPeer,
     removePeer,
+    invite,
+    inviteComplete,
   }
 }

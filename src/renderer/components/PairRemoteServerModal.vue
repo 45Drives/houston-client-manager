@@ -38,6 +38,25 @@
                     <p class="text-xs text-muted mt-1">Increase if you need to physically visit the other server.</p>
                 </div>
 
+                <!-- Advanced Options -->
+                <details class="mt-1" @toggle="(e: Event) => advancedOpen = (e.target as HTMLDetailsElement).open">
+                    <summary class="text-xs text-muted cursor-pointer hover:text-default select-none">Advanced Options</summary>
+                    <div class="mt-2 space-y-3 pl-1">
+                        <div>
+                            <label class="block text-xs text-muted mb-1">Listen Port <span class="text-muted">(optional)</span></label>
+                            <input v-model.number="listenPort" type="number" min="1024" max="65535" placeholder="Auto"
+                                class="w-32 input-textlike rounded-md px-3 py-1.5 text-sm bg-default font-mono" />
+                            <p class="text-xs text-muted mt-0.5">Default: auto-selects next available from 51820.</p>
+                        </div>
+                        <div>
+                            <label class="block text-xs text-muted mb-1">Endpoint Override <span class="text-muted">(optional)</span></label>
+                            <input v-model="endpointOverride" type="text" placeholder="IP:port or hostname:port"
+                                class="w-full input-textlike rounded-md px-3 py-1.5 text-sm bg-default font-mono" />
+                            <p class="text-xs text-muted mt-0.5">Override the auto-detected public endpoint.</p>
+                        </div>
+                    </div>
+                </details>
+
                 <div class="grid grid-cols-2 gap-3 mt-2">
                     <button @click="doInitiate" :disabled="busy"
                         class="p-3 border-2 border-blue-200 rounded-lg hover:border-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition h-fit text-left">
@@ -76,6 +95,26 @@
                 <input v-model="joinCode" type="text" maxlength="6" placeholder="ABC123"
                     class="w-full input-textlike rounded-md px-4 py-3 text-center text-2xl font-mono tracking-widest uppercase bg-default"
                     @keyup.enter="doJoin" />
+
+                <!-- Advanced Options (Join) -->
+                <details class="mt-1" @toggle="(e: Event) => advancedOpen = (e.target as HTMLDetailsElement).open">
+                    <summary class="text-xs text-muted cursor-pointer hover:text-default select-none">Advanced Options</summary>
+                    <div class="mt-2 space-y-3 pl-1">
+                        <div>
+                            <label class="block text-xs text-muted mb-1">Listen Port <span class="text-muted">(optional)</span></label>
+                            <input v-model.number="listenPort" type="number" min="1024" max="65535" placeholder="Auto"
+                                class="w-32 input-textlike rounded-md px-3 py-1.5 text-sm bg-default font-mono" />
+                            <p class="text-xs text-muted mt-0.5">Default: auto-selects next available from 51820.</p>
+                        </div>
+                        <div>
+                            <label class="block text-xs text-muted mb-1">Endpoint Override <span class="text-muted">(optional)</span></label>
+                            <input v-model="endpointOverride" type="text" placeholder="IP:port or hostname:port"
+                                class="w-full input-textlike rounded-md px-3 py-1.5 text-sm bg-default font-mono" />
+                            <p class="text-xs text-muted mt-0.5">Override the auto-detected public endpoint.</p>
+                        </div>
+                    </div>
+                </details>
+
                 <div class="flex gap-2">
                     <button @click="step = 'choose'" class="btn btn-secondary h-fit">Back</button>
                     <button @click="doJoin" :disabled="busy || joinCode.length !== 6" class="btn btn-primary h-fit flex-1">
@@ -114,7 +153,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onUnmounted } from 'vue'
+import { ref, watch, onUnmounted } from 'vue'
 import { Modal } from '@45drives/houston-common-ui'
 import { useWireWizard, type PairCompleteResult, type PollResult } from '../composables/useWireWizard'
 
@@ -137,11 +176,14 @@ const tunnelName = ref('')
 const codeTtl = ref(15)
 const pairingCode = ref('')
 const joinCode = ref('')
+const listenPort = ref<number | undefined>(undefined)
+const endpointOverride = ref('')
+const advancedOpen = ref(false)
 const error = ref('')
 const pollError = ref('')
 const tunnelInfo = ref<PairCompleteResult | null>(null)
 
-let pollTimer: ReturnType<typeof setInterval> | null = null
+let pollTimer: ReturnType<typeof setTimeout> | null = null
 
 const ww = useWireWizard(
     () => props.serverHost,
@@ -149,9 +191,30 @@ const ww = useWireWizard(
 )
 const busy = ww.busy
 
+// Reset state when modal opens
+watch(() => props.show, (showing) => {
+    if (showing) {
+        step.value = 'choose'
+        tunnelName.value = ''
+        pairingCode.value = ''
+        joinCode.value = ''
+        listenPort.value = undefined
+        endpointOverride.value = ''
+        advancedOpen.value = false
+        error.value = ''
+        pollError.value = ''
+        tunnelInfo.value = null
+    }
+})
+
 async function doInitiate() {
     error.value = ''
-    const result = await ww.initiate({ name: tunnelName.value.trim() || undefined, ttl: codeTtl.value })
+    const result = await ww.initiate({
+        name: tunnelName.value.trim() || undefined,
+        ttl: codeTtl.value,
+        port: advancedOpen.value && listenPort.value ? listenPort.value : undefined,
+        endpoint: advancedOpen.value && endpointOverride.value.trim() ? endpointOverride.value.trim() : undefined,
+    })
     if (!result) {
         error.value = ww.lastError.value || 'Failed to initiate pairing'
         return
@@ -163,23 +226,35 @@ async function doInitiate() {
 
 function startPolling(code: string) {
     let failures = 0
-    pollTimer = setInterval(async () => {
+    let stopped = false
+
+    async function doPoll() {
+        if (stopped) return
         const pollResult = await ww.poll(code)
+        if (stopped) return
         if (!pollResult) {
             failures++
             if (failures > 5) {
                 pollError.value = 'Lost connection to server. Is it still online?'
             }
+            pollTimer = setTimeout(doPoll, 5000)
             return
         }
         failures = 0
         pollError.value = ''
         if (pollResult.claimed && pollResult.claimer) {
-            stopPolling()
+            stopped = true
             step.value = 'configuring'
             await doComplete(code, pollResult.claimer)
+        } else {
+            pollTimer = setTimeout(doPoll, 4000)
         }
-    }, 3000)
+    }
+
+    pollTimer = setTimeout(doPoll, 3000)
+    // Override stopPolling to also flag stopped
+    const origStop = stopPolling
+    stopPolling = () => { stopped = true; origStop() }
 }
 
 async function doComplete(code: string, claimer: NonNullable<PollResult['claimer']>) {
@@ -201,7 +276,11 @@ async function doComplete(code: string, claimer: NonNullable<PollResult['claimer
 
 async function doJoin() {
     error.value = ''
-    const result = await ww.join(joinCode.value.trim(), { name: tunnelName.value.trim() || undefined })
+    const result = await ww.join(joinCode.value.trim(), {
+        name: tunnelName.value.trim() || undefined,
+        port: advancedOpen.value && listenPort.value ? listenPort.value : undefined,
+        endpoint: advancedOpen.value && endpointOverride.value.trim() ? endpointOverride.value.trim() : undefined,
+    })
     if (!result) {
         error.value = ww.lastError.value || 'Failed to join'
         return
@@ -211,9 +290,9 @@ async function doJoin() {
     emit('paired', result)
 }
 
-function stopPolling() {
+let stopPolling = () => {
     if (pollTimer) {
-        clearInterval(pollTimer)
+        clearTimeout(pollTimer)
         pollTimer = null
     }
 }

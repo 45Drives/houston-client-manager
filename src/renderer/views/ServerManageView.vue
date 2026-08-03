@@ -134,8 +134,8 @@
 
                         <!-- VPN Tunnels -->
                         <SectionDivider label="VPN Tunnels (WireGuard)" />
-                        <div v-if="vpnLoading" class="text-xs text-gray-400 flex items-center gap-2">
-                            <ArrowPathIcon class="w-3.5 h-3.5 animate-spin" /> Checking…
+                        <div v-if="vpnLoading" class="flex items-center gap-2 py-3 px-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg text-sm text-blue-700 dark:text-blue-300">
+                            <ArrowPathIcon class="w-4 h-4 animate-spin" /> Refreshing tunnels…
                         </div>
                         <template v-else-if="vpnStatus">
                             <div v-if="!vpnStatus.installed" class="text-xs text-gray-400">
@@ -157,6 +157,8 @@
                                                 </span>
                                                 <button v-if="editing" @click="teardownTunnel(iface.name)"
                                                     class="text-xs text-red-500 hover:text-red-700">Remove</button>
+                                                <button @click="managedTunnel = iface"
+                                                    class="text-xs text-link hover:underline">Manage</button>
                                             </div>
                                         </div>
                                         <div class="grid grid-cols-2 gap-1 text-xs" v-if="iface.peers.length">
@@ -903,7 +905,18 @@
             :server-username="server?.username || 'root'"
             :server-name="server?.name || server?.host"
             @close="showPairModal = false"
-            @paired="showPairModal = false; loadVpnStatus()"
+            @paired="onTunnelPaired()"
+        />
+
+        <!-- Tunnel Manage Modal -->
+        <TunnelManageModal
+            v-if="managedTunnel"
+            :show="!!managedTunnel"
+            :tunnel="managedTunnel"
+            :ww="ww"
+            @close="managedTunnel = null"
+            @changed="managedTunnel = null; loadVpnStatus()"
+            @removed="managedTunnel = null; loadVpnStatus()"
         />
     </div>
 </template>
@@ -924,6 +937,7 @@ import { useWireWizard, type WireWizardStatus } from '../composables/useWireWiza
 import { Notification, pushNotification } from '@45drives/houston-common-ui'
 import type { ServerProbeResult, StagedChange } from '../../main/ipc/serverManageHandlers'
 import PairRemoteServerModal from '../components/PairRemoteServerModal.vue'
+import TunnelManageModal from '../components/TunnelManageModal.vue'
 
 useHeader('Server Management')
 
@@ -960,6 +974,7 @@ const probe = ref<ServerProbeResult | null>(null)
 const vpnLoading = ref(false)
 const vpnStatus = ref<WireWizardStatus | null>(null)
 const showPairModal = ref(false)
+const managedTunnel = ref<WireWizardStatus['interfaces'][number] | null>(null)
 
 const ww = useWireWizard(
     () => server.value?.host || '',
@@ -981,6 +996,13 @@ async function teardownTunnel(iface: string) {
     } else {
         pushNotification(new Notification('Error', ww.lastError.value || 'Teardown failed', 'error', 5000))
     }
+}
+
+async function onTunnelPaired() {
+    showPairModal.value = false
+    await loadVpnStatus()
+    // Re-fetch after 5s to catch the handshake (takes a few seconds to establish)
+    setTimeout(() => loadVpnStatus(), 5000)
 }
 
 function formatBytes(bytes: number): string {

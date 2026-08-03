@@ -67,6 +67,12 @@ const INVOKE_CHANNELS = new Set([
   'wirewizard:complete',
   'wirewizard:teardown',
   'wirewizard:preflight',
+  'wirewizard:restart',
+  'wirewizard:addPeer',
+  'wirewizard:editPeer',
+  'wirewizard:removePeer',
+  'wirewizard:invite',
+  'wirewizard:inviteComplete',
   // Bulk Setup
   'bulk-setup:validate',
   'bulk-setup:probe',
