@@ -900,6 +900,7 @@
 
         <!-- Wire Wizard Pairing Modal -->
         <PairRemoteServerModal
+            v-if="showPairModal"
             :show="showPairModal"
             :server-host="server?.host || ''"
             :server-username="server?.username || 'root'"

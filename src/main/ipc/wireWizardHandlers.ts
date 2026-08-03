@@ -212,7 +212,8 @@ export function registerWireWizardHandlers(ctx: WireWizardContext) {
 
     try {
       const ssh = await getPooledSSH(safeHost, username, password);
-      let args = `sudo bash ${SCRIPTS}/pair-join.sh ${shellQuote(code.toUpperCase())} --json`;
+      const joinScript = 'pair-join.sh'; // Only pair mode supported
+      let args = `sudo bash ${SCRIPTS}/${joinScript} ${shellQuote(code.toUpperCase())} --json`;
       if (name) args += ` --name ${shellQuote(name)}`;
       if (port) args += ` --port ${Number(port)}`;
       if (endpoint) args += ` --endpoint ${shellQuote(endpoint)}`;
@@ -330,6 +331,29 @@ export function registerWireWizardHandlers(ctx: WireWizardContext) {
         success: true,
         data: { healthy: result.code === 0, output: result.stdout.trim(), error: result.stderr.trim() },
       };
+    } catch (e: any) {
+      disposePoolEntry(poolKey(safeHost, username));
+      return { success: false, error: e?.message };
+    }
+  });
+
+  // Run a pairing network readiness check on a remote server
+  ipcMain.handle('wirewizard:networkCheck', async (_event, { host, username, password, port }: {
+    host: string; username: string; password?: string; port?: number;
+  }) => {
+    const safeHost = assertSafeHost(host);
+
+    try {
+      const ssh = await getPooledSSH(safeHost, username, password);
+      let args = `sudo bash ${SCRIPTS}/network-check.sh --json`;
+      if (port) args += ` --port ${Number(port)}`;
+
+      const result = await ssh.execCommand(args);
+      if (result.code !== 0) {
+        throw new Error(result.stderr || result.stdout || 'network-check failed');
+      }
+
+      return { success: true, data: JSON.parse(result.stdout.trim()) };
     } catch (e: any) {
       disposePoolEntry(poolKey(safeHost, username));
       return { success: false, error: e?.message };
@@ -455,68 +479,6 @@ export function registerWireWizardHandlers(ctx: WireWizardContext) {
     } catch (e: any) {
       disposePoolEntry(poolKey(safeHost, username));
       jsonLogger.error({ event: 'wirewizard:removePeer_error', host: safeHost, error: String(e) });
-      return { success: false, error: e?.message };
-    }
-  });
-
-  // Invite a peer to an existing tunnel (generates invite code)
-  ipcMain.handle('wirewizard:invite', async (_event, { host, username, password, iface, ttl }: {
-    host: string; username: string; password?: string; iface: string; ttl?: number;
-  }) => {
-    const safeHost = assertSafeHost(host);
-    jsonLogger.info({ event: 'wirewizard:invite', host: safeHost, iface });
-
-    if (!iface || !/^wg-/.test(iface)) {
-      return { success: false, error: 'Invalid interface name' };
-    }
-
-    try {
-      const ssh = await getPooledSSH(safeHost, username, password);
-      let args = `sudo bash ${SCRIPTS}/invite-peer.sh --interface ${shellQuote(iface)} --json`;
-      if (ttl) args += ` --ttl ${Number(ttl)}`;
-
-      const result = await ssh.execCommand(args);
-      if (result.code !== 0) {
-        throw new Error(result.stderr || result.stdout || 'invite-peer failed');
-      }
-
-      const data = JSON.parse(result.stdout.trim());
-      jsonLogger.info({ event: 'wirewizard:invite_success', host: safeHost, iface, code: data.code });
-      return { success: true, data };
-    } catch (e: any) {
-      disposePoolEntry(poolKey(safeHost, username));
-      jsonLogger.error({ event: 'wirewizard:invite_error', host: safeHost, error: String(e) });
-      return { success: false, error: e?.message };
-    }
-  });
-
-  // Complete an invite (add the new peer to existing interface)
-  ipcMain.handle('wirewizard:inviteComplete', async (_event, { host, username, password, code, peerPubkey, peerEndpoint, peerLocalEndpoint, peerNatEndpoint }: {
-    host: string; username: string; password?: string; code: string;
-    peerPubkey: string; peerEndpoint: string; peerLocalEndpoint?: string; peerNatEndpoint?: string;
-  }) => {
-    const safeHost = assertSafeHost(host);
-    jsonLogger.info({ event: 'wirewizard:inviteComplete', host: safeHost });
-
-    try {
-      const ssh = await getPooledSSH(safeHost, username, password);
-      let args = `sudo bash ${SCRIPTS}/invite-complete.sh ${shellQuote(code)} --json`;
-      args += ` --peer-pubkey ${shellQuote(peerPubkey)}`;
-      args += ` --peer-endpoint ${shellQuote(peerEndpoint)}`;
-      if (peerLocalEndpoint) args += ` --peer-local-endpoint ${shellQuote(peerLocalEndpoint)}`;
-      if (peerNatEndpoint) args += ` --peer-nat-endpoint ${shellQuote(peerNatEndpoint)}`;
-
-      const result = await ssh.execCommand(args);
-      if (result.code !== 0) {
-        throw new Error(result.stderr || result.stdout || 'invite-complete failed');
-      }
-
-      const data = JSON.parse(result.stdout.trim());
-      jsonLogger.info({ event: 'wirewizard:inviteComplete_success', host: safeHost });
-      return { success: true, data };
-    } catch (e: any) {
-      disposePoolEntry(poolKey(safeHost, username));
-      jsonLogger.error({ event: 'wirewizard:inviteComplete_error', host: safeHost, error: String(e) });
       return { success: false, error: e?.message };
     }
   });

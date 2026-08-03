@@ -54,6 +54,19 @@ export interface PollResult {
   }
 }
 
+export interface WireWizardNetworkCheck {
+  vpsReachable: boolean
+  vpsHttpCode: number
+  publicIp: string
+  localIp: string
+  listenPort: number
+  natDiscovered: boolean
+  natEndpoint: string
+  status: 'ok' | 'warning'
+  message: string
+  healthResponse?: string
+}
+
 export function useWireWizard(getHost: () => string, getUsername: () => string) {
   const busy = ref(false)
   const lastError = ref<string | null>(null)
@@ -211,6 +224,26 @@ export function useWireWizard(getHost: () => string, getUsername: () => string) 
     }
   }
 
+  // Run network readiness check for pairing
+  async function networkCheck(opts: { port?: number } = {}): Promise<WireWizardNetworkCheck | null> {
+    busy.value = true
+    lastError.value = null
+    try {
+      const password = await getPassword()
+      const result: ActionResult<WireWizardNetworkCheck> = await window.electron.ipcRenderer.invoke('wirewizard:networkCheck', {
+        host: getHost(),
+        username: getUsername(),
+        password,
+        port: opts.port,
+      })
+      if (result.success) return result.data!
+      lastError.value = result.error || 'Network check failed'
+      return null
+    } finally {
+      busy.value = false
+    }
+  }
+
   // Restart a tunnel
   async function restart(iface: string): Promise<boolean> {
     busy.value = true
@@ -294,52 +327,6 @@ export function useWireWizard(getHost: () => string, getUsername: () => string) 
     }
   }
 
-  // Invite a peer to an existing tunnel (generates code)
-  async function invite(iface: string, opts: { ttl?: number } = {}): Promise<{ code: string; interface: string } | null> {
-    busy.value = true
-    lastError.value = null
-    try {
-      const password = await getPassword()
-      const result: ActionResult<{ code: string; interface: string }> =
-        await window.electron.ipcRenderer.invoke('wirewizard:invite', {
-          host: getHost(),
-          username: getUsername(),
-          password,
-          iface,
-          ttl: opts.ttl,
-        })
-      if (result.success) return result.data!
-      lastError.value = result.error || 'Invite failed'
-      return null
-    } finally {
-      busy.value = false
-    }
-  }
-
-  // Complete an invite (add the accepted peer to existing interface)
-  async function inviteComplete(code: string, peer: { publicKey: string; endpoint: string; localEndpoint?: string; natEndpoint?: string }): Promise<boolean> {
-    busy.value = true
-    lastError.value = null
-    try {
-      const password = await getPassword()
-      const result: ActionResult = await window.electron.ipcRenderer.invoke('wirewizard:inviteComplete', {
-        host: getHost(),
-        username: getUsername(),
-        password,
-        code,
-        peerPubkey: peer.publicKey,
-        peerEndpoint: peer.endpoint,
-        peerLocalEndpoint: peer.localEndpoint,
-        peerNatEndpoint: peer.natEndpoint,
-      })
-      if (result.success) return true
-      lastError.value = result.error || 'Invite complete failed'
-      return false
-    } finally {
-      busy.value = false
-    }
-  }
-
   return {
     busy,
     lastError,
@@ -351,11 +338,10 @@ export function useWireWizard(getHost: () => string, getUsername: () => string) 
     complete,
     teardown,
     preflight,
+    networkCheck,
     restart,
     addPeer,
     editPeer,
     removePeer,
-    invite,
-    inviteComplete,
   }
 }

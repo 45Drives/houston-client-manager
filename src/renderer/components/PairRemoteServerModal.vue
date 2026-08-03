@@ -1,6 +1,6 @@
 <template>
     <Modal :show="show" @clickOutside="close">
-        <div class="w-full max-w-lg mx-auto bg-default p-6 rounded-xl shadow">
+        <div class="w-full max-w-2xl mx-auto bg-default p-6 rounded-xl shadow">
             <!-- Header -->
             <div class="flex items-center justify-between mb-4">
                 <h2 class="text-lg font-semibold text-default">
@@ -69,6 +69,24 @@
                         <div class="text-xs text-muted mt-0.5">Join using a code from another server</div>
                     </button>
                 </div>
+
+                <div class="rounded-md bg-neutral-50 dark:bg-neutral-800 p-2 text-xs text-muted">
+                    Cross-network tip: if either side is behind a router, forward the UDP listen port (default 51820) before pairing.
+                </div>
+                <div class="flex items-center gap-2">
+                    <button @click="runNetworkCheck" :disabled="busy" class="btn btn-secondary h-fit text-xs">
+                        {{ busy ? 'Checking…' : 'Run Network Check' }}
+                    </button>
+                    <span v-if="networkCheckResult" :class="['text-xs', networkCheckResult.status === 'ok' ? 'text-green-600 dark:text-green-400' : 'text-amber-600 dark:text-amber-400']">
+                        {{ networkCheckResult.status === 'ok' ? 'Ready' : 'Needs Attention' }}
+                    </span>
+                </div>
+                <div v-if="networkCheckResult" class="rounded-md border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 p-2 text-xs space-y-1">
+                    <div class="text-default">{{ networkCheckResult.message }}</div>
+                    <div class="text-muted">VPS: {{ networkCheckResult.vpsReachable ? 'reachable' : 'unreachable' }} (HTTP {{ networkCheckResult.vpsHttpCode }})</div>
+                    <div class="text-muted">Public IP: <span class="font-mono text-default">{{ networkCheckResult.publicIp || 'unknown' }}</span></div>
+                    <div class="text-muted">NAT: <span class="font-mono text-default">{{ networkCheckResult.natDiscovered ? (networkCheckResult.natEndpoint || 'detected') : 'not detected' }}</span></div>
+                </div>
             </div>
 
             <!-- Step: Initiator waiting -->
@@ -86,6 +104,20 @@
             <!-- Step: Join -->
             <div v-else-if="step === 'join'" class="space-y-4">
                 <p class="text-sm text-muted">Enter the 6-character code from the other server.</p>
+                <div class="flex items-center gap-2">
+                    <button @click="runNetworkCheck" :disabled="busy" class="btn btn-secondary h-fit text-xs">
+                        {{ busy ? 'Checking…' : 'Run Network Check' }}
+                    </button>
+                    <span v-if="networkCheckResult" :class="['text-xs', networkCheckResult.status === 'ok' ? 'text-green-600 dark:text-green-400' : 'text-amber-600 dark:text-amber-400']">
+                        {{ networkCheckResult.status === 'ok' ? 'Ready' : 'Needs Attention' }}
+                    </span>
+                </div>
+                <div v-if="networkCheckResult" class="rounded-md border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 p-2 text-xs space-y-1">
+                    <div class="text-default">{{ networkCheckResult.message }}</div>
+                    <div class="text-muted">VPS: {{ networkCheckResult.vpsReachable ? 'reachable' : 'unreachable' }} (HTTP {{ networkCheckResult.vpsHttpCode }})</div>
+                    <div class="text-muted">Public IP: <span class="font-mono text-default">{{ networkCheckResult.publicIp || 'unknown' }}</span></div>
+                    <div class="text-muted">NAT: <span class="font-mono text-default">{{ networkCheckResult.natDiscovered ? (networkCheckResult.natEndpoint || 'detected') : 'not detected' }}</span></div>
+                </div>
                 <div>
                     <label class="block text-sm font-medium text-default mb-1">Tunnel Name <span class="text-muted">(optional)</span></label>
                     <input v-model="tunnelName" type="text" maxlength="12" placeholder="e.g. main-srv"
@@ -155,7 +187,7 @@
 <script setup lang="ts">
 import { ref, watch, onUnmounted } from 'vue'
 import { Modal } from '@45drives/houston-common-ui'
-import { useWireWizard, type PairCompleteResult, type PollResult } from '../composables/useWireWizard'
+import { useWireWizard, type PairCompleteResult, type PollResult, type WireWizardNetworkCheck } from '../composables/useWireWizard'
 
 const props = defineProps<{
     show: boolean
@@ -182,6 +214,7 @@ const advancedOpen = ref(false)
 const error = ref('')
 const pollError = ref('')
 const tunnelInfo = ref<PairCompleteResult | null>(null)
+const networkCheckResult = ref<WireWizardNetworkCheck | null>(null)
 
 let pollTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -190,6 +223,25 @@ const ww = useWireWizard(
     () => props.serverUsername,
 )
 const busy = ww.busy
+
+const ENDPOINT_RE = /^(?:\[[0-9a-fA-F:.]+\]|[A-Za-z0-9.-]+):([0-9]{1,5})$/
+
+function validateEndpoint(endpoint: string): string | null {
+    const trimmed = endpoint.trim()
+    if (!trimmed) return null
+
+    const match = trimmed.match(ENDPOINT_RE)
+    if (!match) {
+        return 'Endpoint must be in host:port format (for example 203.0.113.5:51820).'
+    }
+
+    const port = Number(match[1])
+    if (port < 1 || port > 65535) {
+        return 'Endpoint port must be between 1 and 65535.'
+    }
+
+    return null
+}
 
 // Reset state when modal opens
 watch(() => props.show, (showing) => {
@@ -204,11 +256,53 @@ watch(() => props.show, (showing) => {
         error.value = ''
         pollError.value = ''
         tunnelInfo.value = null
+        networkCheckResult.value = null
     }
 })
 
+async function runNetworkCheck() {
+    error.value = ''
+    const result = await ww.networkCheck({
+        port: advancedOpen.value && listenPort.value ? listenPort.value : undefined,
+    })
+    if (!result) {
+        error.value = ww.lastError.value || 'Network check failed'
+        networkCheckResult.value = null
+        return
+    }
+    networkCheckResult.value = result
+}
+
+async function ensureNetworkReadyOrConfirmed(actionLabel: string): Promise<boolean> {
+    if (!networkCheckResult.value) {
+        await runNetworkCheck()
+        if (!networkCheckResult.value) {
+            return false
+        }
+    }
+
+    if (networkCheckResult.value.status === 'warning') {
+        return window.confirm(`${networkCheckResult.value.message}\n\nContinue ${actionLabel} anyway?`)
+    }
+
+    return true
+}
+
 async function doInitiate() {
     error.value = ''
+    if (advancedOpen.value) {
+        const endpointError = validateEndpoint(endpointOverride.value)
+        if (endpointError) {
+            error.value = endpointError
+            return
+        }
+    }
+
+    const canProceed = await ensureNetworkReadyOrConfirmed('creating a pairing code')
+    if (!canProceed) {
+        return
+    }
+
     const result = await ww.initiate({
         name: tunnelName.value.trim() || undefined,
         ttl: codeTtl.value,
@@ -276,6 +370,19 @@ async function doComplete(code: string, claimer: NonNullable<PollResult['claimer
 
 async function doJoin() {
     error.value = ''
+    if (advancedOpen.value) {
+        const endpointError = validateEndpoint(endpointOverride.value)
+        if (endpointError) {
+            error.value = endpointError
+            return
+        }
+    }
+
+    const canProceed = await ensureNetworkReadyOrConfirmed('connecting')
+    if (!canProceed) {
+        return
+    }
+
     const result = await ww.join(joinCode.value.trim(), {
         name: tunnelName.value.trim() || undefined,
         port: advancedOpen.value && listenPort.value ? listenPort.value : undefined,

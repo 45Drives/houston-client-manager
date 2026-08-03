@@ -33,25 +33,32 @@
                     <ArrowPathIcon class="w-3.5 h-3.5" :class="{ 'animate-spin': restarting }" />
                     Restart
                 </button>
-                <button @click="doTeardown" :disabled="busy"
-                    class="btn btn-sm h-fit inline-flex items-center gap-1 text-red-600 border-red-300 hover:bg-red-50 dark:text-red-400 dark:border-red-800 dark:hover:bg-red-900/20">
-                    <TrashIcon class="w-3.5 h-3.5" />
-                    Remove Tunnel
-                </button>
+                <template v-if="!confirmingTeardown">
+                    <button @click="confirmingTeardown = true" :disabled="busy"
+                        class="btn btn-sm h-fit inline-flex items-center gap-1 text-red-600 border-red-300 hover:bg-red-50 dark:text-red-400 dark:border-red-800 dark:hover:bg-red-900/20">
+                        <TrashIcon class="w-3.5 h-3.5" />
+                        Remove Tunnel
+                    </button>
+                </template>
+                <template v-else>
+                    <span class="text-xs text-red-600 dark:text-red-400">Remove {{ tunnel.name }}?</span>
+                    <button @click="doTeardown" :disabled="busy"
+                        class="btn btn-sm h-fit text-red-600 border-red-400 hover:bg-red-100 dark:text-red-400 dark:border-red-700 dark:hover:bg-red-900/30">
+                        Confirm
+                    </button>
+                    <button @click="confirmingTeardown = false"
+                        class="btn btn-sm btn-secondary h-fit">
+                        Cancel
+                    </button>
+                </template>
             </div>
 
             <!-- Peers List -->
             <div class="mb-3">
                 <div class="flex items-center justify-between mb-2">
                     <h3 class="text-sm font-semibold text-default">Peers</h3>
-                    <div class="flex items-center gap-2">
-                        <button @click="doInvite" :disabled="busy"
-                            class="btn btn-sm btn-primary h-fit inline-flex items-center gap-1 text-xs">
-                            <PlusIcon class="w-3 h-3" /> Invite Peer
-                        </button>
-                        <button @click="showAddPeer = true" :disabled="busy"
-                            class="text-xs text-muted hover:text-default">Manual</button>
-                    </div>
+                    <button @click="showAddPeer = true" :disabled="busy"
+                        class="text-xs text-muted hover:text-default">+ Add Peer</button>
                 </div>
 
                 <div v-if="!tunnel.peers.length" class="text-xs text-muted">No peers configured.</div>
@@ -65,7 +72,13 @@
                                 class="w-2 h-2 rounded-full bg-green-500"></span>
                             <span v-else class="w-2 h-2 rounded-full bg-amber-400"></span>
                             <button @click="startEditPeer(peer)" class="text-xs text-link hover:underline">Edit</button>
-                            <button @click="doRemovePeer(peer)" class="text-xs text-red-500 hover:text-red-700">Remove</button>
+                            <template v-if="confirmingRemovePeer !== peer.publicKey">
+                                <button @click="confirmingRemovePeer = peer.publicKey" class="text-xs text-red-500 hover:text-red-700">Remove</button>
+                            </template>
+                            <template v-else>
+                                <button @click="doRemovePeer(peer)" class="text-xs text-red-600 font-medium">Confirm</button>
+                                <button @click="confirmingRemovePeer = null" class="text-xs text-muted">Cancel</button>
+                            </template>
                         </div>
                     </div>
                     <div class="grid grid-cols-2 gap-1 text-xs text-muted">
@@ -82,21 +95,10 @@
                 {{ error }}
             </div>
 
-            <!-- Invite Code Display -->
-            <div v-if="inviteCode" class="mt-4 border border-blue-200 dark:border-blue-800 rounded-lg p-4 bg-blue-50 dark:bg-blue-900/20">
-                <p class="text-xs text-muted mb-2">Enter this code on the new server to join this tunnel:</p>
-                <div class="text-3xl font-mono font-bold text-center tracking-widest text-blue-600 dark:text-blue-400 py-3">
-                    {{ inviteCode }}
-                </div>
-                <p class="text-xs text-muted text-center mt-1">Waiting for peer…</p>
-                <div v-if="invitePollError" class="text-xs text-red-500 text-center mt-1">{{ invitePollError }}</div>
-                <button @click="cancelInvite" class="btn btn-sm btn-secondary h-fit w-full mt-3">Cancel Invite</button>
-            </div>
-
             <!-- Add/Edit Peer Form -->
             <Teleport to="body">
-                <Modal :show="showAddPeer || !!editingPeer" @clickOutside="closePeerForm">
-                    <div class="bg-white dark:bg-neutral-850 rounded-xl shadow-xl p-6 w-full max-w-md">
+                <Modal :show="showAddPeer || !!editingPeer" @clickOutside="closePeerForm" forceFullWidth>
+                    <div class="bg-white dark:bg-neutral-850 rounded-xl shadow-xl p-6 w-full max-w-sm mx-auto">
                         <h3 class="text-base font-bold text-default mb-4">
                             {{ editingPeer ? 'Edit Peer' : 'Add Peer' }}
                         </h3>
@@ -142,7 +144,7 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import { XMarkIcon, ArrowPathIcon, TrashIcon, PlusIcon } from '@heroicons/vue/24/outline'
+import { XMarkIcon, ArrowPathIcon, TrashIcon } from '@heroicons/vue/24/outline'
 import { Modal, Notification, pushNotification } from '@45drives/houston-common-ui'
 import type { WireWizardTunnel } from '../composables/useWireWizard'
 
@@ -160,14 +162,11 @@ const emit = defineEmits<{
 
 const error = ref('')
 const restarting = ref(false)
+const confirmingTeardown = ref(false)
+const confirmingRemovePeer = ref<string | null>(null)
 const showAddPeer = ref(false)
 const editingPeer = ref<WireWizardTunnel['peers'][number] | null>(null)
 const peerForm = ref({ pubkey: '', endpoint: '', allowedIPs: '10.45.0.0/24', keepalive: 25 })
-
-// Invite state
-const inviteCode = ref('')
-const invitePollError = ref('')
-let invitePollTimer: ReturnType<typeof setTimeout> | null = null
 
 const busy = computed(() => props.ww.busy.value)
 
@@ -196,7 +195,7 @@ async function doRestart() {
 }
 
 async function doTeardown() {
-    if (!confirm(`Remove tunnel ${props.tunnel.name}? This will delete the WireGuard config and bring the interface down.`)) return
+    confirmingTeardown.value = false
     error.value = ''
     const ok = await props.ww.teardown(props.tunnel.name)
     if (ok) {
@@ -249,7 +248,7 @@ async function savePeer() {
 }
 
 async function doRemovePeer(peer: WireWizardTunnel['peers'][number]) {
-    if (!confirm(`Remove peer ${peer.publicKey.slice(0, 12)}…?`)) return
+    confirmingRemovePeer.value = null
     error.value = ''
     const ok = await props.ww.removePeer(props.tunnel.name, peer.publicKey)
     if (ok) {
@@ -260,73 +259,7 @@ async function doRemovePeer(peer: WireWizardTunnel['peers'][number]) {
     }
 }
 
-// ── Invite Peer flow ───────────────────────────────────────────────────
-
-async function doInvite() {
-    error.value = ''
-    invitePollError.value = ''
-    const result = await props.ww.invite(props.tunnel.name)
-    if (!result) {
-        error.value = props.ww.lastError.value || 'Failed to create invite'
-        return
-    }
-    inviteCode.value = result.code
-    startInvitePoll(result.code)
-}
-
-function startInvitePoll(code: string) {
-    let failures = 0
-    let stopped = false
-
-    async function doPoll() {
-        if (stopped) return
-        const pollResult = await props.ww.poll(code)
-        if (stopped) return
-        if (!pollResult) {
-            failures++
-            if (failures > 5) {
-                invitePollError.value = 'Lost connection to server.'
-            }
-            invitePollTimer = setTimeout(doPoll, 5000)
-            return
-        }
-        failures = 0
-        invitePollError.value = ''
-        if (pollResult.claimed && pollResult.claimer) {
-            stopped = true
-            // Complete the invite — add the new peer to existing interface
-            const ok = await props.ww.inviteComplete(code, {
-                publicKey: pollResult.claimer.publicKey,
-                endpoint: pollResult.claimer.endpoint,
-                localEndpoint: pollResult.claimer.localEndpoint,
-                natEndpoint: pollResult.claimer.natEndpoint,
-            })
-            inviteCode.value = ''
-            if (ok) {
-                pushNotification(new Notification('Peer Added', 'New peer joined the tunnel.', 'success', 4000))
-                emit('changed')
-            } else {
-                error.value = props.ww.lastError.value || 'Failed to add invited peer'
-            }
-        } else {
-            invitePollTimer = setTimeout(doPoll, 4000)
-        }
-    }
-
-    invitePollTimer = setTimeout(doPoll, 3000)
-}
-
-function cancelInvite() {
-    if (invitePollTimer) {
-        clearTimeout(invitePollTimer)
-        invitePollTimer = null
-    }
-    inviteCode.value = ''
-    invitePollError.value = ''
-}
-
 function close() {
-    cancelInvite()
     emit('close')
 }
 </script>
