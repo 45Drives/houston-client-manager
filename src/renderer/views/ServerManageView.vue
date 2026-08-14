@@ -175,6 +175,9 @@
                                 </button>
                             </template>
                         </template>
+
+                        <SectionDivider label="Backup Topology" />
+                        <BackupTopologyMap :serverHost="server?.host" />
                     </div>
 
                     <!-- ═══ Storage ═══ -->
@@ -939,6 +942,7 @@ import { Notification, pushNotification } from '@45drives/houston-common-ui'
 import type { ServerProbeResult, StagedChange } from '../../main/ipc/serverManageHandlers'
 import PairRemoteServerModal from '../components/PairRemoteServerModal.vue'
 import TunnelManageModal from '../components/TunnelManageModal.vue'
+import BackupTopologyMap from '../components/topology/BackupTopologyMap.vue'
 
 useHeader('Server Management')
 

@@ -19,6 +19,7 @@ import {
   browseSnapshotFiles,
   restoreFromSnapshot,
   listS2STasks,
+  listZfsReplicationTasks,
   browseS2SRemotePath,
   getReplicationAnchors,
 } from '../restoreManager';
@@ -104,6 +105,23 @@ export function registerRestoreHandlers(ctx: IPCHandlerContext) {
       const result = await browseS2SRemotePath(serverIp, username, remoteHost, remotePort, remoteUser, remotePath);
       ctx.jsonLogger.info({ event: 'restore:browse-s2s-remote.done', serverIp, remoteHost, remotePath, count: Array.isArray(result) ? result.length : 0 });
       return result;
+    },
+  );
+
+  ipcMain.handle(
+    'restore:list-zfs-replication-tasks',
+    async (_event, { serverIp, username }: { serverIp: string; username: string }) => {
+      ctx.jsonLogger.info({ event: 'restore:list-zfs-replication-tasks', serverIp });
+      try {
+        const result = await listZfsReplicationTasks(serverIp, username);
+        ctx.jsonLogger.info({ event: 'restore:list-zfs-replication-tasks.done', serverIp, count: Array.isArray(result) ? result.length : 0 });
+        return result;
+      } catch (err: unknown) {
+        // Topology probing is best-effort; an unreachable server must not surface as a handler crash.
+        const error = err instanceof Error ? err.message : String(err);
+        ctx.jsonLogger.warn({ event: 'restore:list-zfs-replication-tasks.failed', serverIp, error });
+        return [];
+      }
     },
   );
 

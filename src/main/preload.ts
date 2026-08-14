@@ -82,6 +82,11 @@ const INVOKE_CHANNELS = new Set([
   'restore:browse-remote',
   'restore:browse-server',
   'restore:list-s2s-tasks',
+  'restore:list-zfs-replication-tasks',
+  // Backup topology
+  'topology:get-index',
+  'topology:probe-server',
+  'topology:forget-server',
   'restore:browse-s2s-remote',
   'restore:start',
   'restore:cancel',

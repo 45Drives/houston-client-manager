@@ -58,6 +58,43 @@ export interface AppSettings {
 
   /** Restore operation history (capped at 20 entries) */
   restoreHistory: RestoreHistoryEntry[];
+
+  /** Last known remote/cloud backup relationships per server host, keyed by host */
+  topologyIndex: Record<string, TopologyIndexEntry>;
+}
+
+export interface TopologyIndexEntry {
+  host: string;
+  probedAt: number;
+  reachable: boolean;
+  error?: string;
+  rsyncTasks: Array<{
+    name: string;
+    localPath: string;
+    remoteHost: string;
+    remotePort: number;
+    remoteUser: string;
+    remotePath: string;
+    direction: 'push' | 'pull';
+  }>;
+  replicationTasks: Array<{
+    name: string;
+    sourceDataset: string;
+    destDataset: string;
+    destHost: string;
+    destUser: string;
+    destSshPort: number;
+    direction: 'push' | 'pull';
+  }>;
+  cloudSyncTasks: Array<{
+    name: string;
+    localPath: string;
+    targetPath: string;
+    remote: string;
+    provider: string;
+    direction: string;
+  }>;
+  cloudRemotes: Array<{ name: string; type: string }>;
 }
 
 export interface RestoreHistoryEntry {
@@ -96,6 +133,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
     snapshotManagerTourDone: false,
   },
   restoreHistory: [],
+  topologyIndex: {},
 };
 
 // ── Store ──────────────────────────────────────────────────────────────────

@@ -44,6 +44,16 @@ export interface S2STask {
   direction: 'push' | 'pull';
 }
 
+export interface ZfsReplicationTaskInfo {
+  name: string;
+  sourceDataset: string;
+  destDataset: string;
+  destHost: string;
+  destUser: string;
+  destSshPort: number;
+  direction: 'push' | 'pull';
+}
+
 export interface ReplicationAnchor {
   /** Full snapshot name on the local side (dataset@snapname) */
   snapshotName: string;
@@ -306,6 +316,54 @@ export async function listS2STasks(
         remotePath: t.parameters['rsyncConfig_target_info_path'] || '',
         direction: (t.parameters['rsyncConfig_direction'] || 'push') as 'push' | 'pull',
       }));
+  } finally {
+    ssh.dispose();
+  }
+}
+
+/**
+ * List ZfsReplicationTask instances from the scheduler on the server.
+ */
+export async function listZfsReplicationTasks(
+  serverIp: string,
+  username: string,
+): Promise<ZfsReplicationTaskInfo[]> {
+  const ssh = await connectSSH(serverIp, username);
+  try {
+    const scriptPath = '/opt/45drives/houston/scheduler/scripts/get-task-instances.py';
+    const result = await ssh.execCommand(`python3 ${shellQuote(scriptPath)} 2>/dev/null`);
+
+    if (result.code !== 0 || !result.stdout.trim()) return [];
+
+    const tasks: Array<{
+      name: string;
+      template: string;
+      parameters: Record<string, string>;
+    }> = JSON.parse(result.stdout);
+
+    const joinZfs = (pool: string, ds: string) =>
+      pool && ds ? `${pool}/${ds}` : pool || ds;
+
+    return tasks
+      .filter(t => t.template === 'ZfsReplicationTask')
+      .map(t => {
+        const p = t.parameters;
+        return {
+          name: t.name,
+          sourceDataset: joinZfs(
+            p['zfsRepConfig_sourceDataset_pool'] || '',
+            p['zfsRepConfig_sourceDataset_dataset'] || ''
+          ),
+          destDataset: joinZfs(
+            p['zfsRepConfig_destDataset_pool'] || '',
+            p['zfsRepConfig_destDataset_dataset'] || ''
+          ),
+          destHost: p['zfsRepConfig_destDataset_host'] || '',
+          destUser: p['zfsRepConfig_destDataset_user'] || 'root',
+          destSshPort: parseInt(p['zfsRepConfig_destDataset_sshPort'] || '22', 10),
+          direction: (p['zfsRepConfig_direction'] || 'push') as 'push' | 'pull',
+        };
+      });
   } finally {
     ssh.dispose();
   }

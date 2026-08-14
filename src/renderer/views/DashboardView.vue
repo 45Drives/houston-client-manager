@@ -24,6 +24,9 @@
                         {{ selectedServer ? `Viewing: ${selectedServer.name || selectedServer.host}` : 'Select a server to view details' }}
                     </span>
                 </div>
+                <button class="btn btn-sm btn-secondary h-fit" @click="showTopology = !showTopology">
+                    {{ showTopology ? 'Hide Topology' : 'Show Topology' }}
+                </button>
             </div>
 
             <!-- Alert banner (only when failures exist) -->
@@ -59,6 +62,8 @@
                             :savedHosts="serverCard?.savedHosts ?? []"
                             @add-server="onAddDiscoveredServer" />
                     </div>
+
+                    <BackupTopologyMap v-if="showTopology" />
                  
 
                     <!-- Recent Activity -->
@@ -176,6 +181,7 @@ import DashboardOnboardingCard from '../components/dashboard/DashboardOnboarding
 import DashboardScheduleCard from '../components/dashboard/DashboardScheduleCard.vue'
 import DashboardStorageCard from '../components/dashboard/DashboardStorageCard.vue'
 import DashboardHealthCard from '../components/dashboard/DashboardHealthCard.vue'
+import BackupTopologyMap from '../components/topology/BackupTopologyMap.vue'
 
 useHeader('45Drives Storage Wizard')
 
@@ -205,6 +211,7 @@ const { displayServers } = useServers()
 // ── Selected server for dashboard data ────────────────────────────────
 const selectedServer = ref<StoredServer | null>(null)
 const serverCard = ref<InstanceType<typeof DashboardServerCard> | null>(null)
+const showTopology = ref(false)
 
 // Select a server from the server card (shows its data on dashboard)
 function onConnectServer(server: StoredServer) {

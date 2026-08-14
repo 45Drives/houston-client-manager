@@ -94,6 +94,7 @@ import { handleBackupMessage } from './ipc/backupHandlers';
 import { handleDiscoveryMessage } from './ipc/discoveryHandlers';
 import { registerLogHandlers } from './ipc/logHandlers';
 import { registerRestoreHandlers } from './ipc/restoreHandlers';
+import { registerTopologyHandlers } from './ipc/topologyHandlers';
 import { registerBulkSetupHandlers } from './ipc/bulkSetupHandlers';
 import { registerServerManageHandlers } from './ipc/serverManageHandlers';
 import { registerWireWizardHandlers } from './ipc/wireWizardHandlers';
@@ -619,6 +620,7 @@ function createWindow() {
   };
 
   registerRestoreHandlers(handlerCtx);
+  registerTopologyHandlers({ jsonLogger });
   registerBulkSetupHandlers({ mainWindow: mainWindow!, jsonLogger });
   registerServerManageHandlers({ jsonLogger });
   registerWireWizardHandlers({ jsonLogger });
