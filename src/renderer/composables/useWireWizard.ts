@@ -33,6 +33,7 @@ export interface PairInitiateResult {
   code: string
   endpoint: string
   port: string
+  interface?: string
 }
 
 export interface PairCompleteResult {
@@ -52,6 +53,8 @@ export interface PollResult {
     natEndpoint?: string
     allowedIPs: string
   }
+  /** Present when the server already finished the tunnel itself (WireShield backend). */
+  completed?: PairCompleteResult
 }
 
 export interface WireWizardNetworkCheck {

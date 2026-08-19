@@ -12,6 +12,14 @@ interface WireWizardContext {
 }
 
 const SCRIPTS = '/usr/lib/wire-wizard';
+const WIRESHIELD_CLI = '/usr/sbin/wireshield-pair';
+
+// Servers running WireShield pair through its API so that CLI, Cockpit and this
+// app share one code path; older wire-wizard-only servers keep the legacy scripts.
+async function hasWireshieldCli(ssh: NodeSSH): Promise<boolean> {
+  const probe = await ssh.execCommand(`test -x ${WIRESHIELD_CLI}`);
+  return probe.code === 0;
+}
 
 // ── SSH Connection Pool ────────────────────────────────────────────────────
 // Reuses a single SSH connection per host to avoid repeated handshake overhead.
@@ -119,6 +127,7 @@ export interface PairInitiateResult {
   code: string;
   endpoint: string;
   port: string;
+  interface?: string;
 }
 
 export interface PairCompleteResult {
@@ -178,6 +187,29 @@ export function registerWireWizardHandlers(ctx: WireWizardContext) {
 
     try {
       const ssh = await getPooledSSH(safeHost, username, password);
+
+      if (await hasWireshieldCli(ssh)) {
+        let cli = `sudo ${WIRESHIELD_CLI} create --json --no-wait`;
+        if (name) cli += ` --name ${shellQuote(name)}`;
+        if (ttl) cli += ` --ttl ${Number(ttl)}`;
+        if (port) cli += ` --port ${Number(port)}`;
+        if (endpoint) cli += ` --endpoint ${shellQuote(endpoint)}`;
+
+        const cliResult = await ssh.execCommand(cli);
+        if (cliResult.code !== 0) {
+          throw new Error(cliResult.stderr || cliResult.stdout || 'wireshield-pair create failed');
+        }
+        const parsed = JSON.parse(cliResult.stdout.trim());
+        const data: PairInitiateResult = {
+          code: parsed.code,
+          endpoint: '',
+          port: String(parsed.listen_port ?? ''),
+          interface: parsed.interface || '',
+        };
+        jsonLogger.info({ event: 'wirewizard:initiate_success', host: safeHost, code: data.code, backend: 'wireshield' });
+        return { success: true, data };
+      }
+
       let args = `sudo bash ${SCRIPTS}/pair-initiate.sh --json`;
       if (name) args += ` --name ${shellQuote(name)}`;
       if (ttl) args += ` --ttl ${Number(ttl)}`;
@@ -212,6 +244,29 @@ export function registerWireWizardHandlers(ctx: WireWizardContext) {
 
     try {
       const ssh = await getPooledSSH(safeHost, username, password);
+
+      if (await hasWireshieldCli(ssh)) {
+        let cli = `sudo ${WIRESHIELD_CLI} join ${shellQuote(code.toUpperCase())} --json`;
+        if (name) cli += ` --name ${shellQuote(name)}`;
+        if (port) cli += ` --port ${Number(port)}`;
+        if (endpoint) cli += ` --endpoint ${shellQuote(endpoint)}`;
+
+        const cliResult = await ssh.execCommand(cli);
+        if (cliResult.code !== 0) {
+          throw new Error(cliResult.stderr || cliResult.stdout || 'wireshield-pair join failed');
+        }
+        const parsed = JSON.parse(cliResult.stdout.trim());
+        const data: PairCompleteResult = {
+          status: 'connected',
+          interface: parsed.interface,
+          address: parsed.address,
+          listenPort: String(parsed.listen_port ?? ''),
+          peerEndpoint: parsed.peer_endpoint || '',
+        };
+        jsonLogger.info({ event: 'wirewizard:join_success', host: safeHost, iface: data.interface, backend: 'wireshield' });
+        return { success: true, data };
+      }
+
       const joinScript = 'pair-join.sh'; // Only pair mode supported
       let args = `sudo bash ${SCRIPTS}/${joinScript} ${shellQuote(code.toUpperCase())} --json`;
       if (name) args += ` --name ${shellQuote(name)}`;
@@ -241,6 +296,35 @@ export function registerWireWizardHandlers(ctx: WireWizardContext) {
 
     try {
       const ssh = await getPooledSSH(safeHost, username, password);
+
+      if (await hasWireshieldCli(ssh)) {
+        // WireShield finishes the initiator side itself while reporting status,
+        // so a completed session already carries the finished tunnel details.
+        const cliResult = await ssh.execCommand(
+          `sudo ${WIRESHIELD_CLI} status ${shellQuote(code.toUpperCase())} --json`
+        );
+        if (cliResult.code !== 0) {
+          throw new Error(cliResult.stderr || cliResult.stdout || 'wireshield-pair status failed');
+        }
+        const session = JSON.parse(cliResult.stdout.trim());
+        if (session.status !== 'complete') {
+          return { success: true, data: { claimed: false } };
+        }
+        return {
+          success: true,
+          data: {
+            claimed: true,
+            completed: {
+              status: 'connected',
+              interface: session.interface,
+              address: '',
+              listenPort: String(session.listen_port ?? ''),
+              peerEndpoint: session.peer_endpoint || '',
+            } as PairCompleteResult,
+          },
+        };
+      }
+
       // Use curl on the server to poll the VPS (server has config with API key)
       const result = await ssh.execCommand(
         `sudo bash -c 'source ${SCRIPTS}/common.sh && load_config && api_call GET "/api/pair/poll/${shellQuote(code)}"'`

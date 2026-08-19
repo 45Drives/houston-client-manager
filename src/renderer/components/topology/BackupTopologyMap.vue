@@ -34,55 +34,77 @@
         No topology links were found yet.
       </div>
 
-      <div v-else class="rounded-lg border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-900/30 p-2">
-        <svg class="w-full h-[430px]" viewBox="0 0 1000 480" preserveAspectRatio="xMidYMid meet">
+      <div v-else class="relative rounded-lg border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-900/30 p-2">
+        <div class="absolute right-3 top-3 z-10 flex items-center gap-1">
+          <button class="btn btn-sm btn-secondary h-fit px-2" title="Zoom out" @click="zoomBy(1 / 1.2)">-</button>
+          <span class="text-[11px] text-gray-400 w-10 text-center">{{ Math.round(zoom * 100) }}%</span>
+          <button class="btn btn-sm btn-secondary h-fit px-2" title="Zoom in" @click="zoomBy(1.2)">+</button>
+          <button class="btn btn-sm btn-secondary h-fit px-2" title="Reset view" @click="resetView">Reset</button>
+        </div>
+
+        <svg
+          ref="svgEl"
+          class="w-full h-[430px] select-none"
+          :class="panning ? 'cursor-grabbing' : 'cursor-grab'"
+          viewBox="0 0 1000 480"
+          preserveAspectRatio="xMidYMid meet"
+          @wheel="onWheel"
+          @mousedown="onPanStart"
+          @mousemove="onPanMove"
+          @mouseup="onPanEnd"
+          @mouseleave="onPanEnd"
+        >
           <defs>
             <marker id="topology-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
               <path d="M 0 0 L 10 5 L 0 10 z" fill="#6b7280" />
             </marker>
           </defs>
 
-          <text x="500" y="22" text-anchor="middle" class="lane-label">Desktop Client</text>
-          <text x="500" y="126" text-anchor="middle" class="lane-label">Local Backup Servers</text>
-          <text x="250" y="290" text-anchor="middle" class="lane-label">Remote Servers</text>
-          <text x="750" y="290" text-anchor="middle" class="lane-label">Cloud Targets</text>
+          <g :transform="`translate(${panX}, ${panY}) scale(${zoom})`">
+            <text x="500" y="22" text-anchor="middle" class="lane-label">Desktop Client</text>
+            <text x="500" y="126" text-anchor="middle" class="lane-label">Local Backup Servers</text>
+            <text x="250" y="290" text-anchor="middle" class="lane-label">Remote Servers</text>
+            <text x="750" y="290" text-anchor="middle" class="lane-label">Cloud Targets</text>
 
-          <g v-for="line in svgLines" :key="line.id">
-            <line
-              :x1="line.x1"
-              :y1="line.y1"
-              :x2="line.x2"
-              :y2="line.y2"
-              :stroke="line.color"
-              stroke-width="2"
-              marker-end="url(#topology-arrow)"
-              stroke-linecap="round"
-            />
-            <text :x="line.labelX" :y="line.labelY" text-anchor="middle" class="edge-label" :fill="line.color">
-              {{ line.label }}
-            </text>
-          </g>
+            <g v-for="line in svgLines" :key="line.id">
+              <line
+                :x1="line.x1"
+                :y1="line.y1"
+                :x2="line.x2"
+                :y2="line.y2"
+                :stroke="line.color"
+                stroke-width="2"
+                marker-end="url(#topology-arrow)"
+                stroke-linecap="round"
+              />
+              <text :x="line.labelX" :y="line.labelY" text-anchor="middle" class="edge-label" :fill="line.color">
+                {{ line.label }}
+              </text>
+            </g>
 
-          <g v-for="node in positionedNodes" :key="node.id">
-            <rect
-              :x="node.x - 80"
-              :y="node.y - 20"
-              rx="8"
-              ry="8"
-              width="160"
-              height="40"
-              :fill="node.fill"
-              :stroke="node.stroke"
-              stroke-width="1.25"
-            />
-            <text :x="node.x" :y="node.y - 4" text-anchor="middle" class="node-label">
-              {{ node.label }}
-            </text>
-            <text v-if="node.subLabel" :x="node.x" :y="node.y + 11" text-anchor="middle" class="node-sub-label">
-              {{ node.subLabel }}
-            </text>
+            <g v-for="node in positionedNodes" :key="node.id">
+              <rect
+                :x="node.x - 80"
+                :y="node.y - 20"
+                rx="8"
+                ry="8"
+                width="160"
+                height="40"
+                :fill="node.fill"
+                :stroke="node.stroke"
+                stroke-width="1.25"
+              />
+              <text :x="node.x" :y="node.y - 4" text-anchor="middle" class="node-label">
+                {{ node.label }}
+              </text>
+              <text v-if="node.subLabel" :x="node.x" :y="node.y + 11" text-anchor="middle" class="node-sub-label">
+                {{ node.subLabel }}
+              </text>
+            </g>
           </g>
         </svg>
+
+        <div class="mt-1 text-[11px] text-gray-400">Ctrl + scroll to zoom, drag to pan.</div>
       </div>
 
       <div v-if="graph.localPoolToPoolDetails.length" class="space-y-1.5">
@@ -103,10 +125,72 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useBackupTopology } from '../../composables/useBackupTopology'
 
 const props = defineProps<{ serverHost?: string }>()
+
+const VIEW_W = 1000
+const VIEW_H = 480
+
+const svgEl = ref<SVGSVGElement | null>(null)
+const zoom = ref(1)
+const panX = ref(0)
+const panY = ref(0)
+const panning = ref(false)
+let lastPointer = { x: 0, y: 0 }
+
+/** Convert a mouse event to viewBox coordinates. */
+function toViewBox(e: MouseEvent): { x: number; y: number } {
+  const rect = svgEl.value?.getBoundingClientRect()
+  if (!rect) return { x: 0, y: 0 }
+  return {
+    x: ((e.clientX - rect.left) / rect.width) * VIEW_W,
+    y: ((e.clientY - rect.top) / rect.height) * VIEW_H,
+  }
+}
+
+function applyZoom(next: number, anchorX: number, anchorY: number) {
+  const clamped = Math.min(3, Math.max(0.4, next))
+  // Keep the anchor point stationary while scaling.
+  panX.value = anchorX - ((anchorX - panX.value) / zoom.value) * clamped
+  panY.value = anchorY - ((anchorY - panY.value) / zoom.value) * clamped
+  zoom.value = clamped
+}
+
+function zoomBy(factor: number) {
+  applyZoom(zoom.value * factor, VIEW_W / 2, VIEW_H / 2)
+}
+
+function resetView() {
+  zoom.value = 1
+  panX.value = 0
+  panY.value = 0
+}
+
+function onWheel(e: WheelEvent) {
+  if (!e.ctrlKey) return
+  e.preventDefault()
+  const point = toViewBox(e)
+  applyZoom(zoom.value * (e.deltaY < 0 ? 1.12 : 1 / 1.12), point.x, point.y)
+}
+
+function onPanStart(e: MouseEvent) {
+  panning.value = true
+  lastPointer = toViewBox(e)
+}
+
+function onPanMove(e: MouseEvent) {
+  if (!panning.value) return
+  const point = toViewBox(e)
+  panX.value += point.x - lastPointer.x
+  panY.value += point.y - lastPointer.y
+  lastPointer = point
+}
+
+function onPanEnd() {
+  panning.value = false
+}
 
 const { graph, stats, loading, error, lastUpdatedAt, refresh } = useBackupTopology({
   onlyServerHost: props.serverHost,
@@ -178,18 +262,17 @@ const positionedNodes = computed(() => {
   localNodes.forEach((n, i) => {
     const c = nodeColors[n.kind]
     const bits: string[] = []
-    if (n.wireGuardTunnelCount) bits.push(`WG:${n.wireGuardTunnelCount}`)
     if (n.localPoolToPoolCount) bits.push(`P2P:${n.localPoolToPoolCount}`)
-    if (n.unreachable) bits.push('unreachable')
-    else if (n.stale) bits.push('cached (offline)')
+    if (n.unreachable) bits.push('offline')
+    if (!bits.length && n.meta) bits.push(n.meta)
     out.push({
       id: n.id,
       x: spreadX(i, localNodes.length, 150, 850),
       y: laneY.local,
       label: truncate(n.label),
-      subLabel: bits.join(' | ') || undefined,
-      fill: n.unreachable ? '#f3f4f6' : c.fill,
-      stroke: n.unreachable ? '#9ca3af' : n.stale ? '#f59e0b' : c.stroke,
+      subLabel: bits.length ? truncate(bits.join(' | '), 26) : undefined,
+      fill: n.unreachable ? '#fee2e2' : c.fill,
+      stroke: n.unreachable ? '#ef4444' : c.stroke,
     })
   })
 
@@ -242,6 +325,11 @@ const NODE_HALF_H = 20
 
 const svgLines = computed(() => {
   // Parallel edges between the same pair get stacked instead of overlapping.
+  const pairTotals = new Map<string, number>()
+  for (const e of graph.value.edges) {
+    const key = [e.from, e.to].sort().join('|')
+    pairTotals.set(key, (pairTotals.get(key) ?? 0) + 1)
+  }
   const pairIndex = new Map<string, number>()
 
   return graph.value.edges
@@ -252,6 +340,7 @@ const svgLines = computed(() => {
 
       const pairKey = [e.from, e.to].sort().join('|')
       const slot = pairIndex.get(pairKey) ?? 0
+      const pairTotal = pairTotals.get(pairKey) ?? 1
       pairIndex.set(pairKey, slot + 1)
 
       const color = edgeColor(e.kind)
@@ -261,7 +350,9 @@ const svgLines = computed(() => {
       if (sameLane) {
         // Route edge-to-edge horizontally so opposite directions run parallel.
         const goingRight = from.x < to.x
-        const laneOffset = slot === 0 ? -10 : slot === 1 ? 10 : (slot % 2 === 0 ? -1 : 1) * (10 + Math.floor(slot / 2) * 12)
+        const laneOffset = pairTotal === 1
+          ? 0
+          : (slot % 2 === 0 ? -1 : 1) * (18 + Math.floor(slot / 2) * 20)
         const y = from.y + laneOffset
         const x1 = goingRight ? from.x + NODE_HALF_W : from.x - NODE_HALF_W
         const x2 = goingRight ? to.x - NODE_HALF_W : to.x + NODE_HALF_W
@@ -273,13 +364,17 @@ const svgLines = computed(() => {
           y2: y,
           label,
           labelX: (x1 + x2) / 2,
-          labelY: y - 6,
+          labelY: laneOffset > 0 ? y + 16 : y - 8,
           color,
         }
       }
 
       const goingDown = from.y < to.y
-      const shift = slot === 0 ? 0 : (slot % 2 === 0 ? -1 : 1) * Math.ceil(slot / 2) * 18
+      const shift = pairTotal === 1
+        ? 0
+        : (slot % 2 === 0 ? -1 : 1) * Math.ceil((slot + 1) / 2) * 32
+      // Stagger labels along the line so stacked edges do not print on top of each other.
+      const t = 0.5 + (slot % 3) * 0.12
       return {
         id: e.id,
         x1: from.x + shift,
@@ -287,8 +382,8 @@ const svgLines = computed(() => {
         x2: to.x + shift,
         y2: goingDown ? to.y - NODE_HALF_H : to.y + NODE_HALF_H,
         label,
-        labelX: (from.x + to.x) / 2 + shift,
-        labelY: (from.y + to.y) / 2 - 8 + (slot % 2 === 0 ? 0 : 12),
+        labelX: from.x + (to.x - from.x) * t + shift,
+        labelY: from.y + (to.y - from.y) * t - 8,
         color,
       }
     })
@@ -298,6 +393,8 @@ const svgLines = computed(() => {
 onMounted(() => {
   refresh()
 })
+
+watch(() => props.serverHost, () => refresh())
 </script>
 
 <style scoped>
@@ -315,6 +412,11 @@ onMounted(() => {
 .edge-label {
   font-size: 10px;
   font-weight: 600;
+  /* Halo keeps labels readable where they cross an edge. */
+  paint-order: stroke;
+  stroke: #ffffff;
+  stroke-width: 3px;
+  stroke-linejoin: round;
 }
 
 .lane-label {

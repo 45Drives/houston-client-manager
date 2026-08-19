@@ -17,12 +17,9 @@ export function registerTopologyHandlers(ctx: Pick<IPCHandlerContext, 'jsonLogge
 
       if (!result.reachable) {
         ctx.jsonLogger.warn({ event: 'topology:probe-server.unreachable', host, error: result.error });
-        // Keep the previous snapshot so known remote/cloud targets stay on the map.
+        // Keep only the recorded identity; stale task lists would imply links that may be gone.
         const existing = loadSettings().topologyIndex?.[result.host];
-        if (existing) {
-          return { ...existing, probedAt: result.probedAt, reachable: false, error: result.error };
-        }
-        return result;
+        return { ...result, identity: existing?.identity };
       }
 
       const index = { ...(loadSettings().topologyIndex ?? {}), [result.host]: result };

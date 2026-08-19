@@ -68,6 +68,13 @@ export interface TopologyIndexEntry {
   probedAt: number;
   reachable: boolean;
   error?: string;
+  identity?: {
+    hostname: string;
+    fqdn: string;
+    machineId: string;
+    addresses: string[];
+    lanSubnets?: string[];
+  };
   rsyncTasks: Array<{
     name: string;
     localPath: string;

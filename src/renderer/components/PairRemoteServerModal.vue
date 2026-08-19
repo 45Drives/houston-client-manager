@@ -21,10 +21,12 @@
                 </p>
 
                 <div>
-                    <label class="block text-sm font-medium text-default mb-1">Tunnel Name <span class="text-muted">(optional)</span></label>
-                    <input v-model="tunnelName" type="text" maxlength="12" placeholder="e.g. offsite-bkp"
+                    <label class="block text-sm font-medium text-default mb-1">Tunnel Name <span class="text-red-500">*</span></label>
+                    <input v-model="tunnelName" type="text" maxlength="15" placeholder="e.g. offsite-bkp"
                         class="w-full input-textlike rounded-md px-3 py-2 text-sm bg-default" />
-                    <p class="text-xs text-muted mt-1">Max 12 characters.</p>
+                    <p class="text-xs mt-1" :class="tunnelName.length > 0 && !nameValid ? 'text-red-500' : 'text-muted'">
+                        Letters, numbers and dashes, up to 15 characters. The other server reuses this name.
+                    </p>
                 </div>
 
                 <div>
@@ -58,12 +60,12 @@
                 </details>
 
                 <div class="grid grid-cols-2 gap-3 mt-2">
-                    <button @click="doInitiate" :disabled="busy"
-                        class="p-3 border-2 border-blue-200 rounded-lg hover:border-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition h-fit text-left">
+                    <button @click="doInitiate" :disabled="busy || !nameValid"
+                        class="p-3 border-2 border-blue-200 rounded-lg hover:border-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition h-fit text-left disabled:opacity-50 disabled:cursor-not-allowed">
                         <div class="font-medium text-default text-sm">Create Code</div>
                         <div class="text-xs text-muted mt-0.5">Generate a code for the other server</div>
                     </button>
-                    <button @click="step = 'join'" :disabled="busy"
+                    <button @click="tunnelName = ''; step = 'join'" :disabled="busy"
                         class="p-3 border-2 border-neutral-200 dark:border-neutral-700 rounded-lg hover:border-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition h-fit text-left">
                         <div class="font-medium text-default text-sm">Enter Code</div>
                         <div class="text-xs text-muted mt-0.5">Join using a code from another server</div>
@@ -98,6 +100,25 @@
                 <p class="text-xs text-muted text-center">
                     Waiting for peer... Expires in {{ codeTtl }} minutes.
                 </p>
+
+                <div class="rounded-md border border-neutral-200 dark:border-neutral-700 p-3">
+                    <div class="flex items-center justify-between">
+                        <span class="text-sm font-medium text-default">No Houston or Cockpit on the other server?</span>
+                        <button class="text-xs text-muted hover:text-default h-fit" @click="showCli = !showCli">
+                            {{ showCli ? 'Hide' : 'Show CLI command' }}
+                        </button>
+                    </div>
+                    <div v-if="showCli" class="mt-3 space-y-2">
+                        <p class="text-xs text-muted">Run this on the other server as root:</p>
+                        <pre class="bg-neutral-50 dark:bg-neutral-800 rounded px-3 py-2 text-xs font-mono overflow-x-auto text-default">{{ cliJoinCommand }}</pre>
+                        <p class="text-xs text-muted">Or with plain curl:</p>
+                        <pre class="bg-neutral-50 dark:bg-neutral-800 rounded px-3 py-2 text-xs font-mono overflow-x-auto text-default">{{ curlJoinCommand }}</pre>
+                        <button class="btn btn-secondary h-fit text-xs" @click="copyCli">
+                            {{ cliCopied ? 'Copied' : 'Copy commands' }}
+                        </button>
+                    </div>
+                </div>
+
                 <div v-if="pollError" class="text-xs text-red-500 text-center">{{ pollError }}</div>
             </div>
 
@@ -118,12 +139,6 @@
                     <div class="text-muted">Public IP: <span class="font-mono text-default">{{ networkCheckResult.publicIp || 'unknown' }}</span></div>
                     <div class="text-muted">NAT: <span class="font-mono text-default">{{ networkCheckResult.natDiscovered ? (networkCheckResult.natEndpoint || 'detected') : 'not detected' }}</span></div>
                 </div>
-                <div>
-                    <label class="block text-sm font-medium text-default mb-1">Tunnel Name <span class="text-muted">(optional)</span></label>
-                    <input v-model="tunnelName" type="text" maxlength="12" placeholder="e.g. main-srv"
-                        class="w-full input-textlike rounded-md px-3 py-2 text-sm bg-default" />
-                    <p class="text-xs text-muted mt-1">Max 12 characters.</p>
-                </div>
                 <input v-model="joinCode" type="text" maxlength="6" placeholder="ABC123"
                     class="w-full input-textlike rounded-md px-4 py-3 text-center text-2xl font-mono tracking-widest uppercase bg-default"
                     @keyup.enter="doJoin" />
@@ -132,6 +147,12 @@
                 <details class="mt-1" @toggle="(e: Event) => advancedOpen = (e.target as HTMLDetailsElement).open">
                     <summary class="text-xs text-muted cursor-pointer hover:text-default select-none">Advanced Options</summary>
                     <div class="mt-2 space-y-3 pl-1">
+                        <div>
+                            <label class="block text-xs text-muted mb-1">Override Tunnel Name <span class="text-muted">(optional)</span></label>
+                            <input v-model="tunnelName" type="text" maxlength="15" placeholder="Match the other server"
+                                class="w-full input-textlike rounded-md px-3 py-1.5 text-sm bg-default" />
+                            <p class="text-xs text-muted mt-0.5">Default: reuse the name from the server that created the code.</p>
+                        </div>
                         <div>
                             <label class="block text-xs text-muted mb-1">Listen Port <span class="text-muted">(optional)</span></label>
                             <input v-model.number="listenPort" type="number" min="1024" max="65535" placeholder="Auto"
@@ -185,7 +206,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, onUnmounted } from 'vue'
+import { computed, ref, watch, onUnmounted } from 'vue'
 import { Modal } from '@45drives/houston-common-ui'
 import { useWireWizard, type PairCompleteResult, type PollResult, type WireWizardNetworkCheck } from '../composables/useWireWizard'
 
@@ -215,6 +236,26 @@ const error = ref('')
 const pollError = ref('')
 const tunnelInfo = ref<PairCompleteResult | null>(null)
 const networkCheckResult = ref<WireWizardNetworkCheck | null>(null)
+const showCli = ref(false)
+const cliCopied = ref(false)
+
+const cliJoinCommand = computed(() => `sudo wireshield-pair join ${pairingCode.value || 'ABC123'}`)
+
+// Mirrors the server-side sanitizer: anything outside [a-z0-9-] is stripped there.
+const nameValid = computed(() => /^[a-z0-9][a-z0-9 _-]*$/i.test(tunnelName.value.trim()))
+
+const curlJoinCommand = computed(() => [
+    'source /etc/wireshield/api.env',
+    'curl -sk -X POST https://127.0.0.1:8420/api/v1/pairing/join \\',
+    '  -H "Content-Type: application/json" -H "X-API-Key: $HNE_API_KEY" \\',
+    `  -d '{"code":"${pairingCode.value || 'ABC123'}"}'`,
+].join('\n'))
+
+async function copyCli() {
+    await navigator.clipboard.writeText(`${cliJoinCommand.value}\n\n${curlJoinCommand.value}`)
+    cliCopied.value = true
+    setTimeout(() => (cliCopied.value = false), 2000)
+}
 
 let pollTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -257,6 +298,8 @@ watch(() => props.show, (showing) => {
         pollError.value = ''
         tunnelInfo.value = null
         networkCheckResult.value = null
+        showCli.value = false
+        cliCopied.value = false
     }
 })
 
@@ -336,7 +379,13 @@ function startPolling(code: string) {
         }
         failures = 0
         pollError.value = ''
-        if (pollResult.claimed && pollResult.claimer) {
+        if (pollResult.completed) {
+            stopped = true
+            step.value = 'configuring'
+            tunnelInfo.value = pollResult.completed
+            step.value = 'done'
+            emit('paired', pollResult.completed)
+        } else if (pollResult.claimed && pollResult.claimer) {
             stopped = true
             step.value = 'configuring'
             await doComplete(code, pollResult.claimer)

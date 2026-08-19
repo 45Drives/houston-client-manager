@@ -44,11 +44,21 @@ export interface CloudRemote {
   type: string;
 }
 
+export interface ServerIdentity {
+  hostname: string;
+  fqdn: string;
+  machineId: string;
+  addresses: string[];
+  /** Directly-attached IPv4 subnets, excluding VPN interfaces. */
+  lanSubnets: string[];
+}
+
 export interface ServerTopologyProbe {
   host: string;
   probedAt: number;
   reachable: boolean;
   error?: string;
+  identity?: ServerIdentity;
   rsyncTasks: RemoteRsyncTask[];
   replicationTasks: RemoteReplicationTask[];
   cloudSyncTasks: CloudSyncTask[];
@@ -135,6 +145,35 @@ async function readCloudRemotes(ssh: NodeSSH): Promise<CloudRemote[]> {
   }));
 }
 
+const IDENTITY_NET_MARKER = '===HOUSTON-NET===';
+
+async function readIdentity(ssh: NodeSSH): Promise<ServerIdentity> {
+  const result = await ssh.execCommand(
+    `hostname; hostname -f 2>/dev/null; cat /etc/machine-id 2>/dev/null; hostname -I 2>/dev/null; ` +
+    `echo '${IDENTITY_NET_MARKER}'; ip -o -4 addr show 2>/dev/null | awk '{print $2" "$4}'`,
+  );
+
+  const [head, netBlock = ''] = (result.stdout || '').split(IDENTITY_NET_MARKER);
+  const lines = head.split('\n').map(l => l.trim());
+
+  const lanSubnets: string[] = [];
+  for (const line of netBlock.split('\n')) {
+    const [iface, cidr] = line.trim().split(/\s+/);
+    if (!iface || !cidr) continue;
+    // Loopback and tunnel interfaces do not describe a shared LAN.
+    if (/^(lo|wg|tun|tap|ppp|zt|tailscale)/i.test(iface)) continue;
+    lanSubnets.push(cidr);
+  }
+
+  return {
+    hostname: lines[0] || '',
+    fqdn: lines[1] || '',
+    machineId: lines[2] || '',
+    addresses: (lines[3] || '').split(/\s+/).filter(Boolean),
+    lanSubnets,
+  };
+}
+
 export async function probeServerTopology(host: string, username: string): Promise<ServerTopologyProbe> {
   const safeHost = assertSafeHost(host);
   const safeUser = assertSafeUsername(username);
@@ -165,6 +204,7 @@ export async function probeServerTopology(host: string, username: string): Promi
   }
 
   try {
+    const identity = await readIdentity(ssh);
     const tasks = await readSchedulerTasks(ssh);
     const cloudRemotes = await readCloudRemotes(ssh);
 
@@ -225,6 +265,7 @@ export async function probeServerTopology(host: string, username: string): Promi
       ...base,
       probedAt: Date.now(),
       reachable: true,
+      identity,
       rsyncTasks,
       replicationTasks,
       cloudSyncTasks,

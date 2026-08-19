@@ -12,10 +12,7 @@ export interface TopologyNode {
   host?: string
   meta?: string
   localPoolToPoolCount?: number
-  wireGuardTunnelCount?: number
   unreachable?: boolean
-  /** Shown from the local cache because the server could not be probed right now. */
-  stale?: boolean
 }
 
 export interface TopologyEdge {
@@ -67,6 +64,13 @@ interface ServerTopologyProbe {
   probedAt: number
   reachable: boolean
   error?: string
+  identity?: {
+    hostname: string
+    fqdn: string
+    machineId: string
+    addresses: string[]
+    lanSubnets?: string[]
+  }
   rsyncTasks: RemoteRsyncTask[]
   replicationTasks: RemoteReplicationTask[]
   cloudSyncTasks: CloudSyncTask[]
@@ -85,14 +89,54 @@ function normalizeHost(x?: string | null): string {
   return (x || '').trim().toLowerCase().replace(/\.$/, '')
 }
 
-/** Strip trailing mDNS/domain suffix so `box.local` and `box` collapse together. */
+function isIpAddress(value: string): boolean {
+  return /^\d{1,3}(\.\d{1,3}){3}$/.test(value) || value.includes(':')
+}
+
+/**
+ * Identity keys for a host. Only DNS names get a short-name alias — splitting an
+ * IP on `.` would make every `192.*` address collide on the key `192`.
+ */
 function hostAliasKeys(value?: string | null): string[] {
   const norm = normalizeHost(value)
   if (!norm) return []
+  if (isIpAddress(norm)) return [norm]
+
   const keys = new Set<string>([norm])
   const short = norm.split('.')[0]
-  if (short) keys.add(short)
+  if (short && short !== norm) keys.add(short)
   return [...keys]
+}
+
+/** Nicknames are free-form, so only trust them as an alias when they look like a host. */
+function isHostLikeAlias(value?: string | null): boolean {
+  const norm = normalizeHost(value)
+  return !!norm && !/\s/.test(norm)
+}
+
+function ipv4ToInt(ip: string): number | null {
+  const parts = ip.split('.')
+  if (parts.length !== 4) return null
+  let out = 0
+  for (const part of parts) {
+    const n = Number(part)
+    if (!Number.isInteger(n) || n < 0 || n > 255) return null
+    out = (out << 8) | n
+  }
+  return out >>> 0
+}
+
+function isInSubnet(ip: string, cidr: string): boolean {
+  const [base, bitsRaw] = cidr.split('/')
+  const bits = Number(bitsRaw)
+  if (!Number.isInteger(bits) || bits < 0 || bits > 32) return false
+
+  const ipInt = ipv4ToInt(ip)
+  const baseInt = ipv4ToInt(base)
+  if (ipInt === null || baseInt === null) return false
+
+  const mask = bits === 0 ? 0 : (~0 << (32 - bits)) >>> 0
+  return ((ipInt & mask) >>> 0) === ((baseInt & mask) >>> 0)
 }
 
 function friendlyHostLabel(host: string): string {
@@ -193,11 +237,7 @@ export function useBackupTopology(opts?: { onlyServerHost?: string }) {
         if (node.localPoolToPoolCount) {
           existing.localPoolToPoolCount = (existing.localPoolToPoolCount || 0) + node.localPoolToPoolCount
         }
-        if (node.wireGuardTunnelCount !== undefined) {
-          existing.wireGuardTunnelCount = Math.max(existing.wireGuardTunnelCount || 0, node.wireGuardTunnelCount)
-        }
         if (node.unreachable !== undefined) existing.unreachable = node.unreachable
-        if (node.stale !== undefined) existing.stale = node.stale
       }
 
       const addEdge = (edge: TopologyEdge) => {
@@ -223,21 +263,45 @@ export function useBackupTopology(opts?: { onlyServerHost?: string }) {
 
       const clientIdent = await window.electron.ipcRenderer.invoke('get-client-ident').catch(() => null)
       const clientLabel = clientIdent?.installId
-        ? `Desktop Client (${String(clientIdent.installId).slice(0, 8)})`
-        : 'Desktop Client'
+        ? `This Computer (${String(clientIdent.installId).slice(0, 8)})`
+        : 'This Computer'
       addNode({ id: 'client:desktop', kind: 'client', label: clientLabel })
 
       // Any of a server's known identities (host, hostname, ip, nickname) maps to one canonical node.
       const aliasToNodeId = new Map<string, string>()
+      const ambiguousAliases = new Set<string>()
       const canonicalLabel = new Map<string, string>()
+
+      // Remote/cloud relationships persisted from previous probes keep the map
+      // populated (and identities resolvable) even while a server is offline.
+      const cachedIndex: Record<string, ServerTopologyProbe> =
+        (await window.electron.ipcRenderer.invoke('topology:get-index').catch(() => ({}))) || {}
+
+      const registerAlias = (alias: string | undefined | null, canonicalId: string) => {
+        if (!isHostLikeAlias(alias)) return
+        for (const key of hostAliasKeys(alias)) {
+          const existing = aliasToNodeId.get(key)
+          // An alias claimed by two servers proves nothing, so it must not merge them.
+          if (existing && existing !== canonicalId) ambiguousAliases.add(key)
+          else aliasToNodeId.set(key, canonicalId)
+        }
+      }
+
       for (const s of savedServers.value) {
         const canonicalId = `local:${normalizeHost(s.host)}`
         if (canonicalId === 'local:') continue
         canonicalLabel.set(canonicalId, s.name || s.hostname || s.host)
-        for (const alias of [s.host, s.hostname, s.ip, s.name]) {
-          for (const key of hostAliasKeys(alias)) aliasToNodeId.set(key, canonicalId)
+        for (const alias of [s.host, s.hostname, s.ip, s.name]) registerAlias(alias, canonicalId)
+
+        // Identity reported by the server itself outranks anything we guessed locally.
+        const identity = (cachedIndex[normalizeHost(s.host)] || cachedIndex[s.host])?.identity
+        if (identity) {
+          registerAlias(identity.hostname, canonicalId)
+          registerAlias(identity.fqdn, canonicalId)
+          for (const addr of identity.addresses || []) registerAlias(addr, canonicalId)
         }
       }
+      for (const key of ambiguousAliases) aliasToNodeId.delete(key)
 
       const resolveLocalNodeId = (host?: string | null): string | null => {
         const keys = hostAliasKeys(host)
@@ -256,11 +320,6 @@ export function useBackupTopology(opts?: { onlyServerHost?: string }) {
       }
 
       const servers = savedServers.value.filter(s => matchesFilter(s.host))
-
-      // Remote/cloud relationships persisted from previous probes keep the map
-      // populated even while a server is offline.
-      const cachedIndex: Record<string, ServerTopologyProbe> =
-        (await window.electron.ipcRenderer.invoke('topology:get-index').catch(() => ({}))) || {}
 
       const backupTasks = allBackupTasks.filter(t => {
         const host = parseTaskLocalHost(t)
@@ -304,22 +363,17 @@ export function useBackupTopology(opts?: { onlyServerHost?: string }) {
         const cred = await window.electron.ipcRenderer.invoke('cred:get-for', s.host).catch(() => null)
         const password = cred?.password || ''
 
-        const cachedProbe = cachedIndex[normalizeHost(s.host)] || cachedIndex[s.host] || null
-        let probe: ServerTopologyProbe | null = cachedProbe
-
-        // Probing without credentials only produces SSH auth failures, so skip it.
+        // Only a live probe may draw links; cached data would show backups that no longer exist.
+        let probe: ServerTopologyProbe | null = null
         if (password || cred?.sshKeyPath) {
-          const probeResult = await window.electron.ipcRenderer
+          probe = await window.electron.ipcRenderer
             .invoke('topology:probe-server', { host: s.host, username: s.username })
             .catch(() => null) as ServerTopologyProbe | null
-          if (probeResult) probe = probeResult
         }
 
-        const hasData = !!probe
         const reachable = !!probe?.reachable
-        const stale = hasData && !reachable
 
-        if (!hasData && !password && !cred?.sshKeyPath) {
+        if (!reachable) {
           addNode({
             id: localNodeId,
             kind: 'local-server',
@@ -344,25 +398,34 @@ export function useBackupTopology(opts?: { onlyServerHost?: string }) {
         }
 
         const wgPeerHosts = parseWireGuardPeerHosts(ww)
-        const tunnelCount = ww?.interfaces?.length || 0
 
         addNode({
           id: localNodeId,
           kind: 'local-server',
           label: s.name || s.hostname || localHost,
           host: localHost,
-          wireGuardTunnelCount: tunnelCount,
-          unreachable: !hasData,
-          stale,
         })
 
         // A replication peer that is also a saved server should collapse into that node.
-        const resolveTargetNodeId = (host: string): { id: string; isLocal: boolean } => {
+        const lanSubnets = probe?.identity?.lanSubnets ?? []
+        const resolveTargetNodeId = (
+          host: string,
+        ): { id: string; isSaved: boolean; kind: TopologyNodeKind } => {
           for (const key of hostAliasKeys(host)) {
             const match = aliasToNodeId.get(key)
-            if (match) return { id: match, isLocal: true }
+            if (match) return { id: match, isSaved: true, kind: 'local-server' }
           }
-          return { id: `remote:${normalizeHost(host)}`, isLocal: false }
+          // A peer inside one of this server's own subnets is on the same LAN, not remote.
+          const norm = normalizeHost(host)
+          const onSameLan = lanSubnets.some(cidr => isInSubnet(norm, cidr))
+          return onSameLan
+            ? { id: `local:${norm}`, isSaved: false, kind: 'local-server' }
+            : { id: `remote:${norm}`, isSaved: false, kind: 'remote-server' }
+        }
+
+        const isWireGuardPeer = (host: string): boolean => {
+          const keys = new Set(hostAliasKeys(host))
+          return wgPeerHosts.some(peer => hostAliasKeys(peer).some(k => keys.has(k)))
         }
 
         for (const task of s2sTasks) {
@@ -372,18 +435,18 @@ export function useBackupTopology(opts?: { onlyServerHost?: string }) {
           const target = resolveTargetNodeId(task.remoteHost)
           if (target.id === localNodeId) continue
 
-          if (!target.isLocal) {
+          if (!target.isSaved) {
             addNode({
               id: target.id,
-              kind: 'remote-server',
+              kind: target.kind,
               label: task.remoteHost,
               host: task.remoteHost,
+              meta: `${task.remoteUser}@${task.remoteHost}:${task.remotePort}`,
             })
           }
 
           const from = task.direction === 'pull' ? target.id : localNodeId
           const to = task.direction === 'pull' ? localNodeId : target.id
-          const viaWireGuard = wgPeerHosts.some(h => h === remoteHost || remoteHost.includes(h) || h.includes(remoteHost))
 
           addEdge({
             id: `rsync:${from}:${to}`,
@@ -391,7 +454,7 @@ export function useBackupTopology(opts?: { onlyServerHost?: string }) {
             to,
             kind: 'rsync',
             label: 'Rsync tasks: 1',
-            viaWireGuard,
+            viaWireGuard: isWireGuardPeer(task.remoteHost),
           })
         }
 
@@ -416,18 +479,18 @@ export function useBackupTopology(opts?: { onlyServerHost?: string }) {
             continue
           }
 
-          if (!target.isLocal) {
+          if (!target.isSaved) {
             addNode({
               id: target.id,
-              kind: 'remote-server',
+              kind: target.kind,
               label: task.destHost,
               host: task.destHost,
+              meta: `${task.destUser}@${task.destHost}:${task.destSshPort}`,
             })
           }
 
           const from = task.direction === 'pull' ? target.id : localNodeId
           const to = task.direction === 'pull' ? localNodeId : target.id
-          const viaWireGuard = wgPeerHosts.some(h => h === remoteHost || remoteHost.includes(h) || h.includes(remoteHost))
 
           addEdge({
             id: `zfs-remote:${from}:${to}`,
@@ -435,7 +498,7 @@ export function useBackupTopology(opts?: { onlyServerHost?: string }) {
             to,
             kind: 'zfs-remote',
             label: 'ZFS replications: 1',
-            viaWireGuard,
+            viaWireGuard: isWireGuardPeer(task.destHost),
           })
         }
 
@@ -446,11 +509,9 @@ export function useBackupTopology(opts?: { onlyServerHost?: string }) {
         }
 
         // Configured cloud sync tasks are the real cloud backups.
-        const usedRemotes = new Set<string>()
         for (const task of cloudSyncTasks) {
           const cloudKey = cloudRemoteKey(task.remote) || cloudRemoteKey(task.name)
           if (!cloudKey) continue
-          usedRemotes.add(cloudKey)
 
           const cloudNodeId = `cloud:${cloudKey}`
           const type = remoteTypeByName.get(cloudKey) || task.provider || 'cloud'
@@ -471,27 +532,6 @@ export function useBackupTopology(opts?: { onlyServerHost?: string }) {
             to,
             kind: 'cloud',
             label: 'Cloud syncs: 1',
-          })
-        }
-
-        // Remotes configured in rclone but not backing any task are rolled into a
-        // single node so they do not crowd out actual cloud backups.
-        const unusedRemotes = [...remoteTypeByName.keys()].filter(k => !usedRemotes.has(k))
-        if (unusedRemotes.length) {
-          const otherNodeId = 'cloud:__available__'
-          addNode({
-            id: otherNodeId,
-            kind: 'cloud',
-            label: 'Available remotes',
-            meta: unusedRemotes.slice(0, 3).join(', ') + (unusedRemotes.length > 3 ? ` +${unusedRemotes.length - 3}` : ''),
-          })
-
-          addEdge({
-            id: `cloud:${localNodeId}:${otherNodeId}`,
-            from: localNodeId,
-            to: otherNodeId,
-            kind: 'cloud',
-            label: `Cloud remotes: ${unusedRemotes.length}`,
           })
         }
       }
