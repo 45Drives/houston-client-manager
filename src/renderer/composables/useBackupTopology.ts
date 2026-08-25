@@ -78,7 +78,7 @@ interface ServerTopologyProbe {
   cloudRemotes: Array<{ name: string; type: string }>
 }
 
-interface WireWizardStatus {
+interface WireShieldStatus {
   installed: boolean
   configured: boolean
   interfaces: Array<{
@@ -158,7 +158,7 @@ function parseTaskLocalHost(task: BackUpTask): string {
   return ''
 }
 
-function parseWireGuardPeerHosts(status: WireWizardStatus | null): string[] {
+function parseWireGuardPeerHosts(status: WireShieldStatus | null): string[] {
   if (!status?.interfaces?.length) return []
   const hosts = new Set<string>()
   for (const iface of status.interfaces) {
@@ -390,11 +390,11 @@ export function useBackupTopology(opts?: { onlyServerHost?: string }) {
         const cloudSyncTasks = probe?.cloudSyncTasks ?? []
         const cloudRemotes = probe?.cloudRemotes ?? []
 
-        let ww: WireWizardStatus | null = null
+        let ww: WireShieldStatus | null = null
         if (password) {
           const wwResult = await window.electron.ipcRenderer
-            .invoke('wirewizard:status', { host: s.host, username: s.username, password })
-            .catch(() => null) as { success: boolean; data?: WireWizardStatus } | null
+            .invoke('WireShield:status', { host: s.host, username: s.username, password })
+            .catch(() => null) as { success: boolean; data?: WireShieldStatus } | null
           ww = wwResult?.success ? wwResult.data || null : null
         }
 

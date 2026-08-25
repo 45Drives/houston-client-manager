@@ -156,9 +156,12 @@
 
             <!-- Scheduler webview (default remote view) -->
             <div v-else-if="currentServer && remoteView === 'backups'" class="h-full" data-tour="scheduler-live">
-                <CockpitWebview :key="currentServer.ip" ref="cockpitRef"
+                <!-- <CockpitWebview :key="currentServer.ip" ref="cockpitRef"
                     routePath="/scheduler-test" hash="simple" wrapperClass="h-full overflow-hidden"
-                    heightClass="h-full" :openDevtoolsInDev="true" :requireAdmin="false" />
+                    heightClass="h-full" :openDevtoolsInDev="true" :requireAdmin="false" /> -->
+                    <CockpitWebview :key="currentServer.ip" ref="cockpitRef" routePath="/scheduler" hash="simple"
+                    wrapperClass="h-full overflow-hidden" heightClass="h-full" :openDevtoolsInDev="true"
+                    :requireAdmin="false" />
             </div>
 
             <!-- Scheduler mockup shown during the remote tour when not connected -->

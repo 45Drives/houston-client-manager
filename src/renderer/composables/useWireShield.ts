@@ -1,14 +1,14 @@
 /**
- * useWireWizard — Composable for managing WireGuard VPN tunnels on remote servers.
+ * useWireShield — Composable for managing WireGuard VPN tunnels on remote servers.
  *
- * Wraps the `wirewizard:*` IPC channels with typed helpers for pairing, status, and teardown.
+ * Wraps the `WireShield:*` IPC channels with typed helpers for pairing, status, and teardown.
  */
 
 import { ref, type Ref } from 'vue'
 
 type ActionResult<T = any> = { success: boolean; error?: string; data?: T }
 
-export interface WireWizardTunnel {
+export interface WireShieldTunnel {
   name: string
   publicKey: string
   listenPort: number
@@ -23,10 +23,10 @@ export interface WireWizardTunnel {
   }>
 }
 
-export interface WireWizardStatus {
+export interface WireShieldStatus {
   installed: boolean
   configured: boolean
-  interfaces: WireWizardTunnel[]
+  interfaces: WireShieldTunnel[]
 }
 
 export interface PairInitiateResult {
@@ -46,18 +46,11 @@ export interface PairCompleteResult {
 
 export interface PollResult {
   claimed: boolean
-  claimer?: {
-    publicKey: string
-    endpoint: string
-    localEndpoint?: string
-    natEndpoint?: string
-    allowedIPs: string
-  }
-  /** Present when the server already finished the tunnel itself (WireShield backend). */
+  /** The server finishes the tunnel itself, so a claimed session is already done. */
   completed?: PairCompleteResult
 }
 
-export interface WireWizardNetworkCheck {
+export interface WireShieldNetworkCheck {
   vpsReachable: boolean
   vpsHttpCode: number
   publicIp: string
@@ -70,10 +63,10 @@ export interface WireWizardNetworkCheck {
   healthResponse?: string
 }
 
-export function useWireWizard(getHost: () => string, getUsername: () => string) {
+export function useWireShield(getHost: () => string, getUsername: () => string) {
   const busy = ref(false)
   const lastError = ref<string | null>(null)
-  const status: Ref<WireWizardStatus | null> = ref(null)
+  const status: Ref<WireShieldStatus | null> = ref(null)
 
   async function getPassword(): Promise<string> {
     const cred = await window.electron.ipcRenderer.invoke('cred:get-for', getHost())
@@ -81,12 +74,12 @@ export function useWireWizard(getHost: () => string, getUsername: () => string) 
   }
 
   // Get tunnel status from the server
-  async function fetchStatus(): Promise<WireWizardStatus | null> {
+  async function fetchStatus(): Promise<WireShieldStatus | null> {
     busy.value = true
     lastError.value = null
     try {
       const password = await getPassword()
-      const result: ActionResult<WireWizardStatus> = await window.electron.ipcRenderer.invoke('wirewizard:status', {
+      const result: ActionResult<WireShieldStatus> = await window.electron.ipcRenderer.invoke('WireShield:status', {
         host: getHost(),
         username: getUsername(),
         password,
@@ -108,7 +101,7 @@ export function useWireWizard(getHost: () => string, getUsername: () => string) 
     lastError.value = null
     try {
       const password = await getPassword()
-      const result: ActionResult<PairInitiateResult> = await window.electron.ipcRenderer.invoke('wirewizard:initiate', {
+      const result: ActionResult<PairInitiateResult> = await window.electron.ipcRenderer.invoke('WireShield:initiate', {
         host: getHost(),
         username: getUsername(),
         password,
@@ -131,7 +124,7 @@ export function useWireWizard(getHost: () => string, getUsername: () => string) 
     lastError.value = null
     try {
       const password = await getPassword()
-      const result: ActionResult<PairCompleteResult> = await window.electron.ipcRenderer.invoke('wirewizard:join', {
+      const result: ActionResult<PairCompleteResult> = await window.electron.ipcRenderer.invoke('WireShield:join', {
         host: getHost(),
         username: getUsername(),
         password,
@@ -152,7 +145,7 @@ export function useWireWizard(getHost: () => string, getUsername: () => string) 
   async function poll(code: string): Promise<PollResult | null> {
     try {
       const password = await getPassword()
-      const result: ActionResult<PollResult> = await window.electron.ipcRenderer.invoke('wirewizard:poll', {
+      const result: ActionResult<PollResult> = await window.electron.ipcRenderer.invoke('WireShield:poll', {
         host: getHost(),
         username: getUsername(),
         password,
@@ -165,37 +158,13 @@ export function useWireWizard(getHost: () => string, getUsername: () => string) 
     }
   }
 
-  // Complete pairing (initiator side, after joiner claims)
-  async function complete(code: string, peer: { publicKey: string; endpoint: string; localEndpoint?: string; natEndpoint?: string }): Promise<PairCompleteResult | null> {
-    busy.value = true
-    lastError.value = null
-    try {
-      const password = await getPassword()
-      const result: ActionResult<PairCompleteResult> = await window.electron.ipcRenderer.invoke('wirewizard:complete', {
-        host: getHost(),
-        username: getUsername(),
-        password,
-        code,
-        peerPubkey: peer.publicKey,
-        peerEndpoint: peer.endpoint,
-        peerLocalEndpoint: peer.localEndpoint,
-        peerNatEndpoint: peer.natEndpoint,
-      })
-      if (result.success) return result.data!
-      lastError.value = result.error || 'Complete failed'
-      return null
-    } finally {
-      busy.value = false
-    }
-  }
-
   // Tear down a tunnel
   async function teardown(iface: string): Promise<boolean> {
     busy.value = true
     lastError.value = null
     try {
       const password = await getPassword()
-      const result: ActionResult = await window.electron.ipcRenderer.invoke('wirewizard:teardown', {
+      const result: ActionResult = await window.electron.ipcRenderer.invoke('WireShield:teardown', {
         host: getHost(),
         username: getUsername(),
         password,
@@ -214,7 +183,7 @@ export function useWireWizard(getHost: () => string, getUsername: () => string) 
     try {
       const password = await getPassword()
       const result: ActionResult<{ healthy: boolean; output: string; error: string }> =
-        await window.electron.ipcRenderer.invoke('wirewizard:preflight', {
+        await window.electron.ipcRenderer.invoke('WireShield:preflight', {
           host: getHost(),
           username: getUsername(),
           password,
@@ -228,12 +197,12 @@ export function useWireWizard(getHost: () => string, getUsername: () => string) 
   }
 
   // Run network readiness check for pairing
-  async function networkCheck(opts: { port?: number } = {}): Promise<WireWizardNetworkCheck | null> {
+  async function networkCheck(opts: { port?: number } = {}): Promise<WireShieldNetworkCheck | null> {
     busy.value = true
     lastError.value = null
     try {
       const password = await getPassword()
-      const result: ActionResult<WireWizardNetworkCheck> = await window.electron.ipcRenderer.invoke('wirewizard:networkCheck', {
+      const result: ActionResult<WireShieldNetworkCheck> = await window.electron.ipcRenderer.invoke('WireShield:networkCheck', {
         host: getHost(),
         username: getUsername(),
         password,
@@ -253,7 +222,7 @@ export function useWireWizard(getHost: () => string, getUsername: () => string) 
     lastError.value = null
     try {
       const password = await getPassword()
-      const result: ActionResult = await window.electron.ipcRenderer.invoke('wirewizard:restart', {
+      const result: ActionResult = await window.electron.ipcRenderer.invoke('WireShield:restart', {
         host: getHost(),
         username: getUsername(),
         password,
@@ -273,7 +242,7 @@ export function useWireWizard(getHost: () => string, getUsername: () => string) 
     lastError.value = null
     try {
       const password = await getPassword()
-      const result: ActionResult = await window.electron.ipcRenderer.invoke('wirewizard:addPeer', {
+      const result: ActionResult = await window.electron.ipcRenderer.invoke('WireShield:addPeer', {
         host: getHost(),
         username: getUsername(),
         password,
@@ -294,7 +263,7 @@ export function useWireWizard(getHost: () => string, getUsername: () => string) 
     lastError.value = null
     try {
       const password = await getPassword()
-      const result: ActionResult = await window.electron.ipcRenderer.invoke('wirewizard:editPeer', {
+      const result: ActionResult = await window.electron.ipcRenderer.invoke('WireShield:editPeer', {
         host: getHost(),
         username: getUsername(),
         password,
@@ -315,7 +284,7 @@ export function useWireWizard(getHost: () => string, getUsername: () => string) 
     lastError.value = null
     try {
       const password = await getPassword()
-      const result: ActionResult = await window.electron.ipcRenderer.invoke('wirewizard:removePeer', {
+      const result: ActionResult = await window.electron.ipcRenderer.invoke('WireShield:removePeer', {
         host: getHost(),
         username: getUsername(),
         password,
@@ -338,7 +307,6 @@ export function useWireWizard(getHost: () => string, getUsername: () => string) 
     initiate,
     join,
     poll,
-    complete,
     teardown,
     preflight,
     networkCheck,

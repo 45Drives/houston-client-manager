@@ -216,7 +216,7 @@ If either server sits behind a router, forward the UDP listen port (51820 by def
 import { computed, ref, watch, onUnmounted } from 'vue'
 import { Modal } from '@45drives/houston-common-ui'
 import { CommanderToolTip } from './commander'
-import { useWireWizard, type PairCompleteResult, type PollResult, type WireWizardNetworkCheck } from '../composables/useWireWizard'
+import { useWireShield, type PairCompleteResult, type PollResult, type WireShieldNetworkCheck } from '../composables/useWireShield'
 
 const props = defineProps<{
     show: boolean
@@ -243,7 +243,7 @@ const advancedOpen = ref(false)
 const error = ref('')
 const pollError = ref('')
 const tunnelInfo = ref<PairCompleteResult | null>(null)
-const networkCheckResult = ref<WireWizardNetworkCheck | null>(null)
+const networkCheckResult = ref<WireShieldNetworkCheck | null>(null)
 const showCli = ref(false)
 const cliCopied = ref(false)
 
@@ -267,7 +267,7 @@ async function copyCli() {
 
 let pollTimer: ReturnType<typeof setTimeout> | null = null
 
-const ww = useWireWizard(
+const ww = useWireShield(
     () => props.serverHost,
     () => props.serverUsername,
 )
@@ -393,10 +393,6 @@ function startPolling(code: string) {
             tunnelInfo.value = pollResult.completed
             step.value = 'done'
             emit('paired', pollResult.completed)
-        } else if (pollResult.claimed && pollResult.claimer) {
-            stopped = true
-            step.value = 'configuring'
-            await doComplete(code, pollResult.claimer)
         } else {
             pollTimer = setTimeout(doPoll, 4000)
         }
@@ -406,23 +402,6 @@ function startPolling(code: string) {
     // Override stopPolling to also flag stopped
     const origStop = stopPolling
     stopPolling = () => { stopped = true; origStop() }
-}
-
-async function doComplete(code: string, claimer: NonNullable<PollResult['claimer']>) {
-    const result = await ww.complete(code, {
-        publicKey: claimer.publicKey,
-        endpoint: claimer.endpoint,
-        localEndpoint: claimer.localEndpoint,
-        natEndpoint: claimer.natEndpoint,
-    })
-    if (!result) {
-        error.value = ww.lastError.value || 'Failed to complete pairing'
-        step.value = 'initiate'
-        return
-    }
-    tunnelInfo.value = result
-    step.value = 'done'
-    emit('paired', result)
 }
 
 async function doJoin() {

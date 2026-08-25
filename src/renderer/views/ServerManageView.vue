@@ -155,7 +155,7 @@ The page is read-only until you click Edit. In edit mode changes are collected i
                         </div>
                         <template v-else-if="vpnStatus">
                             <div v-if="!vpnStatus.installed" class="text-xs text-gray-400">
-                                Wire Wizard is not installed on this server.
+                                WireShield is not installed on this server.
                             </div>
                             <template v-else>
                                 <div v-if="vpnStatus.interfaces.length" class="space-y-2">
@@ -767,7 +767,7 @@ The page is read-only until you click Edit. In edit mode changes are collected i
                     <div>
                         <label class="text-xs font-medium text-gray-400 mb-1 block">SSH Public Key <span class="text-gray-300">(optional)</span></label>
                         <input v-model="newUser.sshKey" type="text" placeholder="ssh-ed25519 AAAA..."
-                            class="w-full px-3 py-1.5 text-sm rounded-lg bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 text-default outline-none focus:border-blue-400 font-mono text-xs" />
+                            class="w-full px-3 py-1.5 rounded-lg bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 text-default outline-none focus:border-blue-400 font-mono text-xs" />
                     </div>
                     <div class="flex justify-end gap-2 pt-1">
                         <button class="btn btn-sm btn-secondary h-fit" @click="showAddUser = false">Cancel</button>
@@ -939,7 +939,7 @@ The page is read-only until you click Edit. In edit mode changes are collected i
             </div>
         </Teleport>
 
-        <!-- Wire Wizard Pairing Modal -->
+        <!-- WireShield Pairing Modal -->
         <PairRemoteServerModal
             v-if="showPairModal"
             :show="showPairModal"
@@ -975,7 +975,7 @@ import {
 import { useHeader } from '../composables/useHeader'
 import { useServers, type StoredServer } from '../composables/useServers'
 import { useServerManage } from '../composables/useServerManage'
-import { useWireWizard, type WireWizardStatus } from '../composables/useWireWizard'
+import { useWireShield, type WireShieldStatus } from '../composables/useWireShield'
 import { useOnboarding, type OnboardingFlag } from '../composables/useOnboarding'
 import { useTourManager, type TourStep } from '../composables/useTourManager'
 import { Notification, pushNotification } from '@45drives/houston-common-ui'
@@ -1154,14 +1154,14 @@ const probing = ref(false)
 const probeError = ref('')
 const probe = ref<ServerProbeResult | null>(null)
 
-// ── VPN / Wire Wizard ──────────────────────────────────────────────────────
+// ── VPN / WireShield ───────────────────────────────────────────────────────
 
 const vpnLoading = ref(false)
-const vpnStatus = ref<WireWizardStatus | null>(null)
+const vpnStatus = ref<WireShieldStatus | null>(null)
 const showPairModal = ref(false)
-const managedTunnel = ref<WireWizardStatus['interfaces'][number] | null>(null)
+const managedTunnel = ref<WireShieldStatus['interfaces'][number] | null>(null)
 
-const ww = useWireWizard(
+const ww = useWireShield(
     () => server.value?.host || '',
     () => server.value?.username || 'root',
 )

@@ -49,7 +49,7 @@ import { useServerCredentials } from '../composables/useServerCredentials'
 import { describeLoadError, failureLine, type ConnectivityFailure } from '../../shared/connectionErrors'
 
 const props = withDefaults(defineProps<{
-    routePath?: string              // e.g. '/super-simple-setup' or '/scheduler-test'
+    routePath?: string              // e.g. '/super-simple-setup' or '/scheduler'
     hash?: string                   // e.g. 'simple' (appended as the first hash part)
     heightClass?: string            // Tailwind height utility, e.g. 'h-[100vh]' or 'h-[42vh]'
     wrapperClass?: string           // optional extra classes on the outer wrapper

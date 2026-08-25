@@ -146,12 +146,12 @@
 import { ref, computed } from 'vue'
 import { XMarkIcon, ArrowPathIcon, TrashIcon } from '@heroicons/vue/24/outline'
 import { Modal, Notification, pushNotification } from '@45drives/houston-common-ui'
-import type { WireWizardTunnel } from '../composables/useWireWizard'
+import type { WireShieldTunnel } from '../composables/useWireShield'
 
 const props = defineProps<{
     show: boolean
-    tunnel: WireWizardTunnel
-    ww: ReturnType<typeof import('../composables/useWireWizard').useWireWizard>
+    tunnel: WireShieldTunnel
+    ww: ReturnType<typeof import('../composables/useWireShield').useWireShield>
 }>()
 
 const emit = defineEmits<{
@@ -165,7 +165,7 @@ const restarting = ref(false)
 const confirmingTeardown = ref(false)
 const confirmingRemovePeer = ref<string | null>(null)
 const showAddPeer = ref(false)
-const editingPeer = ref<WireWizardTunnel['peers'][number] | null>(null)
+const editingPeer = ref<WireShieldTunnel['peers'][number] | null>(null)
 const peerForm = ref({ pubkey: '', endpoint: '', allowedIPs: '10.45.0.0/24', keepalive: 25 })
 
 const busy = computed(() => props.ww.busy.value)
@@ -206,7 +206,7 @@ async function doTeardown() {
     }
 }
 
-function startEditPeer(peer: WireWizardTunnel['peers'][number]) {
+function startEditPeer(peer: WireShieldTunnel['peers'][number]) {
     editingPeer.value = peer
     peerForm.value = {
         pubkey: peer.publicKey,
@@ -247,7 +247,7 @@ async function savePeer() {
     }
 }
 
-async function doRemovePeer(peer: WireWizardTunnel['peers'][number]) {
+async function doRemovePeer(peer: WireShieldTunnel['peers'][number]) {
     confirmingRemovePeer.value = null
     error.value = ''
     const ok = await props.ww.removePeer(props.tunnel.name, peer.publicKey)

@@ -98,7 +98,7 @@ import { registerRestoreHandlers } from './ipc/restoreHandlers';
 import { registerTopologyHandlers } from './ipc/topologyHandlers';
 import { registerBulkSetupHandlers } from './ipc/bulkSetupHandlers';
 import { registerServerManageHandlers } from './ipc/serverManageHandlers';
-import { registerWireWizardHandlers } from './ipc/wireWizardHandlers';
+import { registerWireShieldHandlers } from './ipc/wireShieldHandlers';
 import type { IPCHandlerContext } from './ipc/types';
 
 let discoveredServers: Server[] = [];
@@ -647,7 +647,7 @@ function createWindow() {
   registerTopologyHandlers({ jsonLogger });
   registerBulkSetupHandlers({ mainWindow: mainWindow!, jsonLogger });
   registerServerManageHandlers({ jsonLogger });
-  registerWireWizardHandlers({ jsonLogger });
+  registerWireShieldHandlers({ jsonLogger });
 
   IPCRouter.getInstance().addEventListener('action', async (data) => {
     if (data === "requestBackUpTasks") {
