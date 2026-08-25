@@ -53,11 +53,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onBeforeUnmount } from 'vue'
+import { ref, watch } from 'vue'
 import { CheckCircleIcon, XCircleIcon, ClockIcon } from '@heroicons/vue/24/outline'
 import { ArrowPathIcon } from '@heroicons/vue/24/solid'
-import { IPCRouter } from '@45drives/houston-common-lib'
 import DashboardCard from './DashboardCard.vue'
+import { useBackupTasksFeed, type FeedTask } from '../../composables/useBackupTasksFeed'
 
 defineEmits<{ 'go-backup': [] }>()
 
@@ -118,94 +118,50 @@ function formatNextRun(date: Date): string {
     return `in ${days}d`
 }
 
-onMounted(() => {
-    let cachedTasks: any[] = []
+const { tasks } = useBackupTasksFeed()
 
-    function updateFromTasks(tasks: any[]) {
-        // Find last run task
-        let latest: any = null
-        let latestTime = 0
-        for (const t of tasks) {
-            const ts = t.lastRunAt ? new Date(t.lastRunAt).getTime() : 0
-            if (ts > latestTime) {
-                latestTime = ts
-                latest = t
-            }
+watch(tasks, (list: FeedTask[]) => {
+    // Find last run task
+    let latest: FeedTask | null = null
+    let latestTime = 0
+    for (const t of list) {
+        const ts = t.lastRunAt ? new Date(t.lastRunAt).getTime() : 0
+        if (ts > latestTime) {
+            latestTime = ts
+            latest = t
         }
+    }
 
-        if (latest && latestTime > 0) {
-            lastBackup.value = {
-                name: latest.name || latest.source?.split('/').pop() || latest.uuid?.slice(0, 8),
-                status: latest.status?.startsWith('offline') || latest.status === 'missing_folder'
-                    ? 'failed'
-                    : latest.status === 'running' ? 'running' : 'success',
-                timeAgo: formatTimeAgo(new Date(latestTime)),
-                lastRunAt: latestTime,
-            }
+    if (latest && latestTime > 0) {
+        const task = latest as FeedTask & { name?: string; source?: string; status?: string }
+        lastBackup.value = {
+            name: task.name || task.source?.split('/').pop() || task.uuid?.slice(0, 8),
+            status: task.status?.startsWith('offline') || task.status === 'missing_folder'
+                ? 'failed'
+                : task.status === 'running' ? 'running' : 'success',
+            timeAgo: formatTimeAgo(new Date(latestTime)),
+            lastRunAt: latestTime,
         }
+    }
 
-        // Find next scheduled task
-        let soonest: { name: string; next: Date } | null = null
-        for (const t of tasks) {
-            if (!t.schedule) continue
-            const next = computeNextRun(t.schedule)
-            if (next && (!soonest || next < soonest.next)) {
-                soonest = {
-                    name: t.name || t.source?.split('/').pop() || t.uuid?.slice(0, 8),
-                    next,
-                }
-            }
-        }
-
-        if (soonest) {
-            nextScheduled.value = {
-                name: soonest.name,
-                when: formatNextRun(soonest.next),
+    // Find next scheduled task
+    let soonest: { name: string; next: Date } | null = null
+    for (const t of list as any[]) {
+        if (!t.schedule) continue
+        const next = computeNextRun(t.schedule)
+        if (next && (!soonest || next < soonest.next)) {
+            soonest = {
+                name: t.name || t.source?.split('/').pop() || t.uuid?.slice(0, 8),
+                next,
             }
         }
     }
 
-    const handler = (raw: string) => {
-        try {
-            const msg = JSON.parse(raw)
-            if (msg.type === 'sendBackupTasks') {
-                cachedTasks = msg.tasks || []
-                updateFromTasks(cachedTasks)
-                // Now fetch events to get lastRunAt timestamps
-                IPCRouter.getInstance().send('backend', 'action', JSON.stringify({ type: 'fetchBackupEvents' }))
-            } else if (msg.type === 'sendBackupEvents') {
-                // Merge event timestamps into cached tasks
-                const latest: Record<string, Date> = {}
-                const statuses: Record<string, string> = {}
-                for (const ev of (msg.events ?? [])) {
-                    if (ev?.uuid && ev?.timestamp) {
-                        const ts = new Date(ev.timestamp)
-                        if (!Number.isNaN(ts.getTime())) {
-                            const prev = latest[ev.uuid]
-                            if (!prev || ts > prev) {
-                                latest[ev.uuid] = ts
-                                statuses[ev.uuid] = ev.status ?? ''
-                            }
-                        }
-                    }
-                }
-                cachedTasks = cachedTasks.map(t =>
-                    latest[t.uuid] ? { ...t, lastRunAt: latest[t.uuid] } : t
-                )
-                updateFromTasks(cachedTasks)
-            }
-        } catch { /* ignore */ }
+    if (soonest) {
+        nextScheduled.value = {
+            name: soonest.name,
+            when: formatNextRun(soonest.next),
+        }
     }
-    IPCRouter.getInstance().addEventListener('action', handler)
-    IPCRouter.getInstance().send('backend', 'action', 'requestBackUpTasks')
-
-    const pollInterval = setInterval(() => {
-        IPCRouter.getInstance().send('backend', 'action', 'requestBackUpTasks')
-    }, 60_000)
-
-    onBeforeUnmount(() => {
-        IPCRouter.getInstance().removeEventListener('action', handler)
-        clearInterval(pollInterval)
-    })
-})
+}, { immediate: true })
 </script>

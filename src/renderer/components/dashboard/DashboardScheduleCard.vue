@@ -37,18 +37,26 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
+import { computed } from 'vue'
 import { ClockIcon } from '@heroicons/vue/24/outline'
-import { IPCRouter } from '@45drives/houston-common-lib'
 import DashboardCard from './DashboardCard.vue'
+import { useBackupTasksFeed } from '../../composables/useBackupTasksFeed'
 
 interface ScheduledTask {
     name: string
     schedule: { repeatFrequency: string; startDate: string }
 }
 
-const scheduledTasks = ref<ScheduledTask[]>([])
-const loaded = ref(false)
+const { tasks, loaded } = useBackupTasksFeed()
+
+const scheduledTasks = computed<ScheduledTask[]>(() =>
+    tasks.value
+        .filter((t: any) => t.schedule)
+        .map((t: any) => ({
+            name: t.name || t.source?.split('/').pop() || t.uuid?.slice(0, 8),
+            schedule: t.schedule,
+        }))
+)
 
 function computeNextRun(schedule: { repeatFrequency: string; startDate: string }): Date | null {
     const start = new Date(schedule.startDate)
@@ -112,34 +120,5 @@ const upcomingTasks = computed(() => {
         .filter((t): t is NonNullable<typeof t> => t !== null)
         .sort((a, b) => a.nextTime - b.nextTime)
         .slice(0, 4)
-})
-
-onMounted(() => {
-    const handler = (raw: string) => {
-        try {
-            const msg = JSON.parse(raw)
-            if (msg.type === 'sendBackupTasks') {
-                const tasks = msg.tasks || []
-                scheduledTasks.value = tasks
-                    .filter((t: any) => t.schedule)
-                    .map((t: any) => ({
-                        name: t.name || t.source?.split('/').pop() || t.uuid?.slice(0, 8),
-                        schedule: t.schedule,
-                    }))
-                loaded.value = true
-            }
-        } catch { /* ignore */ }
-    }
-    IPCRouter.getInstance().addEventListener('action', handler)
-    IPCRouter.getInstance().send('backend', 'action', 'requestBackUpTasks')
-
-    const pollInterval = setInterval(() => {
-        IPCRouter.getInstance().send('backend', 'action', 'requestBackUpTasks')
-    }, 60_000)
-
-    onBeforeUnmount(() => {
-        IPCRouter.getInstance().removeEventListener('action', handler)
-        clearInterval(pollInterval)
-    })
 })
 </script>

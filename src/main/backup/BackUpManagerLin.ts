@@ -657,20 +657,28 @@ exit $RSYNC_STATUS
 
     let match: RegExpExecArray | null;
 
+    // Cron carries minute precision at best, so anything finer would just be
+    // live `Date.now()` bleeding in and making every read look like a change.
+    const baseDate = () => {
+      const d = isoStartDate ? new Date(isoStartDate) : new Date();
+      d.setSeconds(0, 0);
+      return d;
+    };
+
     if ((match = hourRe.exec(cron))) {
       const [minutes] = match.slice(1).map(Number);
-      const startDate = isoStartDate ?? new Date();
+      const startDate = baseDate();
       startDate.setMinutes(minutes);
       return { repeatFrequency: "hour", startDate };
     } else if ((match = dayRe.exec(cron))) {
       const [minutes, hours] = match.slice(1).map(Number);
-      const startDate = isoStartDate ?? new Date();
+      const startDate = baseDate();
       startDate.setMinutes(minutes);
       startDate.setHours(hours);
       return { repeatFrequency: "day", startDate };
     } else if ((match = weekRe.exec(cron))) {
       const [minutes, hours, weekDay] = match.slice(1).map(Number);
-      const startDate = isoStartDate ?? new Date();
+      const startDate = baseDate();
       startDate.setMinutes(minutes);
       startDate.setHours(hours);
       const currentWeekDay = startDate.getDay();
@@ -678,7 +686,7 @@ exit $RSYNC_STATUS
       return { repeatFrequency: "week", startDate };
     } else if ((match = monthRe.exec(cron))) {
       const [minutes, hours, dayOfMonth] = match.slice(1).map(Number);
-      const startDate = isoStartDate ?? new Date();
+      const startDate = baseDate();
       startDate.setMinutes(minutes);
       startDate.setHours(hours);
       startDate.setDate(dayOfMonth);

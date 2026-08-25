@@ -336,6 +336,9 @@ function severityRank(level: string) {
 function groupedRows(items: ParsedLogEntry[]): DisplayRow[] {
   const out: DisplayRow[] = [];
   const maxGapMs = 30_000;
+  // Exact repeats collapse over a longer window; a burst of *different* events
+  // under one root only groups while they're genuinely adjacent.
+  const repeatGapMs = 5 * 60_000;
 
   for (const entry of items) {
     const root = eventRoot(entry.event);
@@ -348,11 +351,18 @@ function groupedRows(items: ParsedLogEntry[]): DisplayRow[] {
     const key = `${root}::${entity}`;
 
     const prev = out[out.length - 1];
-    const prevTs = prev ? new Date(prev.timestamp).getTime() : 0;
+    const prevChildren = prev?.children ?? [];
+    const prevLast = prevChildren[prevChildren.length - 1];
+    // Measure from the last child, not the group's start, or a group could
+    // never span more than one window no matter how steady the stream is.
+    const prevTs = prevLast ? new Date(prevLast.timestamp).getTime() : NaN;
     const curTs = new Date(entry.timestamp).getTime();
+    const isRepeat =
+      !!prevLast && prevLast.summary === entry.summary && prevLast.level === entry.level;
+    const limit = isRepeat ? repeatGapMs : maxGapMs;
     const near =
       Number.isFinite(prevTs) && Number.isFinite(curTs)
-        ? Math.abs(curTs - prevTs) <= maxGapMs
+        ? Math.abs(curTs - prevTs) <= limit
         : false;
 
     if (prev && prev.id.startsWith(`group:${key}:`) && near) {

@@ -172,6 +172,17 @@ export function describeConnectionError(err: unknown, host?: string): Connectivi
   ) {
     return build('auth', target, raw);
   }
+  // ssh2 phrasing for a socket that died before/during key exchange — a
+  // restarting sshd looks exactly like this.
+  if (
+    lower.includes('before handshake') ||
+    lower.includes('handshake failed') ||
+    lower.includes('connection lost') ||
+    lower.includes('socket closed') ||
+    lower.includes('client-socket')
+  ) {
+    return build('interrupted', target, raw);
+  }
   if (lower.includes('timed out') || lower.includes('timeout') || lower.includes('aborted')) {
     return build('timeout', target, raw);
   }

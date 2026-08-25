@@ -161,7 +161,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import {
     ServerIcon, CircleStackIcon, DocumentTextIcon,
@@ -173,8 +173,8 @@ import { useLogModal } from '../composables/useLogModal'
 import { useSettingsModal } from '../composables/useSettingsModal'
 import { useOnboarding } from '../composables/useOnboarding'
 import { useTourManager, type TourStep } from '../composables/useTourManager'
-import { IPCRouter } from '@45drives/houston-common-lib'
 import { useServers, type StoredServer } from '../composables/useServers'
+import { useBackupTasksFeed, type FeedTask } from '../composables/useBackupTasksFeed'
 
 import DashboardServerCard from '../components/dashboard/DashboardServerCard.vue'
 import DashboardBackupCard from '../components/dashboard/DashboardBackupCard.vue'
@@ -311,86 +311,45 @@ onMounted(() => {
             requestTour('dashboard', dashboardTourSteps, () => markDone('dashboardTourDone'))
         }, 500)
     }
-
-    // Request backup tasks to populate stats + recent activity
-    let cachedTasks: any[] = []
-
-    function computeStatsAndActivity(tasks: any[]) {
-        let active = 0, failed = 0
-        const activity: ActivityItem[] = []
-
-        for (const t of tasks) {
-            if (t.status?.startsWith('offline') || t.status === 'missing_folder') failed++
-            else active++
-
-            const lastRun = t.lastRunAt ? new Date(t.lastRunAt) : null
-            if (lastRun && !isNaN(lastRun.getTime())) {
-                const eventStatus = t.lastEventStatus
-                activity.push({
-                    label: t.name || t.source?.split('/').pop() || t.uuid?.slice(0, 8),
-                    status: eventStatus === 'failure' || t.status?.startsWith('offline') ? 'failed' : 'success',
-                    timeAgo: formatTimeAgo(lastRun),
-                })
-            }
-        }
-
-        stats.value.activeBackups = active
-        stats.value.failedBackups = failed
-
-        activity.sort((a, b) => {
-            const parseAgo = (s: string) => {
-                if (s === 'just now') return 0
-                const match = s.match(/(\d+)([mhd])/)
-                if (!match) return Infinity
-                const n = parseInt(match[1])
-                return match[2] === 'm' ? n : match[2] === 'h' ? n * 60 : n * 1440
-            }
-            return parseAgo(a.timeAgo) - parseAgo(b.timeAgo)
-        })
-        recentActivity.value = activity.slice(0, 8)
-    }
-
-    const handler = (raw: string) => {
-        try {
-            const msg = JSON.parse(raw)
-            if (msg.type === 'sendBackupTasks') {
-                cachedTasks = msg.tasks || []
-                computeStatsAndActivity(cachedTasks)
-                // Fetch events to get lastRunAt timestamps
-                IPCRouter.getInstance().send('backend', 'action', JSON.stringify({ type: 'fetchBackupEvents' }))
-            } else if (msg.type === 'sendBackupEvents') {
-                // Merge event timestamps into cached tasks
-                const latest: Record<string, { date: Date; status: string }> = {}
-                for (const ev of (msg.events ?? [])) {
-                    if (ev?.uuid && ev?.timestamp) {
-                        const ts = new Date(ev.timestamp)
-                        if (!Number.isNaN(ts.getTime())) {
-                            const prev = latest[ev.uuid]
-                            if (!prev || ts > prev.date) {
-                                latest[ev.uuid] = { date: ts, status: ev.status ?? '' }
-                            }
-                        }
-                    }
-                }
-                cachedTasks = cachedTasks.map(t =>
-                    latest[t.uuid] ? { ...t, lastRunAt: latest[t.uuid].date, lastEventStatus: latest[t.uuid].status } : t
-                )
-                computeStatsAndActivity(cachedTasks)
-            }
-        } catch { /* ignore */ }
-    }
-    IPCRouter.getInstance().addEventListener('action', handler)
-    IPCRouter.getInstance().send('backend', 'action', 'requestBackUpTasks')
-
-    const pollInterval = setInterval(() => {
-        IPCRouter.getInstance().send('backend', 'action', 'requestBackUpTasks')
-    }, 60_000)
-
-    onBeforeUnmount(() => {
-        IPCRouter.getInstance().removeEventListener('action', handler)
-        clearInterval(pollInterval)
-    })
 })
+
+function computeStatsAndActivity(list: FeedTask[]) {
+    let active = 0, failed = 0
+    const activity: ActivityItem[] = []
+
+    for (const t of list as any[]) {
+        if (t.status?.startsWith('offline') || t.status === 'missing_folder') failed++
+        else active++
+
+        const lastRun = t.lastRunAt ? new Date(t.lastRunAt) : null
+        if (lastRun && !isNaN(lastRun.getTime())) {
+            const eventStatus = t.lastEventStatus
+            activity.push({
+                label: t.name || t.source?.split('/').pop() || t.uuid?.slice(0, 8),
+                status: eventStatus === 'failure' || t.status?.startsWith('offline') ? 'failed' : 'success',
+                timeAgo: formatTimeAgo(lastRun),
+            })
+        }
+    }
+
+    stats.value.activeBackups = active
+    stats.value.failedBackups = failed
+
+    activity.sort((a, b) => {
+        const parseAgo = (s: string) => {
+            if (s === 'just now') return 0
+            const match = s.match(/(\d+)([mhd])/)
+            if (!match) return Infinity
+            const n = parseInt(match[1])
+            return match[2] === 'm' ? n : match[2] === 'h' ? n * 60 : n * 1440
+        }
+        return parseAgo(a.timeAgo) - parseAgo(b.timeAgo)
+    })
+    recentActivity.value = activity.slice(0, 8)
+}
+
+const { tasks: backupTasks } = useBackupTasksFeed()
+watch(backupTasks, computeStatsAndActivity, { immediate: true })
 </script>
 
 <style scoped>

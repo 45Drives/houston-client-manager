@@ -374,6 +374,9 @@ function severityRank(level: string) { return level === 'error' ? 3 : level === 
 function groupedRows(items: ParsedLogEntry[]): DisplayRow[] {
   const out: DisplayRow[] = []
   const maxGapMs = 30_000
+  // Exact repeats collapse over a longer window; a burst of *different* events
+  // under one root only groups while they're genuinely adjacent.
+  const repeatGapMs = 5 * 60_000
   for (const entry of items) {
     const root = eventRoot(entry.event)
     // For server logs the event is always the source file — use summary to distinguish entries.
@@ -383,9 +386,15 @@ function groupedRows(items: ParsedLogEntry[]): DisplayRow[] {
       ? `${root}::${entity}`
       : `${root}::${(entry.summary || '').replace(/\s*\(.*/, '').trim()}`
     const prev = out[out.length - 1]
-    const prevTs = prev ? new Date(prev.timestamp).getTime() : 0
+    const prevChildren = prev?.children ?? []
+    const prevLast = prevChildren[prevChildren.length - 1]
+    // Measure from the last child, not the group's start, or a group could
+    // never span more than one window no matter how steady the stream is.
+    const prevTs = prevLast ? new Date(prevLast.timestamp).getTime() : NaN
     const curTs = new Date(entry.timestamp).getTime()
-    const near = Number.isFinite(prevTs) && Number.isFinite(curTs) ? Math.abs(curTs - prevTs) <= maxGapMs : false
+    const isRepeat = !!prevLast && prevLast.summary === entry.summary && prevLast.level === entry.level
+    const limit = isRepeat ? repeatGapMs : maxGapMs
+    const near = Number.isFinite(prevTs) && Number.isFinite(curTs) ? Math.abs(curTs - prevTs) <= limit : false
     if (prev && prev.id.startsWith(`group:${groupKey}:`) && near) {
       const allChildren = [...(prev.children || []), entry]
       prev.children = allChildren

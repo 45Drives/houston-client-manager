@@ -3,7 +3,8 @@ import path from 'path';
 import fs from 'fs';
 import os from 'os';
 import { spawn, execSync } from 'child_process';
-import { checkSSH, connectWithFallback } from './setupSsh';
+import { checkSSH } from './setupSsh';
+import { acquireSSH } from './sshPool';
 import { getAgentSocket, getKeyDir, ensureKeyPair } from './crossPlatformSsh';
 import { assertSafeHost, assertSafeUsername, shellQuote } from './security';
 import { loadSettings } from './settingsStore';
@@ -162,7 +163,7 @@ export type RestoreProgressCallback = (progress: {
 async function connectSSH(host: string, username: string, password?: string): Promise<NodeSSH> {
   const safeHost = assertSafeHost(host);
   const safeUser = assertSafeUsername(username);
-  return connectWithFallback(safeHost, { username: safeUser, method: 'password', password });
+  return acquireSSH(safeHost, { username: safeUser, method: 'password', password });
 }
 
 function assertCommandSuccess(result: SSHExecCommandResponse, context: string): string {

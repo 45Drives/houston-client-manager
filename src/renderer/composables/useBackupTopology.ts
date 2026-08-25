@@ -1,6 +1,7 @@
 import { computed, ref } from 'vue'
 import { IPCRouter, type BackUpTask } from '@45drives/houston-common-lib'
 import { useServers } from './useServers'
+import { peekBackupTasks } from './useBackupTasksFeed'
 
 export type TopologyNodeKind = 'client' | 'local-server' | 'remote-server' | 'cloud'
 export type TopologyEdgeKind = 'client-backup' | 'rsync' | 'zfs-remote' | 'cloud'
@@ -219,7 +220,7 @@ export function useBackupTopology(opts?: { onlyServerHost?: string }) {
 
     try {
       const localHostFilter = normalizeHost(opts?.onlyServerHost)
-      const allBackupTasks = await requestBackupTasks()
+      const allBackupTasks = peekBackupTasks() ?? await requestBackupTasks()
 
       const nodes = new Map<string, TopologyNode>()
       const edges = new Map<string, TopologyEdge>()

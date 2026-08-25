@@ -890,26 +890,12 @@ if (Get-ScheduledTask -TaskName "${taskName}" -ErrorAction SilentlyContinue) {
         let weeksIntervalMatch;
         let monthsIntervalMatch;
         if (typeof cimProperties === 'string') {
-          startBoundaryMatch = cimProperties.match(/StartBoundary\s*=\s*"([^"]+)"/);
-          if (startBoundaryMatch) {
-            startBoundaryMatch = startBoundaryMatch[1]
-          }
-          hoursIntervalMatch = cimProperties.match(/HoursInterval\s*=\s*(\d+)/);
-          if (startBoundaryMatch) {
-            hoursIntervalMatch = hoursIntervalMatch[1]
-          }
-          daysIntervalMatch = cimProperties.match(/DaysInterval\s*=\s*(\d+)/);
-          if (startBoundaryMatch) {
-            daysIntervalMatch = daysIntervalMatch[1]
-          }
-          weeksIntervalMatch = cimProperties.match(/WeeksInterval\s*=\s*(\d+)/);
-          if (startBoundaryMatch) {
-            weeksIntervalMatch = weeksIntervalMatch[1]
-          }
-          monthsIntervalMatch = cimProperties.match(/MonthsInterval\s*=\s*(\d+)/);
-          if (startBoundaryMatch) {
-            monthsIntervalMatch = monthsIntervalMatch[1]
-          }
+          const pick = (re: RegExp) => cimProperties.match(re)?.[1];
+          startBoundaryMatch = pick(/StartBoundary\s*=\s*"([^"]+)"/);
+          hoursIntervalMatch = pick(/HoursInterval\s*=\s*(\d+)/);
+          daysIntervalMatch = pick(/DaysInterval\s*=\s*(\d+)/);
+          weeksIntervalMatch = pick(/WeeksInterval\s*=\s*(\d+)/);
+          monthsIntervalMatch = pick(/MonthsInterval\s*=\s*(\d+)/);
         } else if (Array.isArray(cimProperties)) {
           for (const prop of cimProperties) {
             if (prop.Name === "StartBoundary") {
@@ -971,7 +957,7 @@ if (Get-ScheduledTask -TaskName "${taskName}" -ErrorAction SilentlyContinue) {
             // Assuming it is done hourly. Based on testing.
             return {
               repeatFrequency: 'hour',
-              startDate: new Date(startBoundaryMatch[1]),
+              startDate: new Date(startBoundaryMatch),
             };
           }
         }

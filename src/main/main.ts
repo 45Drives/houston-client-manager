@@ -89,6 +89,7 @@ import { getPin, rememberPin } from './certPins'
 import { getCredentialManager } from './credentialManager';
 import { assertSafeHost, assertSafeShare, assertSafeUsername } from './security';
 import { checkSSH, verifySshCredentials } from './setupSsh';
+import { disposeAllSSH } from './sshPool';
 import { loadSettings, saveSettings, resetSettings } from './settingsStore';
 import { handleBackupMessage } from './ipc/backupHandlers';
 import { handleDiscoveryMessage } from './ipc/discoveryHandlers';
@@ -102,6 +103,29 @@ import type { IPCHandlerContext } from './ipc/types';
 
 let discoveredServers: Server[] = [];
 export let jsonLogger: ReturnType<typeof createLogger>;
+
+let lastBackupTaskSignature = '';
+
+/**
+ * Identity of the task set for change detection. `schedule.startDate` is
+ * recomputed on every query and drifts by milliseconds, so it's rounded to the
+ * minute — otherwise every poll would look like a change.
+ */
+function backupTaskSignature(tasks: Array<Record<string, any>>): string {
+  return tasks
+    .map((t) => {
+      const start = t.schedule?.startDate ? new Date(t.schedule.startDate) : null;
+      const startKey = start && !Number.isNaN(start.getTime())
+        ? String(new Date(start).setSeconds(0, 0))
+        : '';
+      return [
+        t.uuid, t.name, t.source, t.target, t.host, t.share,
+        t.disabled, t.status, t.schedule?.repeatFrequency, startKey,
+      ].join('|');
+    })
+    .sort()
+    .join('\n');
+}
 
 // const blockerId = powerSaveBlocker.start("prevent-app-suspension");
 
@@ -630,9 +654,15 @@ function createWindow() {
       const backUpManager = getBackUpManager();
       if (backUpManager) {
         const tasks = await backUpManager.queryTasks();
-        console.debug('tasks found:', tasks);
         IPCRouter.getInstance().send('renderer', 'action', JSON.stringify({ type: 'sendBackupTasks', tasks }));
-        jsonLogger.info({ event: 'requestBackUpTasks', tasks });
+
+        const signature = backupTaskSignature(tasks);
+        if (signature === lastBackupTaskSignature) {
+          jsonLogger.debug({ event: 'requestBackUpTasks', count: tasks.length, unchanged: true });
+        } else {
+          lastBackupTaskSignature = signature;
+          jsonLogger.info({ event: 'requestBackUpTasks', count: tasks.length, tasks });
+        }
       }
     } else if (data === "requestHostname") {
       IPCRouter.getInstance().send('renderer', 'action', JSON.stringify({
@@ -1393,6 +1423,10 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     app.quit();
   }
+});
+
+app.on('before-quit', () => {
+  disposeAllSSH();
 });
 
 let _backUpManager: BackUpManager | null | undefined;
