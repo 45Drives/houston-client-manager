@@ -391,7 +391,8 @@ run_linux_build() {
     shopt -u nullglob
   fi
 
-  LINUX_GIT_PULL_CMD="${LINUX_GIT_PULL_CMD:-git pull --ff-only}"
+  # houston-common is a git submodule; a plain pull leaves it on a stale commit.
+  LINUX_GIT_PULL_CMD="${LINUX_GIT_PULL_CMD:-git pull --ff-only && git submodule update --init --recursive}"
   bash -lc "$LINUX_GIT_PULL_CMD"
   conditional_yarn_install
   LINUX_BUILD_CMD="${LINUX_BUILD_CMD:-yarn build:linux}"
@@ -454,7 +455,7 @@ run_windows_flow() {
   fi
 
   WIN_BUILD_MODE="${WIN_BUILD_MODE:-git}" # git | rsync | samba
-  WIN_BUILD_GIT_PULL_CMD="${WIN_BUILD_GIT_PULL_CMD:-cd ${WIN_BUILD_REMOTE_DIR} && git pull --ff-only}"
+  WIN_BUILD_GIT_PULL_CMD="${WIN_BUILD_GIT_PULL_CMD:-cd ${WIN_BUILD_REMOTE_DIR} && git pull --ff-only && git submodule update --init --recursive}"
   WIN_BUILD_CMD="${WIN_BUILD_CMD:-cd ${WIN_BUILD_REMOTE_DIR} && yarn install && yarn build:win}"
   WIN_BUILD_EXE_GLOB="${WIN_BUILD_EXE_GLOB:-${WIN_BUILD_REMOTE_DIR}/dist/*-win-*.exe}"
   WIN_BUILD_DIST_DIR_WIN="${WIN_BUILD_DIST_DIR_WIN:-${WIN_BUILD_DIST_DIR:-${WIN_BUILD_REMOTE_DIR}\\dist}}"
@@ -684,7 +685,7 @@ run_mac_build() {
   esac
   MAC_RELEASE_ENV_LOCAL="${MAC_RELEASE_ENV_LOCAL:-}"
   MAC_RELEASE_ENV_REMOTE="${MAC_RELEASE_ENV_REMOTE:-${MAC_ARM_REPO_DIR}/scripts/.env.release}"
-  MAC_ARM_GIT_PULL_CMD="${MAC_ARM_GIT_PULL_CMD:-cd '${MAC_ARM_REPO_DIR}' && git pull --ff-only}"
+  MAC_ARM_GIT_PULL_CMD="${MAC_ARM_GIT_PULL_CMD:-cd '${MAC_ARM_REPO_DIR}' && git pull --ff-only && git submodule update --init --recursive}"
   MAC_FETCH_HOST="${MAC_FETCH_HOST:-$MAC_ARM_HOST}"
   MAC_FETCH_PORT="${MAC_FETCH_PORT:-$MAC_ARM_PORT}"
   MAC_FETCH_USER="${MAC_FETCH_USER:-$MAC_ARM_USER}"
