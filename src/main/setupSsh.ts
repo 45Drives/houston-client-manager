@@ -6,6 +6,8 @@ import { NodeSSH } from 'node-ssh';
 import type { CipherAlgorithm } from 'ssh2';
 import net from 'net';
 import { loadSettings } from './settingsStore';
+import { logEvent, errMsg } from './logging';
+import { describeConnectionError, failureLine } from '../shared/connectionErrors';
 
 // ── Shared SSH auth types ────────────────────────────────────────────────────
 
@@ -81,6 +83,10 @@ export async function connectWithFallback(host: string, auth: SshAuth): Promise<
     : undefined;
 
   const agentSock = getAgentSocket();
+  const startedAt = Date.now();
+  const attempts: string[] = [];
+
+  logEvent('ssh:connect', { host, username: auth.username, method: auth.method }, 'debug');
 
   // Tier 1: SSH agent
   if (agentSock) {
@@ -89,8 +95,9 @@ export async function connectWithFallback(host: string, auth: SshAuth): Promise<
         host, username: auth.username, agent: agentSock,
         readyTimeout: timeout, ...(algos && { algorithms: algos }),
       });
+      logEvent('ssh:connect.done', { host, username: auth.username, tier: 'agent', durationMs: Date.now() - startedAt });
       return ssh;
-    } catch { /* fall through */ }
+    } catch (err) { attempts.push(`agent: ${errMsg(err)}`); }
   }
 
   // Tier 2: App-managed key (id_rsa)
@@ -101,8 +108,9 @@ export async function connectWithFallback(host: string, auth: SshAuth): Promise<
         privateKey: fs.readFileSync(appKeyPath, 'utf8'),
         readyTimeout: timeout, ...(algos && { algorithms: algos }),
       });
+      logEvent('ssh:connect.done', { host, username: auth.username, tier: 'app-key', durationMs: Date.now() - startedAt });
       return ssh;
-    } catch { /* fall through */ }
+    } catch (err) { attempts.push(`app-key: ${errMsg(err)}`); }
   }
 
   // Tier 3: User-supplied key
@@ -114,25 +122,51 @@ export async function connectWithFallback(host: string, auth: SshAuth): Promise<
         ...(auth.passphrase && { passphrase: auth.passphrase }),
         readyTimeout: timeout, ...(algos && { algorithms: algos }),
       });
+      logEvent('ssh:connect.done', { host, username: auth.username, tier: 'user-key', durationMs: Date.now() - startedAt });
       return ssh;
-    } catch { /* fall through */ }
+    } catch (err) { attempts.push(`user-key: ${errMsg(err)}`); }
   }
 
   // Tier 4: Password
   if (auth.password) {
-    await ssh.connect({
-      host, username: auth.username,
-      password: auth.password,
-      tryKeyboard: true,
-      onKeyboardInteractive(_n: any, _i: any, _l: any, prompts: any[], finish: (r: string[]) => void) {
-        finish(prompts.map(() => auth.password!));
-      },
-      readyTimeout: timeout, ...(algos && { algorithms: algos }),
-    });
-    return ssh;
+    try {
+      await ssh.connect({
+        host, username: auth.username,
+        password: auth.password,
+        tryKeyboard: true,
+        onKeyboardInteractive(_n: any, _i: any, _l: any, prompts: any[], finish: (r: string[]) => void) {
+          finish(prompts.map(() => auth.password!));
+        },
+        readyTimeout: timeout, ...(algos && { algorithms: algos }),
+      });
+      logEvent('ssh:connect.done', { host, username: auth.username, tier: 'password', durationMs: Date.now() - startedAt });
+      return ssh;
+    } catch (err) {
+      attempts.push(`password: ${errMsg(err)}`);
+      const failure = describeConnectionError(err, host);
+      logEvent('ssh:connect.error', {
+        host, username: auth.username, attempts,
+        durationMs: Date.now() - startedAt,
+        message: failureLine(failure),
+        reason: failure.kind,
+        transient: failure.transient,
+        error: errMsg(err),
+      }, failure.transient ? 'warn' : 'error');
+      throw new Error(failureLine(failure));
+    }
   }
 
-  throw new Error(`SSH connection to ${host} failed: no valid auth method available`);
+  logEvent('ssh:connect.error', {
+    host, username: auth.username, attempts,
+    durationMs: Date.now() - startedAt,
+    message: `No usable sign-in method for ${host}. Add a password or SSH key for this server and try again.`,
+    reason: 'no-auth-method',
+    transient: false,
+    error: 'no valid auth method available',
+  }, 'error');
+  throw new Error(
+    `No usable sign-in method for ${host}. Add a password or SSH key for this server and try again.`,
+  );
 }
 
 export function checkSSH(host: string, timeout = 3000): Promise<boolean> {
@@ -140,8 +174,8 @@ export function checkSSH(host: string, timeout = 3000): Promise<boolean> {
     const sock = new net.Socket();
     sock.setTimeout(timeout);
     sock.once('connect', () => { sock.destroy(); resolve(true) });
-    sock.once('error', () => { sock.destroy(); resolve(false) });
-    sock.once('timeout', () => { sock.destroy(); resolve(false) });
+    sock.once('error', () => { sock.destroy(); logEvent('ssh:reachability', { host, reachable: false, reason: 'error' }, 'debug'); resolve(false) });
+    sock.once('timeout', () => { sock.destroy(); logEvent('ssh:reachability', { host, reachable: false, reason: 'timeout', timeout }, 'debug'); resolve(false) });
     sock.connect(22, host);
   });
 }
@@ -178,6 +212,7 @@ export async function verifySshCredentials(
     return { success: true, isAdmin };
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
+    logEvent('ssh:verify-credentials.error', { host, username, error: message }, 'warn');
     return { success: false, error: message };
   } finally {
     ssh.dispose();
@@ -217,14 +252,34 @@ export async function setupSshKey(
     chmod 700 ~/.ssh && chmod 600 ~/.ssh/authorized_keys
   `);
 
+  logEvent('ssh:key-deployed', { host, username, keyPath: publicKeyPath });
+
   ssh.dispose();
+}
+
+/** 45Drives packages the Storage Wizard drives from the community repo. */
+export const HOUSTON_PACKAGES = [
+  'cockpit-super-simple-setup', // server setup
+  'cockpit-scheduler',          // remote backups
+  'wireshield',                 // VPN tunnels for remote backups
+] as const;
+
+export interface RemoteDepCheck {
+  /** Everything missing — base OS deps plus 45Drives packages. */
+  missing: string[];
+  /** Base OS deps only (cockpit / zfs / samba). Requires the full bootstrap. */
+  baseMissing: string[];
+  /** 45Drives packages only. Installable from the community repo alone. */
+  houstonMissing: string[];
+  /** Whether the 45Drives community repo is already configured. */
+  repoConfigured: boolean;
 }
 
 export async function checkRemoteDeps(
   host: string,
   username: string,
   privateKeyPath: string,
-): Promise<{ missing: string[] }> {
+): Promise<RemoteDepCheck> {
   const ssh = new NodeSSH();
 
   await ssh.connect({
@@ -237,68 +292,218 @@ export async function checkRemoteDeps(
   const script = `
 set -e
 if [ -f /etc/os-release ]; then . /etc/os-release; fi
+OS_LIKE="$ID_LIKE $ID"
 
-missing=""
+base_missing=""
+houston_missing=""
+repo=no
 
 has_cmd() { command -v "$1" >/dev/null 2>&1; }
-add_missing() {
-  if [ -z "$missing" ]; then
-    missing="$1"
-  else
-    missing="$missing $1"
-  fi
+
+pkg_installed() {
+  case "$OS_LIKE" in
+    *rhel*|*fedora*|*centos*)
+      rpm -q "$1" >/dev/null 2>&1
+      ;;
+    *debian*|*ubuntu*)
+      dpkg -s "$1" >/dev/null 2>&1
+      ;;
+    *)
+      return 0
+      ;;
+  esac
+}
+
+add_base() {
+  if [ -z "$base_missing" ]; then base_missing="$1"; else base_missing="$base_missing $1"; fi
+}
+add_houston() {
+  if [ -z "$houston_missing" ]; then houston_missing="$1"; else houston_missing="$houston_missing $1"; fi
 }
 
 # Cockpit bridge binary
 if ! has_cmd cockpit-bridge; then
-  add_missing cockpit
+  add_base cockpit
 fi
 
 # ZFS: zpool binary
 if ! has_cmd zpool; then
-  add_missing zfs
+  add_base zfs
 fi
 
 # Samba: smbd (Debian/Ubuntu) or samba (RHEL-ish)
 if ! has_cmd smbd && ! has_cmd samba; then
-  add_missing samba
+  add_base samba
 fi
 
-# cockpit-super-simple-setup package via rpm/dpkg
-case "$ID_LIKE" in
-  *rhel*)
-    if ! rpm -q cockpit-super-simple-setup >/dev/null 2>&1; then
-      add_missing cockpit-super-simple-setup
-    fi
+# 45Drives community repo
+case "$OS_LIKE" in
+  *rhel*|*fedora*|*centos*)
+    if [ -f /etc/yum.repos.d/45drives-community.repo ]; then repo=yes; fi
     ;;
   *debian*|*ubuntu*)
-    if ! dpkg -s cockpit-super-simple-setup >/dev/null 2>&1; then
-      add_missing cockpit-super-simple-setup
-    fi
+    for f in /etc/apt/sources.list.d/45drives-community*.list; do
+      if [ -f "$f" ]; then repo=yes; fi
+    done
     ;;
 esac
 
-if [ -z "$missing" ]; then
-  echo "__OK__"
-else
-  echo "__MISSING__ $missing"
-fi
+# 45Drives packages
+for p in ${HOUSTON_PACKAGES.join(' ')}; do
+  if ! pkg_installed "$p"; then
+    add_houston "$p"
+  fi
+done
+
+echo "__REPO__ $repo"
+echo "__BASE__ $base_missing"
+echo "__HOUSTON__ $houston_missing"
 `;
 
   const { stdout, stderr } = await ssh.execCommand(script);
   ssh.dispose();
 
   const out = (stdout || stderr).trim();
-  if (out.startsWith("__OK__")) {
-    return { missing: [] };
-  }
-  if (out.startsWith("__MISSING__")) {
-    const parts = out.split(/\s+/).slice(1); // drop "__MISSING__"
-    return { missing: parts };
+  const readLine = (tag: string): string | null => {
+    const line = out.split('\n').map((l) => l.trim()).find((l) => l.startsWith(tag));
+    return line ? line.slice(tag.length).trim() : null;
+  };
+
+  const repoLine = readLine('__REPO__');
+  const baseLine = readLine('__BASE__');
+  const houstonLine = readLine('__HOUSTON__');
+
+  if (repoLine === null || baseLine === null || houstonLine === null) {
+    logEvent('ssh:check-remote-deps.error', { host, output: out }, 'error');
+    throw new Error(`Unexpected dependency check output: ${out}`);
   }
 
-  throw new Error(`Unexpected dependency check output: ${out}`);
+  const baseMissing = baseLine ? baseLine.split(/\s+/) : [];
+  const houstonMissing = houstonLine ? houstonLine.split(/\s+/) : [];
+  const result: RemoteDepCheck = {
+    missing: [...baseMissing, ...houstonMissing],
+    baseMissing,
+    houstonMissing,
+    repoConfigured: repoLine === 'yes',
+  };
+
+  logEvent(
+    'ssh:check-remote-deps',
+    { host, ...result },
+    result.missing.length ? 'warn' : 'info',
+  );
+  return result;
 }
+
+/**
+ * Configure the 45Drives community repo (if needed) and install the given
+ * packages. Lighter than the full bootstrap — used when the base OS deps are
+ * already present and only 45Drives packages are missing.
+ */
+export async function ensureHoustonPackages(
+  host: string,
+  username: string,
+  privateKeyPath: string,
+  password: string,
+  packages: readonly string[] = HOUSTON_PACKAGES,
+  onLine?: (line: string, stream: "stdout" | "stderr") => void,
+): Promise<boolean> {
+  if (packages.length === 0) return true;
+
+  const ssh = new NodeSSH();
+  await ssh.connect({
+    host,
+    username,
+    privateKey: fs.readFileSync(privateKeyPath, "utf8"),
+    readyTimeout: loadSettings().sshTimeoutMs,
+  });
+
+  logEvent('ssh:ensure-houston-packages', { host, username, packages });
+
+  const pkgList = packages.join(' ');
+  const script = `
+set -eo pipefail
+if [ -r /etc/os-release ]; then . /etc/os-release; else echo "[ERROR] /etc/os-release not found"; exit 1; fi
+OS_LIKE="$ID_LIKE $ID"
+
+case "$OS_LIKE" in
+  *rhel*|*fedora*|*centos*)
+    if [ ! -f /etc/yum.repos.d/45drives-community.repo ]; then
+      echo "[INFO] Setting up 45Drives community repo..."
+      if [ -f /etc/yum.repos.d/45drives.repo ]; then
+        mkdir -p /opt/45drives/archives/repos
+        mv /etc/yum.repos.d/45drives.repo "/opt/45drives/archives/repos/45drives-$(date +%Y-%m-%d).repo"
+      fi
+      curl -sSL https://repo.45drives.com/repofiles/rocky/45drives-community.repo -o /etc/yum.repos.d/45drives-community.repo
+      dnf clean all
+    else
+      echo "[INFO] 45Drives community repo already configured."
+    fi
+    echo "[INFO] Installing: ${pkgList}"
+    dnf install -y ${pkgList}
+    ;;
+  *debian*|*ubuntu*)
+    if ! ls /etc/apt/sources.list.d/45drives-community*.list >/dev/null 2>&1; then
+      echo "[INFO] Setting up 45Drives community repo..."
+      apt-get update -y
+      apt-get install -y ca-certificates gnupg curl wget
+      wget -qO - https://repo.45drives.com/key/gpg.asc | gpg --pinentry-mode loopback --batch --yes --dearmor -o /usr/share/keyrings/45drives-archive-keyring.gpg
+      curl -sSL "https://repo.45drives.com/repofiles/$ID/45drives-community-$VERSION_CODENAME.list" \\
+        -o "/etc/apt/sources.list.d/45drives-community-$VERSION_CODENAME.list"
+    else
+      echo "[INFO] 45Drives community repo already configured."
+    fi
+    apt-get update -y
+    echo "[INFO] Installing: ${pkgList}"
+    apt-get install -y ${pkgList}
+    ;;
+  *)
+    echo "[ERROR] Unsupported OS: ID=$ID ID_LIKE=$ID_LIKE"
+    exit 1
+    ;;
+esac
+
+systemctl restart cockpit.socket || true
+echo "[INFO] 45Drives packages installed."
+`;
+
+  const scriptRemotePath = "/tmp/ensure-houston-packages.sh";
+  await ssh.execCommand(`cat > ${scriptRemotePath}`, { stdin: script });
+
+  const result = await ssh.execCommand(
+    `sudo -S -p '' bash -c 'tr -d "\\r" < "${scriptRemotePath}" | bash'`,
+    {
+      cwd: "/tmp",
+      stdin: password + "\n",
+      execOptions: { pty: true },
+      onStdout(chunk) {
+        const line = chunk.toString().trim();
+        if (!line || line === password) return;
+        onLine?.(line, "stdout");
+      },
+      onStderr(chunk) {
+        const text = chunk.toString().trim();
+        if (!text || text === password) return;
+        if (text.startsWith("[sudo] password for")) return;
+        onLine?.(text, "stderr");
+      },
+    },
+  );
+
+  await ssh.execCommand(`rm -f ${scriptRemotePath}`);
+  ssh.dispose();
+
+  if (typeof result.code === "number" && result.code !== 0) {
+    logEvent('ssh:ensure-houston-packages.error', { host, packages, exitCode: result.code }, 'error');
+    throw new Error(
+      `Failed to install 45Drives packages on ${host} (exit code ${result.code}).`,
+    );
+  }
+
+  logEvent('ssh:ensure-houston-packages.done', { host, packages });
+  return true;
+}
+
 
 
 //  Upload and run install script
@@ -312,6 +517,8 @@ export async function runBootstrapScript(
   const ssh = new NodeSSH();
   const scriptLocalPath = await getAsset("static", "setup-super-simple.sh");
   const scriptRemotePath = "/tmp/setup-super-simple.sh";
+
+  logEvent('ssh:bootstrap', { host, username, script: scriptRemotePath });
 
   await ssh.connect({
     host,
@@ -360,10 +567,13 @@ export async function runBootstrapScript(
   ssh.dispose();
 
   if (typeof result.code === "number" && result.code !== 0) {
+    logEvent('ssh:bootstrap.error', { host, username, exitCode: result.code }, 'error');
     throw new Error(
       `Bootstrap script exited with code ${result.code} (host ${host}).`
     );
   }
+
+  logEvent('ssh:bootstrap.done', { host, username, rebootRequired });
 
   return rebootRequired;
 }

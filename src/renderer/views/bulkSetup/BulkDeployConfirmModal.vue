@@ -152,6 +152,12 @@
               <span v-if="srv.clearExistingData" class="px-2 py-0.5 rounded text-xs font-medium bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300">
                 ⚠ Will destroy existing pools &amp; shares
               </span>
+              <span v-if="srv.wipeDrives" class="px-2 py-0.5 rounded text-xs font-medium bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300">
+                ⚠ Quick wipe: erases signatures on {{ wipeTargetCount(srv) }} drive{{ wipeTargetCount(srv) === 1 ? '' : 's' }}
+              </span>
+              <span v-if="bootRemnantCount(srv) > 0" class="px-2 py-0.5 rounded text-xs font-medium bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300">
+                {{ bootRemnantCount(srv) }} drive{{ bootRemnantCount(srv) === 1 ? '' : 's' }} carry a leftover boot partition
+              </span>
               <span v-if="srv.diskInfo && srv.diskInfo.existingPools.length > 0" class="px-2 py-0.5 rounded text-xs font-medium bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300">
                 Existing pools: {{ srv.diskInfo.existingPools.join(', ') }}
               </span>
@@ -209,11 +215,25 @@ function getSplitPreview(srv: BulkServerState) {
   return getSplitPoolPreview(disks);
 }
 
+function wipeTargetCount(srv: BulkServerState): number {
+  return (srv.diskInfo?.availableDisks || []).filter(d => d.hasData).length;
+}
+
+function bootRemnantCount(srv: BulkServerState): number {
+  return (srv.diskInfo?.availableDisks || []).filter(d => d.bootRemnant).length;
+}
+
 function hasWarnings(srv: BulkServerState): boolean {
-  return !!(srv.clearExistingData || !srv.diskInfo || (srv.diskInfo && srv.diskInfo.existingPools.length > 0));
+  return !!(
+    srv.clearExistingData ||
+    srv.wipeDrives ||
+    !srv.diskInfo ||
+    bootRemnantCount(srv) > 0 ||
+    (srv.diskInfo && srv.diskInfo.existingPools.length > 0)
+  );
 }
 
 const destructiveCount = computed(() =>
-  props.servers.filter(s => s.clearExistingData).length
+  props.servers.filter(s => s.clearExistingData || s.wipeDrives).length
 );
 </script>

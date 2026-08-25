@@ -8,6 +8,8 @@ export interface TourStep {
   message: string;
   /** Preferred popup placement relative to target */
   placement?: 'top' | 'bottom';
+  /** Runs before the step is positioned — use to switch tabs/expand panels so the target exists. */
+  onEnter?: () => void | Promise<void>;
 }
 
 export interface TourRegistration {

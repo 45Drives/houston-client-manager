@@ -3,8 +3,17 @@
         <div class="w-full max-w-md mx-auto bg-default p-5 rounded-xl shadow">
             <!-- Step 1: Choose action -->
             <template v-if="step === 'choose'">
-                <h2 class="text-lg font-semibold text-default mb-4">Add Backup Server</h2>
-                <div class="space-y-3">
+                <h2 class="text-lg font-semibold text-default mb-4 flex items-center gap-2">
+                    Add Backup Server
+                    <CommanderToolTip :message="`Two different jobs live behind this dialog.
+
+Set Up New Server runs the full wizard against fresh hardware — it creates pools, shares, and users from scratch.
+
+Add Existing Backup Server registers a machine that is already configured. Nothing on it is reformatted or reorganised; the app just learns how to reach it. If it is missing the small pieces this app relies on, those get installed and you will see the progress step by step.
+
+Use Add Existing for a server someone else set up, one you configured directly in Houston, or one you are re-adding after reinstalling this app.`" />
+                </h2>
+                <div class="space-y-3" data-tour="add-server-choose">
                     <button
                         class="w-full flex items-center gap-3 p-4 rounded-lg border border-neutral-200 dark:border-neutral-700 hover:bg-hover transition-colors text-left"
                         @click="$emit('go-setup'); close()">
@@ -35,7 +44,7 @@
                 <p class="text-xs text-gray-400 mb-4">Enter the connection details for your backup server and its share.</p>
 
                 <!-- Discovered servers hint -->
-                <div v-if="discoveredUnregistered.length > 0" class="mb-4">
+                <div v-if="discoveredUnregistered.length > 0" class="mb-4" data-tour="add-server-discovered">
                     <label class="text-xs font-medium text-gray-500 mb-1 block">Discovered on network</label>
                     <div class="flex flex-wrap gap-1.5">
                         <button v-for="srv in discoveredUnregistered" :key="srv.ip"
@@ -47,7 +56,7 @@
                     </div>
                 </div>
 
-                <div class="flex flex-col gap-3">
+                <div class="flex flex-col gap-3" data-tour="add-server-form">
                     <div>
                         <label class="text-xs font-medium text-gray-500 mb-1 block">Host / IP</label>
                         <input v-model="host" type="text"
@@ -144,7 +153,7 @@
                     {{ error }}
                 </div>
 
-                <div class="flex justify-between mt-5">
+                <div class="flex justify-between mt-5" data-tour="add-server-submit">
                     <button class="btn btn-sm btn-outline-shadow h-fit" @click="step = 'choose'; error = ''">Back</button>
                     <div class="flex gap-2">
                         <button class="btn btn-sm btn-outline-shadow h-fit" @click="close">Cancel</button>
@@ -216,9 +225,12 @@ import { ref, computed, inject } from 'vue'
 import { EyeIcon, EyeSlashIcon } from '@heroicons/vue/20/solid'
 import { WrenchScrewdriverIcon, ServerStackIcon, CheckCircleIcon, ExclamationCircleIcon } from '@heroicons/vue/24/outline'
 import { Modal } from '@45drives/houston-common-ui'
+import { CommanderToolTip } from '../commander'
 import { discoveryStateInjectionKey } from '../../keys/injection-keys'
 import type { DiscoveryState, Server } from '../../types'
 import { useServers } from '../../composables/useServers'
+import { useOnboarding } from '../../composables/useOnboarding'
+import { useTourManager, type TourStep } from '../../composables/useTourManager'
 
 const emit = defineEmits<{
     'go-setup': []
@@ -448,6 +460,7 @@ function open() {
     progressSteps.value = []
     setupLogs.value = []
     show.value = true
+    maybeStartTour('choose')
 }
 
 function openForServer(srv: { ip: string; name?: string; shareName?: string }) {
@@ -469,10 +482,50 @@ function openForServer(srv: { ip: string; name?: string; shareName?: string }) {
     progressSteps.value = []
     setupLogs.value = []
     show.value = true
+    maybeStartTour('form')
 }
 
 function close() {
     show.value = false
+}
+
+// ── Guided tour ─────────────────────────────────────────────────────
+
+const { onboarding, markDone } = useOnboarding()
+const { requestTour } = useTourManager()
+
+const addServerTourSteps: TourStep[] = [
+    {
+        target: '[data-tour="add-server-choose"]',
+        message: 'There are two ways to add a server here.\n\nSet Up New Server runs the full wizard against factory-fresh hardware. Add Existing Backup Server is for a machine that is already configured — it is registered with this app without touching its storage or shares.',
+        onEnter: () => { step.value = 'choose' },
+    },
+    {
+        target: '[data-tour="add-server-discovered"]',
+        message: 'Servers found on your network that are not saved yet appear here. Clicking one fills in its address for you.',
+        onEnter: () => { step.value = 'form' },
+    },
+    {
+        target: '[data-tour="add-server-form"]',
+        message: 'An existing server needs two sets of credentials: the admin login this app uses over SSH to read status and manage the server, and the Samba share details your desktop uses to reach the files.\n\nLeave the SMB fields blank to reuse the admin login. A nickname is optional but makes the server easier to spot in lists.',
+        onEnter: () => { step.value = 'form' },
+    },
+    {
+        target: '[data-tour="add-server-submit"]',
+        message: 'Add Server tests the connection before saving anything.\n\nIf the server is missing the pieces this app needs, they are installed for you and the progress is shown step by step — your existing pools, datasets, and shares are left exactly as they are.',
+        placement: 'top',
+        onEnter: () => { step.value = 'form' },
+    },
+]
+
+function maybeStartTour(returnStep: 'choose' | 'form') {
+    if (onboarding.value.addExistingServerTourDone) return
+    setTimeout(() => {
+        requestTour('add-existing-server', addServerTourSteps, async () => {
+            step.value = returnStep
+            await markDone('addExistingServerTourDone')
+        })
+    }, 350)
 }
 
 defineExpose({ open, openForServer })

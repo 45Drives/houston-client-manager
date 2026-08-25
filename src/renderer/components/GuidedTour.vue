@@ -103,6 +103,11 @@ const arrowX = ref(0);
 
 // Track the polling timer so we can cancel it on cleanup / step change
 let pollHandle: number | null = null;
+// Guard against re-scrolling every frame — a target taller than the viewport
+// can never satisfy scrollIntoView, which would loop and trap the scrollbar.
+let scrolledForStep = false;
+// Direction of travel, so a skipped step keeps moving the way the user was going.
+let stepDirection = 1;
 
 function cancelPoll() {
   if (pollHandle != null) {
@@ -135,31 +140,55 @@ function positionPopup(startTime?: number) {
       pollHandle = requestAnimationFrame(() => positionPopup(now));
       return;
     }
-    // Gave up waiting — center the popup as a fallback
-    spotlightRect.value = {
-      x: window.innerWidth / 2 - 100,
-      y: window.innerHeight / 2 - 20,
-      width: 200,
-      height: 40,
-    };
-    popupPos.value = {
-      top: `${window.innerHeight / 2 + 40}px`,
-      left: `${window.innerWidth / 2 - 200}px`,
-    };
-    positioned.value = true;
+    // Target never appeared (conditional UI, different app state) — skip the
+    // step rather than spotlighting empty space.
+    skipMissingStep();
     return;
   }
 
   const rect = el.getBoundingClientRect();
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  const fitsInViewport = rect.height <= vh - 32;
+
+  // Bring offscreen targets into view, then re-measure on the next frame.
+  const needsScroll = fitsInViewport
+    ? rect.top < 0 || rect.bottom > vh
+    : rect.top > vh - 80 || rect.bottom < 80;
+
+  if (needsScroll && !scrolledForStep) {
+    scrolledForStep = true;
+    el.scrollIntoView({ block: fitsInViewport ? 'center' : 'start', behavior: 'auto' });
+    pollHandle = requestAnimationFrame(() => positionPopup(performance.now()));
+    return;
+  }
+
+  // Clamp to the viewport so oversized targets still spotlight and anchor sanely.
+  const left = Math.max(rect.left, 8);
+  const top = Math.max(rect.top, 8);
+  const right = Math.max(Math.min(rect.right, vw - 8), left + 1);
+  const bottom = Math.max(Math.min(rect.bottom, vh - 8), top + 1);
+  const visible = {
+    x: left,
+    y: top,
+    left,
+    top,
+    right,
+    bottom,
+    width: right - left,
+    height: bottom - top,
+  };
+
   spotlightRect.value = {
-    x: rect.x,
-    y: rect.y,
-    width: rect.width,
-    height: rect.height,
+    x: visible.x,
+    y: visible.y,
+    width: visible.width,
+    height: visible.height,
   };
 
   const preferred = currentStep.value?.placement ?? 'bottom';
-  computePosition(el, popup, {
+  const reference = { getBoundingClientRect: () => ({ ...visible, toJSON: () => visible }) };
+  computePosition(reference, popup, {
     strategy: 'fixed',
     placement: preferred,
     middleware: [
@@ -172,7 +201,7 @@ function positionPopup(startTime?: number) {
     popupPos.value = { top: `${y}px`, left: `${x}px` };
 
     // Calculate arrow position pointing at center of target
-    const targetCenterX = rect.x + rect.width / 2;
+    const targetCenterX = visible.x + visible.width / 2;
     arrowX.value = Math.max(20, Math.min(targetCenterX - x, (popup.offsetWidth ?? 400) - 20));
     positioned.value = true;
   });
@@ -181,12 +210,17 @@ function positionPopup(startTime?: number) {
 /** Reset internal state and start positioning for a fresh tour / step. */
 function startPositioning() {
   positioned.value = false;
+  scrolledForStep = false;
   cancelPoll();
-  // Wait one tick so Vue can flush DOM updates (v-if toggle, new route view mount)
-  nextTick(() => positionPopup());
+  // Let the step prepare its target (switch tabs, expand panels, …) before we look for it.
+  Promise.resolve(currentStep.value?.onEnter?.()).finally(() => {
+    // Wait one tick so Vue can flush DOM updates (v-if toggle, new route view mount)
+    nextTick(() => positionPopup());
+  });
 }
 
 function next() {
+  stepDirection = 1;
   if (currentIndex.value >= props.steps.length - 1) {
     emit('done');
   } else {
@@ -195,7 +229,23 @@ function next() {
 }
 
 function prev() {
+  stepDirection = -1;
   if (currentIndex.value > 0) currentIndex.value--;
+}
+
+/** Move past a step whose target never rendered, continuing in the direction of travel. */
+function skipMissingStep() {
+  const target = currentIndex.value + (stepDirection >= 0 ? 1 : -1);
+  if (target >= 0 && target < props.steps.length) {
+    currentIndex.value = target;
+    return;
+  }
+  if (stepDirection < 0 && currentIndex.value + 1 < props.steps.length) {
+    stepDirection = 1;
+    currentIndex.value++;
+    return;
+  }
+  emit('done');
 }
 
 function skip() {
@@ -215,6 +265,7 @@ watch(currentIndex, () => {
 watch(() => props.active, (isActive) => {
   if (isActive) {
     currentIndex.value = 0;
+    stepDirection = 1;
     startPositioning();
   } else {
     cancelPoll();
@@ -226,6 +277,7 @@ watch(() => props.active, (isActive) => {
 watch(() => props.steps, () => {
   if (props.active) {
     currentIndex.value = 0;
+    stepDirection = 1;
     startPositioning();
   }
 });
@@ -241,6 +293,7 @@ onMounted(() => {
   // (happens when parent uses v-if to mount us with :active="true")
   if (props.active) {
     currentIndex.value = 0;
+    stepDirection = 1;
     startPositioning();
   }
 });

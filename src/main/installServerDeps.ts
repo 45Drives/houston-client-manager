@@ -1,6 +1,6 @@
 import path from "path";
 import { NodeSSH } from "node-ssh";
-import { checkSSH, setupSshKey, runBootstrapScript, checkRemoteDeps, type SshAuth, type SshAuthMethod } from "./setupSsh";
+import { checkSSH, setupSshKey, runBootstrapScript, checkRemoteDeps, ensureHoustonPackages, type SshAuth, type SshAuthMethod } from "./setupSsh";
 import { assertSafeHost, assertSafeUsername } from "./security";
 import { getAgentSocket, getKeyDir, ensureKeyPair } from "./crossPlatformSsh";
 
@@ -87,16 +87,36 @@ export async function installServerDepsRemotely({
         await ensureKeyPair(privateKeyPath, publicKeyPath);
 
         // probe for missing deps
-        send("probe", "Checking for required dependencies (Cockpit, ZFS, Samba, cockpit-super-simple-setup)…");
-        let missing: string[] = [];
+        send("probe", "Checking for required dependencies (Cockpit, ZFS, Samba, 45Drives packages)…");
         try {
             const result = await checkRemoteDeps(safeHost, safeUser, privateKeyPath);
-            missing = result.missing;
-            if (missing.length === 0) {
+
+            if (result.missing.length === 0) {
                 send("done", "All required dependencies are already installed. Skipping bootstrap.");
                 return { success: true, reboot: false };
             }
-            send("bootstrap", `Missing dependencies detected: ${missing.join(", ")}. Running bootstrap setup…`);
+
+            if (result.baseMissing.length === 0) {
+                // Base OS is fine — only 45Drives packages are missing, so skip the heavy bootstrap.
+                send("packages", `Installing 45Drives packages: ${result.houstonMissing.join(", ")}…`);
+                await ensureHoustonPackages(
+                    safeHost,
+                    safeUser,
+                    privateKeyPath,
+                    password,
+                    result.houstonMissing,
+                    (line, stream) => {
+                        if (!line || line === password) return;
+                        if (stream === "stderr" || /^\[(INFO|WARN|ERROR)/.test(line)) {
+                            send("bootstrap-log", line);
+                        }
+                    },
+                );
+                send("done", "45Drives packages installed.");
+                return { success: true, reboot: false };
+            }
+
+            send("bootstrap", `Missing dependencies detected: ${result.missing.join(", ")}. Running bootstrap setup…`);
         } catch (e: any) {
             // if the check fails, be conservative and run bootstrap
             console.warn("Dependency preflight check failed; running bootstrap anyway:", e?.message || e);
@@ -128,6 +148,31 @@ export async function installServerDepsRemotely({
                 }
             },
         );
+
+        // Bootstrap sets up the repo and core packages; make sure the rest of the
+        // 45Drives suite landed too (older bootstrap scripts only install a subset).
+        try {
+            const after = await checkRemoteDeps(safeHost, safeUser, privateKeyPath);
+            if (after.houstonMissing.length > 0) {
+                send("packages", `Installing 45Drives packages: ${after.houstonMissing.join(", ")}…`);
+                await ensureHoustonPackages(
+                    safeHost,
+                    safeUser,
+                    privateKeyPath,
+                    password,
+                    after.houstonMissing,
+                    (line, stream) => {
+                        if (!line || line === password) return;
+                        if (stream === "stderr" || /^\[(INFO|WARN|ERROR)/.test(line)) {
+                            send("bootstrap-log", line);
+                        }
+                    },
+                );
+            }
+        } catch (e: any) {
+            console.warn("Post-bootstrap 45Drives package check failed:", e?.message || e);
+            send("bootstrap-log", `[WARN] Could not verify 45Drives packages: ${e?.message || e}`);
+        }
 
         return { success: true, reboot: rebootRequired };
     } catch (err: any) {

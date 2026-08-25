@@ -171,7 +171,13 @@ function extractEvent(obj: Record<string, any>): string {
 function extractSummary(obj: Record<string, any>): string {
   // If there's a direct event field, build summary from the structured data
   if (obj.event && typeof obj.event === 'string') {
-    const parts = [obj.event];
+    const parts: string[] = [];
+
+    // Prefer an explicit human-readable message when the emitter provided one;
+    // the raw event name still shows in the Event column.
+    const friendly = typeof obj.message === 'string' ? obj.message.trim() : '';
+    if (friendly && friendly !== obj.event) parts.push(friendly);
+    else parts.push(obj.event);
 
     // Identity / tracking
     if (obj.taskUuid) parts.push(`uuid=${obj.taskUuid}`);
@@ -208,23 +214,74 @@ function extractSummary(obj: Record<string, any>): string {
     if (obj.tasks && Array.isArray(obj.tasks)) parts.push(`(${obj.tasks.length} task(s))`);
     if (obj.result === true || obj.success === true) parts.push('→ OK');
     if (obj.result === false || obj.success === false) parts.push('→ FAILED');
-    if (obj.error) parts.push(`error=${String(obj.error).slice(0, 100)}`);
+    if (obj.error && !friendly) parts.push(`error=${String(obj.error).slice(0, 100)}`);
 
     return parts.join(' ');
   }
   // Plain message
   const msg = obj.message || '';
-  return typeof msg === 'string' ? msg.slice(0, 200) : String(msg).slice(0, 200);
+  const text = typeof msg === 'string' ? msg : String(msg);
+  return humanize(text).slice(0, 200);
 }
 
 /** Messages to filter out of client log display */
 const CLIENT_LOG_SKIP_PATTERNS = [
   /^\[webview:/i,
   /^ZFS Notification DBus/i,
+  // Electron internals that only ever appear as a side effect of a failure
+  // already reported elsewhere (e.g. a webview that couldn't load).
+  /GUEST_VIEW_MANAGER_CALL/i,
+  /Script failed to execute, this normally means an error was thrown/i,
+  /Unexpected error while loading URL/i,
+  /electron: Failed to load URL/i,
 ];
 
 function shouldSkipClientEntry(msg: string): boolean {
   return CLIENT_LOG_SKIP_PATTERNS.some(rx => rx.test(msg));
+}
+
+/**
+ * Rewrite raw technical failures into wording a non-technical user can act on.
+ * Applied at display time only — the original line stays in the log file.
+ */
+const HUMANIZE_RULES: { match: RegExp; rewrite: (m: RegExpMatchArray) => string }[] = [
+  {
+    match: /(?:ERR_ADDRESS_UNREACHABLE|EHOSTUNREACH|ENETUNREACH|EHOSTDOWN)\b[^\n]*?((?:\d{1,3}\.){3}\d{1,3})?/i,
+    rewrite: (m) => `Couldn't reach ${m[1] || 'the server'} — it may be restarting, powered off, or off the network.`,
+  },
+  {
+    match: /(?:ERR_CONNECTION_REFUSED|ECONNREFUSED)\b[^\n]*?((?:\d{1,3}\.){3}\d{1,3})?/i,
+    rewrite: (m) => `${m[1] || 'The server'} refused the connection — the service may still be starting up.`,
+  },
+  {
+    match: /(?:ERR_CONNECTION_TIMED_OUT|ERR_TIMED_OUT|ETIMEDOUT)\b[^\n]*?((?:\d{1,3}\.){3}\d{1,3})?/i,
+    rewrite: (m) => `${m[1] || 'The server'} took too long to respond.`,
+  },
+  {
+    match: /(?:ERR_NAME_NOT_RESOLVED|ENOTFOUND|EAI_AGAIN|getaddrinfo)\b[^\n]*?([\w.-]+)?/i,
+    rewrite: (m) => `Couldn't look up the address for ${m[1] || 'the server'}.`,
+  },
+  {
+    match: /(?:ERR_INTERNET_DISCONNECTED|ENETDOWN)\b/i,
+    rewrite: () => 'This computer appears to be offline.',
+  },
+  {
+    match: /(?:ERR_CONNECTION_RESET|ECONNRESET|EPIPE)\b[^\n]*?((?:\d{1,3}\.){3}\d{1,3})?/i,
+    rewrite: (m) => `The connection to ${m[1] || 'the server'} was interrupted.`,
+  },
+  {
+    match: /All configured authentication methods failed/i,
+    rewrite: () => 'Sign-in was rejected — check the username and password for this server.',
+  },
+];
+
+function humanize(text: string): string {
+  if (!text) return text;
+  for (const rule of HUMANIZE_RULES) {
+    const m = text.match(rule.match);
+    if (m) return rule.rewrite(m);
+  }
+  return text;
 }
 
 /** Read entries from a single NDJSON log file */

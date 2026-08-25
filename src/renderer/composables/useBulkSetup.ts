@@ -212,7 +212,7 @@ export function useBulkSetup() {
 
   // ── Global defaults ────────────────────────────────────────────────────
 
-  function applyGlobalDefaults(defaults: { username?: string; password?: string; authMethod?: 'password' | 'key'; sshKeyPath?: string; sshPassphrase?: string; smbUser?: string; smbPass?: string }) {
+  function applyGlobalDefaults(defaults: { username?: string; password?: string; authMethod?: 'password' | 'key'; sshKeyPath?: string; sshPassphrase?: string; smbUser?: string; smbPass?: string; wipeDrives?: boolean }) {
     for (const srv of servers.value) {
       if (defaults.username && !srv.username) srv.username = defaults.username;
       if (defaults.password && !srv.password) srv.password = defaults.password;
@@ -221,6 +221,8 @@ export function useBulkSetup() {
       if (defaults.sshPassphrase && !srv.sshPassphrase) srv.sshPassphrase = defaults.sshPassphrase;
       if (defaults.smbUser && !srv.smbUser) srv.smbUser = defaults.smbUser;
       if (defaults.smbPass && !srv.smbPass) srv.smbPass = defaults.smbPass;
+      // Explicit toggle rather than fill-if-empty, so unchecking clears every server
+      if (defaults.wipeDrives !== undefined) srv.wipeDrives = defaults.wipeDrives;
     }
   }
 

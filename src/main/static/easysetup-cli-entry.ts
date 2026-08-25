@@ -11,8 +11,8 @@
  * Errors are emitted as:
  *   {"step":-1,"total":-1,"message":"Error: ..."}
  *
- * Final success is:
- *   {"step":10,"total":10,"message":"...","done":true,"hostnameChanged":true|false}
+ * Final success repeats the last step with done:true. The total varies with the
+ * config (a drive wipe adds a step), so nothing here assumes a fixed count.
  */
 
 import { EasySetupConfigurator, EasySetupProgress } from "@/managers/easysetup/manager";
@@ -61,8 +61,10 @@ async function main() {
   const configurator = new EasySetupConfigurator();
 
   let lastStep = 0;
+  let lastTotal = 0;
   await configurator.applyConfig(config, (progress) => {
     lastStep = progress.step;
+    lastTotal = progress.total;
     emitProgress(progress);
   });
 
@@ -70,11 +72,12 @@ async function main() {
   const newHostname = execSync("hostname").toString().trim();
   const hostnameChanged = newHostname !== originalHostname;
 
-  if (lastStep === 10) {
-    // Final success signal with hostnameChanged flag
+  // Step count varies with the config (the optional drive wipe adds one), so
+  // compare against the reported total rather than a hardcoded number.
+  if (lastTotal > 0 && lastStep === lastTotal) {
     emitProgress({
-      step: 10,
-      total: 10,
+      step: lastStep,
+      total: lastTotal,
       message: "Setup complete!",
       done: true,
       hostnameChanged,

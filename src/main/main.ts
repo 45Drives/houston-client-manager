@@ -1029,6 +1029,21 @@ app.whenReady().then(() => {
     }
   });
 
+  // Structured activity from embedded Cockpit modules (scheduler, setup wizard, …),
+  // relayed up through CockpitWebview so it lands in the client's own log viewer.
+  ipcMain.on('logs:module-event', (_event, entry: any) => {
+    if (!entry || typeof entry.event !== 'string') return;
+    const level = ['error', 'warn', 'info', 'debug'].includes(entry.level) ? entry.level : 'info';
+    (jsonLogger as any)[level]({
+      event: entry.event,
+      source: entry.module || 'cockpit',
+      message: scrubString(entry.summary || entry.event),
+      ...(entry.details ? { details: scrubString(String(entry.details)) } : {}),
+      ...(entry.data && typeof entry.data === 'object' ? entry.data : {}),
+      moduleTimestamp: entry.timestamp,
+    });
+  });
+
   // Auto-updates are now handled by src/main/updates.ts
   initAutoUpdates(() => mainWindow);
 

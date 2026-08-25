@@ -60,6 +60,10 @@ export interface BulkServerEntry {
   clearExistingData?: boolean;
   /** Active Backup: split disks into storage + backup pool with ZFS replication (default: false) */
   splitPools?: boolean;
+  /** Clear partition tables and filesystem/ZFS/RAID signatures before creating pools (default: false) */
+  wipeDrives?: boolean;
+  /** Only "quick" is offered in bulk; a full erase would run for hours per server. */
+  wipeMode?: 'quick';
 }
 
 export interface BulkDiskInfo {
@@ -67,6 +71,14 @@ export interface BulkDiskInfo {
   availableDisks: BulkDisk[];
   /** Existing ZFS pools */
   existingPools: string[];
+  /** Disks withheld because they back the running OS, for display only */
+  excludedDisks?: BulkExcludedDisk[];
+}
+
+export interface BulkExcludedDisk {
+  name: string;
+  /** Why it was withheld, e.g. "holds /boot" */
+  reason: string;
 }
 
 export interface BulkDisk {
@@ -77,6 +89,14 @@ export interface BulkDisk {
   serial?: string;
   /** 45Drives vdev alias (e.g. "1-1") — used for /dev/disk/by-vdev/ paths in ZFS */
   alias?: string;
+  /** Partition children, matching the DriveSlot partitionCount that SSS gates its wipe on */
+  partitionCount?: number;
+  /** True when partitions, a filesystem, a ZFS label or a RAID superblock were found */
+  hasData?: boolean;
+  /** Human-readable list of what was found, e.g. "3 partitions, zfs_member" */
+  dataSummary?: string;
+  /** Carries an EFI System or BIOS boot partition but nothing is mounted from it */
+  bootRemnant?: boolean;
 }
 
 /** Full EasySetupConfig for the bulk setup JSON contract (custom mode) */
@@ -92,6 +112,10 @@ export interface BulkEasySetupConfig {
   sambaConfig?: BulkSambaConfig;
   /** If true, skip destruction of existing ZFS pools and Samba shares */
   skipClearExisting?: boolean;
+  /** If true, erase every configured drive before creating pools */
+  wipeDrives?: boolean;
+  /** Bulk only ever sends "quick"; the manager defaults to it anyway */
+  wipeMode?: 'quick' | 'full';
 }
 
 export interface BulkServerConfig {

@@ -1,18 +1,38 @@
 <template>
     <div class="w-full relative flex flex-col items-center justify-center" :class="wrapperClass">
-        <webview v-if="currentServer?.ip && ready" v-show="!loadingWebview" id="cockpitWebview" :src="currentUrl"
-            partition="persist:authSession"
+        <webview v-if="currentServer?.ip && ready" v-show="!loadingWebview && !connectionIssue" id="cockpitWebview"
+            :src="currentUrl" partition="persist:authSession"
             webpreferences="contextIsolation=true, nodeIntegration=false, enableRemoteModule=false" ref="webview"
             allowpopups :class="['w-full', heightClass]" @did-finish-load="onWebViewLoaded" />
 
-        <div v-if="loadingWebview"
+        <div v-if="loadingWebview && !connectionIssue"
             class="absolute inset-0 bg-default flex flex-col items-center justify-center w-full text-center rounded-lg">
             <p class="text-2xl text-center">Give us a few while we login…</p>
             <div class="spinner" />
         </div>
 
-        <div v-if="!currentServer?.ip && !loadingWebview" class="flex items-center justify-center text-muted w-full"
-            :class="heightClass">
+        <div v-else-if="connectionIssue"
+            class="absolute inset-0 bg-default flex flex-col items-center justify-center w-full text-center rounded-lg px-6">
+            <div class="max-w-md space-y-3">
+                <div v-if="!reconnectGaveUp" class="spinner mx-auto" />
+                <p class="text-2xl">
+                    {{ reconnectGaveUp ? 'Still waiting on the server' : 'Reconnecting…' }}
+                </p>
+                <p class="text-base text-default">{{ connectionIssue.message }}</p>
+                <p v-if="connectionIssue.hint" class="text-sm text-muted">{{ connectionIssue.hint }}</p>
+                <p v-if="!reconnectGaveUp" class="text-xs text-muted">
+                    <template v-if="retryCountdown > 0">Trying again in {{ retryCountdown }}s</template>
+                    <template v-else>Trying again now</template>
+                    — attempt {{ retryAttempt + 1 }} of {{ MAX_RETRY_ATTEMPTS }}
+                </p>
+                <button class="btn btn-primary h-fit" type="button" @click="retryNow">
+                    {{ reconnectGaveUp ? 'Try again' : 'Try now' }}
+                </button>
+            </div>
+        </div>
+
+        <div v-if="!currentServer?.ip && !loadingWebview && !connectionIssue"
+            class="flex items-center justify-center text-muted w-full" :class="heightClass">
             Select a server to load Cockpit.
         </div>
     </div>
@@ -26,6 +46,7 @@ import { currentServerInjectionKey } from '../keys/injection-keys'
 import { IPCRouter, IPCMessageRouterRenderer } from '@45drives/houston-common-lib'
 import { useHoustonWebview } from '../composables/useHoustonWebview'
 import { useServerCredentials } from '../composables/useServerCredentials'
+import { describeLoadError, failureLine, type ConnectivityFailure } from '../../shared/connectionErrors'
 
 const props = withDefaults(defineProps<{
     routePath?: string              // e.g. '/super-simple-setup' or '/scheduler-test'
@@ -61,6 +82,86 @@ const webview = ref<any>(null)
 const loadingWebview = ref(true)
 // Guard to prevent dark-mode sync feedback loops between client ↔ webview
 let suppressDarkSync = false
+
+// ── Reconnect handling ──────────────────────────────────────────────────
+// A server restart (updates, hostname change, reboot) makes Cockpit briefly
+// unreachable. Rather than dumping a Chromium error page and a stack of
+// console errors on the user, we show a "Reconnecting…" panel and retry.
+const RETRY_DELAYS_SEC = [2, 3, 5, 8, 10, 15]
+const MAX_RETRY_ATTEMPTS = 12
+
+const connectionIssue = ref<ConnectivityFailure | null>(null)
+const retryAttempt = ref(0)
+const retryCountdown = ref(0)
+const reconnectGaveUp = ref(false)
+let retryTimer: ReturnType<typeof setTimeout> | null = null
+let countdownTimer: ReturnType<typeof setInterval> | null = null
+// Set while the current navigation is known to have failed, so `dom-ready`
+// on the Chromium error page doesn't try to inject scripts into it.
+let navigationFailed = false
+
+const serverLabel = computed(
+    () => currentServer.value?.name || currentServer.value?.ip || 'the server'
+)
+
+function clearRetryTimers() {
+    if (retryTimer) { clearTimeout(retryTimer); retryTimer = null }
+    if (countdownTimer) { clearInterval(countdownTimer); countdownTimer = null }
+    retryCountdown.value = 0
+}
+
+function resetConnectionState() {
+    clearRetryTimers()
+    connectionIssue.value = null
+    retryAttempt.value = 0
+    reconnectGaveUp.value = false
+    navigationFailed = false
+}
+
+function reloadWebview() {
+    clearRetryTimers()
+    const wv = webview.value
+    if (!wv || !ready.value) return
+    navigationFailed = false
+    loadingWebview.value = true
+    try {
+        // The rejection here duplicates `did-fail-load`, which is where the
+        // retry decision is made — swallow it so it isn't reported twice.
+        wv.loadURL(currentUrl.value)?.catch?.(() => { })
+    } catch {
+        // The element can be torn down between the timer firing and this call.
+    }
+}
+
+function scheduleReconnect() {
+    clearRetryTimers()
+    const delay = RETRY_DELAYS_SEC[Math.min(retryAttempt.value, RETRY_DELAYS_SEC.length - 1)]
+    retryCountdown.value = delay
+    countdownTimer = setInterval(() => {
+        if (retryCountdown.value > 0) retryCountdown.value -= 1
+    }, 1000)
+    retryTimer = setTimeout(() => {
+        retryAttempt.value += 1
+        reloadWebview()
+    }, delay * 1000)
+}
+
+function retryNow() {
+    reconnectGaveUp.value = false
+    retryAttempt.value = 0
+    reloadWebview()
+}
+
+/**
+ * Run a script inside the webview without turning an expected teardown
+ * (server restart, navigation) into a user-visible error.
+ */
+function safeInject(wv: any, script: string, label: string) {
+    if (navigationFailed) return
+    wv.executeJavaScript(script).catch((err: any) => {
+        console.debug(`[CockpitWebview] ${label} skipped — page unavailable:`, err?.message || err)
+    })
+}
 
 // Request the ID synchronously before mount so first URL has it
 onBeforeMount(async () => {
@@ -114,24 +215,51 @@ webview.value?.addEventListener('console-message', (e: any) => {
 // The webview uses v-if so it may not exist at onMounted time.
 watch(webview, (wv) => {
     if (!wv) return
+    wv.addEventListener('did-start-loading', () => { navigationFailed = false })
     wv.addEventListener('did-fail-load', (e: any) => {
-        console.error('webview did-fail-load', e.errorCode, e.errorDescription, e.validatedURL)
+        // Sub-resource/iframe failures inside Cockpit shouldn't tear down the shell.
+        if (e.isMainFrame === false) return
+
+        const failure = describeLoadError(e.errorCode, serverLabel.value, e.errorDescription)
+        // -3 ABORTED just means a newer navigation replaced this one.
+        if (failure.kind === 'aborted') return
+
+        navigationFailed = true
         loadingWebview.value = false
+        connectionIssue.value = failure
+
+        if (failure.transient && retryAttempt.value < MAX_RETRY_ATTEMPTS) {
+            reconnectGaveUp.value = false
+            // One line when the outage starts; retries stay at debug so a
+            // 30-second reboot doesn't fill the log viewer with red rows.
+            if (retryAttempt.value === 0) {
+                console.warn(`[CockpitWebview] ${failureLine(failure)} Reconnecting automatically.`)
+            } else {
+                console.debug(`[CockpitWebview] reconnect attempt ${retryAttempt.value} failed (${failure.detail})`)
+            }
+            scheduleReconnect()
+            return
+        }
+
+        clearRetryTimers()
+        reconnectGaveUp.value = true
+        console.error(`[CockpitWebview] ${failureLine(failure)} (${failure.detail})`)
     })
     wv.addEventListener('dom-ready', () => {
         console.debug('cockpit webview dom-ready')
+        if (navigationFailed) return
         injectChromeCSS(wv)
         // Sync client dark mode into the webview's localStorage and fire
         // the custom event so useDarkModeState picks it up immediately.
         const darkStyle = dark.value ? 'dark' : 'light'
-        wv.executeJavaScript(`
+        safeInject(wv, `
             localStorage.setItem('shell:style', '${darkStyle}');
             window.dispatchEvent(new CustomEvent('cockpit-style', { detail: { style: '${darkStyle}' } }));
-        `).catch((err: any) => console.error('Dark mode sync failed:', err))
+        `, 'dark mode sync')
         // Inject a relay so dark mode changes made INSIDE the webview
         // (e.g. via the setup module's theme toggle) propagate back to the
         // client app.  Uses a tagged console.log picked up by console-message.
-        wv.executeJavaScript(`
+        safeInject(wv, `
           (function() {
             if (window.__darkModeRelayInstalled) return;
             window.__darkModeRelayInstalled = true;
@@ -142,13 +270,13 @@ watch(webview, (wv) => {
               }
             });
           })();
-        `).catch((err: any) => console.error('Dark mode relay injection failed:', err))
+        `, 'dark mode relay')
         // Inject a postMessage relay so scheduler iframe can request OAuth
         // and receive tokens back. The scheduler cannot call window.open()
         // from within its Cockpit iframe, so it posts a message upward.
         // The relay logs a tagged string which the console-message listener
         // on the Electron side picks up to open a real BrowserWindow via IPC.
-        wv.executeJavaScript(`
+        safeInject(wv, `
           (function() {
             if (window.__oauthRelayInstalled) return;
             window.__oauthRelayInstalled = true;
@@ -156,12 +284,25 @@ watch(webview, (wv) => {
               if (e.data && e.data.type === '45d-oauth-request' && e.data.url) {
                 console.log('__45D_OAUTH_REQUEST__:' + e.data.url);
               }
+              if (e.data && e.data.type === '45d-client-log' && e.data.entry) {
+                try { console.log('__45D_CLIENT_LOG__:' + JSON.stringify(e.data.entry)); } catch (err) {}
+              }
             });
           })();
-        `).catch((err: any) => console.error('OAuth relay injection failed:', err))
+        `, 'OAuth relay')
     })
     wv.addEventListener('console-message', async (e: any) => {
         const message = e.message || ''
+        // Structured activity relayed from the embedded Cockpit module (scheduler, setup, …)
+        if (typeof message === 'string' && message.startsWith('__45D_CLIENT_LOG__:')) {
+            try {
+                const entry = JSON.parse(message.slice('__45D_CLIENT_LOG__:'.length))
+                window.electron?.ipcRenderer.send('logs:module-event', entry)
+            } catch {
+                /* malformed payload from webview — drop it */
+            }
+            return
+        }
         // Handle dark mode changes relayed from inside the webview
         if (typeof message === 'string' && message.startsWith('__45D_DARK_MODE__:')) {
             const style = message.slice('__45D_DARK_MODE__:'.length)
@@ -227,6 +368,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+    clearRetryTimers()
     window.electron?.ipcRenderer.removeAllListeners?.('store-manual-creds')
     window.electron?.ipcRenderer.removeAllListeners?.('client-ip')
 })
@@ -234,6 +376,8 @@ onBeforeUnmount(() => {
 const { loginIntoCockpit, injectChromeCSS } = useHoustonWebview()
 
 const onWebViewLoaded = async () => {
+    // The page came back — drop any "Reconnecting…" state.
+    resetConnectionState()
     const view = webview.value
     if (view) {
         const routerRenderer = IPCRouter.getInstance() as IPCMessageRouterRenderer
@@ -295,6 +439,7 @@ watch(dark, (isDark) => {
 
 // When URL changes (server or flags), show loader again
 watch(currentUrl, (url) => {
+    resetConnectionState()
     loadingWebview.value = url !== 'about:blank'
 }, { immediate: true })
 

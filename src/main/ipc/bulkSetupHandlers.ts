@@ -4,7 +4,7 @@ import { NodeSSH } from 'node-ssh';
 import fs from 'fs';
 import path from 'path';
 import type { Logger } from 'winston';
-import { checkSSH, setupSshKey, runBootstrapScript, checkRemoteDeps, buildSshConnectOptions } from '../setupSsh';
+import { checkSSH, setupSshKey, runBootstrapScript, checkRemoteDeps, ensureHoustonPackages, buildSshConnectOptions } from '../setupSsh';
 import type { SshAuth } from '../setupSsh';
 import { getCredentialManager } from '../credentialManager';
 import { assertSafeHost, assertSafeUsername } from '../security';
@@ -18,6 +18,7 @@ import type {
   BulkSetupOptions,
   BulkDiskInfo,
   BulkDisk,
+  BulkExcludedDisk,
 } from '../../shared/bulkSetupTypes';
 
 interface BulkSetupContext {
@@ -67,6 +68,79 @@ function buildProbeAuth(srv: ProbeServer): SshAuth {
   };
 }
 
+/**
+ * Prints "<kernelName><TAB><reason>" for every whole disk the running OS depends on.
+ * Mirrors the systemDiskProbe guard inside EasySetupConfigurator so the client
+ * withholds exactly what the server would later refuse to touch. `lsblk -s` walks
+ * down through md/LVM/LUKS, so both halves of a mirrored boot device are reported.
+ */
+const SYSTEM_DISK_PROBE_CMD = `
+for mp in / /boot /boot/efi /usr /etc /var; do
+  src=$(findmnt -nvo SOURCE --target "$mp" 2>/dev/null | head -n1)
+  [ -n "$src" ] || continue
+  case "$src" in
+    /dev/*)
+      lsblk -nrso NAME,TYPE "$src" 2>/dev/null | awk -v m="$mp" '$2=="disk"{print $1 "\\t" "holds " m}'
+      ;;
+    *)
+      pool=\${src%%/*}
+      case "$pool" in ""|*[!A-Za-z0-9_.:-]*) continue ;; esac
+      zpool list -vHPL "$pool" 2>/dev/null | awk '$1 ~ /^\\/dev\\//{print $1}' | while read -r leaf; do
+        lsblk -nrso NAME,TYPE "$leaf" 2>/dev/null | awk -v m="$mp" -v p="$pool" '$2=="disk"{print $1 "\\t" "is in root pool " p " holding " m}'
+      done
+      ;;
+  esac
+done
+if [ -r /proc/swaps ]; then
+  awk 'NR>1 && $1 ~ /^\\/dev\\//{print $1}' /proc/swaps | while read -r s; do
+    lsblk -nrso NAME,TYPE "$s" 2>/dev/null | awk '$2=="disk"{print $1 "\\t" "holds active swap"}'
+  done
+fi
+`;
+
+/** GPT EFI System Partition and BIOS boot partition type GUIDs, plus the MBR EFI type. */
+const BOOT_PARTTYPES = new Set([
+  'c12a7328-f81f-11d2-ba4b-00a0c93ec93b',
+  '21686148-6449-6e6f-744e-656564454649',
+  '0xef',
+]);
+
+/** lsblk emits ROTA as a JSON string on util-linux < 2.38 and a real boolean after. */
+function diskType(d: any): BulkDisk['type'] {
+  if (String(d.name).startsWith('nvme')) return 'NVMe';
+  if (d.rota === true || d.rota === '1' || d.rota === 1) return 'HDD';
+  if (d.rota === false || d.rota === '0' || d.rota === 0) return 'SSD';
+  return 'unknown';
+}
+
+/** Partition count, on-disk signatures and boot remnants, matching what SSS gates its wipe on. */
+function describeDiskContents(d: any): Pick<BulkDisk, 'partitionCount' | 'hasData' | 'dataSummary' | 'bootRemnant'> {
+  const children: any[] = Array.isArray(d.children) ? d.children : [];
+  const partitions = children.filter((c) => c.type === 'part');
+
+  const signatures = [d, ...children]
+    .map((node) => (node.fstype || '').trim())
+    .filter(Boolean);
+  const uniqueSignatures = [...new Set(signatures)];
+
+  const bootRemnant = partitions.some((p) =>
+    BOOT_PARTTYPES.has((p.parttype || '').trim().toLowerCase())
+  );
+
+  const parts: string[] = [];
+  if (partitions.length > 0) {
+    parts.push(`${partitions.length} partition${partitions.length === 1 ? '' : 's'}`);
+  }
+  if (uniqueSignatures.length > 0) parts.push(uniqueSignatures.join(', '));
+
+  return {
+    partitionCount: partitions.length,
+    hasData: partitions.length > 0 || uniqueSignatures.length > 0,
+    dataSummary: parts.join(' — ') || undefined,
+    bootRemnant: bootRemnant || undefined,
+  };
+}
+
 async function probeServerDisks(srv: ProbeServer): Promise<BulkDiskInfo> {
   const ssh = new NodeSSH();
 
@@ -81,9 +155,10 @@ async function probeServerDisks(srv: ProbeServer): Promise<BulkDiskInfo> {
     const vdevFullPaths = (vdevResult.code === 0 ? vdevResult.stdout.trim().split('\n').filter(Boolean) : []);
     const hasVdevConf = vdevFullPaths.length > 0;
 
-    // Get all block devices with details
+    // Children are included (no -d) so partitions, filesystem signatures and ESP
+    // remnants are visible, matching the DriveSlot data SSS gates its wipe on.
     const lsblkResult = await ssh.execCommand(
-      'lsblk -J -d -o NAME,SIZE,TYPE,MODEL,SERIAL,ROTA -e 1,7,11,253'
+      'lsblk -J -o NAME,SIZE,TYPE,MODEL,SERIAL,ROTA,FSTYPE,PARTTYPE,MOUNTPOINT -e 1,7,11,253'
     );
 
     // Resolve vdev_id.conf paths to device names + capture alias mapping
@@ -115,54 +190,60 @@ async function probeServerDisks(srv: ProbeServer): Promise<BulkDiskInfo> {
       }
     }
 
-    // Strategy 2 (fallback): Identify boot/OS disks by mounted root/boot/swap
-    let bootDiskNames = new Set<string>();
-    if (!hasVdevConf) {
-      const bootDiskResult = await ssh.execCommand(
-        "lsblk -n -o PKNAME,MOUNTPOINT -e 1,7,11,253 2>/dev/null | awk '$2 ~ /^\\/(boot)?$|\\[SWAP\\]/ {print $1}' | sort -u"
-      );
-      bootDiskNames = new Set(
-        bootDiskResult.code === 0 ? bootDiskResult.stdout.trim().split('\n').filter(Boolean) : []
-      );
+    // Applied to both strategies: vdev_id.conf alone never proves a slot is unused.
+    const systemDiskResult = await ssh.execCommand(SYSTEM_DISK_PROBE_CMD);
+    const systemDisks = new Map<string, string>();
+    if (systemDiskResult.code === 0) {
+      for (const line of systemDiskResult.stdout.trim().split('\n')) {
+        const [name, reason] = line.split('\t');
+        if (name && reason && !systemDisks.has(name.trim())) {
+          systemDisks.set(name.trim(), reason.trim());
+        }
+      }
     }
 
     let availableDisks: BulkDisk[] = [];
+    const excludedDisks: BulkExcludedDisk[] = [];
     if (lsblkResult.code === 0) {
       try {
         const parsed = JSON.parse(lsblkResult.stdout);
         const blockdevices = parsed.blockdevices || [];
 
+        // Candidates are slot-aliased drives on 45Drives hardware, everything else otherwise
+        const candidates = blockdevices.filter(
+          (d: any) => d.type === 'disk' && (!hasVdevConf || aliasedDevNames.has(d.name))
+        );
+
+        for (const d of candidates) {
+          const systemReason = systemDisks.get(d.name);
+          if (systemReason) {
+            excludedDisks.push({ name: d.name, reason: systemReason });
+            continue;
+          }
+          availableDisks.push({
+            name: d.name,
+            size: d.size,
+            type: diskType(d),
+            model: d.model?.trim() || undefined,
+            serial: d.serial?.trim() || undefined,
+            alias: hasVdevConf ? devToAlias[d.name] || undefined : undefined,
+            ...describeDiskContents(d),
+          });
+        }
+
         if (hasVdevConf) {
-          // 45Drives hardware: only include drives that are in aliased storage slots
-          availableDisks = blockdevices
-            .filter((d: any) => d.type === 'disk' && aliasedDevNames.has(d.name))
-            .map((d: any) => ({
-              name: d.name,
-              size: d.size,
-              type: d.rota === '0' ? 'SSD' : d.name.startsWith('nvme') ? 'NVMe' : 'HDD',
-              model: d.model?.trim() || undefined,
-              serial: d.serial?.trim() || undefined,
-              alias: devToAlias[d.name] || undefined,
-            }));
           // Sort by alias numerically (e.g. 1-1, 1-2, 1-3, 1-4, 2-1, 2-2, 2-3)
           availableDisks.sort((a, b) => {
             const pa = (a.alias || '').split('-').map(Number);
             const pb = (b.alias || '').split('-').map(Number);
             return (pa[0]! - pb[0]!) || (pa[1]! - pb[1]!);
           });
-        } else {
-          // Non-45Drives: include all disks except boot/OS
-          availableDisks = blockdevices
-            .filter((d: any) => d.type === 'disk' && !bootDiskNames.has(d.name))
-            .map((d: any) => ({
-              name: d.name,
-              size: d.size,
-              type: d.rota === '0' ? 'SSD' : d.name.startsWith('nvme') ? 'NVMe' : 'HDD',
-              model: d.model?.trim() || undefined,
-              serial: d.serial?.trim() || undefined,
-            }));
         }
       } catch { /* ignore parse errors */ }
+    }
+
+    if (excludedDisks.length > 0) {
+      console.warn(`[BulkSetup] ${srv.host}: withheld system disks:`, excludedDisks);
     }
 
     // Get existing ZFS pools
@@ -171,7 +252,7 @@ async function probeServerDisks(srv: ProbeServer): Promise<BulkDiskInfo> {
       ? zpoolResult.stdout.trim().split('\n').filter(Boolean)
       : [];
 
-    return { availableDisks, existingPools };
+    return { availableDisks, existingPools, excludedDisks };
   } finally {
     ssh.dispose();
   }
@@ -324,19 +405,32 @@ async function bootstrapServer(
   });
 
   let needsBootstrap = true;
+  let houstonMissing: string[] = [];
   try {
     const depCheck = await checkRemoteDeps(host, username, privateKeyPath);
+    needsBootstrap = depCheck.baseMissing.length > 0;
+    houstonMissing = depCheck.houstonMissing;
     if (depCheck.missing.length === 0) {
-      needsBootstrap = false;
+      emitProgress(ctx, {
+        host, status: 'bootstrapping', step: 3, totalSteps: 10,
+        label: 'All dependencies already installed.',
+      });
+      return { success: true, reboot: false };
     }
   } catch { /* run bootstrap anyway */ }
 
   if (signal.aborted) return { success: false, reboot: false, error: 'Cancelled' };
 
+  // Base OS is fine — only 45Drives packages are missing, so skip the heavy bootstrap.
   if (!needsBootstrap) {
     emitProgress(ctx, {
-      host, status: 'bootstrapping', step: 3, totalSteps: 10,
-      label: 'All dependencies already installed.',
+      host, status: 'bootstrapping', step: 2, totalSteps: 10,
+      label: `Installing 45Drives packages: ${houstonMissing.join(', ')}...`,
+    });
+    await ensureHoustonPackages(host, username, privateKeyPath, entry.password, houstonMissing, (line) => {
+      if (/^\[(INFO|WARN|ERROR)/.test(line)) {
+        emitProgress(ctx, { host, status: 'bootstrapping', step: 2, totalSteps: 10, label: line });
+      }
     });
     return { success: true, reboot: false };
   }
@@ -355,6 +449,22 @@ async function bootstrapServer(
       });
     }
   });
+
+  // Bootstrap may predate some 45Drives packages; make sure the full suite is present.
+  try {
+    const after = await checkRemoteDeps(host, username, privateKeyPath);
+    if (after.houstonMissing.length > 0) {
+      emitProgress(ctx, {
+        host, status: 'bootstrapping', step: 2, totalSteps: 10,
+        label: `Installing 45Drives packages: ${after.houstonMissing.join(', ')}...`,
+      });
+      await ensureHoustonPackages(host, username, privateKeyPath, entry.password, after.houstonMissing, (line) => {
+        if (/^\[(INFO|WARN|ERROR)/.test(line)) {
+          emitProgress(ctx, { host, status: 'bootstrapping', step: 2, totalSteps: 10, label: line });
+        }
+      });
+    }
+  } catch { /* non-fatal — bootstrap already succeeded */ }
 
   return { success: true, reboot };
 }
@@ -402,9 +512,12 @@ async function runSetupOnServer(
 
     if (signal.aborted) return { success: false, error: 'Cancelled' };
 
+    // The optional drive wipe adds a step to the configurator's pipeline.
+    const totalConfigureSteps = entry.wipeDrives ? 11 : 10;
+
     // Execute setup — pipe config via stdin
     emitProgress(ctx, {
-      host, status: 'configuring', step: 4, totalSteps: 10,
+      host, status: 'configuring', step: 4, totalSteps: totalConfigureSteps,
       label: 'Running server setup...',
     });
 
@@ -423,7 +536,7 @@ async function runSetupOnServer(
                   host,
                   status: progress.done ? 'done' : 'configuring',
                   step: Math.max(progress.step, 3), // offset from bootstrap steps
-                  totalSteps: progress.total || 10,
+                  totalSteps: progress.total || totalConfigureSteps,
                   label: progress.message || '',
                   hostnameChanged: progress.hostnameChanged || undefined,
                 });
@@ -575,6 +688,8 @@ function buildEasySetupConfig(entry: BulkServerEntry): Record<string, any> {
     cfg.smbUser = cfg.smbUser || entry.smbUser;
     cfg.smbPass = cfg.smbPass || entry.smbPass;
     cfg.skipClearExisting = !entry.clearExistingData;
+    cfg.wipeDrives = entry.wipeDrives === true;
+    cfg.wipeMode = 'quick';
 
     // Ensure serverConfig has adminUser/adminPass from SSH creds if not set
     if (cfg.serverConfig) {
@@ -668,6 +783,8 @@ function buildEasySetupConfig(entry: BulkServerEntry): Record<string, any> {
     smbPass: entry.smbPass,
     splitPools: useSplitPools,
     skipClearExisting: !entry.clearExistingData,
+    wipeDrives: entry.wipeDrives === true,
+    wipeMode: 'quick',
     zfsConfigs: [
       {
         pool: {

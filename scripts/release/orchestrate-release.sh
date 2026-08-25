@@ -86,6 +86,7 @@ RUNTIME_OVERRIDE_KEYS=(
   RUN_WINDOWS_BUILD
   WIN_PHASE
   MAC_BUILD_KIND
+  MAC_PHASE
   RELEASE_VERSION
   RELEASE_TAG
   RELEASE_STAGING_DIR
@@ -96,6 +97,7 @@ RUNTIME_OVERRIDE_KEYS=(
   GH_TITLE
   GH_TAG_MESSAGE
   GH_NOTES
+  PARALLEL_BUILDS
 )
 declare -A RUNTIME_OVERRIDES=()
 for _k in "${RUNTIME_OVERRIDE_KEYS[@]}"; do
@@ -140,6 +142,13 @@ WIN_BUILD_NO_SIGN_PREFIX="${WIN_BUILD_NO_SIGN_PREFIX:-set CSC_IDENTITY_AUTO_DISC
 WIN_BUILD_NO_SIGN_PREFIX_POSIX="${WIN_BUILD_NO_SIGN_PREFIX_POSIX:-CSC_IDENTITY_AUTO_DISCOVERY=false CSC_LINK= CSC_KEY_PASSWORD= WIN_CSC_LINK= WIN_CSC_KEY_PASSWORD= CSC_NAME= WIN_CSC_NAME= }"
 
 WIN_SIGN_WIN_DIR="${WIN_SIGN_WIN_DIR:-}"
+
+# Samba build mode vars
+WIN_SAMBA_LOCAL_DIR="${WIN_SAMBA_LOCAL_DIR:-}"
+WIN_SAMBA_UNSIGNED_WIN="${WIN_SAMBA_UNSIGNED_WIN:-J:\\Signing\\Unsigned}"
+WIN_SAMBA_SIGNED_WIN="${WIN_SAMBA_SIGNED_WIN:-J:\\Signing\\Signed}"
+WIN_SAMBA_UNSIGNED_LOCAL="${WIN_SAMBA_UNSIGNED_LOCAL:-}"
+WIN_SAMBA_SIGNED_LOCAL="${WIN_SAMBA_SIGNED_LOCAL:-}"
 
 truthy() {
   local v="${1:-}"
@@ -326,10 +335,14 @@ generate_update_metadata() {
   if [[ "${#linux_rpms[@]}" -eq 0 ]]; then
     mapfile -t linux_rpms < <(find "$STAGING_DIR/linux" -maxdepth 2 -type f -name "*linux*.rpm" | sort)
   fi
-  if [[ "${#linux_debs[@]}" -gt 0 || "${#linux_rpms[@]}" -gt 0 ]]; then
+  mapfile -t linux_appimages < <(find "$STAGING_DIR/linux" -maxdepth 2 -type f -name "*${VERSION}*linux*.AppImage" | sort)
+  if [[ "${#linux_appimages[@]}" -eq 0 ]]; then
+    mapfile -t linux_appimages < <(find "$STAGING_DIR/linux" -maxdepth 2 -type f -name "*linux*.AppImage" | sort)
+  fi
+  if [[ "${#linux_debs[@]}" -gt 0 || "${#linux_rpms[@]}" -gt 0 || "${#linux_appimages[@]}" -gt 0 ]]; then
     output="$STAGING_DIR/linux/latest-linux.yml"
     linux_gen=(node "$ROOT_DIR/scripts/release/generate-update-yml.mjs" --version "$VERSION" --output "$output")
-    for f in "${linux_debs[@]}" "${linux_rpms[@]}"; do
+    for f in "${linux_debs[@]}" "${linux_rpms[@]}" "${linux_appimages[@]}"; do
       linux_gen+=(--file "$f")
     done
     "${linux_gen[@]}"
@@ -342,13 +355,36 @@ echo "Release tag: $RELEASE_TAG"
 echo "Staging dir: $STAGING_DIR"
 echo "Release builds dir: $RELEASE_BUILDS_DIR"
 
-if truthy "${RUN_LINUX_BUILD:-1}"; then
+# ---------------------------------------------------------------------------
+# Conditional yarn install: skip if yarn.lock + package.json haven't changed
+# ---------------------------------------------------------------------------
+conditional_yarn_install() {
+  local lock_hash hash_cache
+  lock_hash="$(sha256sum yarn.lock package.json 2>/dev/null | sha256sum | cut -d' ' -f1)"
+  hash_cache="node_modules/.yarn-install-hash"
+  if [[ -f "$hash_cache" ]] && [[ "$(cat "$hash_cache" 2>/dev/null)" == "$lock_hash" ]]; then
+    echo "Dependencies unchanged, skipping yarn install."
+  else
+    echo "Running yarn install..."
+    yarn install --frozen-lockfile
+    printf '%s' "$lock_hash" > "$hash_cache"
+  fi
+}
+
+# ---------------------------------------------------------------------------
+# Build functions (can be run in parallel)
+# ---------------------------------------------------------------------------
+
+run_linux_build() {
+  if ! truthy "${RUN_LINUX_BUILD:-1}"; then
+    return 0
+  fi
   echo "== Linux build =="
   LINUX_CLEAN_OUTPUTS="${LINUX_CLEAN_OUTPUTS:-1}"
 
   if truthy "$LINUX_CLEAN_OUTPUTS"; then
     shopt -s nullglob
-    stale_dist_linux=(dist/*-linux-*.deb dist/*-linux-*.rpm)
+    stale_dist_linux=(dist/*-linux-*.deb dist/*-linux-*.rpm dist/*-linux-*.AppImage)
     if [[ "${#stale_dist_linux[@]}" -gt 0 ]]; then
       rm -f -- "${stale_dist_linux[@]}"
     fi
@@ -357,17 +393,18 @@ if truthy "${RUN_LINUX_BUILD:-1}"; then
 
   LINUX_GIT_PULL_CMD="${LINUX_GIT_PULL_CMD:-git pull --ff-only}"
   bash -lc "$LINUX_GIT_PULL_CMD"
+  conditional_yarn_install
   LINUX_BUILD_CMD="${LINUX_BUILD_CMD:-yarn build:linux}"
   bash -lc "$LINUX_BUILD_CMD"
 
   if truthy "$LINUX_CLEAN_OUTPUTS"; then
     shopt -s nullglob
-    stale_staging_linux=("$STAGING_DIR/linux/"*.deb "$STAGING_DIR/linux/"*.rpm)
+    stale_staging_linux=("$STAGING_DIR/linux/"*.deb "$STAGING_DIR/linux/"*.rpm "$STAGING_DIR/linux/"*.AppImage)
     if [[ "${#stale_staging_linux[@]}" -gt 0 ]]; then
       rm -f -- "${stale_staging_linux[@]}"
     fi
     if [[ "$RELEASE_BUILDS_DIR" != "$STAGING_DIR" ]]; then
-      stale_release_linux=("$RELEASE_BUILDS_DIR/"*-linux-*.deb "$RELEASE_BUILDS_DIR/"*-linux-*.rpm)
+      stale_release_linux=("$RELEASE_BUILDS_DIR/"*-linux-*.deb "$RELEASE_BUILDS_DIR/"*-linux-*.rpm "$RELEASE_BUILDS_DIR/"*-linux-*.AppImage)
       if [[ "${#stale_release_linux[@]}" -gt 0 ]]; then
         rm -f -- "${stale_release_linux[@]}"
       fi
@@ -376,9 +413,9 @@ if truthy "${RUN_LINUX_BUILD:-1}"; then
   fi
 
   shopt -s nullglob
-  linux_artifacts=(dist/*"${VERSION}"*-linux-*.deb dist/*"${VERSION}"*-linux-*.rpm)
+  linux_artifacts=(dist/*"${VERSION}"*-linux-*.deb dist/*"${VERSION}"*-linux-*.rpm dist/*"${VERSION}"*-linux-*.AppImage)
   if [[ "${#linux_artifacts[@]}" -eq 0 ]]; then
-    linux_artifacts=(dist/*-linux-*.deb dist/*-linux-*.rpm)
+    linux_artifacts=(dist/*-linux-*.deb dist/*-linux-*.rpm dist/*-linux-*.AppImage)
   fi
   if [[ "${#linux_artifacts[@]}" -eq 0 ]]; then
     echo "No Linux artifacts found in dist/" >&2
@@ -387,7 +424,7 @@ if truthy "${RUN_LINUX_BUILD:-1}"; then
   cp -f "${linux_artifacts[@]}" "$STAGING_DIR/linux/"
   copy_to_release_builds "${linux_artifacts[@]}"
   shopt -u nullglob
-fi
+}
 
 run_windows_flow() {
   if ! truthy "${RUN_WINDOWS_BUILD:-1}"; then
@@ -409,7 +446,6 @@ run_windows_flow() {
 
   : "${WIN_BUILD_HOST:?WIN_BUILD_HOST is required when RUN_WINDOWS_BUILD=1}"
   : "${WIN_BUILD_USER:?WIN_BUILD_USER is required when RUN_WINDOWS_BUILD=1}"
-  : "${WIN_SIGN_WIN_DIR:?WIN_SIGN_WIN_DIR is required when RUN_WINDOWS_BUILD=1}"
 
   if [[ "$WIN_PHASE" == "stage" ]] && (truthy "${GH_UPLOAD_RELEASE:-0}" || truthy "${GH_PUBLISH_RELEASE:-0}"); then
     echo "WIN_PHASE=stage cannot run with GH upload/publish enabled." >&2
@@ -417,7 +453,7 @@ run_windows_flow() {
     exit 1
   fi
 
-  WIN_BUILD_MODE="${WIN_BUILD_MODE:-git}" # git | rsync
+  WIN_BUILD_MODE="${WIN_BUILD_MODE:-git}" # git | rsync | samba
   WIN_BUILD_GIT_PULL_CMD="${WIN_BUILD_GIT_PULL_CMD:-cd ${WIN_BUILD_REMOTE_DIR} && git pull --ff-only}"
   WIN_BUILD_CMD="${WIN_BUILD_CMD:-cd ${WIN_BUILD_REMOTE_DIR} && yarn install && yarn build:win}"
   WIN_BUILD_EXE_GLOB="${WIN_BUILD_EXE_GLOB:-${WIN_BUILD_REMOTE_DIR}/dist/*-win-*.exe}"
@@ -427,8 +463,127 @@ run_windows_flow() {
 
   mkdir -p "$STAGING_DIR/windows/unsigned" "$STAGING_DIR/windows/signed"
 
+  # ---- Samba build mode ----
+  if [[ "$WIN_BUILD_MODE" == "samba" ]]; then
+    : "${WIN_SAMBA_LOCAL_DIR:?WIN_SAMBA_LOCAL_DIR is required when WIN_BUILD_MODE=samba}"
+    # Derive Unsigned/Signed local paths from the samba mount if not explicitly set
+    WIN_SAMBA_UNSIGNED_LOCAL="${WIN_SAMBA_UNSIGNED_LOCAL:-${WIN_SAMBA_LOCAL_DIR%/}/Unsigned}"
+    WIN_SAMBA_SIGNED_LOCAL="${WIN_SAMBA_SIGNED_LOCAL:-${WIN_SAMBA_LOCAL_DIR%/}/Signed}"
+
+    if [[ "$WIN_PHASE" != "finalize" ]]; then
+      # Clean stale unsigned files before a new stage run (preserve Signed directory)
+      # Only delete files matching this build name.
+      find "$WIN_SAMBA_UNSIGNED_LOCAL" -maxdepth 1 -type f -name "${WIN_SAMBA_UNSIGNED_CLEAN_GLOB:-45Drives-Storage-Wizard-*.exe}" -delete 2>/dev/null || true
+
+      # SSH: git pull
+      ssh_run "$WIN_BUILD_HOST" "$WIN_BUILD_USER" "${WIN_BUILD_PASSWORD:-}" "$WIN_BUILD_PORT" "$WIN_BUILD_GIT_PULL_CMD"
+
+      # SSH: clean old exe files from dist
+      WIN_CLEAN_OUTPUTS="${WIN_CLEAN_OUTPUTS:-1}"
+      if truthy "$WIN_CLEAN_OUTPUTS"; then
+        echo "Cleaning old Windows exe files from dist directory..."
+        ssh_run "$WIN_BUILD_HOST" "$WIN_BUILD_USER" "${WIN_BUILD_PASSWORD:-}" "$WIN_BUILD_PORT" \
+          "powershell -NoProfile -Command \"if (Test-Path '${WIN_BUILD_DIST_DIR_WIN}') { Get-ChildItem -Path '${WIN_BUILD_DIST_DIR_WIN}' -Filter *.exe -File | Remove-Item -Force }\""
+      fi
+
+      # SSH: build
+      WIN_BUILD_CMD_EFFECTIVE="$WIN_BUILD_CMD"
+      if truthy "${WIN_BUILD_DISABLE_SIGN:-1}"; then
+        if [[ "$WIN_BUILD_CMD" =~ ^[[:space:]]*cmd\.exe[[:space:]]+/c[[:space:]]+\"(.*)\"[[:space:]]*$ ]]; then
+          WIN_BUILD_CMD_INNER="${BASH_REMATCH[1]}"
+          WIN_BUILD_CMD_EFFECTIVE="cmd.exe /c \"${WIN_BUILD_NO_SIGN_PREFIX}${WIN_BUILD_CMD_INNER}\""
+        else
+          WIN_BUILD_CMD_EFFECTIVE="${WIN_BUILD_NO_SIGN_PREFIX_POSIX}${WIN_BUILD_CMD}"
+        fi
+      fi
+      ssh_run "$WIN_BUILD_HOST" "$WIN_BUILD_USER" "${WIN_BUILD_PASSWORD:-}" "$WIN_BUILD_PORT" "$WIN_BUILD_CMD_EFFECTIVE"
+
+      # SSH: find the built exe and copy it to the samba Unsigned folder on Windows
+      WIN_UNSIGNED_EXE_REMOTE_WIN="$(ssh_run "$WIN_BUILD_HOST" "$WIN_BUILD_USER" "${WIN_BUILD_PASSWORD:-}" "$WIN_BUILD_PORT" \
+        "powershell -NoProfile -Command \"\$f = Get-ChildItem -LiteralPath '${WIN_BUILD_DIST_DIR_WIN}' -Filter *.exe -File | Sort-Object LastWriteTime -Descending | Select-Object -First 1; if (-not \$f) { Write-Error 'No unsigned Windows EXE found'; exit 44 }; Write-Output \$f.FullName\"")"
+      WIN_UNSIGNED_EXE_REMOTE_WIN="$(printf '%s' "$WIN_UNSIGNED_EXE_REMOTE_WIN" | tr -d '\r')"
+      WIN_SIGN_BASENAME="$(printf '%s' "$WIN_UNSIGNED_EXE_REMOTE_WIN" | sed -E 's#.*[\\/]##')"
+
+      # SCP: pull unsigned exe from Windows dist to local samba Unsigned folder
+      mkdir -p "$WIN_SAMBA_UNSIGNED_LOCAL"
+      WIN_UNSIGNED_EXE_REMOTE_POSIX="${WIN_UNSIGNED_EXE_REMOTE_WIN//\\//}"
+      scp_from_file "$WIN_BUILD_HOST" "$WIN_BUILD_USER" "${WIN_BUILD_PASSWORD:-}" "$WIN_BUILD_PORT" "$WIN_UNSIGNED_EXE_REMOTE_POSIX" "${WIN_SAMBA_UNSIGNED_LOCAL}/${WIN_SIGN_BASENAME}"
+
+      echo ""
+      echo "Unsigned EXE pulled to samba share via SCP."
+      echo "  Windows source: ${WIN_UNSIGNED_EXE_REMOTE_WIN}"
+      echo "  Linux path:     ${WIN_SAMBA_UNSIGNED_LOCAL}/${WIN_SIGN_BASENAME}"
+      echo "  Windows path:   ${WIN_SAMBA_UNSIGNED_WIN}\\${WIN_SIGN_BASENAME}"
+    fi
+
+    if [[ "$WIN_PHASE" == "stage" ]]; then
+      echo ""
+      echo "Windows stage complete."
+      echo "Sign the EXE manually on Windows, then place the signed file in:"
+      echo "  Windows: ${WIN_SAMBA_SIGNED_WIN}"
+      echo "  Linux:   ${WIN_SAMBA_SIGNED_LOCAL}"
+      echo ""
+      echo "Resume command:"
+      echo "  WIN_PHASE=finalize bash scripts/release/orchestrate-release.sh '${ENV_FILE}'"
+      return 0
+    fi
+
+    # ---- Finalize: read signed exe from samba mount (local filesystem) ----
+    if [[ "$WIN_PHASE" != "stage" ]]; then
+      echo "Reading signed artifacts from samba mount: ${WIN_SAMBA_SIGNED_LOCAL}"
+      shopt -s nullglob
+      signed_exes=("${WIN_SAMBA_SIGNED_LOCAL}/"*.exe)
+      shopt -u nullglob
+      if [[ "${#signed_exes[@]}" -eq 0 ]]; then
+        echo "No signed Windows EXE found in ${WIN_SAMBA_SIGNED_LOCAL}" >&2
+        echo "Expected to find the signed .exe in that directory." >&2
+        exit 1
+      fi
+      # Pick the most recently modified exe
+      WIN_SIGNED_EXE="$(ls -1t "${signed_exes[@]}" | head -n1)"
+      WIN_PRIMARY_EXE_NAME="$(basename "$WIN_SIGNED_EXE")"
+      WIN_PRIMARY_EXE_LOCAL="$STAGING_DIR/windows/signed/${WIN_PRIMARY_EXE_NAME}"
+      cp -f "$WIN_SIGNED_EXE" "$WIN_PRIMARY_EXE_LOCAL"
+      WIN_PRIMARY_EXE="$WIN_PRIMARY_EXE_LOCAL"
+      echo "Copied signed EXE: ${WIN_PRIMARY_EXE_NAME}"
+
+      # Check for blockmap
+      WIN_PRIMARY_BLOCKMAP=""
+      if [[ -f "${WIN_SIGNED_EXE}.blockmap" ]]; then
+        WIN_PRIMARY_BLOCKMAP="$STAGING_DIR/windows/signed/${WIN_PRIMARY_EXE_NAME}.blockmap"
+        cp -f "${WIN_SIGNED_EXE}.blockmap" "$WIN_PRIMARY_BLOCKMAP"
+        echo "Copied blockmap: ${WIN_PRIMARY_EXE_NAME}.blockmap"
+      fi
+
+      # Clean up samba Signed folder after copying
+      rm -f "$WIN_SIGNED_EXE" "${WIN_SIGNED_EXE}.blockmap" 2>/dev/null || true
+
+      yarn release:gen-yml \
+        --version "$VERSION" \
+        --output "$STAGING_DIR/windows/latest.yml" \
+        --file "$WIN_PRIMARY_EXE"
+      copy_to_release_builds "$WIN_PRIMARY_EXE"
+      if [[ -n "${WIN_PRIMARY_BLOCKMAP:-}" ]]; then
+        copy_to_release_builds "$WIN_PRIMARY_BLOCKMAP"
+      fi
+      copy_to_release_builds "$STAGING_DIR/windows/latest.yml"
+    fi
+    return
+  fi
+
+  # ---- Legacy SSH-only build modes (git / rsync) ----
+  : "${WIN_SIGN_WIN_DIR:?WIN_SIGN_WIN_DIR is required when WIN_BUILD_MODE is git or rsync}"
+
   if [[ "$WIN_PHASE" != "finalize" ]]; then
     ssh_run "$WIN_BUILD_HOST" "$WIN_BUILD_USER" "${WIN_BUILD_PASSWORD:-}" "$WIN_BUILD_PORT" "$WIN_BUILD_GIT_PULL_CMD"
+
+    # Clean old Windows exe files from dist directory before building
+    WIN_CLEAN_OUTPUTS="${WIN_CLEAN_OUTPUTS:-1}"
+    if truthy "$WIN_CLEAN_OUTPUTS"; then
+      echo "Cleaning old Windows exe files from dist directory..."
+      ssh_run "$WIN_BUILD_HOST" "$WIN_BUILD_USER" "${WIN_BUILD_PASSWORD:-}" "$WIN_BUILD_PORT" \
+        "powershell -NoProfile -Command \"if (Test-Path '${WIN_BUILD_DIST_DIR_WIN}') { Get-ChildItem -Path '${WIN_BUILD_DIST_DIR_WIN}' -Filter *.exe -File | Remove-Item -Force }\""
+    fi
 
     if [[ "$WIN_BUILD_MODE" == "rsync" ]]; then
       if [[ -n "${WIN_BUILD_PREPARE_CMD:-}" ]]; then
@@ -467,7 +622,7 @@ run_windows_flow() {
     echo "Expected input path: ${WIN_SIGN_INPUT_WIN}"
     echo "Resume command:"
     echo "  WIN_PHASE=finalize bash scripts/release/orchestrate-release.sh '${ENV_FILE}'"
-    exit 0
+    return 0
   fi
 
   if [[ "$WIN_PHASE" != "stage" ]]; then
@@ -508,7 +663,10 @@ run_windows_flow() {
   fi
 }
 
-if truthy "${RUN_MAC_BUILD:-1}"; then
+run_mac_build() {
+  if ! truthy "${RUN_MAC_BUILD:-1}"; then
+    return 0
+  fi
   echo "== macOS build/sign/notarize =="
   : "${MAC_ARM_HOST:?MAC_ARM_HOST is required when RUN_MAC_BUILD=1}"
   : "${MAC_ARM_USER:?MAC_ARM_USER is required when RUN_MAC_BUILD=1}"
@@ -516,6 +674,14 @@ if truthy "${RUN_MAC_BUILD:-1}"; then
 
   MAC_ARM_PORT="${MAC_ARM_PORT:-22}"
   MAC_BUILD_KIND_REQUESTED="${MAC_BUILD_KIND:-universal}"
+  MAC_PHASE="${MAC_PHASE:-full}"
+  case "$MAC_PHASE" in
+    full|sign) ;;
+    *)
+      echo "MAC_PHASE must be one of: full, sign (got '$MAC_PHASE')" >&2
+      exit 1
+      ;;
+  esac
   MAC_RELEASE_ENV_LOCAL="${MAC_RELEASE_ENV_LOCAL:-}"
   MAC_RELEASE_ENV_REMOTE="${MAC_RELEASE_ENV_REMOTE:-${MAC_ARM_REPO_DIR}/scripts/.env.release}"
   MAC_ARM_GIT_PULL_CMD="${MAC_ARM_GIT_PULL_CMD:-cd '${MAC_ARM_REPO_DIR}' && git pull --ff-only}"
@@ -525,6 +691,9 @@ if truthy "${RUN_MAC_BUILD:-1}"; then
   MAC_FETCH_PASSWORD="${MAC_FETCH_PASSWORD:-${MAC_ARM_PASSWORD:-}}"
   MAC_FETCH_DIR_TEMPLATE="${MAC_FETCH_DIR:-}"
   MAC_FETCH_PRE_CLEAN="${MAC_FETCH_PRE_CLEAN:-1}"
+  # MAC_FETCH_CLEANUP_OLD="${MAC_FETCH_CLEANUP_OLD:-1}"
+  # MAC_FETCH_KEEP_COUNT="${MAC_FETCH_KEEP_COUNT:-20}"
+  # MAC_FETCH_CLEANUP_GLOB="${MAC_FETCH_CLEANUP_GLOB:-mac-*}"
   MAC_REMOTE_CMD_TEMPLATE="${MAC_REMOTE_CMD:-}"
 
   case "$MAC_BUILD_KIND_REQUESTED" in
@@ -559,7 +728,11 @@ if truthy "${RUN_MAC_BUILD:-1}"; then
       "$MAC_RELEASE_ENV_LOCAL" "$MAC_RELEASE_ENV_REMOTE"
   fi
 
-  ssh_run "$MAC_ARM_HOST" "$MAC_ARM_USER" "${MAC_ARM_PASSWORD:-}" "$MAC_ARM_PORT" "$MAC_ARM_GIT_PULL_CMD"
+  if [[ "$MAC_PHASE" != "sign" ]]; then
+    ssh_run "$MAC_ARM_HOST" "$MAC_ARM_USER" "${MAC_ARM_PASSWORD:-}" "$MAC_ARM_PORT" "$MAC_ARM_GIT_PULL_CMD"
+  else
+    echo "MAC_PHASE=sign; skipping git pull on ARM Mac."
+  fi
 
   mkdir -p "$STAGING_DIR/mac"
   MAC_CLEAN_OUTPUTS="${MAC_CLEAN_OUTPUTS:-1}"
@@ -592,9 +765,13 @@ if truthy "${RUN_MAC_BUILD:-1}"; then
     MAC_FETCH_DIR_CLEAN="${MAC_FETCH_DIR%/}"
 
     MAC_REMOTE_CMD_EFFECTIVE="$MAC_REMOTE_CMD_TEMPLATE"
+    MAC_SKIP_BUILD_FLAG=""
+    if [[ "$MAC_PHASE" == "sign" ]]; then
+      MAC_SKIP_BUILD_FLAG="MAC_SKIP_BUILD=1"
+    fi
     if [[ -z "$MAC_REMOTE_CMD_EFFECTIVE" ]]; then
       MAC_REMOTE_SCRIPT="${MAC_REMOTE_SCRIPT:-scripts/release-mac-build.sh}"
-      MAC_REMOTE_CMD_EFFECTIVE="cd '${MAC_ARM_REPO_DIR}' && MAC_BUILD_KIND_OVERRIDE='${MAC_KIND}' BUNDLE_TAG_OVERRIDE='${BUNDLE_TAG}'"
+      MAC_REMOTE_CMD_EFFECTIVE="cd '${MAC_ARM_REPO_DIR}' && ${MAC_SKIP_BUILD_FLAG} MAC_BUILD_KIND_OVERRIDE='${MAC_KIND}' BUNDLE_TAG_OVERRIDE='${BUNDLE_TAG}'"
       if [[ -n "$MAC_RELEASE_ENV_LOCAL" ]]; then
         MAC_REMOTE_CMD_EFFECTIVE="${MAC_REMOTE_CMD_EFFECTIVE} ENV_FILE='${MAC_RELEASE_ENV_REMOTE}'"
       fi
@@ -602,7 +779,7 @@ if truthy "${RUN_MAC_BUILD:-1}"; then
     else
       MAC_REMOTE_CMD_EFFECTIVE="${MAC_REMOTE_CMD_EFFECTIVE//__BUNDLE_TAG__/${BUNDLE_TAG}}"
       MAC_REMOTE_CMD_EFFECTIVE="${MAC_REMOTE_CMD_EFFECTIVE//__ENV_FILE__/${MAC_RELEASE_ENV_REMOTE}}"
-      MAC_REMOTE_CMD_EFFECTIVE="export MAC_BUILD_KIND_OVERRIDE='${MAC_KIND}'; ${MAC_REMOTE_CMD_EFFECTIVE}"
+      MAC_REMOTE_CMD_EFFECTIVE="export MAC_BUILD_KIND_OVERRIDE='${MAC_KIND}'; export ${MAC_SKIP_BUILD_FLAG:-MAC_SKIP_BUILD=0}; ${MAC_REMOTE_CMD_EFFECTIVE}"
     fi
 
     if truthy "$MAC_FETCH_PRE_CLEAN"; then
@@ -677,15 +854,8 @@ if truthy "${RUN_MAC_BUILD:-1}"; then
 
     # 2) Intel Mac: SIGN_INBOX/<bundle_tag> dirs (unsigned .app bundles sent for signing)
     if [[ -n "${MAC_SIGN_HOST:-}" && -n "${MAC_SIGN_USER:-}" ]]; then
-      MAC_SIGN_INBOX_DIR="${MAC_ARM_REPO_DIR:-}"
-      # The signing inbox on Intel is SIGN_INBOX from .env.release.
-      # We can derive it: release-mac-build.sh puts bundles under SIGN_INBOX/<BUNDLE_TAG>/
-      # The orchestrator knows the Intel host but not necessarily SIGN_INBOX directly.
-      # Use MAC_SIGN_INBOX if set, otherwise try MAC_ARM_REPO_DIR on the sign host.
       MAC_SIGN_INBOX_DIR="${MAC_SIGN_INBOX:-}"
       if [[ -z "$MAC_SIGN_INBOX_DIR" && -n "${MAC_SIGN_OUTPUT_DIR:-}" ]]; then
-        # SIGN_INBOX is typically the project root; SIGN_OUTPUT_DIR is project/mac-signing-out.
-        # Derive inbox from output dir by stripping the trailing component.
         MAC_SIGN_INBOX_DIR="$(dirname "${MAC_SIGN_OUTPUT_DIR}")"
       fi
       MAC_SIGN_PORT="${MAC_SIGN_PORT:-22}"
@@ -705,9 +875,86 @@ if truthy "${RUN_MAC_BUILD:-1}"; then
       fi
     fi
   fi
-fi
+}
 
-run_windows_flow
+# ---------------------------------------------------------------------------
+# Execute builds (parallel by default, set PARALLEL_BUILDS=0 to disable)
+# ---------------------------------------------------------------------------
+PARALLEL_BUILDS="${PARALLEL_BUILDS:-1}"
+
+# Helper: run a function with prefixed real-time output, preserving exit code.
+_run_prefixed() {
+  local prefix="$1"
+  shift
+  set +e
+  ( set -euo pipefail; "$@" ) 2>&1 | sed -u "s/^/[${prefix}] /"
+  local rc="${PIPESTATUS[0]}"
+  set -e
+  return "$rc"
+}
+
+if truthy "$PARALLEL_BUILDS"; then
+  _build_pids=()
+  _build_names=()
+
+  if truthy "${RUN_LINUX_BUILD:-1}"; then
+    _build_names+=("Linux")
+    _run_prefixed "Linux" run_linux_build &
+    _build_pids+=($!)
+  fi
+
+  if truthy "${RUN_MAC_BUILD:-1}"; then
+    _build_names+=("macOS")
+    _run_prefixed "macOS" run_mac_build &
+    _build_pids+=($!)
+  fi
+
+  if truthy "${RUN_WINDOWS_BUILD:-1}"; then
+    _build_names+=("Windows")
+    _run_prefixed "Windows" run_windows_flow &
+    _build_pids+=($!)
+  fi
+
+  echo "Running ${#_build_pids[@]} build(s) in parallel: ${_build_names[*]}"
+
+  _any_failed=0
+  for i in "${!_build_pids[@]}"; do
+    _rc=0
+    wait "${_build_pids[$i]}" || _rc=$?
+    if [[ $_rc -ne 0 ]]; then
+      echo ""
+      echo "== ${_build_names[$i]} build FAILED (exit code: $_rc) ==" >&2
+      _any_failed=1
+    fi
+  done
+
+  if [[ "$_any_failed" -eq 1 ]]; then
+    echo "One or more parallel builds failed." >&2
+    exit 1
+  fi
+
+  echo ""
+  echo "All parallel builds completed successfully."
+
+  # If Windows was stage-only, print resume instructions and exit
+  if truthy "${RUN_WINDOWS_BUILD:-0}" && [[ "${WIN_PHASE:-}" == "stage" ]]; then
+    echo ""
+    echo "Windows EXE staged for manual signing."
+    echo "Sign the EXE, then resume with:"
+    echo "  WIN_PHASE=finalize bash scripts/release/orchestrate-release.sh '${ENV_FILE}'"
+    exit 0
+  fi
+else
+  # Sequential execution (legacy behavior)
+  run_linux_build
+  run_mac_build
+  run_windows_flow
+
+  # If Windows was stage-only, exit
+  if truthy "${RUN_WINDOWS_BUILD:-0}" && [[ "${WIN_PHASE:-}" == "stage" ]]; then
+    exit 0
+  fi
+fi
 
 generate_update_metadata
 
@@ -751,20 +998,32 @@ if truthy "${GH_UPLOAD_RELEASE:-0}" || truthy "${GH_PUBLISH_RELEASE:-0}" || trut
   if truthy "${GH_CREATE_DRAFT:-0}"; then
     if ! gh release view "$RELEASE_TAG" --repo "$GH_REPO" >/dev/null 2>&1; then
       gh release create "$RELEASE_TAG" --repo "$GH_REPO" --title "$GH_TITLE" --notes "$GH_NOTES" --draft
+      # Wait a moment for GitHub to process the new release
+      sleep 2
     fi
   fi
 
   GH_RELEASE_TAG_EFFECTIVE="$RELEASE_TAG"
-  GH_RELEASE_TAG_JSON="$(gh release view "$RELEASE_TAG" --repo "$GH_REPO" --json tagName --jq '.tagName' 2>/dev/null || true)"
-  GH_RELEASE_TAG_JSON="${GH_RELEASE_TAG_JSON//$'\r'/}"
+  # Retry logic for viewing the release (in case GitHub is still processing)
+  for attempt in 1 2 3; do
+    GH_RELEASE_TAG_JSON="$(gh release view "$RELEASE_TAG" --repo "$GH_REPO" --json tagName --jq '.tagName' 2>/dev/null || true)"
+    GH_RELEASE_TAG_JSON="${GH_RELEASE_TAG_JSON//$'\r'/}"
+    if [[ -n "${GH_RELEASE_TAG_JSON//[[:space:]]/}" ]]; then
+      break
+    fi
+    if [[ $attempt -lt 3 ]]; then
+      sleep 1
+    fi
+  done
   if [[ -n "${GH_RELEASE_TAG_JSON//[[:space:]]/}" ]]; then
     GH_RELEASE_TAG_EFFECTIVE="$GH_RELEASE_TAG_JSON"
   else
     GH_RELEASE_VIEW_OUTPUT="$(gh release view "$RELEASE_TAG" --repo "$GH_REPO" 2>/dev/null || true)"
-    GH_RELEASE_TAG_FROM_URL="$(printf '%s\n' "$GH_RELEASE_VIEW_OUTPUT" | sed -n 's#.*releases/tag/\([^[:space:]]\+\).*#\1#p' | tail -n1)"
-    GH_RELEASE_TAG_FROM_URL="${GH_RELEASE_TAG_FROM_URL//$'\r'/}"
-    if [[ -n "${GH_RELEASE_TAG_FROM_URL//[[:space:]]/}" ]]; then
-      GH_RELEASE_TAG_EFFECTIVE="$GH_RELEASE_TAG_FROM_URL"
+    # Parse the "tag:" field, not the "url:" field (which contains "untagged-" for drafts)
+    GH_RELEASE_TAG_FROM_TAG_FIELD="$(printf '%s\n' "$GH_RELEASE_VIEW_OUTPUT" | sed -n 's/^tag:[[:space:]]*\([^[:space:]]\+\).*/\1/p')"
+    GH_RELEASE_TAG_FROM_TAG_FIELD="${GH_RELEASE_TAG_FROM_TAG_FIELD//$'\r'/}"
+    if [[ -n "${GH_RELEASE_TAG_FROM_TAG_FIELD//[[:space:]]/}" ]]; then
+      GH_RELEASE_TAG_EFFECTIVE="$GH_RELEASE_TAG_FROM_TAG_FIELD"
     else
       echo "Unable to resolve release key from gh output; defaulting to '$RELEASE_TAG' for upload/publish." >&2
     fi
@@ -776,7 +1035,7 @@ if truthy "${GH_UPLOAD_RELEASE:-0}" || truthy "${GH_PUBLISH_RELEASE:-0}" || trut
 
   if truthy "${GH_UPLOAD_RELEASE:-0}"; then
     mapfile -t assets < <(find "$STAGING_DIR" -maxdepth 4 -type f \
-      \( -name '*.yml' -o -name '*.exe' -o -name '*.blockmap' -o -name '*.zip' -o -name '*.dmg' -o -name '*.deb' -o -name '*.rpm' \) | sort)
+      \( -name '*.yml' -o -name '*.exe' -o -name '*.blockmap' -o -name '*.zip' -o -name '*.dmg' -o -name '*.deb' -o -name '*.rpm' -o -name '*.AppImage' \) | sort)
     if [[ "${#assets[@]}" -eq 0 ]]; then
       echo "No assets found to upload from $STAGING_DIR" >&2
       exit 1

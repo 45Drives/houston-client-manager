@@ -13,6 +13,11 @@
                         <div>
                             <h1 class="text-lg font-semibold text-default flex items-center gap-2">
                                 {{ server?.name || server?.host || 'Server' }}
+                                <CommanderToolTip :message="`Server Management is where you review and change a server after it has been set up — no need to re-run the setup wizard.
+
+The tabs cover how this app connects to the server, its network and VPN tunnels, its ZFS pools and datasets, its users and groups, its Samba shares, and its system and service status.
+
+The page is read-only until you click Edit. In edit mode changes are collected into a Staged Changes panel so you can review the whole set and apply it in one go, rather than each field taking effect the moment you type it.`" />
                                 <template v-if="rebooting">
                                     <ArrowPathIcon class="w-4 h-4 animate-spin text-amber-500 shrink-0" />
                                     <span class="text-xs font-normal text-amber-500">Rebooting…</span>
@@ -26,7 +31,7 @@
                             </p>
                         </div>
                     </div>
-                    <div class="flex items-center gap-2 shrink-0">
+                    <div class="flex items-center gap-2 shrink-0" data-tour="sm-actions">
                         <button v-if="!editing" class="btn btn-sm btn-secondary h-fit inline-flex items-center gap-1 whitespace-nowrap" @click="editing = true"
                             :disabled="probing">
                             <PencilIcon class="w-3.5 h-3.5" />
@@ -44,8 +49,10 @@
 
                 <!-- Tab navigation -->
                 <div class="flex items-center gap-0 border-b border-neutral-200 dark:border-neutral-700"
+                    data-tour="sm-tabs"
                     :class="{ 'opacity-40 pointer-events-none': rebooting }">
-                    <button v-for="tab in tabs" :key="tab.id" @click="activeTab = tab.id"
+                    <button v-for="tab in tabs" :key="tab.id" :data-tour="'sm-tab-' + tab.id"
+                        @click="activeTab = tab.id"
                         class="flex items-center gap-1.5 px-3 py-2 text-xs font-medium transition-colors border-b-2 -mb-px"
                         :class="activeTab === tab.id
                             ? 'border-blue-500 text-blue-600 dark:text-blue-400'
@@ -80,8 +87,8 @@
                 <template v-else-if="probe">
 
                     <!-- ═══ Connection Info ═══ -->
-                    <div v-show="activeTab === 'connection'" class="space-y-4">
-                        <div class="grid grid-cols-2 gap-4">
+                    <div v-show="activeTab === 'connection'" class="space-y-4" data-tour="sm-connection">
+                        <div class="grid grid-cols-2 gap-4" data-tour="sm-conn-identity">
                             <FieldCard label="Nickname" :value="server?.name || '—'" :editing="editing"
                                 v-model:editValue="editForm.name" field="name" tab="Connection" type="local"
                                 @stage="stageChange" />
@@ -91,48 +98,57 @@
                                 tab="Connection" type="remote" @stage="stageChange" />
                             <FieldCard label="IP Address" :value="server?.ip || '—'" :editing="false" />
                         </div>
-                        <SectionDivider label="Admin Login" />
-                        <div class="grid grid-cols-2 gap-4">
-                            <FieldCard label="Username" :value="server?.username || '—'" :editing="editing"
-                                v-model:editValue="editForm.username" field="username" tab="Connection" type="local"
-                                @stage="stageChange" />
-                            <FieldCard label="Password" value="••••••••" :editing="editing"
-                                v-model:editValue="editForm.password" field="password" tab="Connection" type="local"
+                        <div class="space-y-4" data-tour="sm-conn-admin">
+                            <SectionDivider label="Admin Login" />
+                            <div class="grid grid-cols-2 gap-4">
+                                <FieldCard label="Username" :value="server?.username || '—'" :editing="editing"
+                                    v-model:editValue="editForm.username" field="username" tab="Connection" type="local"
+                                    @stage="stageChange" />
+                                <FieldCard label="Password" value="••••••••" :editing="editing"
+                                    v-model:editValue="editForm.password" field="password" tab="Connection" type="local"
+                                    inputType="password" @stage="stageChange" />
+                            </div>
+                        </div>
+                        <div class="space-y-4" data-tour="sm-conn-share">
+                            <SectionDivider label="Samba Share" />
+                            <div class="grid grid-cols-2 gap-4">
+                                <FieldCard label="Share Name" :value="server?.shareName || '—'" :editing="editing"
+                                    v-model:editValue="editForm.shareName" field="shareName" tab="Connection" type="local"
+                                    @stage="stageChange" />
+                                <FieldCard label="SMB Username" :value="server?.smbUser || '—'" :editing="editing"
+                                    v-model:editValue="editForm.smbUser" field="smbUser" tab="Connection" type="local"
+                                    @stage="stageChange" />
+                            </div>
+                            <FieldCard label="SMB Password" value="••••••••" :editing="editing"
+                                v-model:editValue="editForm.smbPass" field="smbPass" tab="Connection" type="local"
                                 inputType="password" @stage="stageChange" />
                         </div>
-                        <SectionDivider label="Samba Share" />
-                        <div class="grid grid-cols-2 gap-4">
-                            <FieldCard label="Share Name" :value="server?.shareName || '—'" :editing="editing"
-                                v-model:editValue="editForm.shareName" field="shareName" tab="Connection" type="local"
-                                @stage="stageChange" />
-                            <FieldCard label="SMB Username" :value="server?.smbUser || '—'" :editing="editing"
-                                v-model:editValue="editForm.smbUser" field="smbUser" tab="Connection" type="local"
-                                @stage="stageChange" />
-                        </div>
-                        <FieldCard label="SMB Password" value="••••••••" :editing="editing"
-                            v-model:editValue="editForm.smbPass" field="smbPass" tab="Connection" type="local"
-                            inputType="password" @stage="stageChange" />
                     </div>
 
                     <!-- ═══ Network / Hostname ═══ -->
-                    <div v-show="activeTab === 'network'" class="space-y-4">
-                        <FieldCard label="Hostname" :value="probe.hostname || '—'"
-                            :editing="editing" v-model:editValue="editForm.hostname" field="hostname"
-                            tab="Network" type="remote" @stage="stageChange" class="max-w-sm" />
-                        <SectionDivider label="IP Addresses" />
-                        <div v-if="probe.ips.length" class="space-y-1">
-                            <InfoRow v-for="ip in probe.ips" :key="ip.iface"
-                                :label="ip.iface" :value="ip.addr" />
+                    <div v-show="activeTab === 'network'" class="space-y-4" data-tour="sm-network">
+                        <div data-tour="sm-net-hostname">
+                            <FieldCard label="Hostname" :value="probe.hostname || '—'"
+                                :editing="editing" v-model:editValue="editForm.hostname" field="hostname"
+                                tab="Network" type="remote" @stage="stageChange" class="max-w-sm" />
                         </div>
-                        <div v-else class="text-xs text-gray-400">No IP addresses found.</div>
-                        <SectionDivider label="DNS Servers" />
-                        <div v-if="probe.dns.length" class="space-y-1">
-                            <InfoRow v-for="(dns, i) in probe.dns" :key="i"
-                                :label="`DNS ${i + 1}`" :value="dns" />
+                        <div class="space-y-4" data-tour="sm-net-addresses">
+                            <SectionDivider label="IP Addresses" />
+                            <div v-if="probe.ips.length" class="space-y-1">
+                                <InfoRow v-for="ip in probe.ips" :key="ip.iface"
+                                    :label="ip.iface" :value="ip.addr" />
+                            </div>
+                            <div v-else class="text-xs text-gray-400">No IP addresses found.</div>
+                            <SectionDivider label="DNS Servers" />
+                            <div v-if="probe.dns.length" class="space-y-1">
+                                <InfoRow v-for="(dns, i) in probe.dns" :key="i"
+                                    :label="`DNS ${i + 1}`" :value="dns" />
+                            </div>
+                            <div v-else class="text-xs text-gray-400">No DNS servers configured.</div>
                         </div>
-                        <div v-else class="text-xs text-gray-400">No DNS servers configured.</div>
 
                         <!-- VPN Tunnels -->
+                        <div data-tour="sm-vpn" class="space-y-4">
                         <SectionDivider label="VPN Tunnels (WireGuard)" />
                         <div v-if="vpnLoading" class="flex items-center gap-2 py-3 px-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg text-sm text-blue-700 dark:text-blue-300">
                             <ArrowPathIcon class="w-4 h-4 animate-spin" /> Refreshing tunnels…
@@ -175,13 +191,16 @@
                                 </button>
                             </template>
                         </template>
+                        </div>
 
+                        <div data-tour="sm-topology">
                         <SectionDivider label="Backup Topology" />
                         <BackupTopologyMap :serverHost="server?.host" />
+                        </div>
                     </div>
 
                     <!-- ═══ Storage ═══ -->
-                    <div v-show="activeTab === 'storage'" class="space-y-4">
+                    <div v-show="activeTab === 'storage'" class="space-y-4" data-tour="sm-storage">
                         <!-- Open Houston link -->
                         <div class="flex items-center justify-end">
                             <a :href="`https://${server?.host}:9090/zfs`" target="_blank" rel="noopener"
@@ -190,79 +209,83 @@
                             </a>
                         </div>
                         <!-- Pool section header with action -->
-                        <div class="flex items-center justify-between">
-                            <SectionDivider label="ZFS Pools" />
-                            <button v-if="editing" class="btn btn-sm btn-secondary h-fit inline-flex items-center gap-1 whitespace-nowrap text-xs"
-                                @click="openCreatePool()">
-                                <PlusIcon class="w-3 h-3" /> New Pool
-                            </button>
-                        </div>
-                        <div v-if="probe.zfs.pools.length" class="space-y-3">
-                            <div v-for="pool in probe.zfs.pools" :key="pool.name"
-                                class="bg-white dark:bg-neutral-800 rounded-lg border border-neutral-200 dark:border-neutral-700 p-3">
-                                <div class="flex items-center justify-between mb-2">
-                                    <div class="flex items-center gap-2">
-                                        <span class="text-sm font-semibold text-default">{{ pool.name }}</span>
-                                        <button class="text-xs text-link inline-flex items-center gap-0.5" @click="viewPoolStatus(pool.name)">
-                                            <span>{{ poolStatusMap[pool.name] ? '▾ Hide' : '▸ Details' }}</span>
-                                        </button>
-                                    </div>
-                                    <span class="text-xs font-medium px-2 py-0.5 rounded-full"
-                                        :class="pool.health === 'ONLINE'
-                                            ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
-                                            : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'">
-                                        {{ pool.health }}
-                                    </span>
-                                </div>
-                                <div class="grid grid-cols-3 gap-2 text-xs">
-                                    <div><span class="text-gray-400">Size:</span> <span class="text-default">{{ pool.size }}</span></div>
-                                    <div><span class="text-gray-400">Used:</span> <span class="text-default">{{ pool.alloc }}</span></div>
-                                    <div><span class="text-gray-400">Free:</span> <span class="text-default">{{ pool.free }}</span></div>
-                                </div>
-                                <!-- Pool status detail (expanded) -->
-                                <pre v-if="poolStatusMap[pool.name]"
-                                    class="mt-2 text-[11px] text-gray-500 dark:text-gray-400 bg-neutral-100 dark:bg-neutral-900/50 rounded p-2 overflow-x-auto max-h-48 whitespace-pre border border-neutral-200/60 dark:border-neutral-700/50">{{ poolStatusMap[pool.name] }}</pre>
+                        <div class="space-y-4" data-tour="sm-storage-pools">
+                            <div class="flex items-center justify-between">
+                                <SectionDivider label="ZFS Pools" />
+                                <button v-if="editing" class="btn btn-sm btn-secondary h-fit inline-flex items-center gap-1 whitespace-nowrap text-xs"
+                                    @click="openCreatePool()">
+                                    <PlusIcon class="w-3 h-3" /> New Pool
+                                </button>
                             </div>
+                            <div v-if="probe.zfs.pools.length" class="space-y-3">
+                                <div v-for="pool in probe.zfs.pools" :key="pool.name"
+                                    class="bg-white dark:bg-neutral-800 rounded-lg border border-neutral-200 dark:border-neutral-700 p-3">
+                                    <div class="flex items-center justify-between mb-2">
+                                        <div class="flex items-center gap-2">
+                                            <span class="text-sm font-semibold text-default">{{ pool.name }}</span>
+                                            <button class="text-xs text-link inline-flex items-center gap-0.5" @click="viewPoolStatus(pool.name)">
+                                                <span>{{ poolStatusMap[pool.name] ? '▾ Hide' : '▸ Details' }}</span>
+                                            </button>
+                                        </div>
+                                        <span class="text-xs font-medium px-2 py-0.5 rounded-full"
+                                            :class="pool.health === 'ONLINE'
+                                                ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                                                : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'">
+                                            {{ pool.health }}
+                                        </span>
+                                    </div>
+                                    <div class="grid grid-cols-3 gap-2 text-xs">
+                                        <div><span class="text-gray-400">Size:</span> <span class="text-default">{{ pool.size }}</span></div>
+                                        <div><span class="text-gray-400">Used:</span> <span class="text-default">{{ pool.alloc }}</span></div>
+                                        <div><span class="text-gray-400">Free:</span> <span class="text-default">{{ pool.free }}</span></div>
+                                    </div>
+                                    <!-- Pool status detail (expanded) -->
+                                    <pre v-if="poolStatusMap[pool.name]"
+                                        class="mt-2 text-[11px] text-gray-500 dark:text-gray-400 bg-neutral-100 dark:bg-neutral-900/50 rounded p-2 overflow-x-auto max-h-48 whitespace-pre border border-neutral-200/60 dark:border-neutral-700/50">{{ poolStatusMap[pool.name] }}</pre>
+                                </div>
+                            </div>
+                            <div v-else class="text-xs text-gray-400 py-4">No ZFS pools found.</div>
                         </div>
-                        <div v-else class="text-xs text-gray-400 py-4">No ZFS pools found.</div>
 
                         <!-- Datasets section with create -->
-                        <div class="flex items-center justify-between">
-                            <SectionDivider label="Datasets" />
-                            <button v-if="editing && probe.zfs.pools.length" class="btn btn-sm btn-secondary h-fit inline-flex items-center gap-1 whitespace-nowrap text-xs"
-                                @click="showCreateDataset = true">
-                                <PlusIcon class="w-3 h-3" /> New Dataset
-                            </button>
+                        <div class="space-y-4" data-tour="sm-storage-datasets">
+                            <div class="flex items-center justify-between">
+                                <SectionDivider label="Datasets" />
+                                <button v-if="editing && probe.zfs.pools.length" class="btn btn-sm btn-secondary h-fit inline-flex items-center gap-1 whitespace-nowrap text-xs"
+                                    @click="showCreateDataset = true">
+                                    <PlusIcon class="w-3 h-3" /> New Dataset
+                                </button>
+                            </div>
+                            <div v-if="probe.zfs.datasets.length"
+                                class="bg-white dark:bg-neutral-800 rounded-lg border border-neutral-200 dark:border-neutral-700 overflow-hidden">
+                                <table class="w-full text-xs">
+                                    <thead>
+                                        <tr class="border-b border-neutral-200 dark:border-neutral-700">
+                                            <th class="text-left px-3 py-2 text-gray-400 font-medium">Name</th>
+                                            <th class="text-left px-3 py-2 text-gray-400 font-medium">Used</th>
+                                            <th class="text-left px-3 py-2 text-gray-400 font-medium">Available</th>
+                                            <th class="text-left px-3 py-2 text-gray-400 font-medium">Mountpoint</th>
+                                            <th class="text-right px-3 py-2 text-gray-400 font-medium">Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="divide-y divide-neutral-100 dark:divide-neutral-700/50">
+                                        <tr v-for="ds in probe.zfs.datasets" :key="ds.name"
+                                            class="hover:bg-neutral-50 dark:hover:bg-neutral-700/30">
+                                            <td class="px-3 py-1.5 text-default font-medium">{{ ds.name }}</td>
+                                            <td class="px-3 py-1.5 text-gray-500">{{ ds.used }}</td>
+                                            <td class="px-3 py-1.5 text-gray-500">{{ ds.avail }}</td>
+                                            <td class="px-3 py-1.5 text-gray-400">{{ ds.mountpoint }}</td>
+                                            <td class="px-3 py-1.5 text-right">
+                                                <button class="text-xs text-link mr-2" @click="viewDatasetProps(ds.name)">Props</button>
+                                                <button v-if="editing && ds.name.includes('/')" class="text-xs text-red-400 hover:text-red-500"
+                                                    @click="confirmDestroyDataset(ds.name)">Delete</button>
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                            <div v-else class="text-xs text-gray-400 py-4">No datasets found.</div>
                         </div>
-                        <div v-if="probe.zfs.datasets.length"
-                            class="bg-white dark:bg-neutral-800 rounded-lg border border-neutral-200 dark:border-neutral-700 overflow-hidden">
-                            <table class="w-full text-xs">
-                                <thead>
-                                    <tr class="border-b border-neutral-200 dark:border-neutral-700">
-                                        <th class="text-left px-3 py-2 text-gray-400 font-medium">Name</th>
-                                        <th class="text-left px-3 py-2 text-gray-400 font-medium">Used</th>
-                                        <th class="text-left px-3 py-2 text-gray-400 font-medium">Available</th>
-                                        <th class="text-left px-3 py-2 text-gray-400 font-medium">Mountpoint</th>
-                                        <th class="text-right px-3 py-2 text-gray-400 font-medium">Actions</th>
-                                    </tr>
-                                </thead>
-                                <tbody class="divide-y divide-neutral-100 dark:divide-neutral-700/50">
-                                    <tr v-for="ds in probe.zfs.datasets" :key="ds.name"
-                                        class="hover:bg-neutral-50 dark:hover:bg-neutral-700/30">
-                                        <td class="px-3 py-1.5 text-default font-medium">{{ ds.name }}</td>
-                                        <td class="px-3 py-1.5 text-gray-500">{{ ds.used }}</td>
-                                        <td class="px-3 py-1.5 text-gray-500">{{ ds.avail }}</td>
-                                        <td class="px-3 py-1.5 text-gray-400">{{ ds.mountpoint }}</td>
-                                        <td class="px-3 py-1.5 text-right">
-                                            <button class="text-xs text-link mr-2" @click="viewDatasetProps(ds.name)">Props</button>
-                                            <button v-if="editing && ds.name.includes('/')" class="text-xs text-red-400 hover:text-red-500"
-                                                @click="confirmDestroyDataset(ds.name)">Delete</button>
-                                        </td>
-                                    </tr>
-                                </tbody>
-                            </table>
-                        </div>
-                        <div v-else class="text-xs text-gray-400 py-4">No datasets found.</div>
 
                         <!-- Dataset properties detail (shown when a dataset is selected) -->
                         <div v-if="selectedDatasetProps"
@@ -352,161 +375,176 @@
                     </div>
 
                     <!-- ═══ Users & Groups ═══ -->
-                    <div v-show="activeTab === 'users'" class="space-y-4">
-                        <div class="flex items-center justify-between">
-                            <SectionDivider label="System Users" />
-                            <button v-if="editing" class="btn btn-sm btn-secondary h-fit inline-flex items-center gap-1 whitespace-nowrap text-xs"
-                                @click="showAddUser = true">
-                                <PlusIcon class="w-3 h-3" /> Add User
-                            </button>
-                        </div>
-                        <div v-if="probe.users.length"
-                            class="bg-white dark:bg-neutral-800 rounded-lg border border-neutral-200 dark:border-neutral-700 overflow-hidden">
-                            <table class="w-full text-xs">
-                                <thead>
-                                    <tr class="border-b border-neutral-200 dark:border-neutral-700">
-                                        <th class="text-left px-3 py-2 text-gray-400 font-medium">Username</th>
-                                        <th class="text-left px-3 py-2 text-gray-400 font-medium">UID</th>
-                                        <th class="text-left px-3 py-2 text-gray-400 font-medium">Home</th>
-                                        <th class="text-left px-3 py-2 text-gray-400 font-medium">Shell</th>
-                                        <th class="text-left px-3 py-2 text-gray-400 font-medium">Samba</th>
-                                        <th v-if="editing" class="text-right px-3 py-2 text-gray-400 font-medium">Actions</th>
-                                    </tr>
-                                </thead>
-                                <tbody class="divide-y divide-neutral-100 dark:divide-neutral-700/50">
-                                    <tr v-for="user in probe.users" :key="user.username"
-                                        class="hover:bg-neutral-50 dark:hover:bg-neutral-700/30">
-                                        <td class="px-3 py-1.5 text-default font-medium">{{ user.username }}</td>
-                                        <td class="px-3 py-1.5 text-gray-500">{{ user.uid }}</td>
-                                        <td class="px-3 py-1.5 text-gray-400">{{ user.home }}</td>
-                                        <td class="px-3 py-1.5 text-gray-400">{{ user.shell }}</td>
-                                        <td class="px-3 py-1.5">
-                                            <span v-if="probe.sambaUsers.includes(user.username)"
-                                                class="text-green-500">✓</span>
-                                            <span v-else class="text-gray-300">—</span>
-                                        </td>
-                                        <td v-if="editing" class="px-3 py-1.5 text-right space-x-2">
-                                            <button class="text-xs text-link" @click="showSetPasswordFor = user.username">Password</button>
-                                            <button class="text-xs text-link" @click="showSshKeyFor = user.username">SSH Key</button>
-                                            <button class="text-xs text-red-400 hover:text-red-500"
-                                                @click="confirmDeleteUser(user.username)">Delete</button>
-                                        </td>
-                                    </tr>
-                                </tbody>
-                            </table>
-                        </div>
-                        <div v-else class="text-xs text-gray-400 py-4">No users found (UID ≥ 1000).</div>
-
-                        <div class="flex items-center justify-between">
-                            <SectionDivider label="Groups" />
-                            <button v-if="editing" class="btn btn-sm btn-secondary h-fit inline-flex items-center gap-1 whitespace-nowrap text-xs"
-                                @click="showAddGroup = true">
-                                <PlusIcon class="w-3 h-3" /> Add Group
-                            </button>
-                        </div>
-                        <div v-if="probe.groups.length" class="space-y-2">
-                            <div v-for="group in probe.groups" :key="group.name"
-                                class="flex items-center gap-3 px-3 py-2 bg-white dark:bg-neutral-800 rounded-lg border border-neutral-200 dark:border-neutral-700">
-                                <span class="text-sm font-medium text-default min-w-[120px]">{{ group.name }}</span>
-                                <span class="text-xs text-gray-400">GID {{ group.gid }}</span>
-                                <div class="flex flex-wrap gap-1 ml-auto">
-                                    <span v-for="member in group.members" :key="member"
-                                        class="text-xs px-1.5 py-0.5 rounded bg-neutral-100 dark:bg-neutral-700 text-gray-600 dark:text-gray-300">
-                                        {{ member }}
-                                    </span>
-                                    <span v-if="!group.members.length" class="text-xs text-gray-400">No members</span>
-                                </div>
-                                <button v-if="editing && !['root','wheel','sudo','smbusers','users','adm','staff'].includes(group.name)"
-                                    class="text-xs text-red-400 hover:text-red-500 shrink-0"
-                                    @click="confirmDeleteGroup(group.name)">Delete</button>
+                    <div v-show="activeTab === 'users'" class="space-y-4" data-tour="sm-users">
+                        <div class="space-y-4" data-tour="sm-users-list">
+                            <div class="flex items-center justify-between">
+                                <SectionDivider label="System Users" />
+                                <button v-if="editing" class="btn btn-sm btn-secondary h-fit inline-flex items-center gap-1 whitespace-nowrap text-xs"
+                                    @click="showAddUser = true">
+                                    <PlusIcon class="w-3 h-3" /> Add User
+                                </button>
                             </div>
+                            <div v-if="probe.users.length"
+                                class="bg-white dark:bg-neutral-800 rounded-lg border border-neutral-200 dark:border-neutral-700 overflow-hidden">
+                                <table class="w-full text-xs">
+                                    <thead>
+                                        <tr class="border-b border-neutral-200 dark:border-neutral-700">
+                                            <th class="text-left px-3 py-2 text-gray-400 font-medium">Username</th>
+                                            <th class="text-left px-3 py-2 text-gray-400 font-medium">UID</th>
+                                            <th class="text-left px-3 py-2 text-gray-400 font-medium">Home</th>
+                                            <th class="text-left px-3 py-2 text-gray-400 font-medium">Shell</th>
+                                            <th class="text-left px-3 py-2 text-gray-400 font-medium">Samba</th>
+                                            <th v-if="editing" class="text-right px-3 py-2 text-gray-400 font-medium">Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="divide-y divide-neutral-100 dark:divide-neutral-700/50">
+                                        <tr v-for="user in probe.users" :key="user.username"
+                                            class="hover:bg-neutral-50 dark:hover:bg-neutral-700/30">
+                                            <td class="px-3 py-1.5 text-default font-medium">{{ user.username }}</td>
+                                            <td class="px-3 py-1.5 text-gray-500">{{ user.uid }}</td>
+                                            <td class="px-3 py-1.5 text-gray-400">{{ user.home }}</td>
+                                            <td class="px-3 py-1.5 text-gray-400">{{ user.shell }}</td>
+                                            <td class="px-3 py-1.5">
+                                                <span v-if="probe.sambaUsers.includes(user.username)"
+                                                    class="text-green-500">✓</span>
+                                                <span v-else class="text-gray-300">—</span>
+                                            </td>
+                                            <td v-if="editing" class="px-3 py-1.5 text-right space-x-2">
+                                                <button class="text-xs text-link" @click="showSetPasswordFor = user.username">Password</button>
+                                                <button class="text-xs text-link" @click="showSshKeyFor = user.username">SSH Key</button>
+                                                <button class="text-xs text-red-400 hover:text-red-500"
+                                                    @click="confirmDeleteUser(user.username)">Delete</button>
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                            <div v-else class="text-xs text-gray-400 py-4">No users found (UID ≥ 1000).</div>
                         </div>
-                        <div v-else class="text-xs text-gray-400 py-4">No groups found.</div>
+
+                        <div class="space-y-4" data-tour="sm-users-groups">
+                            <div class="flex items-center justify-between">
+                                <SectionDivider label="Groups" />
+                                <button v-if="editing" class="btn btn-sm btn-secondary h-fit inline-flex items-center gap-1 whitespace-nowrap text-xs"
+                                    @click="showAddGroup = true">
+                                    <PlusIcon class="w-3 h-3" /> Add Group
+                                </button>
+                            </div>
+                            <div v-if="probe.groups.length" class="space-y-2">
+                                <div v-for="group in probe.groups" :key="group.name"
+                                    class="flex items-center gap-3 px-3 py-2 bg-white dark:bg-neutral-800 rounded-lg border border-neutral-200 dark:border-neutral-700">
+                                    <span class="text-sm font-medium text-default min-w-[120px]">{{ group.name }}</span>
+                                    <span class="text-xs text-gray-400">GID {{ group.gid }}</span>
+                                    <div class="flex flex-wrap gap-1 ml-auto">
+                                        <span v-for="member in group.members" :key="member"
+                                            class="text-xs px-1.5 py-0.5 rounded bg-neutral-100 dark:bg-neutral-700 text-gray-600 dark:text-gray-300">
+                                            {{ member }}
+                                        </span>
+                                        <span v-if="!group.members.length" class="text-xs text-gray-400">No members</span>
+                                    </div>
+                                    <button v-if="editing && !['root','wheel','sudo','smbusers','users','adm','staff'].includes(group.name)"
+                                        class="text-xs text-red-400 hover:text-red-500 shrink-0"
+                                        @click="confirmDeleteGroup(group.name)">Delete</button>
+                                </div>
+                            </div>
+                            <div v-else class="text-xs text-gray-400 py-4">No groups found.</div>
+                        </div>
                     </div>
 
                     <!-- ═══ Samba Shares ═══ -->
-                    <div v-show="activeTab === 'samba'" class="space-y-4">
-                        <div class="flex items-center justify-between">
-                            <SectionDivider label="Global Settings" />
-                            <button v-if="editing" class="btn btn-sm btn-secondary h-fit inline-flex items-center gap-1 whitespace-nowrap text-xs"
-                                @click="openEditSambaGlobal()">
-                                <PencilIcon class="w-3 h-3" /> Edit Global
-                            </button>
-                        </div>
-                        <div v-if="Object.keys(probe.samba.global).length" class="space-y-1">
-                            <InfoRow v-for="(val, key) in probe.samba.global" :key="key"
-                                :label="String(key)" :value="String(val)" />
-                        </div>
-                        <div v-else class="text-xs text-gray-400">No global settings parsed.</div>
-
-                        <div class="flex items-center justify-between">
-                            <SectionDivider label="Shares" />
-                            <button v-if="editing" class="btn btn-sm btn-secondary h-fit inline-flex items-center gap-1 whitespace-nowrap text-xs"
-                                @click="showAddShare = true">
-                                <PlusIcon class="w-3 h-3" /> Add Share
-                            </button>
-                        </div>
-                        <div v-if="probe.samba.shares.length" class="space-y-3">
-                            <div v-for="share in probe.samba.shares" :key="share.name"
-                                class="bg-white dark:bg-neutral-800 rounded-lg border border-neutral-200 dark:border-neutral-700 p-3">
-                                <div class="flex items-center justify-between mb-2">
-                                    <div class="flex items-center gap-2">
-                                        <span class="text-sm font-semibold text-default">[{{ share.name }}]</span>
-                                        <span v-if="share.comment" class="text-xs text-gray-400">{{ share.comment }}</span>
-                                    </div>
-                                    <button v-if="editing" class="text-xs text-red-400 hover:text-red-500"
-                                        @click="confirmRemoveShare(share.name)">Remove</button>
-                                </div>
-                                <div class="grid grid-cols-2 gap-2 text-xs">
-                                    <div><span class="text-gray-400">Path:</span> <span class="text-default">{{ share.path }}</span></div>
-                                    <div><span class="text-gray-400">Guest OK:</span> <span class="text-default">{{ share.guestOk ? 'Yes' : 'No' }}</span></div>
-                                    <div><span class="text-gray-400">Read Only:</span> <span class="text-default">{{ share.readOnly ? 'Yes' : 'No' }}</span></div>
-                                    <div><span class="text-gray-400">Browseable:</span> <span class="text-default">{{ share.browseable ? 'Yes' : 'No' }}</span></div>
-                                </div>
-                            </div>
-                        </div>
-                        <div v-else class="text-xs text-gray-400 py-4">No Samba shares configured.</div>
-
-                        <SectionDivider label="Samba Passwords" />
-                        <div v-if="probe.users.length" class="space-y-1">
-                            <div v-for="user in probe.users" :key="'smb-'+user.username"
-                                class="flex items-center gap-3 px-3 py-1.5 bg-white dark:bg-neutral-800 rounded-lg border border-neutral-200 dark:border-neutral-700">
-                                <span class="text-xs font-medium text-default min-w-[100px]">{{ user.username }}</span>
-                                <span v-if="probe.sambaUsers.includes(user.username)" class="text-xs text-green-500">Has Samba password</span>
-                                <span v-else class="text-xs text-gray-400">No Samba password</span>
-                                <button v-if="editing" class="text-xs text-link ml-auto"
-                                    @click="showSetSambaPasswordFor = user.username">
-                                    {{ probe.sambaUsers.includes(user.username) ? 'Change' : 'Set' }}
+                    <div v-show="activeTab === 'samba'" class="space-y-4" data-tour="sm-samba">
+                        <div class="space-y-4" data-tour="sm-samba-global">
+                            <div class="flex items-center justify-between">
+                                <SectionDivider label="Global Settings" />
+                                <button v-if="editing" class="btn btn-sm btn-secondary h-fit inline-flex items-center gap-1 whitespace-nowrap text-xs"
+                                    @click="openEditSambaGlobal()">
+                                    <PencilIcon class="w-3 h-3" /> Edit Global
                                 </button>
                             </div>
+                            <div v-if="Object.keys(probe.samba.global).length" class="space-y-1">
+                                <InfoRow v-for="(val, key) in probe.samba.global" :key="key"
+                                    :label="String(key)" :value="String(val)" />
+                            </div>
+                            <div v-else class="text-xs text-gray-400">No global settings parsed.</div>
+                        </div>
+
+                        <div class="space-y-4" data-tour="sm-samba-shares">
+                            <div class="flex items-center justify-between">
+                                <SectionDivider label="Shares" />
+                                <button v-if="editing" class="btn btn-sm btn-secondary h-fit inline-flex items-center gap-1 whitespace-nowrap text-xs"
+                                    @click="showAddShare = true">
+                                    <PlusIcon class="w-3 h-3" /> Add Share
+                                </button>
+                            </div>
+                            <div v-if="probe.samba.shares.length" class="space-y-3">
+                                <div v-for="share in probe.samba.shares" :key="share.name"
+                                    class="bg-white dark:bg-neutral-800 rounded-lg border border-neutral-200 dark:border-neutral-700 p-3">
+                                    <div class="flex items-center justify-between mb-2">
+                                        <div class="flex items-center gap-2">
+                                            <span class="text-sm font-semibold text-default">[{{ share.name }}]</span>
+                                            <span v-if="share.comment" class="text-xs text-gray-400">{{ share.comment }}</span>
+                                        </div>
+                                        <button v-if="editing" class="text-xs text-red-400 hover:text-red-500"
+                                            @click="confirmRemoveShare(share.name)">Remove</button>
+                                    </div>
+                                    <div class="grid grid-cols-2 gap-2 text-xs">
+                                        <div><span class="text-gray-400">Path:</span> <span class="text-default">{{ share.path }}</span></div>
+                                        <div><span class="text-gray-400">Guest OK:</span> <span class="text-default">{{ share.guestOk ? 'Yes' : 'No' }}</span></div>
+                                        <div><span class="text-gray-400">Read Only:</span> <span class="text-default">{{ share.readOnly ? 'Yes' : 'No' }}</span></div>
+                                        <div><span class="text-gray-400">Browseable:</span> <span class="text-default">{{ share.browseable ? 'Yes' : 'No' }}</span></div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div v-else class="text-xs text-gray-400 py-4">No Samba shares configured.</div>
+                        </div>
+
+                        <div class="space-y-4" data-tour="sm-samba-passwords">
+                            <SectionDivider label="Samba Passwords" />
+                            <div v-if="probe.users.length" class="space-y-1">
+                                <div v-for="user in probe.users" :key="'smb-'+user.username"
+                                    class="flex items-center gap-3 px-3 py-1.5 bg-white dark:bg-neutral-800 rounded-lg border border-neutral-200 dark:border-neutral-700">
+                                    <span class="text-xs font-medium text-default min-w-[100px]">{{ user.username }}</span>
+                                    <span v-if="probe.sambaUsers.includes(user.username)" class="text-xs text-green-500">Has Samba password</span>
+                                    <span v-else class="text-xs text-gray-400">No Samba password</span>
+                                    <button v-if="editing" class="text-xs text-link ml-auto"
+                                        @click="showSetSambaPasswordFor = user.username">
+                                        {{ probe.sambaUsers.includes(user.username) ? 'Change' : 'Set' }}
+                                    </button>
+                                </div>
+                            </div>
+                            <div v-else class="text-xs text-gray-400 py-4">No users to assign Samba passwords to.</div>
                         </div>
                     </div>
 
                     <!-- ═══ System Info ═══ -->
-                    <div v-show="activeTab === 'system'" class="space-y-4">
-                        <SectionDivider label="Operating System" />
-                        <div class="grid grid-cols-2 gap-4">
-                            <InfoRow label="OS" :value="probe.os.pretty" />
-                            <InfoRow label="Uptime" :value="probe.uptime" />
-                        </div>
-                        <SectionDivider label="Hardware" />
-                        <div class="grid grid-cols-2 gap-4">
-                            <InfoRow label="CPU" :value="probe.cpu.model" />
-                            <InfoRow label="Cores" :value="String(probe.cpu.cores)" />
-                            <InfoRow label="Memory"
-                                :value="`${probe.memory.usedMB} MB / ${probe.memory.totalMB} MB used`" />
-                            <InfoRow label="Free Memory" :value="`${probe.memory.freeMB} MB`" />
-                        </div>
-                        <SectionDivider label="Services" />
-                        <div v-if="probe.services.length" class="grid grid-cols-2 gap-2">
-                            <div v-for="svc in probe.services" :key="svc.name"
-                                class="flex items-center gap-2 px-3 py-1.5 bg-white dark:bg-neutral-800 rounded-lg border border-neutral-200 dark:border-neutral-700">
-                                <span class="status-dot shrink-0"
-                                    :class="svc.active ? 'status-dot-ok' : 'status-dot-idle'" />
-                                <span class="text-xs text-default">{{ svc.name }}</span>
+                    <div v-show="activeTab === 'system'" class="space-y-4" data-tour="sm-system">
+                        <div class="space-y-4" data-tour="sm-system-hardware">
+                            <SectionDivider label="Operating System" />
+                            <div class="grid grid-cols-2 gap-4">
+                                <InfoRow label="OS" :value="probe.os.pretty" />
+                                <InfoRow label="Uptime" :value="probe.uptime" />
+                            </div>
+                            <SectionDivider label="Hardware" />
+                            <div class="grid grid-cols-2 gap-4">
+                                <InfoRow label="CPU" :value="probe.cpu.model" />
+                                <InfoRow label="Cores" :value="String(probe.cpu.cores)" />
+                                <InfoRow label="Memory"
+                                    :value="`${probe.memory.usedMB} MB / ${probe.memory.totalMB} MB used`" />
+                                <InfoRow label="Free Memory" :value="`${probe.memory.freeMB} MB`" />
                             </div>
                         </div>
-                        <div v-else class="text-xs text-gray-400 py-4">No services detected.</div>
+                        <div class="space-y-4" data-tour="sm-system-services">
+                            <SectionDivider label="Services" />
+                            <div v-if="probe.services.length" class="grid grid-cols-2 gap-2">
+                                <div v-for="svc in probe.services" :key="svc.name"
+                                    class="flex items-center gap-2 px-3 py-1.5 bg-white dark:bg-neutral-800 rounded-lg border border-neutral-200 dark:border-neutral-700">
+                                    <span class="status-dot shrink-0"
+                                        :class="svc.active ? 'status-dot-ok' : 'status-dot-idle'" />
+                                    <span class="text-xs text-default">{{ svc.name }}</span>
+                                </div>
+                            </div>
+                            <div v-else class="text-xs text-gray-400 py-4">No services detected.</div>
+                        </div>
                     </div>
                 </template>
 
@@ -938,11 +976,14 @@ import { useHeader } from '../composables/useHeader'
 import { useServers, type StoredServer } from '../composables/useServers'
 import { useServerManage } from '../composables/useServerManage'
 import { useWireWizard, type WireWizardStatus } from '../composables/useWireWizard'
+import { useOnboarding, type OnboardingFlag } from '../composables/useOnboarding'
+import { useTourManager, type TourStep } from '../composables/useTourManager'
 import { Notification, pushNotification } from '@45drives/houston-common-ui'
 import type { ServerProbeResult, StagedChange } from '../../main/ipc/serverManageHandlers'
 import PairRemoteServerModal from '../components/PairRemoteServerModal.vue'
 import TunnelManageModal from '../components/TunnelManageModal.vue'
 import BackupTopologyMap from '../components/topology/BackupTopologyMap.vue'
+import { CommanderToolTip } from '../components/commander'
 
 useHeader('Server Management')
 
@@ -963,6 +1004,145 @@ const tabs = [
 
 type TabId = typeof tabs[number]['id']
 const activeTab = ref<TabId>('connection')
+
+// ── Guided tour ─────────────────────────────────────────────────────
+
+const { onboarding, markDone } = useOnboarding()
+const { requestTour } = useTourManager()
+
+const serverManageTourSteps: TourStep[] = [
+    {
+        target: '[data-tour="sm-tabs"]',
+        message: 'This is Server Management — the place to review and change a server\'s configuration after it has been set up.\n\nEach tab covers one area. I\'ll walk you through the Connection tab now, and introduce the others as you open them.',
+        onEnter: () => { activeTab.value = 'connection' },
+    },
+    {
+        target: '[data-tour="sm-actions"]',
+        message: 'The view is read-only until you click Edit.\n\nIn edit mode your changes are collected into a Staged Changes panel instead of being applied one at a time — review them, then save them all together. Refresh re-reads the live configuration from the server.',
+    },
+    {
+        target: '[data-tour="sm-tab-connection"]',
+        message: 'Connection holds everything this app needs to reach the server — its name, address, and the credentials used for both SSH and Samba.',
+        onEnter: () => { activeTab.value = 'connection' },
+    },
+    {
+        target: '[data-tour="sm-conn-identity"]',
+        message: 'Nickname is the label shown in this app; Host and IP are how it is reached on the network.\n\nHostname is the server\'s own name — changing it renames the machine and triggers a reboot.',
+        onEnter: () => { activeTab.value = 'connection' },
+    },
+    {
+        target: '[data-tour="sm-conn-admin"]',
+        message: 'Admin Login is the SSH account this app uses to run everything else you see here. If you change the password on the server, update it here too or the other tabs will stop loading.',
+        onEnter: () => { activeTab.value = 'connection' },
+    },
+    {
+        target: '[data-tour="sm-conn-share"]',
+        message: 'Samba Share is the share your desktop mounts, plus the SMB user and password used to connect to it. These are separate from the admin login above.',
+        placement: 'top',
+        onEnter: () => { activeTab.value = 'connection' },
+    },
+]
+
+const networkTabTourSteps: TourStep[] = [
+    {
+        target: '[data-tour="sm-tab-network"]',
+        message: 'The Network tab covers how this server sits on the network — its hostname, its addresses, and any VPN tunnels it uses to reach servers elsewhere.',
+    },
+    {
+        target: '[data-tour="sm-net-hostname"]',
+        message: 'Hostname is the name the server answers to on your network. Changing it in edit mode renames the machine and reboots it.',
+    },
+    {
+        target: '[data-tour="sm-net-addresses"]',
+        message: 'IP Addresses lists every network interface and the address assigned to it — useful when a server has both a wired link and a VPN interface.\n\nDNS Servers shows what the server uses to resolve names.',
+    },
+    {
+        target: '[data-tour="sm-vpn"]',
+        message: 'VPN Tunnels lists the WireGuard tunnels this server uses to reach servers outside your local network.\n\nClick New Tunnel to pair with a remote server — once the handshake succeeds you can schedule backups to it exactly like a local target. Manage shows peers, transfer counts, and lets you restart or tear a tunnel down.',
+        placement: 'top',
+    },
+    {
+        target: '[data-tour="sm-topology"]',
+        message: 'Backup Topology maps this server\'s place in your backup network — what it backs up, where those backups land, and which links run over a VPN tunnel.',
+        placement: 'top',
+    },
+]
+
+const storageTabTourSteps: TourStep[] = [
+    {
+        target: '[data-tour="sm-tab-storage"]',
+        message: 'The Storage tab shows the ZFS pools and datasets on this server — where your data actually lives and how much room is left.',
+    },
+    {
+        target: '[data-tour="sm-storage-pools"]',
+        message: 'Pools are groups of drives. Health should read ONLINE; anything else means a drive needs attention. Details expands the full pool status, and in edit mode you can create a new pool.',
+    },
+    {
+        target: '[data-tour="sm-storage-datasets"]',
+        message: 'Datasets are the file systems inside a pool — each one is what gets shared over Samba or targeted by a backup.\n\nProps opens compression, record size, and quota settings; in edit mode you can create or delete datasets.',
+        placement: 'top',
+    },
+]
+
+const usersTabTourSteps: TourStep[] = [
+    {
+        target: '[data-tour="sm-tab-users"]',
+        message: 'The Users & Groups tab manages the Linux accounts on the server. Group membership is what decides who can reach which Samba share.',
+    },
+    {
+        target: '[data-tour="sm-users-list"]',
+        message: 'System Users lists the real accounts on the server. The Samba column shows whether an account also has a Samba password — without one they can log in over SSH but not mount a share.\n\nIn edit mode you can add users, reset passwords, or install an SSH key.',
+    },
+    {
+        target: '[data-tour="sm-users-groups"]',
+        message: 'Groups control shared access. Adding a user to a group is usually how you grant them access to a share, rather than editing the share itself.',
+        placement: 'top',
+    },
+]
+
+const sambaTabTourSteps: TourStep[] = [
+    {
+        target: '[data-tour="sm-tab-samba"]',
+        message: 'The Samba tab is the file-sharing layer your desktop connects to — the shares themselves, their global settings, and per-user Samba passwords.',
+    },
+    {
+        target: '[data-tour="sm-samba-global"]',
+        message: 'Global Settings apply to every share on the server — the workgroup, the server name clients see, and security defaults. Most setups never need to change these.',
+    },
+    {
+        target: '[data-tour="sm-samba-shares"]',
+        message: 'Each share maps a name to a path on the server. Guest OK, Read Only, and Browseable decide who can see and write to it.\n\nIn edit mode you can add a new share or remove one.',
+    },
+    {
+        target: '[data-tour="sm-samba-passwords"]',
+        message: 'Samba keeps its own password database, separate from Linux logins. A user needs a Samba password here before they can mount a share from a desktop.',
+        placement: 'top',
+    },
+]
+
+const systemTabTourSteps: TourStep[] = [
+    {
+        target: '[data-tour="sm-tab-system"]',
+        message: 'The System tab is the health check — operating system, hardware, and the services this server depends on.',
+    },
+    {
+        target: '[data-tour="sm-system-hardware"]',
+        message: 'OS and uptime tell you what the server is running and how long it has been up. CPU and memory give you a quick sense of whether it has the headroom for the backups you are scheduling.',
+    },
+    {
+        target: '[data-tour="sm-system-services"]',
+        message: 'Services shows what is running. If shares stop mounting or backups stop firing, check here first — a stopped smbd or ZFS service is the usual cause.',
+        placement: 'top',
+    },
+]
+
+const tabTours: Record<Exclude<TabId, 'connection'>, { id: string; steps: TourStep[]; flag: OnboardingFlag }> = {
+    network: { id: 'sm-tab-network', steps: networkTabTourSteps, flag: 'smNetworkTabTourDone' },
+    storage: { id: 'sm-tab-storage', steps: storageTabTourSteps, flag: 'smStorageTabTourDone' },
+    users: { id: 'sm-tab-users', steps: usersTabTourSteps, flag: 'smUsersTabTourDone' },
+    samba: { id: 'sm-tab-samba', steps: sambaTabTourSteps, flag: 'smSambaTabTourDone' },
+    system: { id: 'sm-tab-system', steps: systemTabTourSteps, flag: 'smSystemTabTourDone' },
+}
 
 // ── Server data ────────────────────────────────────────────────────────────
 
@@ -1680,6 +1860,29 @@ onMounted(() => {
         probeServer()
         loadVpnStatus()
     }
+})
+
+// Wait until the probe lands — tab content is not rendered before then.
+watch(probe, (p) => {
+    if (!p || onboarding.value.serverManageTourDone) return
+    setTimeout(() => {
+        requestTour('server-manage', serverManageTourSteps, async () => {
+            activeTab.value = 'connection'
+            await markDone('serverManageTourDone')
+        })
+    }, 400)
+})
+
+// Introduce each tab the first time it is opened, rather than all at once up front.
+watch(activeTab, (tab) => {
+    if (tab === 'connection' || !probe.value) return
+    const tour = tabTours[tab]
+    if (onboarding.value[tour.flag]) return
+    setTimeout(() => {
+        // The user may have moved on while we waited.
+        if (activeTab.value !== tab) return
+        requestTour(tour.id, tour.steps, () => markDone(tour.flag))
+    }, 250)
 })
 
 onBeforeUnmount(() => {

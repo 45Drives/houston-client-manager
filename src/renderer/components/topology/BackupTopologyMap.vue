@@ -2,7 +2,16 @@
   <div class="bg-white dark:bg-neutral-800 rounded-lg border border-neutral-200 dark:border-neutral-700 overflow-hidden">
     <div class="px-4 py-3 border-b border-neutral-200 dark:border-neutral-700 flex items-center justify-between gap-2">
       <div>
-        <h3 class="text-sm font-semibold text-default">Backup Network Topology</h3>
+        <h3 class="text-sm font-semibold text-default flex items-center gap-1.5">
+          Backup Network Topology
+          <CommanderToolTip :message="`This map shows where your data actually goes.
+
+Each box is a node: this client, a server on your network, a server at another site, or a cloud remote. Each line is a real backup relationship read from the servers themselves — ZFS replication, file copies, and cloud sync jobs.
+
+Dashed lines mean the link travels over a WireShield VPN tunnel, which is how off-site backups reach a server outside your local network.
+
+Use it to spot servers with nothing backing them up, and to confirm that off-site copies exist before you need them. Refresh re-probes every saved server.`" />
+        </h3>
         <p class="text-xs text-gray-400">
           Client, local servers, remote replication targets, and cloud remotes.
         </p>
@@ -127,6 +136,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { useBackupTopology } from '../../composables/useBackupTopology'
+import { CommanderToolTip } from '../commander'
 
 const props = defineProps<{ serverHost?: string }>()
 

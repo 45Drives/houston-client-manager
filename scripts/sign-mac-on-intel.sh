@@ -144,7 +144,7 @@ echo "  SIGN_KEYCHAIN=$SIGN_KEYCHAIN"
 /usr/bin/security set-key-partition-list -S apple-tool:,apple:,codesign: -s \
   -k "$SIGN_KEYCHAIN_PASSWORD" "$SIGN_KEYCHAIN" >/dev/null 2>&1 || true
 
-# Make sure the keychain is in the user search list (don't wipe the list)
+# Make sure the keychain is in the user search list (don’t wipe the list)
 CURRENT_KCS="$(/usr/bin/security list-keychains -d user 2>/dev/null | /usr/bin/sed -E 's/^[[:space:]]*"//; s/"[[:space:]]*$//')"
 if ! printf "%s\n" "$CURRENT_KCS" | /usr/bin/grep -Fx "$SIGN_KEYCHAIN" >/dev/null; then
   /usr/bin/security list-keychains -d user -s "$SIGN_KEYCHAIN" $CURRENT_KCS >/dev/null 2>&1 || true
@@ -182,7 +182,7 @@ echo "Removing any existing signatures (best-effort)..."
 /usr/bin/find "$APP_BUNDLE" -type f \( -name "*.dylib" -o -name "*.so" -o -name "*.node" -o -perm -111 \) -print0 2>/dev/null | \
   /usr/bin/xargs -0 -I{} /usr/bin/codesign --remove-signature "{}" 2>/dev/null || true
 # Directories (frameworks + nested apps)
-/usr/bin/find "$APP_BUNDLE/Contents/Frameworks" -maxdepth 2 -type d \( -name "*.framework" -o -name "*.app" \) -print0 2>/dev/null | \
+usr/bin/find "$APP_BUNDLE/Contents/Frameworks" -maxdepth 2 -type d \( -name "*.framework" -o -name "*.app" \) -print0 2>/dev/null | \
   /usr/bin/xargs -0 -I{} /usr/bin/codesign --remove-signature "{}" 2>/dev/null || true
 /usr/bin/codesign --remove-signature "$APP_BUNDLE" 2>/dev/null || true
 
@@ -232,14 +232,47 @@ DMG_STAGE_DIR="${OUT_DIR}/.dmg-stage"
 /usr/bin/hdiutil create -volname "$APP_PRODUCT_FILENAME" -srcfolder "$DMG_STAGE_DIR" -ov -format UDZO "$DMG_PATH"
 /bin/rm -rf "$DMG_STAGE_DIR"
 
-echo "Notarizing ZIP..."
-/usr/bin/xcrun notarytool submit "$ZIP_PATH" --keychain-profile "$NOTARY_PROFILE" --wait
+echo "Submitting ZIP + DMG for notarization (parallel)..."
+ZIP_SUBMISSION="$(/usr/bin/xcrun notarytool submit "$ZIP_PATH" --keychain-profile "$NOTARY_PROFILE" 2>&1)"
+ZIP_ID="$(printf '%s\n' "$ZIP_SUBMISSION" | /usr/bin/sed -n 's/^[[:space:]]*id:[[:space:]]*//p' | head -n1)"
+if [[ -z "$ZIP_ID" ]]; then
+  echo "Failed to submit ZIP for notarization:" >&2
+  printf '%s\n' "$ZIP_SUBMISSION" >&2
+  exit 1
+fi
+echo "  ZIP submission id: $ZIP_ID"
 
-echo "Notarizing DMG..."
-/usr/bin/xcrun notarytool submit "$DMG_PATH" --keychain-profile "$NOTARY_PROFILE" --wait
+DMG_SUBMISSION="$(/usr/bin/xcrun notarytool submit "$DMG_PATH" --keychain-profile "$NOTARY_PROFILE" 2>&1)"
+DMG_ID="$(printf '%s\n' "$DMG_SUBMISSION" | /usr/bin/sed -n 's/^[[:space:]]*id:[[:space:]]*//p' | head -n1)"
+if [[ -z "$DMG_ID" ]]; then
+  echo "Failed to submit DMG for notarization:" >&2
+  printf '%s\n' "$DMG_SUBMISSION" >&2
+  exit 1
+fi
+echo "  DMG submission id: $DMG_ID"
+
+echo "Waiting for both notarizations to complete..."
+/usr/bin/xcrun notarytool wait "$ZIP_ID" --keychain-profile "$NOTARY_PROFILE"
+ZIP_NOTARY_RC=$?
+/usr/bin/xcrun notarytool wait "$DMG_ID" --keychain-profile "$NOTARY_PROFILE"
+DMG_NOTARY_RC=$?
+
+if [[ $ZIP_NOTARY_RC -ne 0 ]]; then
+  echo "ZIP notarization failed (id: $ZIP_ID):" >&2
+  /usr/bin/xcrun notarytool log "$ZIP_ID" --keychain-profile "$NOTARY_PROFILE" 2>&1 || true
+  exit 1
+fi
+if [[ $DMG_NOTARY_RC -ne 0 ]]; then
+  echo "DMG notarization failed (id: $DMG_ID):" >&2
+  /usr/bin/xcrun notarytool log "$DMG_ID" --keychain-profile "$NOTARY_PROFILE" 2>&1 || true
+  exit 1
+fi
 
 echo "Stapling DMG..."
 /usr/bin/xcrun stapler staple "$DMG_PATH"
+
+echo "Stapling ZIP (app bundle)..."
+/usr/bin/xcrun stapler staple "$ZIP_PATH" 2>/dev/null || true
 
 echo "Artifacts complete:"
 /bin/ls -la "$OUT_DIR"

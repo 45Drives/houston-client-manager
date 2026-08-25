@@ -18,6 +18,9 @@
         </span>
       </div>
       <div class="flex-1" />
+      <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium border border-default text-muted" data-tour="scheduler-vpn-btn">
+        <LockClosedIcon class="w-3.5 h-3.5" /> VPN Tunnel
+      </span>
       <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium bg-primary/10 text-primary border border-primary/20" data-tour="scheduler-new-btn">
         <PlusIcon class="w-3.5 h-3.5" /> New Backup
       </span>
@@ -65,6 +68,15 @@
             <td class="px-3 py-2"><span class="inline-flex items-center gap-1.5 text-xs"><span class="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />Running</span></td>
             <td class="px-3 py-2 text-muted">Running…</td>
           </tr>
+          <tr class="border-b border-default border-l-2 border-l-transparent hover:bg-neutral-50 dark:hover:bg-neutral-700/30">
+            <td class="px-3 py-2"><div class="w-3.5 h-3.5 rounded-full border-2 border-default" /></td>
+            <td class="px-3 py-2 font-medium">Offsite Replication</td>
+            <td class="px-3 py-2"><span class="px-2 py-0.5 rounded text-xs bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400">ZFS Replication</span></td>
+            <td class="px-3 py-2 text-muted text-xs">root@10.44.0.2 (VPN)<br/>→ tank/offsite</td>
+            <td class="px-3 py-2 text-muted">Nightly</td>
+            <td class="px-3 py-2"><span class="inline-flex items-center gap-1.5 text-xs"><span class="w-1.5 h-1.5 rounded-full bg-green-500" />Success</span></td>
+            <td class="px-3 py-2 text-muted">9h ago</td>
+          </tr>
         </tbody>
       </table>
     </div>
@@ -93,6 +105,6 @@
 <script setup lang="ts">
 import {
   PlayIcon, PlusIcon, PencilSquareIcon,
-  DocumentTextIcon, TrashIcon,
+  DocumentTextIcon, TrashIcon, LockClosedIcon,
 } from '@heroicons/vue/24/outline';
 </script>

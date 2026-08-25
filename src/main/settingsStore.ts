@@ -54,6 +54,17 @@ export interface AppSettings {
     remoteBackupsTourDone: boolean;
     restoreBrowserTourDone: boolean;
     snapshotManagerTourDone: boolean;
+    serverManageTourDone: boolean;
+    smNetworkTabTourDone: boolean;
+    smStorageTabTourDone: boolean;
+    smUsersTabTourDone: boolean;
+    smSambaTabTourDone: boolean;
+    smSystemTabTourDone: boolean;
+    bulkSetupTourDone: boolean;
+    addExistingServerTourDone: boolean;
+    settingsTourDone: boolean;
+    topologyTourDone: boolean;
+    vpnTunnelsTourDone: boolean;
   };
 
   /** Restore operation history (capped at 20 entries) */
@@ -138,6 +149,17 @@ export const DEFAULT_SETTINGS: AppSettings = {
     remoteBackupsTourDone: false,
     restoreBrowserTourDone: false,
     snapshotManagerTourDone: false,
+    serverManageTourDone: false,
+    smNetworkTabTourDone: false,
+    smStorageTabTourDone: false,
+    smUsersTabTourDone: false,
+    smSambaTabTourDone: false,
+    smSystemTabTourDone: false,
+    bulkSetupTourDone: false,
+    addExistingServerTourDone: false,
+    settingsTourDone: false,
+    topologyTourDone: false,
+    vpnTunnelsTourDone: false,
   },
   restoreHistory: [],
   topologyIndex: {},

@@ -26,6 +26,7 @@ import {
 import type { IPCHandlerContext } from './types';
 import type { RestoreProgressCallback } from '../restoreManager';
 import { loadSettings, saveSettings, type RestoreHistoryEntry } from '../settingsStore';
+import { describeConnectionError, failureLine } from '../../shared/connectionErrors';
 
 /**
  * Register all restore + snapshot IPC handlers.
@@ -43,6 +44,26 @@ export function registerRestoreHandlers(ctx: IPCHandlerContext) {
     return (progress) => {
       router.send('renderer', 'restoreProgress', progress);
     };
+  }
+
+  /**
+   * Record a connectivity failure in plain English and rethrow it that way.
+   * A server that is mid-reboot is logged as a warning, not an error, so the
+   * log viewer doesn't flag a normal restart as something broken.
+   */
+  function reportConnectionFailure(event: string, serverIp: string, err: unknown): never {
+    const failure = describeConnectionError(err, serverIp);
+    const entry = {
+      event: `${event}.error`,
+      serverIp,
+      message: failureLine(failure),
+      reason: failure.kind,
+      transient: failure.transient,
+      error: failure.detail,
+    };
+    if (failure.transient) ctx.jsonLogger.warn(entry);
+    else ctx.jsonLogger.error(entry);
+    throw new Error(failureLine(failure));
   }
 
   // ── Cloud remote operations ────────────────────────────────────────────
@@ -322,9 +343,13 @@ export function registerRestoreHandlers(ctx: IPCHandlerContext) {
     'snapshot:list-datasets',
     async (_event, { serverIp, username, password }: { serverIp: string; username: string; password?: string }) => {
       ctx.jsonLogger.info({ event: 'snapshot:list-datasets', serverIp });
-      const result = await listZfsDatasets(serverIp, username, password);
-      ctx.jsonLogger.info({ event: 'snapshot:list-datasets.done', serverIp, count: Array.isArray(result) ? result.length : 0 });
-      return result;
+      try {
+        const result = await listZfsDatasets(serverIp, username, password);
+        ctx.jsonLogger.info({ event: 'snapshot:list-datasets.done', serverIp, count: Array.isArray(result) ? result.length : 0 });
+        return result;
+      } catch (err) {
+        reportConnectionFailure('snapshot:list-datasets', serverIp, err);
+      }
     },
   );
 
@@ -334,9 +359,13 @@ export function registerRestoreHandlers(ctx: IPCHandlerContext) {
       serverIp: string; username: string; dataset?: string;
     }) => {
       ctx.jsonLogger.info({ event: 'snapshot:list-snapshots', serverIp, dataset });
-      const result = await listZfsSnapshots(serverIp, username, dataset);
-      ctx.jsonLogger.info({ event: 'snapshot:list-snapshots.done', serverIp, dataset, count: Array.isArray(result) ? result.length : 0 });
-      return result;
+      try {
+        const result = await listZfsSnapshots(serverIp, username, dataset);
+        ctx.jsonLogger.info({ event: 'snapshot:list-snapshots.done', serverIp, dataset, count: Array.isArray(result) ? result.length : 0 });
+        return result;
+      } catch (err) {
+        reportConnectionFailure('snapshot:list-snapshots', serverIp, err);
+      }
     },
   );
 

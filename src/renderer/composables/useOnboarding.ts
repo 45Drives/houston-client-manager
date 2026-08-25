@@ -1,7 +1,7 @@
 import { computed } from 'vue';
 import { useSettings } from './useSettings';
 
-type OnboardingFlag =
+export type OnboardingFlag =
   | 'dashboardTourDone'
   | 'backupManagerSeen'
   | 'backupManagerTourDone'
@@ -11,7 +11,18 @@ type OnboardingFlag =
   | 'editTaskTourDone'
   | 'remoteBackupsTourDone'
   | 'restoreBrowserTourDone'
-  | 'snapshotManagerTourDone';
+  | 'snapshotManagerTourDone'
+  | 'serverManageTourDone'
+  | 'smNetworkTabTourDone'
+  | 'smStorageTabTourDone'
+  | 'smUsersTabTourDone'
+  | 'smSambaTabTourDone'
+  | 'smSystemTabTourDone'
+  | 'bulkSetupTourDone'
+  | 'addExistingServerTourDone'
+  | 'settingsTourDone'
+  | 'topologyTourDone'
+  | 'vpnTunnelsTourDone';
 
 const DEFAULTS: Record<OnboardingFlag, boolean> = {
   dashboardTourDone: false,
@@ -24,6 +35,17 @@ const DEFAULTS: Record<OnboardingFlag, boolean> = {
   remoteBackupsTourDone: false,
   restoreBrowserTourDone: false,
   snapshotManagerTourDone: false,
+  serverManageTourDone: false,
+  smNetworkTabTourDone: false,
+  smStorageTabTourDone: false,
+  smUsersTabTourDone: false,
+  smSambaTabTourDone: false,
+  smSystemTabTourDone: false,
+  bulkSetupTourDone: false,
+  addExistingServerTourDone: false,
+  settingsTourDone: false,
+  topologyTourDone: false,
+  vpnTunnelsTourDone: false,
 };
 
 export function useOnboarding() {

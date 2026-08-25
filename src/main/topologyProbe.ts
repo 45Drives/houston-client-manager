@@ -9,6 +9,7 @@ import { NodeSSH } from 'node-ssh';
 import { connectWithFallback } from './setupSsh';
 import { getCredentialManager } from './credentialManager';
 import { assertSafeHost, assertSafeUsername, shellQuote } from './security';
+import { logEvent } from './logging';
 
 export interface RemoteRsyncTask {
   name: string;
@@ -189,6 +190,7 @@ export async function probeServerTopology(host: string, username: string): Promi
   };
 
   const cred = getCredentialManager().getForHost(safeHost);
+  const startedAt = Date.now();
 
   let ssh: NodeSSH;
   try {
@@ -200,7 +202,9 @@ export async function probeServerTopology(host: string, username: string): Promi
       passphrase: cred?.sshPassphrase,
     });
   } catch (err: unknown) {
-    return { ...base, error: err instanceof Error ? err.message : String(err) };
+    const message = err instanceof Error ? err.message : String(err);
+    logEvent('topology:probe.error', { host: safeHost, username: safeUser, error: message }, 'warn');
+    return { ...base, error: message };
   }
 
   try {
@@ -261,6 +265,16 @@ export async function probeServerTopology(host: string, username: string): Promi
       }
     }
 
+    logEvent('topology:probe.done', {
+      host: safeHost,
+      username: safeUser,
+      durationMs: Date.now() - startedAt,
+      rsyncTasks: rsyncTasks.length,
+      replicationTasks: replicationTasks.length,
+      cloudSyncTasks: cloudSyncTasks.length,
+      cloudRemotes: cloudRemotes.length,
+    });
+
     return {
       ...base,
       probedAt: Date.now(),
@@ -272,7 +286,11 @@ export async function probeServerTopology(host: string, username: string): Promi
       cloudRemotes,
     };
   } catch (err: unknown) {
-    return { ...base, error: err instanceof Error ? err.message : String(err) };
+    const message = err instanceof Error ? err.message : String(err);
+    logEvent('topology:probe.error', {
+      host: safeHost, username: safeUser, durationMs: Date.now() - startedAt, error: message,
+    }, 'warn');
+    return { ...base, error: message };
   } finally {
     ssh.dispose();
   }

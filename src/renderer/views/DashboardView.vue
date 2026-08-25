@@ -17,14 +17,14 @@
                 <!-- Selected server status -->
                 <div class="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm ml-auto"
                     :class="selectedServer
-                        ? 'bg-selected border border-selected'
+                        ? 'bg-slate-100 dark:bg-slate-800 border border-selected'
                         : 'bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700'">
                     <span class="status-dot" :class="selectedServer ? 'status-dot-ok' : 'status-dot-idle'" />
                     <span :class="selectedServer ? 'text-primary font-medium' : 'text-gray-500'">
                         {{ selectedServer ? `Viewing: ${selectedServer.name || selectedServer.host}` : 'Select a server to view details' }}
                     </span>
                 </div>
-                <button class="btn btn-sm btn-secondary h-fit" @click="showTopology = !showTopology">
+                <button class="btn btn-sm btn-secondary h-fit" data-tour="topology-toggle" @click="showTopology = !showTopology">
                     {{ showTopology ? 'Hide Topology' : 'Show Topology' }}
                 </button>
             </div>
@@ -63,7 +63,9 @@
                             @add-server="onAddDiscoveredServer" />
                     </div>
 
-                    <BackupTopologyMap v-if="showTopology" />
+                    <div v-if="showTopology" data-tour="topology-map">
+                        <BackupTopologyMap />
+                    </div>
                  
 
                     <!-- Recent Activity -->
@@ -241,11 +243,21 @@ const dashboardTourSteps: TourStep[] = [
     },
     {
         target: '[data-tour="servers-card"]',
-        message: 'Your saved servers appear here.\n\nClick any server to select it — the dashboard will load its storage data and highlight it as the active server. Favorites are pinned at the top.',
+        message: 'Your saved servers appear here.\n\nClick any server to select it — the dashboard will load its storage data and highlight it as the active server. Favorites are pinned at the top.\n\nAlready-configured servers found on your network can be added straight from here, and the Manage button opens full Server Management for viewing or editing that server\'s configuration.',
     },
     {
         target: '[data-tour="storage-health"]',
         message: 'Server Storage shows ZFS dataset usage for the selected server — ZFS is the file system that manages your storage. System Health gives you a quick network and storage health overview.\n\nSelect a different server above to switch.',
+    },
+    {
+        target: '[data-tour="topology-toggle"]',
+        message: 'Show Topology draws a live map of your backup network.',
+        onEnter: () => { showTopology.value = true },
+    },
+    {
+        target: '[data-tour="topology-map"]',
+        message: 'The backup network topology map shows how your data flows.\n\nEach node is a server, a remote backup target, or a cloud remote. Lines between them are backup jobs, and dashed lines are WireGuard (VPN) tunnels used for off-site backups.\n\nUse it to confirm every server actually has somewhere to back up to.',
+        placement: 'top',
     },
     {
         target: '[data-tour="recent-activity"]',
@@ -257,7 +269,7 @@ const dashboardTourSteps: TourStep[] = [
     },
     {
         target: '[data-tour="quick-actions"]',
-        message: 'Quick Actions let you jump straight to common tasks — set up a server, manage backups, manage a server, or view logs.',
+        message: 'Quick Actions jump straight to common tasks.\n\nSetup Single Server walks one new server through the wizard. Setup Multiple Servers opens Bulk Setup, where you configure and deploy a whole batch at once. Manage Backups opens the backup manager, and Logs and Settings are here too.',
     },
     {
         target: '[data-tour="schedule"]',

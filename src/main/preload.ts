@@ -3,6 +3,7 @@ import { contextBridge, ipcRenderer, IpcRendererEvent } from 'electron';
 const SEND_CHANNELS = new Set([
   'renderer-ready',
   'renderer-log',
+  'logs:module-event',
   'IPCMessage',
   'log',
   'store-manual-creds',

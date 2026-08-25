@@ -98,6 +98,8 @@ export interface ZfsDataset {
   mountpoint: string;
   used: string;
   available: string;
+  /** Space charged to `used` purely by refreservation, not by actual data. */
+  usedbyrefreservation?: string;
 }
 
 export interface ZfsSnapshot {
@@ -1317,15 +1319,15 @@ export async function listZfsDatasets(
   const ssh = await connectSSH(serverIp, username, password);
   try {
     const result = await ssh.execCommand(
-      'zfs list -H -o name,mountpoint,used,available -t filesystem 2>/dev/null'
+      'zfs list -H -o name,mountpoint,used,available,usedbyrefreservation -t filesystem 2>/dev/null'
     );
     const stdout = assertCommandSuccess(result, 'zfs list');
     return stdout
       .split('\n')
       .filter(Boolean)
       .map(line => {
-        const [name, mountpoint, used, available] = line.split('\t');
-        return { name, mountpoint, used, available };
+        const [name, mountpoint, used, available, usedbyrefreservation] = line.split('\t');
+        return { name, mountpoint, used, available, usedbyrefreservation };
       });
   } finally {
     ssh.dispose();

@@ -1,5 +1,6 @@
 <template>
   <div class="rounded-lg border bg-default overflow-hidden transition-all"
+    data-tour="bulk-card"
     :class="borderClass">
     <!-- Header (always visible) -->
     <div class="flex items-center gap-3 px-4 py-3 cursor-pointer select-none" @click="expanded = !expanded">
@@ -108,7 +109,7 @@
       </details>
 
       <!-- Discovery server picker + Connect & Probe -->
-      <div class="flex items-center gap-2">
+      <div class="flex items-center gap-2" data-tour="bulk-probe">
         <div v-if="discoveredServers.length" class="flex items-center gap-2 flex-1">
           <label class="text-xs font-medium text-muted shrink-0">Or pick from discovery:</label>
           <select @change="onPickDiscovered($event)" :value="server.host"
@@ -143,8 +144,13 @@
       </div>
 
       <!-- Setup Mode toggle -->
-      <div class="flex items-center gap-3">
+      <div class="flex items-center gap-3" data-tour="bulk-mode">
         <label class="text-xs font-medium text-muted">Setup Mode:</label>
+        <CommanderToolTip :message="`Simple mode asks only for a hostname and a share name, then lays out ZFS pools for you using every drive it found — the same result as the simple single-server wizard.
+
+Custom mode opens full control: pool layout and RAID level, datasets, system users and groups, and Samba shares with per-user access. Use it when this server has to match an existing convention, or when different servers in the batch need different layouts.
+
+The mode is per server, so you can mix simple and custom rows in the same batch.`" />
         <button @click="server.mode = 'simple'"
           class="px-3 py-1 rounded text-xs font-medium transition-colors"
           :class="server.mode === 'simple' ? 'bg-blue-500 text-white' : 'bg-neutral-100 dark:bg-neutral-700 text-default'">
@@ -158,13 +164,37 @@
       </div>
 
       <!-- Clear existing data toggle -->
-      <div class="flex items-center gap-2">
+      <div class="flex items-center gap-2" data-tour="bulk-wipe">
         <label class="flex items-center gap-2 cursor-pointer">
           <input type="checkbox" v-model="server.clearExistingData"
             class="rounded border-neutral-400 dark:border-neutral-500 text-red-500 focus:ring-red-500" />
           <span class="text-xs font-medium" :class="server.clearExistingData ? 'text-red-600 dark:text-red-400' : 'text-muted'">Destroy existing ZFS pools &amp; Samba shares</span>
         </label>
         <span v-if="server.clearExistingData" class="text-xs text-red-500 font-medium">⚠ All existing data will be wiped</span>
+        <CommanderToolTip :message="`Leave this off for factory-fresh hardware — there is nothing to remove.
+
+Turn it on only when you are re-deploying a server that was set up before. It destroys the existing ZFS pools and Samba shares so the new layout can be created cleanly, and everything stored on those pools goes with them.
+
+There is no undo and no snapshot kept behind. Make sure anything you care about has already been copied somewhere else — the topology map on the dashboard is a quick way to confirm this server has a backup elsewhere first.`" />
+      </div>
+
+      <!-- Wipe drives toggle -->
+      <div v-if="drivesWithExistingData.length > 0" class="flex items-center gap-2">
+        <label class="flex items-center gap-2 cursor-pointer">
+          <input type="checkbox" v-model="server.wipeDrives"
+            class="rounded border-neutral-400 dark:border-neutral-500 text-red-500 focus:ring-red-500" />
+          <span class="text-xs font-medium" :class="server.wipeDrives ? 'text-red-600 dark:text-red-400' : 'text-muted'">Wipe drives before creating pools</span>
+        </label>
+        <span class="text-xs" :class="server.wipeDrives ? 'text-red-500 font-medium' : 'text-muted'">
+          {{ wipeSummaryLine }}
+        </span>
+        <CommanderToolTip :message="`${drivesWithExistingData.length} of the ${server.diskInfo?.availableDisks.length ?? 0} selectable drive(s) still carry partitions or old filesystem, ZFS or RAID signatures. Leftover signatures are the usual reason zpool create fails partway through a batch.
+
+This performs a quick wipe: partition tables plus filesystem, ZFS and RAID signatures are cleared, and the first and last few megabytes of each drive are zeroed. It takes a few seconds per drive and does not overwrite the bulk of the platter, so old data is unrecoverable by normal means but not securely erased.
+
+A full block-level erase is not offered here because it runs for hours per drive and bulk deploys run one server at a time. Use the single-server setup for that.
+
+The server refuses to touch any drive backing the running OS regardless of this setting.`" />
       </div>
 
       <!-- Active Backup toggle -->
@@ -374,6 +404,18 @@
           <div v-if="server.diskInfo.existingPools.length" class="mt-1.5 text-amber-600 dark:text-amber-400">
             ⚠ Existing pools: {{ server.diskInfo.existingPools.join(', ') }}
           </div>
+          <div v-if="drivesWithExistingData.length" class="mt-1.5 text-amber-600 dark:text-amber-400">
+            {{ drivesWithExistingData.length }} drive(s) contain existing data:
+            <span v-for="d in drivesWithExistingData" :key="d.name" class="font-mono">
+              {{ d.alias || d.name }} ({{ d.dataSummary }})<span v-if="d.bootRemnant" class="text-red-500"> ⚠ boot remnant</span>;
+            </span>
+          </div>
+          <div v-if="server.diskInfo.excludedDisks?.length" class="mt-1.5 text-muted">
+            Withheld as system disks:
+            <span v-for="d in server.diskInfo.excludedDisks" :key="d.name" class="font-mono">
+              {{ d.name }} ({{ d.reason }});
+            </span>
+          </div>
         </div>
       </div>
     </div>
@@ -420,9 +462,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue';
+import { ref, computed, watch } from 'vue';
 import { ChevronDownIcon, XMarkIcon, ArrowPathIcon, EyeIcon, EyeSlashIcon } from '@heroicons/vue/20/solid';
 import BulkCustomConfig from './BulkCustomConfig.vue';
+import { CommanderToolTip } from '../../components/commander';
 import type { BulkServerState } from '../../composables/useBulkSetup';
 import type { Server } from '../../types';
 import { getSinglePoolPreview, getSplitPoolPreview } from '../../../shared/bulkSetupRaid';
@@ -516,6 +559,23 @@ const statusTextClass = computed(() => {
 const raidPreview = computed(() => {
   const disks = props.server.diskInfo?.availableDisks || [];
   return getSinglePoolPreview(disks);
+});
+
+const drivesWithExistingData = computed(() =>
+  (props.server.diskInfo?.availableDisks || []).filter((d) => d.hasData)
+);
+
+const wipeSummaryLine = computed(() => {
+  const count = drivesWithExistingData.value.length;
+  if (!props.server.wipeDrives) {
+    return `${count} drive(s) carry old partitions or signatures`;
+  }
+  return `Quick wipe — signatures cleared on ${count} drive(s), a few seconds each`;
+});
+
+// A wipe is pointless once nothing on the server has stale data
+watch(drivesWithExistingData, (drives) => {
+  if (drives.length === 0) props.server.wipeDrives = false;
 });
 
 const splitPreview = computed(() => {

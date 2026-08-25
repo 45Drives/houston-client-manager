@@ -4,6 +4,10 @@
             Select a server to view storage.
         </div>
         <div v-else-if="loading" class="py-5 text-center text-gray-400 text-sm">Loading…</div>
+        <div v-else-if="errorMessage" class="py-5 text-center text-sm space-y-2">
+            <p class="text-gray-400">{{ errorMessage }}</p>
+            <button class="btn btn-secondary h-fit" type="button" @click="retry">Retry</button>
+        </div>
         <div v-else-if="datasets.length === 0" class="py-5 text-center text-gray-400 text-sm">
             No ZFS datasets found on this server.
         </div>
@@ -34,12 +38,14 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
 import DashboardCard from './DashboardCard.vue'
+import { describeConnectionError, failureLine } from '../../../shared/connectionErrors'
 
 interface DatasetInfo {
     name: string
     mountpoint: string
     used: string
     available: string
+    usedbyrefreservation?: string
 }
 
 interface DisplayDataset {
@@ -55,6 +61,7 @@ const props = defineProps<{
 
 const datasets = ref<DisplayDataset[]>([])
 const loading = ref(false)
+const errorMessage = ref<string | null>(null)
 
 const topDatasets = computed(() => datasets.value.slice(0, 3))
 
@@ -81,6 +88,7 @@ async function fetchDatasets(serverIp: string) {
     if (!serverIp || serverIp === currentFetchIp) return
     currentFetchIp = serverIp
     loading.value = true
+    errorMessage.value = null
     datasets.value = []
     try {
         const cred = await window.electron.ipcRenderer.invoke('cred:get-for', serverIp)
@@ -93,9 +101,11 @@ async function fetchDatasets(serverIp: string) {
         if (!Array.isArray(raw)) return
 
         datasets.value = raw.map(ds => {
-            const usedBytes = parseSize(ds.used)
+            const rawUsedBytes = parseSize(ds.used)
             const availBytes = parseSize(ds.available)
-            const totalBytes = usedBytes + availBytes
+            const totalBytes = rawUsedBytes + availBytes
+            // `used` counts refreservation as consumed even when no data is written there.
+            const usedBytes = Math.max(0, rawUsedBytes - parseSize(ds.usedbyrefreservation || '0'))
             const percent = totalBytes > 0 ? Math.round((usedBytes / totalBytes) * 100) : 0
             return {
                 name: ds.name,
@@ -105,10 +115,26 @@ async function fetchDatasets(serverIp: string) {
             }
         }).sort((a, b) => b.percent - a.percent)
     } catch (e) {
-        console.error('Failed to load datasets:', e)
+        const failure = describeConnectionError(e, serverIp)
+        errorMessage.value = failureLine(failure)
+        if (failure.transient) {
+            // Reboots and network blips clear on their own — allow another attempt
+            // and keep it out of the error log.
+            currentFetchIp = ''
+            console.debug('[DashboardStorageCard]', failure.message, failure.detail)
+        } else {
+            console.error('[DashboardStorageCard] Failed to load datasets:', failure.detail || e)
+        }
     } finally {
         loading.value = false
     }
+}
+
+function retry() {
+    const ip = props.serverIp
+    if (!ip) return
+    currentFetchIp = ''
+    fetchDatasets(ip)
 }
 
 watch(() => props.serverIp, (ip) => {

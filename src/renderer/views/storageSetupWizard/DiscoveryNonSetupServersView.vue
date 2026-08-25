@@ -143,6 +143,7 @@ import { useHeader } from '../../composables/useHeader'
 import { useServerCredentials } from '../../composables/useServerCredentials'
 import { useRebootWatcher } from '../../composables/useRebootWatcher'
 import { currentServerInjectionKey, discoveryStateInjectionKey } from '../../keys/injection-keys'
+import { describeConnectionError, failureLine } from '../../../shared/connectionErrors'
 
 const router = useRouter()
 const providedCurrentServer = inject(currentServerInjectionKey) as Ref<Server | null>
@@ -222,20 +223,8 @@ function onRescanServers() {
 }
 
 function friendlySshError(raw?: string): string {
-  const msg = (raw ?? '').toLowerCase();
-  if (msg.includes('authentication') || msg.includes('auth')) {
-    return 'Incorrect username or password. Please double-check your credentials and try again.';
-  }
-  if (msg.includes('timed out') || msg.includes('timeout')) {
-    return 'Connection timed out. The server may be unreachable or SSH is not running.';
-  }
-  if (msg.includes('econnrefused') || msg.includes('connection refused')) {
-    return 'Connection refused. Make sure SSH (port 22) is enabled on the server.';
-  }
-  if (msg.includes('getaddrinfo') || msg.includes('enotfound')) {
-    return 'Could not resolve the server address. Please check the IP.';
-  }
-  return raw || 'Authentication failed. Please check your credentials.';
+  if (!raw) return 'Sign-in failed. Please check your credentials.';
+  return failureLine(describeConnectionError(new Error(raw), effectiveIp.value));
 }
 
 interface InstallResult {

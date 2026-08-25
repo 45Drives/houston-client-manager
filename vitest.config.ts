@@ -14,6 +14,8 @@ export default defineConfig({
       "e2e/**",
       "houston-common/**",
       "**/build/**",
+      // Integration tests need live servers/shares — run them via `yarn test:int`.
+      "**/*.int.test.ts",
     ],
   },
 });

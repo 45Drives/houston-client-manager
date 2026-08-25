@@ -3,8 +3,15 @@
         <div class="w-full max-w-2xl mx-auto bg-default p-6 rounded-xl shadow">
             <!-- Header -->
             <div class="flex items-center justify-between mb-4">
-                <h2 class="text-lg font-semibold text-default">
+                <h2 class="text-lg font-semibold text-default flex items-center gap-2">
                     {{ step === 'done' ? 'Tunnel Connected' : 'VPN Tunnel Pairing' }}
+                    <CommanderToolTip :message="`A VPN tunnel is what lets this server back up to a server that is not on your local network.
+
+Pairing takes two steps, one on each server. On the first server choose Create Code and give the tunnel a name — you get a short-lived code. On the second server open the same dialog, choose Enter Code, and paste it in. WireGuard keys are exchanged for you and the link comes up.
+
+Once the handshake succeeds the remote server behaves like any local target: pick it as the destination of a backup task and schedule it normally. The tunnel appears on the backup topology map as a dashed line.
+
+If either server sits behind a router, forward the UDP listen port (51820 by default) before pairing. Run Network Check tells you whether that is needed.`" />
                 </h2>
                 <button @click="close" class="text-muted hover:text-default">
                     <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -208,6 +215,7 @@
 <script setup lang="ts">
 import { computed, ref, watch, onUnmounted } from 'vue'
 import { Modal } from '@45drives/houston-common-ui'
+import { CommanderToolTip } from './commander'
 import { useWireWizard, type PairCompleteResult, type PollResult, type WireWizardNetworkCheck } from '../composables/useWireWizard'
 
 const props = defineProps<{

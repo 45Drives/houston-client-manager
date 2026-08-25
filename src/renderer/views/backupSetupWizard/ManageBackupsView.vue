@@ -155,9 +155,11 @@
                 :serverIp="selectedIp" :username="restoreUsername" />
 
             <!-- Scheduler webview (default remote view) -->
-            <CockpitWebview v-else-if="currentServer && remoteView === 'backups'" :key="currentServer.ip" ref="cockpitRef"
-                routePath="/scheduler-test" hash="simple" wrapperClass="h-full overflow-hidden"
-                heightClass="h-full" :openDevtoolsInDev="true" :requireAdmin="false" />
+            <div v-else-if="currentServer && remoteView === 'backups'" class="h-full" data-tour="scheduler-live">
+                <CockpitWebview :key="currentServer.ip" ref="cockpitRef"
+                    routePath="/scheduler-test" hash="simple" wrapperClass="h-full overflow-hidden"
+                    heightClass="h-full" :openDevtoolsInDev="true" :requireAdmin="false" />
+            </div>
 
             <!-- Scheduler mockup shown during the remote tour when not connected -->
             <div v-else-if="showRemoteTour" class="relative h-full" data-tour="scheduler-preview">
@@ -264,30 +266,63 @@ onMounted(() => {
 
 // ── Remote backups tab tour ──────────────────────────────────────────────
 
-const remoteTourSteps: TourStep[] = [
-    {
-        target: '[data-tour="remote-server-picker"]',
-        message: 'Select a storage server from your discovered servers or favorites, then click Connect to log in.\n\nOnce connected, you can view and manage the server\'s backup tasks.',
-    },
-    {
-        target: '[data-tour="scheduler-preview"]',
-        message: 'Here\'s a preview of the Remote Backup Scheduler.\n\nOnce connected, you\'ll see your server\'s backup tasks listed in a table — create new tasks, run them on demand, view logs, and monitor progress.',
-        placement: 'top',
-    },
-    {
-        target: '[data-tour="restore-btn"]',
-        message: 'Open the Restore browser to recover files from server-to-server or cloud backups on the remote server.',
-    },
-    {
-        target: '[data-tour="snapshots-btn"]',
-        message: 'Manage ZFS snapshots on the connected server.\n\nCreate, browse, restore, rollback, or delete snapshots for any dataset.',
-    },
-];
+// The scheduler mockup only renders while disconnected — once a server is connected
+// the live webview takes its place and none of the mockup's tour anchors exist.
+function buildRemoteTourSteps(): TourStep[] {
+    const connected = !!currentServer?.value;
+
+    const schedulerSteps: TourStep[] = connected
+        ? [
+            {
+                target: '[data-tour="scheduler-live"]',
+                message: 'This is the Remote Backup Scheduler running on the connected server — its backup tasks are listed here, and you can create new ones, run them on demand, view logs, and watch progress.',
+                placement: 'top',
+            },
+            {
+                target: '[data-tour="scheduler-live"]',
+                message: 'New Backup creates a task that runs on the server itself. Leave the target server blank to copy within the same machine, or point it at another server to replicate off the box entirely.\n\nThe VPN Tunnel button pairs this server with one at another site over WireGuard — after that the remote server behaves like any local target. Tunnels can also be managed from Server Management \u2192 Network.',
+                placement: 'top',
+            },
+        ]
+        : [
+            {
+                target: '[data-tour="scheduler-preview"]',
+                message: 'Here\'s a preview of the Remote Backup Scheduler.\n\nOnce connected, you\'ll see your server\'s backup tasks listed in a table — create new tasks, run them on demand, view logs, and monitor progress.',
+                placement: 'top',
+            },
+            {
+                target: '[data-tour="scheduler-new-btn"]',
+                message: 'New Backup creates a task that runs on the server itself.\n\nLeave the target server blank to copy within the same machine, or point it at another server to replicate off the box entirely. ZFS Replication sends only what changed since the last run; File Copy works with any destination.',
+                placement: 'top',
+            },
+            {
+                target: '[data-tour="scheduler-vpn-btn"]',
+                message: 'External backups \u2014 to a server at another site \u2014 run over a WireShield VPN tunnel.\n\nThe VPN Tunnel button pairs the two servers: one side creates a short-lived code, the other enters it, and a WireGuard link comes up between them. After that the remote server behaves like any local target, so you just pick it as the destination and schedule the task normally.\n\nTunnels can also be created and managed from Server Management \u2192 Network, and every tunnel shows up on the backup topology map.',
+                placement: 'top',
+            },
+        ];
+
+    return [
+        {
+            target: '[data-tour="remote-server-picker"]',
+            message: 'Select a storage server from your discovered servers or favorites, then click Connect to log in.\n\nOnce connected, you can view and manage the server\'s backup tasks.',
+        },
+        ...schedulerSteps,
+        {
+            target: '[data-tour="restore-btn"]',
+            message: 'Open the Restore browser to recover files from server-to-server or cloud backups on the remote server.',
+        },
+        {
+            target: '[data-tour="snapshots-btn"]',
+            message: 'Manage ZFS snapshots on the connected server.\n\nCreate, browse, restore, rollback, or delete snapshots for any dataset.',
+        },
+    ];
+}
 
 watch(activeTab, (tab) => {
     if (tab === 'remote' && !onboarding.value.remoteBackupsTourDone) {
         setTimeout(() => {
-            requestTour('remote-backups', remoteTourSteps, () => markDone('remoteBackupsTourDone'));
+            requestTour('remote-backups', buildRemoteTourSteps(), () => markDone('remoteBackupsTourDone'));
         }, 400);
     }
 });

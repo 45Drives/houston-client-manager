@@ -93,9 +93,13 @@ RSYNC_SSH=(ssh "${SSH_OPTS[@]}")
 
 echo "Build tag: $BUNDLE_TAG"
 echo "BUNDLE_TAG=$BUNDLE_TAG"
-echo "Building macOS (${MAC_BUILD_KIND}) unsigned..."
 
-rm -rf dist/mac-universal dist/mac-arm64 dist/mac-x64 dist/sign-stage || true
+if ! truthy "${MAC_SKIP_BUILD:-0}"; then
+  echo "Building macOS (${MAC_BUILD_KIND}) unsigned..."
+  rm -rf dist/mac-universal dist/mac-arm64 dist/mac-x64 dist/sign-stage || true
+else
+  echo "MAC_SKIP_BUILD=1; skipping build, using existing app bundle for (${MAC_BUILD_KIND})."
+fi
 
 resolve_app_path() {
   local kind="$1"
@@ -142,15 +146,26 @@ resolve_app_path() {
   return 1
 }
 
-if [[ "${MAC_BUILD_KIND}" == "universal" ]]; then
-  CSC_IDENTITY_AUTO_DISCOVERY=false SKIP_AFTER_SIGN=1 yarn mac:dir:universal
-elif [[ "${MAC_BUILD_KIND}" == "arm64" ]]; then
-  CSC_IDENTITY_AUTO_DISCOVERY=false SKIP_AFTER_SIGN=1 yarn mac:dir:arm64
-elif [[ "${MAC_BUILD_KIND}" == "x64" ]]; then
-  CSC_IDENTITY_AUTO_DISCOVERY=false SKIP_AFTER_SIGN=1 yarn mac:dir:x64
-else
-  echo "MAC_BUILD_KIND must be 'arm64', 'x64', or 'universal'" >&2
-  exit 1
+if ! truthy "${MAC_SKIP_BUILD:-0}"; then
+  LOCK_HASH="$(cat yarn.lock package.json 2>/dev/null | shasum -a 256 | cut -d' ' -f1)"
+  HASH_CACHE="node_modules/.yarn-install-hash"
+  if [[ -f "$HASH_CACHE" ]] && [[ "$(cat "$HASH_CACHE" 2>/dev/null)" == "$LOCK_HASH" ]]; then
+    echo "Dependencies unchanged, skipping yarn install (macOS)."
+  else
+    echo "Running yarn install (macOS)..."
+    yarn install --frozen-lockfile
+    printf '%s' "$LOCK_HASH" > "$HASH_CACHE"
+  fi
+  if [[ "${MAC_BUILD_KIND}" == "universal" ]]; then
+    CSC_IDENTITY_AUTO_DISCOVERY=false SKIP_AFTER_SIGN=1 yarn mac:dir:universal
+  elif [[ "${MAC_BUILD_KIND}" == "arm64" ]]; then
+    CSC_IDENTITY_AUTO_DISCOVERY=false SKIP_AFTER_SIGN=1 yarn mac:dir:arm64
+  elif [[ "${MAC_BUILD_KIND}" == "x64" ]]; then
+    CSC_IDENTITY_AUTO_DISCOVERY=false SKIP_AFTER_SIGN=1 yarn mac:dir:x64
+  else
+    echo "MAC_BUILD_KIND must be 'arm64', 'x64', or 'universal'" >&2
+    exit 1
+  fi
 fi
 
 APP_PATH="$(resolve_app_path "${MAC_BUILD_KIND}" || true)"
@@ -191,10 +206,27 @@ echo "Signed artifacts are on Intel Mac under: ${INTEL_OUT_DIR}"
 if truthy "$SYNC_SIGNED_BACK_TO_ARM"; then
   mkdir -p "${ARM_SIGNED_OUTPUT_DIR_EFFECTIVE}"
   echo "Syncing signed artifacts back to ARM host path: ${ARM_SIGNED_OUTPUT_DIR_EFFECTIVE}"
-  rsync -a --delete -e "${RSYNC_SSH[*]}" \
-    "${SIGN_USER}@${SIGN_HOST}:${INTEL_OUT_DIR}/" \
-    "${ARM_SIGNED_OUTPUT_DIR_EFFECTIVE}/"
+  RSYNC_MAX_RETRIES="${RSYNC_MAX_RETRIES:-3}"
+  RSYNC_RETRY_DELAY="${RSYNC_RETRY_DELAY:-5}"
+  _rsync_ok=0
+  for _attempt in $(seq 1 "$RSYNC_MAX_RETRIES"); do
+    if rsync -a --delete -e "${RSYNC_SSH[*]}" \
+      "${SIGN_USER}@${SIGN_HOST}:${INTEL_OUT_DIR}/" \
+      "${ARM_SIGNED_OUTPUT_DIR_EFFECTIVE}/"; then
+      _rsync_ok=1
+      break
+    fi
+    echo "rsync failed (attempt ${_attempt}/${RSYNC_MAX_RETRIES}). Retrying in ${RSYNC_RETRY_DELAY}s..." >&2
+    sleep "$RSYNC_RETRY_DELAY"
+  done
+  if [[ "$_rsync_ok" -ne 1 ]]; then
+    echo "rsync from Intel Mac failed after ${RSYNC_MAX_RETRIES} attempts." >&2
+    echo "Artifacts remain on Intel Mac at: ${INTEL_OUT_DIR}" >&2
+    exit 1
+  fi
   echo "Synced signed artifacts to ARM host path: ${ARM_SIGNED_OUTPUT_DIR_EFFECTIVE}"
 else
   echo "SYNC_SIGNED_BACK_TO_ARM=0; skipping Intel -> ARM artifact sync."
 fi
+
+echo "Done."

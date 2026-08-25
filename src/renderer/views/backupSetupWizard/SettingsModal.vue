@@ -14,7 +14,7 @@
             <!-- Body: sidebar + content -->
             <div class="flex flex-1 min-h-0">
                 <!-- Sidebar nav -->
-                <nav class="w-40 shrink-0 border-r border-default py-3 overflow-y-auto">
+                <nav class="w-40 shrink-0 border-r border-default py-3 overflow-y-auto" data-tour="settings-nav">
                     <template v-for="group in navGroups" :key="group.label">
                         <p class="nav-group-label">{{ group.label }}</p>
                         <button v-for="item in group.items" :key="item.key"
@@ -27,7 +27,7 @@
                 </nav>
 
                 <!-- Content -->
-                <div class="flex-1 overflow-y-auto px-5 py-4">
+                <div class="flex-1 overflow-y-auto px-5 py-4" data-tour="settings-content">
 
                 <!-- ═══ Servers ═══════════════════════════════════════ -->
                 <template v-if="activeSection === 'servers'">
@@ -200,6 +200,7 @@ import { reportSuccess } from '@45drives/houston-common-ui';
 import { useSettings, type AppSettings } from '../../composables/useSettings';
 import { useServers, type StoredServer } from '../../composables/useServers';
 import { useOnboarding } from '../../composables/useOnboarding';
+import { useTourManager, type TourStep } from '../../composables/useTourManager';
 import {
     XMarkIcon, TrashIcon, PencilIcon,
     ServerStackIcon, SwatchIcon, BellIcon, SparklesIcon,
@@ -219,7 +220,48 @@ const emit = defineEmits<{
 
 const { settings, load, save, reset } = useSettings();
 const { savedServers: servers, displayServers, refresh: refreshServerList, setFavorite, updateServer, removeServer: removeServerEntry } = useServers();
-const { onboarding, resetAll: resetOnboarding } = useOnboarding();
+const { onboarding, markDone, resetAll: resetOnboarding } = useOnboarding();
+const { requestTour } = useTourManager();
+
+// ── Guided tour (first time Settings is opened) ──────────────────────────
+
+const settingsTourSteps: TourStep[] = [
+    {
+        target: '[data-tour="settings-nav"]',
+        message: 'Settings is grouped into four areas: your saved servers, how the client looks and behaves, how it connects to servers, and advanced maintenance options.',
+        onEnter: () => { activeSection.value = 'servers'; },
+    },
+    {
+        target: '[data-tour="settings-content"]',
+        message: 'Saved holds every server you have chosen to remember.\n\nRename them so they are easier to recognise, star the ones you use most so they appear at the top of every server picker, or remove entries you no longer need.',
+        onEnter: () => { activeSection.value = 'servers'; },
+    },
+    {
+        target: '[data-tour="settings-content"]',
+        message: 'Display controls how servers are labelled, whether backup notifications pop up, and whether guided tours like this one are shown.\n\nReset guided tours brings every walkthrough back \u2014 useful after an update adds new features.',
+        onEnter: () => { activeSection.value = 'display'; },
+    },
+    {
+        target: '[data-tour="settings-content"]',
+        message: 'Connection tunes how the client reaches your servers: SSH timeout, faster ciphers for slow links, and how often the network is scanned for new servers.\n\nIf servers are slow to appear or connections time out on a busy network, this is the place to adjust it.',
+        onEnter: () => { activeSection.value = 'connection'; },
+    },
+    {
+        target: '[data-tour="settings-content"]',
+        message: 'Advanced covers log retention and restoring everything to defaults.',
+        onEnter: () => { activeSection.value = 'advanced'; },
+    },
+];
+
+watch(() => props.open, (isOpen) => {
+    if (!isOpen || onboarding.value.settingsTourDone) return;
+    setTimeout(() => {
+        requestTour('settings', settingsTourSteps, async () => {
+            activeSection.value = 'servers';
+            await markDone('settingsTourDone');
+        });
+    }, 350);
+});
 
 const allOnboardingDone = computed(() =>
     onboarding.value.backupManagerSeen || onboarding.value.backupManagerTourDone
@@ -292,6 +334,17 @@ const draft = reactive<AppSettings>({
         remoteBackupsTourDone: false,
         restoreBrowserTourDone: false,
         snapshotManagerTourDone: false,
+        serverManageTourDone: false,
+        smNetworkTabTourDone: false,
+        smStorageTabTourDone: false,
+        smUsersTabTourDone: false,
+        smSambaTabTourDone: false,
+        smSystemTabTourDone: false,
+        bulkSetupTourDone: false,
+        addExistingServerTourDone: false,
+        settingsTourDone: false,
+        topologyTourDone: false,
+        vpnTunnelsTourDone: false,
     },
 });
 

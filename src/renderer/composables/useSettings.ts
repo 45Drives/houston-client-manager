@@ -24,6 +24,17 @@ export interface AppSettings {
     remoteBackupsTourDone: boolean;
     restoreBrowserTourDone: boolean;
     snapshotManagerTourDone: boolean;
+    serverManageTourDone: boolean;
+    smNetworkTabTourDone: boolean;
+    smStorageTabTourDone: boolean;
+    smUsersTabTourDone: boolean;
+    smSambaTabTourDone: boolean;
+    smSystemTabTourDone: boolean;
+    bulkSetupTourDone: boolean;
+    addExistingServerTourDone: boolean;
+    settingsTourDone: boolean;
+    topologyTourDone: boolean;
+    vpnTunnelsTourDone: boolean;
   };
   restoreHistory: RestoreHistoryEntry[];
 }

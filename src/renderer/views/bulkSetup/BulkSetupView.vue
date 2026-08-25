@@ -5,10 +5,19 @@
       <!-- Header -->
       <div class="flex items-center justify-between">
         <div>
-          <h1 class="text-xl font-bold text-default">Bulk Server Setup</h1>
+          <h1 class="text-xl font-bold text-default flex items-center gap-2">
+            Bulk Server Setup
+            <CommanderToolTip :message="`Bulk Setup deploys a whole batch of servers in one pass instead of running the single-server wizard over and over.
+
+Add a row per server, or import a template you saved earlier. Every row must pass Connect &amp; Probe first — that verifies SSH access and reads the drives, so a bad password never fails a batch halfway through.
+
+Each server picks its own mode. Simple needs only a hostname and share name and lays out sensible ZFS pools for you. Custom gives full control over pools, datasets, users, groups, and Samba shares.
+
+Parallel mode sets every server up at once. Anything that fails can be retried on its own without re-running the batch.`" />
+          </h1>
           <p class="text-sm text-muted mt-0.5">Configure and deploy multiple servers at once.</p>
         </div>
-        <div class="flex items-center gap-2">
+        <div class="flex items-center gap-2" data-tour="bulk-templates">
           <button @click="onImportTemplate" class="btn btn-secondary text-sm h-fit px-3 py-2">
             Import Template
           </button>
@@ -26,7 +35,7 @@
 
       <!-- Global defaults -->
       <div v-if="servers.length > 1"
-        class="card-refined rounded-lg px-4 py-3">
+        class="card-refined rounded-lg px-4 py-3" data-tour="bulk-defaults">
         <div class="flex items-center gap-3 mb-2">
           <h2 class="text-sm font-semibold text-default">Global Defaults</h2>
           <span class="text-xs text-muted">(Applied to servers without per-server values)</span>
@@ -81,6 +90,13 @@
             </div>
           </div>
         </details>
+        <label class="mt-2 flex items-center gap-2 cursor-pointer w-fit">
+          <input type="checkbox" v-model="globalDefaults.wipeDrives"
+            class="rounded border-neutral-400 dark:border-neutral-500 text-red-500 focus:ring-red-500" />
+          <span class="text-xs font-medium" :class="globalDefaults.wipeDrives ? 'text-red-600 dark:text-red-400' : 'text-muted'">
+            Quick-wipe drives that carry old partitions or signatures
+          </span>
+        </label>
         <button @click="onApplyDefaults" class="mt-2 text-xs text-blue-600 dark:text-blue-400 hover:underline">
           Apply to all servers missing values
         </button>
@@ -103,14 +119,15 @@
       </div>
 
       <!-- Add server button -->
-      <button @click="addServer()" :disabled="isRunning"
+      <button @click="addServer()" :disabled="isRunning" data-tour="bulk-add"
         class="w-full py-3 rounded-lg border-2 border-dashed border-neutral-300 dark:border-neutral-600 text-sm font-medium text-muted hover:border-blue-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors disabled:opacity-50">
         + Add Server
       </button>
 
       <!-- Action bar -->
       <div v-if="servers.length > 0"
-        class="sticky bottom-0 bg-white/80 dark:bg-neutral-900/80 backdrop-blur-sm border-t border-neutral-200 dark:border-neutral-700 -mx-6 px-6 py-4 flex items-center justify-between">
+        class="sticky bottom-0 bg-white/80 dark:bg-neutral-900/80 backdrop-blur-sm border-t border-neutral-200 dark:border-neutral-700 -mx-6 px-6 py-4 flex items-center justify-between"
+        data-tour="bulk-actions">
         <div class="flex items-center gap-3 text-sm">
           <span class="text-default font-medium">{{ totalServers }} server{{ totalServers > 1 ? 's' : '' }}</span>
           <span v-if="!isRunning && !isComplete && !allProbed" class="text-amber-600 dark:text-amber-400 text-xs">
@@ -225,9 +242,12 @@
 import { ref, computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { ServerIcon } from '@heroicons/vue/24/outline';
+import { CommanderToolTip } from '../../components/commander';
 import { useHeader } from '../../composables/useHeader';
 import { useServerDiscovery } from '../../composables/useServerDiscovery';
 import { useBulkSetup } from '../../composables/useBulkSetup';
+import { useOnboarding } from '../../composables/useOnboarding';
+import { useTourManager, type TourStep } from '../../composables/useTourManager';
 import BulkServerCard from './BulkServerCard.vue';
 import BulkDeployConfirmModal from './BulkDeployConfirmModal.vue';
 
@@ -274,6 +294,7 @@ const globalDefaults = ref({
   sshPassphrase: '',
   smbUser: '',
   smbPass: '',
+  wipeDrives: false,
 });
 
 async function browseGlobalSshKey() {
@@ -287,7 +308,57 @@ onMounted(() => {
   startListening();
   // Enable discovery for server selection dropdown
   window.electron?.ipcRenderer.invoke('discovery:setEnabled', true);
+
+  if (!onboarding.value.bulkSetupTourDone) {
+    setTimeout(() => {
+      requestTour('bulk-setup', bulkTourSteps, () => markDone('bulkSetupTourDone'));
+    }, 500);
+  }
 });
+
+// ── Guided tour ────────────────────────────────────────────────────────────
+
+const { onboarding, markDone } = useOnboarding();
+const { requestTour } = useTourManager();
+
+/** Makes sure at least `n` server rows exist so the tour has something to point at. */
+function ensureServerRows(n: number) {
+  while (servers.value.length < n) addServer();
+}
+
+const bulkTourSteps: TourStep[] = [
+  {
+    target: '[data-tour="bulk-add"]',
+    message: 'Bulk Setup configures and deploys a whole batch of servers in one pass, instead of running the single-server wizard over and over.\n\nAdd a row for each server you want to set up. Rows can be filled in by hand or picked from the servers discovered on your network.',
+    onEnter: () => ensureServerRows(1),
+  },
+  {
+    target: '[data-tour="bulk-templates"]',
+    message: 'Templates save you from retyping the same configuration.\n\nExport Template writes your current batch to a JSON file; Import Template loads one back in. Keep a template per site or per hardware model and each new deployment becomes a one-click job.',
+  },
+  {
+    target: '[data-tour="bulk-defaults"]',
+    message: 'Global Defaults fill in the values that are the same on every server — SSH login, SMB user and password, or a shared SSH key.\n\nApply to all servers missing values pushes them into every row that is still blank, leaving anything you customised alone.',
+    onEnter: () => ensureServerRows(2),
+  },
+  {
+    target: '[data-tour="bulk-probe"]',
+    message: 'Connect & Probe verifies SSH access and reads the drives on that server before anything is changed.\n\nEvery row has to probe successfully before deployment is allowed — that is what stops a bad password or an unreachable host from failing halfway through a batch.',
+  },
+  {
+    target: '[data-tour="bulk-mode"]',
+    message: 'Each server can be deployed in Simple or Custom mode.\n\nSimple asks only for a hostname and a share name and lays out sensible ZFS pools for you. Custom opens full control over pool layout, datasets, users, groups, and Samba shares — the same options as the single-server custom wizard, applied across the batch.',
+  },
+  {
+    target: '[data-tour="bulk-wipe"]',
+    message: 'Destroy existing ZFS pools & Samba shares wipes the server before deploying.\n\nLeave it off for factory-fresh hardware. Turn it on only when you are re-deploying a server and are certain the data on it is gone for good — this is not reversible.',
+  },
+  {
+    target: '[data-tour="bulk-actions"]',
+    message: 'When every row is probed, Deploy All runs the batch and shows a confirmation summary first.\n\nParallel mode sets all servers up at once, which is much faster on a large batch; turn it off to go one at a time if you want to watch each server. Progress, failures, and per-server timings appear here as it runs, and anything that fails can be retried on its own.',
+    placement: 'top',
+  },
+];
 
 // Currently-running server label for the status bar
 const currentServerLabel = computed(() => {
