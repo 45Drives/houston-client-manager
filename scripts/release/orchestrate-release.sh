@@ -335,14 +335,18 @@ generate_update_metadata() {
   if [[ "${#linux_rpms[@]}" -eq 0 ]]; then
     mapfile -t linux_rpms < <(find "$STAGING_DIR/linux" -maxdepth 2 -type f -name "*linux*.rpm" | sort)
   fi
+  mapfile -t linux_pacmans < <(find "$STAGING_DIR/linux" -maxdepth 2 -type f -name "*${VERSION}*linux*.pacman" | sort)
+  if [[ "${#linux_pacmans[@]}" -eq 0 ]]; then
+    mapfile -t linux_pacmans < <(find "$STAGING_DIR/linux" -maxdepth 2 -type f -name "*linux*.pacman" | sort)
+  fi
   mapfile -t linux_appimages < <(find "$STAGING_DIR/linux" -maxdepth 2 -type f -name "*${VERSION}*linux*.AppImage" | sort)
   if [[ "${#linux_appimages[@]}" -eq 0 ]]; then
     mapfile -t linux_appimages < <(find "$STAGING_DIR/linux" -maxdepth 2 -type f -name "*linux*.AppImage" | sort)
   fi
-  if [[ "${#linux_debs[@]}" -gt 0 || "${#linux_rpms[@]}" -gt 0 || "${#linux_appimages[@]}" -gt 0 ]]; then
+  if [[ "${#linux_debs[@]}" -gt 0 || "${#linux_rpms[@]}" -gt 0 || "${#linux_pacmans[@]}" -gt 0 || "${#linux_appimages[@]}" -gt 0 ]]; then
     output="$STAGING_DIR/linux/latest-linux.yml"
     linux_gen=(node "$ROOT_DIR/scripts/release/generate-update-yml.mjs" --version "$VERSION" --output "$output")
-    for f in "${linux_debs[@]}" "${linux_rpms[@]}" "${linux_appimages[@]}"; do
+    for f in "${linux_debs[@]}" "${linux_rpms[@]}" "${linux_pacmans[@]}" "${linux_appimages[@]}"; do
       linux_gen+=(--file "$f")
     done
     "${linux_gen[@]}"
@@ -384,7 +388,7 @@ run_linux_build() {
 
   if truthy "$LINUX_CLEAN_OUTPUTS"; then
     shopt -s nullglob
-    stale_dist_linux=(dist/*-linux-*.deb dist/*-linux-*.rpm dist/*-linux-*.AppImage)
+    stale_dist_linux=(dist/*-linux-*.deb dist/*-linux-*.rpm dist/*-linux-*.pacman dist/*-linux-*.AppImage)
     if [[ "${#stale_dist_linux[@]}" -gt 0 ]]; then
       rm -f -- "${stale_dist_linux[@]}"
     fi
@@ -400,12 +404,12 @@ run_linux_build() {
 
   if truthy "$LINUX_CLEAN_OUTPUTS"; then
     shopt -s nullglob
-    stale_staging_linux=("$STAGING_DIR/linux/"*.deb "$STAGING_DIR/linux/"*.rpm "$STAGING_DIR/linux/"*.AppImage)
+    stale_staging_linux=("$STAGING_DIR/linux/"*.deb "$STAGING_DIR/linux/"*.rpm "$STAGING_DIR/linux/"*.pacman "$STAGING_DIR/linux/"*.AppImage)
     if [[ "${#stale_staging_linux[@]}" -gt 0 ]]; then
       rm -f -- "${stale_staging_linux[@]}"
     fi
     if [[ "$RELEASE_BUILDS_DIR" != "$STAGING_DIR" ]]; then
-      stale_release_linux=("$RELEASE_BUILDS_DIR/"*-linux-*.deb "$RELEASE_BUILDS_DIR/"*-linux-*.rpm "$RELEASE_BUILDS_DIR/"*-linux-*.AppImage)
+      stale_release_linux=("$RELEASE_BUILDS_DIR/"*-linux-*.deb "$RELEASE_BUILDS_DIR/"*-linux-*.rpm "$RELEASE_BUILDS_DIR/"*-linux-*.pacman "$RELEASE_BUILDS_DIR/"*-linux-*.AppImage)
       if [[ "${#stale_release_linux[@]}" -gt 0 ]]; then
         rm -f -- "${stale_release_linux[@]}"
       fi
@@ -414,9 +418,9 @@ run_linux_build() {
   fi
 
   shopt -s nullglob
-  linux_artifacts=(dist/*"${VERSION}"*-linux-*.deb dist/*"${VERSION}"*-linux-*.rpm dist/*"${VERSION}"*-linux-*.AppImage)
+  linux_artifacts=(dist/*"${VERSION}"*-linux-*.deb dist/*"${VERSION}"*-linux-*.rpm dist/*"${VERSION}"*-linux-*.pacman dist/*"${VERSION}"*-linux-*.AppImage)
   if [[ "${#linux_artifacts[@]}" -eq 0 ]]; then
-    linux_artifacts=(dist/*-linux-*.deb dist/*-linux-*.rpm dist/*-linux-*.AppImage)
+    linux_artifacts=(dist/*-linux-*.deb dist/*-linux-*.rpm dist/*-linux-*.pacman dist/*-linux-*.AppImage)
   fi
   if [[ "${#linux_artifacts[@]}" -eq 0 ]]; then
     echo "No Linux artifacts found in dist/" >&2
@@ -1036,7 +1040,7 @@ if truthy "${GH_UPLOAD_RELEASE:-0}" || truthy "${GH_PUBLISH_RELEASE:-0}" || trut
 
   if truthy "${GH_UPLOAD_RELEASE:-0}"; then
     mapfile -t assets < <(find "$STAGING_DIR" -maxdepth 4 -type f \
-      \( -name '*.yml' -o -name '*.exe' -o -name '*.blockmap' -o -name '*.zip' -o -name '*.dmg' -o -name '*.deb' -o -name '*.rpm' -o -name '*.AppImage' \) | sort)
+      \( -name '*.yml' -o -name '*.exe' -o -name '*.blockmap' -o -name '*.zip' -o -name '*.dmg' -o -name '*.deb' -o -name '*.rpm' -o -name '*.pacman' -o -name '*.AppImage' \) | sort)
     if [[ "${#assets[@]}" -eq 0 ]]; then
       echo "No assets found to upload from $STAGING_DIR" >&2
       exit 1

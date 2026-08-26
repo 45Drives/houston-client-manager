@@ -105,6 +105,10 @@ mapfile -t LINUX_RPMS < <(find "$RELEASE_DIR" -maxdepth 1 -type f -name "*${VERS
 if [[ "${#LINUX_RPMS[@]}" -eq 0 ]]; then
   mapfile -t LINUX_RPMS < <(find "$RELEASE_DIR" -maxdepth 1 -type f -name "*linux*.rpm" | sort)
 fi
+mapfile -t LINUX_PACMANS < <(find "$RELEASE_DIR" -maxdepth 1 -type f -name "*${VERSION}*linux*.pacman" | sort)
+if [[ "${#LINUX_PACMANS[@]}" -eq 0 ]]; then
+  mapfile -t LINUX_PACMANS < <(find "$RELEASE_DIR" -maxdepth 1 -type f -name "*linux*.pacman" | sort)
+fi
 
 if ! truthy "$PUBLISH_WINDOWS"; then
   WIN_EXES=()
@@ -118,6 +122,7 @@ fi
 if ! truthy "$PUBLISH_LINUX"; then
   LINUX_DEBS=()
   LINUX_RPMS=()
+  LINUX_PACMANS=()
 fi
 
 missing_any=0
@@ -129,8 +134,8 @@ if truthy "$PUBLISH_MAC" && [[ "${#MAC_ZIPS[@]}" -eq 0 ]]; then
   echo "Missing macOS .zip in $RELEASE_DIR"
   missing_any=1
 fi
-if truthy "$PUBLISH_LINUX" && [[ "${#LINUX_DEBS[@]}" -eq 0 && "${#LINUX_RPMS[@]}" -eq 0 ]]; then
-  echo "Missing Linux .deb/.rpm in $RELEASE_DIR"
+if truthy "$PUBLISH_LINUX" && [[ "${#LINUX_DEBS[@]}" -eq 0 && "${#LINUX_RPMS[@]}" -eq 0 && "${#LINUX_PACMANS[@]}" -eq 0 ]]; then
+  echo "Missing Linux .deb/.rpm/.pacman in $RELEASE_DIR"
   missing_any=1
 fi
 if [[ "$missing_any" -eq 1 ]] && truthy "$REQUIRE_ALL_PLATFORMS"; then
@@ -162,10 +167,10 @@ if [[ "${#MAC_ZIPS[@]}" -gt 0 ]]; then
   "${MAC_GEN[@]}"
 fi
 
-if [[ "${#LINUX_DEBS[@]}" -gt 0 || "${#LINUX_RPMS[@]}" -gt 0 ]]; then
+if [[ "${#LINUX_DEBS[@]}" -gt 0 || "${#LINUX_RPMS[@]}" -gt 0 || "${#LINUX_PACMANS[@]}" -gt 0 ]]; then
   echo "Generating latest-linux.yml"
   LINUX_GEN=(node "$ROOT_DIR/scripts/release/generate-update-yml.mjs" --version "$VERSION" --output "$RELEASE_DIR/latest-linux.yml")
-  for f in "${LINUX_DEBS[@]}" "${LINUX_RPMS[@]}"; do
+  for f in "${LINUX_DEBS[@]}" "${LINUX_RPMS[@]}" "${LINUX_PACMANS[@]}"; do
     LINUX_GEN+=(--file "$f")
   done
   "${LINUX_GEN[@]}"
@@ -196,7 +201,7 @@ if truthy "$GH_UPLOAD_RELEASE"; then
     RELEASE_ASSETS+=("${_mac_assets[@]}")
   fi
   if truthy "$PUBLISH_LINUX"; then
-    mapfile -t _linux_assets < <(find "$RELEASE_DIR" -maxdepth 1 -type f \( -name "*.deb" -o -name "*.rpm" -o -name "latest-linux.yml" \) | sort)
+    mapfile -t _linux_assets < <(find "$RELEASE_DIR" -maxdepth 1 -type f \( -name "*.deb" -o -name "*.rpm" -o -name "*.pacman" -o -name "latest-linux.yml" \) | sort)
     RELEASE_ASSETS+=("${_linux_assets[@]}")
   fi
 
