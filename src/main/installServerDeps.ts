@@ -91,20 +91,27 @@ export async function installServerDepsRemotely({
         try {
             const result = await checkRemoteDeps(safeHost, safeUser, privateKeyPath);
 
-            if (result.missing.length === 0) {
-                send("done", "All required dependencies are already installed. Skipping bootstrap.");
+            if (result.missing.length === 0 && result.houstonOutdated.length === 0) {
+                send("done", "All required dependencies are already installed and up to date. Skipping bootstrap.");
                 return { success: true, reboot: false };
             }
 
             if (result.baseMissing.length === 0) {
-                // Base OS is fine — only 45Drives packages are missing, so skip the heavy bootstrap.
-                send("packages", `Installing 45Drives packages: ${result.houstonMissing.join(", ")}…`);
+                // Base OS is fine — only 45Drives packages need installing or updating,
+                // so skip the heavy bootstrap.
+                const toInstall = [...new Set([...result.houstonMissing, ...result.houstonOutdated])];
+                send(
+                    "packages",
+                    result.houstonMissing.length
+                        ? `Installing 45Drives packages: ${toInstall.join(", ")}…`
+                        : `Updating 45Drives packages: ${toInstall.join(", ")}…`,
+                );
                 await ensureHoustonPackages(
                     safeHost,
                     safeUser,
                     privateKeyPath,
                     password,
-                    result.houstonMissing,
+                    toInstall,
                     (line, stream) => {
                         if (!line || line === password) return;
                         if (stream === "stderr" || /^\[(INFO|WARN|ERROR)/.test(line)) {
@@ -112,7 +119,7 @@ export async function installServerDepsRemotely({
                         }
                     },
                 );
-                send("done", "45Drives packages installed.");
+                send("done", "45Drives packages are up to date.");
                 return { success: true, reboot: false };
             }
 
@@ -153,14 +160,15 @@ export async function installServerDepsRemotely({
         // 45Drives suite landed too (older bootstrap scripts only install a subset).
         try {
             const after = await checkRemoteDeps(safeHost, safeUser, privateKeyPath);
-            if (after.houstonMissing.length > 0) {
-                send("packages", `Installing 45Drives packages: ${after.houstonMissing.join(", ")}…`);
+            const toInstall = [...new Set([...after.houstonMissing, ...after.houstonOutdated])];
+            if (toInstall.length > 0) {
+                send("packages", `Installing 45Drives packages: ${toInstall.join(", ")}…`);
                 await ensureHoustonPackages(
                     safeHost,
                     safeUser,
                     privateKeyPath,
                     password,
-                    after.houstonMissing,
+                    toInstall,
                     (line, stream) => {
                         if (!line || line === password) return;
                         if (stream === "stderr" || /^\[(INFO|WARN|ERROR)/.test(line)) {

@@ -342,17 +342,16 @@ const proceedToNextStep = async () => {
     isInstalling.value = false;
   }
 
-  // Determine if we need to run the install module
-  // (manual entries and fallback-detected servers always need install)
+  // Always probe the server for missing dependencies before entering the webview.
+  // A server can be discoverable over mDNS (broadcaster running) while still
+  // missing the Cockpit modules the webview needs. The main-process handler
+  // short-circuits when everything is already installed.
   const srv = selectedServer.value;
-  const needsInstall = isManualEntry.value || srv?.manuallyAdded || srv?.fallbackAdded;
 
-  if (needsInstall) {
-    // install-cockpit-module handler in main also sends store-manual-creds
-    // to CockpitWebview for auto-login
-    const result = await installModule(ip, user, pass);
-    if (!result.success) return;
-  }
+  // install-cockpit-module handler in main also sends store-manual-creds
+  // to CockpitWebview for auto-login
+  const result = await installModule(ip, user, pass);
+  if (!result.success) return;
 
   // Set the current server for the rest of the app
   providedCurrentServer.value = srv ?? {

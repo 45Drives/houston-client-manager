@@ -232,9 +232,6 @@ Across the top of the main column:
 - **Viewing: `<server name>`** — the server whose details are currently shown, or *"Select a server to view details"*.
 - **Show Topology / Hide Topology** — toggles the backup network map.
 
-![Dashboard status strip and failure alert banner](images/dashboard-status-strip.png)
-<!-- SCREENSHOT: Close crop of the top status strip showing the green "X Scheduled Tasks" dot, the red "Y Failed" dot, the "Viewing: <server>" label, the Hide/Show Topology button, and the red alert banner with the View Backups button below it. -->
-
 If any tasks have failed, an alert banner appears: *"N backup tasks failed recently."* with a **View Backups** button that jumps straight to the Backup Manager.
 
 ### Saved Servers
@@ -321,9 +318,6 @@ Four theme swatches change the app's colour scheme to match your 45Drives produc
 
 A **Light / Dark** toggle sits beside them. Your choice is remembered between sessions and is also passed through to the server tools embedded in the app, so everything matches.
 
-![Theme swatches and light/dark toggle](images/menu-appearance-themes.png)
-<!-- SCREENSHOT: Close crop of the Appearance section showing the four coloured theme swatches (45Drives red, 45Homelab blue, 45Pro green, 45Studio purple) with one selected, plus the Light/Dark segmented toggle. -->
-
 ### Settings
 
 The Settings modal is organised into four sections:
@@ -338,9 +332,6 @@ Your saved servers. For each one you can:
 - Mark it as a **favorite** (star icon) so it appears at the top of dropdowns
 - Give it a **display name** (click the pencil, type a name, click **Save**)
 - **Remove** it from the saved list
-
-![Settings — saved servers](images/settings-servers-saved.png)
-<!-- SCREENSHOT: The Servers > Saved panel with two or three servers listed, one starred as a favorite, and one row in inline-edit mode showing the "Display name (optional)" field with Save and Cancel buttons. -->
 
 **Client → Display**
 
@@ -412,8 +403,6 @@ Connect the supplied power cord to the power port on the back of the server, the
 
 > **Tip:** A UPS protects the server from sudden shutdowns caused by power loss or fluctuation, which is the single most common cause of storage corruption.
 
-![Setup Wizard — Plug-In Power](images/setup-03-power.png)
-<!-- SCREENSHOT: The Plug-In Power step showing the power-cable diagram and the UPS recommendation note. -->
 
 ### Step 4: Plug-In Ethernet
 
@@ -423,8 +412,6 @@ Connect the supplied Ethernet cable from the back of the server to a **router or
 
 > **Important:** This is a Network Attached Server (NAS), not a Direct Attached Server (DAS). Connecting the server directly to a computer will not work.
 
-![Setup Wizard — Plug-In Ethernet](images/setup-04-ethernet.png)
-<!-- SCREENSHOT: The Plug-In Ethernet step showing the ethernet-cable diagram and the NAS-vs-DAS warning. -->
 
 ### Step 5: Power On
 
@@ -432,8 +419,6 @@ Connect the supplied Ethernet cable from the back of the server to a **router or
 
 Press the power button on the server. Give it a minute or two to boot before continuing.
 
-![Setup Wizard — Power On](images/setup-05-power-on.png)
-<!-- SCREENSHOT: The Power On step showing the "press power button" chassis diagram. -->
 
 ### Step 6: Discovered 45Drives Servers
 

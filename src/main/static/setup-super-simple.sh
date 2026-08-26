@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # setup-super-simple.sh
 # --------------------------------------------------------------------
-# Installs: 45Drives repo, Cockpit(+modules), Samba, ZFS,
-#           cockpit-super-simple-setup, cockpit-scheduler, wireshield
+# Installs: 45Drives repo, Cockpit(+modules), Samba, ZFS, houston-broadcaster,
+#           cockpit-super-simple-setup, cockpit-zfs, cockpit-scheduler, wireshield
 # --------------------------------------------------------------------
 
 set -eo pipefail
@@ -68,7 +68,7 @@ case "$OS_LIKE" in
     }
     KERNEL_DEVEL_PKGS=(dkms kernel-devel-"$(uname -r)" kernel-headers-"$(uname -r)")
     REQUIRED_PACKAGES=(cockpit samba python3 python3-pip python3-pyudev)
-    OUR_REQUIRED_PACKAGES=(cockpit-super-simple-setup zfs cockpit-zfs cockpit-scheduler wireshield)
+    OUR_REQUIRED_PACKAGES=(houston-broadcaster cockpit-super-simple-setup zfs cockpit-zfs cockpit-scheduler wireshield)
     REQUIRED_SERVICES=(cockpit.socket smb nmb zfs-import-cache zfs-import-scan zfs-mount zfs-zed)
     ;;
 
@@ -104,7 +104,7 @@ case "$OS_LIKE" in
     }
     KERNEL_DEVEL_PKGS=(dkms linux-headers linux-headers-"$(uname -r)")
     REQUIRED_PACKAGES=(cockpit samba python3 python3-pip python3-pyudev)
-    OUR_REQUIRED_PACKAGES=(cockpit-super-simple-setup zfs-dkms zfsutils cockpit-scheduler wireshield)
+    OUR_REQUIRED_PACKAGES=(houston-broadcaster cockpit-super-simple-setup zfs-dkms zfsutils cockpit-zfs cockpit-scheduler wireshield)
     REQUIRED_SERVICES=(cockpit.socket smbd nmbd zfs-import-cache zfs-import-scan zfs-mount zfs-zed)
     ;;
 

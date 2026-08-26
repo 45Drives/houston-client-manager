@@ -259,7 +259,9 @@ export async function setupSshKey(
 
 /** 45Drives packages the Storage Wizard drives from the community repo. */
 export const HOUSTON_PACKAGES = [
+  'houston-broadcaster',        // server API on :9095 the client talks to
   'cockpit-super-simple-setup', // server setup
+  'cockpit-zfs',                // pool/dataset management used by the setup module
   'cockpit-scheduler',          // remote backups
   'wireshield',                 // VPN tunnels for remote backups
 ] as const;
@@ -271,6 +273,8 @@ export interface RemoteDepCheck {
   baseMissing: string[];
   /** 45Drives packages only. Installable from the community repo alone. */
   houstonMissing: string[];
+  /** 45Drives packages installed at an older version than the repo offers. */
+  houstonOutdated: string[];
   /** Whether the 45Drives community repo is already configured. */
   repoConfigured: boolean;
 }
@@ -296,6 +300,7 @@ OS_LIKE="$ID_LIKE $ID"
 
 base_missing=""
 houston_missing=""
+houston_outdated=""
 repo=no
 
 has_cmd() { command -v "$1" >/dev/null 2>&1; }
@@ -319,6 +324,9 @@ add_base() {
 }
 add_houston() {
   if [ -z "$houston_missing" ]; then houston_missing="$1"; else houston_missing="$houston_missing $1"; fi
+}
+add_outdated() {
+  if [ -z "$houston_outdated" ]; then houston_outdated="$1"; else houston_outdated="$houston_outdated $1"; fi
 }
 
 # Cockpit bridge binary
@@ -349,15 +357,59 @@ case "$OS_LIKE" in
 esac
 
 # 45Drives packages
-for p in ${HOUSTON_PACKAGES.join(' ')}; do
-  if ! pkg_installed "$p"; then
+HOUSTON_PKGS="${HOUSTON_PACKAGES.join(' ')}"
+installed_pkgs=""
+for p in $HOUSTON_PKGS; do
+  if pkg_installed "$p"; then
+    installed_pkgs="$installed_pkgs $p"
+  else
     add_houston "$p"
   fi
 done
 
+# Compare installed versions against the repo candidate. Advisory only — any
+# failure here just leaves the outdated list empty.
+if [ "$repo" = yes ] && [ -n "$installed_pkgs" ]; then
+  case "$OS_LIKE" in
+    *rhel*|*fedora*|*centos*)
+      upgrades=""
+      rc=0
+      if has_cmd dnf; then
+        upgrades="$(dnf -q check-update $installed_pkgs 2>/dev/null)" || rc=$?
+      elif has_cmd yum; then
+        upgrades="$(yum -q check-update $installed_pkgs 2>/dev/null)" || rc=$?
+      fi
+      if [ "$rc" = 100 ]; then
+        for p in $installed_pkgs; do
+          if printf '%s\\n' "$upgrades" | grep -q "^$p\\."; then
+            add_outdated "$p"
+          fi
+        done
+      fi
+      ;;
+    *debian*|*ubuntu*)
+      # Without this the candidate version comes from a possibly stale cache.
+      if [ -z "$(find /var/lib/apt/lists -maxdepth 1 -name '*_Packages*' -mtime -1 2>/dev/null)" ]; then
+        apt-get update -qq >/dev/null 2>&1 || true
+      fi
+      for p in $installed_pkgs; do
+        pol="$(apt-cache policy "$p" 2>/dev/null)" || pol=""
+        inst="$(printf '%s\\n' "$pol" | awk '/Installed:/ { print $2; exit }')"
+        cand="$(printf '%s\\n' "$pol" | awk '/Candidate:/ { print $2; exit }')"
+        if [ -n "$inst" ] && [ -n "$cand" ] && [ "$inst" != '(none)' ] && [ "$cand" != '(none)' ]; then
+          if dpkg --compare-versions "$inst" lt "$cand"; then
+            add_outdated "$p"
+          fi
+        fi
+      done
+      ;;
+  esac
+fi
+
 echo "__REPO__ $repo"
 echo "__BASE__ $base_missing"
 echo "__HOUSTON__ $houston_missing"
+echo "__OUTDATED__ $houston_outdated"
 `;
 
   const { stdout, stderr } = await ssh.execCommand(script);
@@ -372,6 +424,7 @@ echo "__HOUSTON__ $houston_missing"
   const repoLine = readLine('__REPO__');
   const baseLine = readLine('__BASE__');
   const houstonLine = readLine('__HOUSTON__');
+  const outdatedLine = readLine('__OUTDATED__');
 
   if (repoLine === null || baseLine === null || houstonLine === null) {
     logEvent('ssh:check-remote-deps.error', { host, output: out }, 'error');
@@ -380,17 +433,19 @@ echo "__HOUSTON__ $houston_missing"
 
   const baseMissing = baseLine ? baseLine.split(/\s+/) : [];
   const houstonMissing = houstonLine ? houstonLine.split(/\s+/) : [];
+  const houstonOutdated = outdatedLine ? outdatedLine.split(/\s+/) : [];
   const result: RemoteDepCheck = {
     missing: [...baseMissing, ...houstonMissing],
     baseMissing,
     houstonMissing,
+    houstonOutdated,
     repoConfigured: repoLine === 'yes',
   };
 
   logEvent(
     'ssh:check-remote-deps',
     { host, ...result },
-    result.missing.length ? 'warn' : 'info',
+    result.missing.length || result.houstonOutdated.length ? 'warn' : 'info',
   );
   return result;
 }

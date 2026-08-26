@@ -1,274 +1,112 @@
 # 45Drives Storage Wizard
 
-The 45Drives Storage Wizard connects your personal computer to a 45Drives server to configure storage, schedule backups, and manage ongoing tasks. Follow the instructions below to download, install, and launch the application on your preferred platform.
+The 45Drives Storage Wizard is a desktop application that connects your computer to one or more 45Drives servers to configure storage, schedule backups, replicate data to another site or the cloud, and restore files — without touching a command line.
+
+> **Full documentation:** [45Drives Storage Wizard User Guide](docs/45Drives_Storage_Wizard_User_Guide.md)
 
 ---
 
-## Installation Steps
+## What It Does
 
-###  Windows
-
-1. Download the Windows Installer:  
-   \`45drives-setup-wizard.Setup.1.0.0.exe\`  
-2. Run the installer and follow the on-screen prompts.  
-3. After installation:  
-   -  If the **Run 45Drives Storage Wizard** checkbox is selected at the end, the app will launch automatically.  
-   -  Otherwise, launch it anytime from:  
-     - Desktop shortcut  
-     - Start Menu → **45Drives Storage Wizard**
-
-**Notes**  
-- The app runs with standard user permissions.  
-- It will automatically request elevated privileges (UAC) for operations like:  
-  - Creating scheduled tasks  
-  - Mounting SMB shares  
-  - Accessing protected directories  
+| Area | Capability |
+|---|---|
+| **Server setup** | Discovers 45Drives servers on the network, installs the server components over SSH, and runs the Super Simple Setup wizard (Simple or Custom path) inline in the app. |
+| **Bulk setup** | Configure and deploy many servers at once from shared global defaults, with importable/exportable templates and optional parallel execution. |
+| **Local backups** | Schedule folders on *this computer* to back up to an SMB share on your server. |
+| **Remote backups** | Server-side scheduled tasks — Rsync file sync, ZFS incremental replication, and cloud sync — that run whether or not your computer is on. |
+| **Cloud accounts** | Saved credentials for Dropbox, Google Drive, Google Cloud, Azure Blob, Backblaze B2, Amazon S3, Wasabi, Ceph, IDrive e2, and Storj. OAuth providers link with a browser sign-in. |
+| **Off-site backups** | Pair two servers over an encrypted WireGuard tunnel with a 6-character code, then point any backup task at the tunnel IP. |
+| **Restore** | Browse local backups, remote backup targets, cloud destinations, and ZFS snapshots, then restore to the server or download to this computer. |
+| **Snapshots** | Browse, roll back, and delete ZFS snapshots, including the automatic hourly/daily/weekly snapshots created by Split Pools. |
+| **Dashboard** | Saved servers, storage and system health, scheduled/failed task counts, recent activity, upcoming backups, and a live topology map of your backup network. |
+| **Credential vault** | Saved server logins stored securely on this device, with active/stale/orphaned tracking. |
+| **Automatic updates** | The app checks for a new release shortly after startup, downloads it in the background, and installs it on quit. |
 
 ---
 
-###  macOS
+## How the Pieces Fit Together
 
-1. Download the macOS disk image:  
-   \`45drives-setup-wizard.dmg\`  
-2. Open the \`.dmg\` and drag **45Drives Storage Wizard.app** into **Applications**.  
-3. Launch the app via Launchpad or Applications.
+The desktop app is the front door. It installs and embeds three Cockpit modules that run on the server itself:
 
-#### First-Time Launch
+| Component | Runs on | Handles |
+|---|---|---|
+| **Storage Wizard** (this repo) | Your computer | Discovery, installation, local backups, dashboard, credential vault |
+| **Super Simple Setup** | The server | ZFS pools, datasets, users, groups, Samba shares |
+| **Task Scheduler** | The server | Remote backup tasks, snapshots, restore, cloud sync |
+| **WireShield** | The server | Encrypted WireGuard tunnels to servers at other sites |
 
--  macOS may warn: “Are you sure you want to open this application?” → Click **Open**.  
--  **Full Disk Access Required** for cron-backed backups of protected folders.
-
-**Grant Full Disk Access to \`cron\`:**  
-1. System Settings → Privacy & Security → Full Disk Access  
-2. Click **+**, navigate to \`/usr/sbin/cron\`, and click **Open**  
-3. Toggle on access for \`cron\`  
-4. Restart your Mac or re-run the app  
+You never install or open these separately — the app deploys them over SSH during setup and presents them inline.
 
 ---
 
-###  Linux
+## Installation
 
-#### Download the Installer
+Download the installer for your platform from the release page.
 
-| Distro                   | File Name                                            |
-| ------------------------ | ---------------------------------------------------- |
-| Rocky / RHEL / AlmaLinux | \`45drives-setup-wizard-1.0.0.x86_64.rpm\`             |
-| Ubuntu / Debian          | \`45drives-setup-wizard_1.0.0_amd64.deb\`              |
-| Arch Linux               | \`45drives-setup-wizard-1.0.0.pacman\`                 |
+### Windows
 
-####  Installation Methods
+1. Download `45Drives-Storage-Wizard-<version>-win-x64.exe`.
+2. Run it and follow the prompts. The installer is per-user, so no administrator password is needed to install, and you can change the install location.
+3. Launch from the Start Menu or the **45Drives Storage Wizard** desktop shortcut.
 
-#####  GUI Install  
-1. Double-click the downloaded file.  
-2. Complete installation via GNOME Software, KDE Discover, etc.
+The app runs with standard user permissions and requests elevation (UAC) only when creating scheduled tasks, mounting SMB shares, or accessing protected directories.
 
-#####  CLI Install  
-\`\`\`bash
-# Rocky / RHEL
-sudo dnf install ./45drives-setup-wizard-1.0.0.x86_64.rpm
+### macOS
 
-# Ubuntu / Debian
-sudo apt install ./45drives-setup-wizard_1.0.0_amd64.deb
+1. Download `45Drives-Storage-Wizard-<version>-mac-arm64.dmg` (Apple Silicon) or `-mac-x64.dmg` (Intel).
+2. Open the `.dmg` and drag **45Drives Storage Wizard** into **Applications**.
+3. Launch from Launchpad or Applications. On the first run macOS may ask you to confirm — click **Open**.
 
-# Arch Linux
-sudo pacman -U ./45drives-setup-wizard-1.0.0.pacman
-\`\`\`
+If you plan to create **local backups**, grant `cron` Full Disk Access:
 
-####  Launch the Application
+1. **System Settings → Privacy & Security → Full Disk Access**
+2. Click **+**, navigate to `/usr/sbin/cron`, and click **Open**
+3. Toggle it on, then restart the app.
 
-- From your desktop environment’s launcher (search “45Drives Storage Wizard”), or  
-- In a terminal:  
-  \`\`\`bash
-  45drives-setup-wizard
-  \`\`\`
+### Linux
 
-** Root Privileges**  
-Requested only when necessary to:  
--  Create an \`fstab\` entry for SMB mounts  
--  Install a \`cron\` job for scheduled backups  
--  Access protected folders  
-Subsequent tasks for the same server usually won’t require re-elevation.
+| Distribution | File | Install command |
+|---|---|---|
+| Ubuntu / Debian | `45Drives-Storage-Wizard-<version>-linux-amd64.deb` | `sudo apt install ./45Drives-Storage-Wizard-<version>-linux-amd64.deb` |
+| Rocky / RHEL / AlmaLinux / Fedora | `45Drives-Storage-Wizard-<version>-linux-x86_64.rpm` | `sudo dnf install ./45Drives-Storage-Wizard-<version>-linux-x86_64.rpm` |
+| Arch / Manjaro | `45Drives-Storage-Wizard-<version>-linux-x64.pacman` | `sudo pacman -U ./45Drives-Storage-Wizard-<version>-linux-x64.pacman` |
+
+The `.deb` and `.rpm` files can also be opened directly in GNOME Software or KDE Discover. Once installed, launch from your desktop application menu or run `45drives-setup-wizard` in a terminal.
+
+Root privileges are requested only when required — creating an `fstab` entry for an SMB mount, installing a `cron` job for scheduled backups, or reading a protected folder. Subsequent tasks for the same server usually will not re-prompt.
 
 ---
 
-##  Setting Up a Server
+## Quick Start
 
-On first launch, the wizard appears automatically. If you land in the Backup Client, open the menu and select **Setup**.
+1. Rack, cable, and power on the server.
+2. Open the app and run the **Setup Wizard**. Pick your server from the discovery list — or enter its IP manually if mDNS is blocked on your network — and sign in as `root`. The app installs the server components over SSH.
+3. Choose **Simple** setup, name the server and its network folder, review the drive summary, and click **Complete Setup**. Enable **Split Pools** if you want an on-box replicated backup pool with automatic snapshots.
+4. Open the **Backup Manager**:
+   - **Local Backups** — pick folders on this computer and a schedule. Runs from this computer, so it needs to be powered on.
+   - **Remote Backups** — connect to the server and create server-side tasks (Rsync, ZFS replication, or cloud sync). Runs on the server, independently of this computer.
+5. For an off-site copy, open **WireShield** from a backup task's **VPN Tunnel** button, pair the two servers with a 6-character code, and point the task at the remote tunnel IP.
+6. To get files back, use **Restore** in the Backup Manager, or **Snapshots** for a ZFS point-in-time recovery.
 
-1. **Welcome Screen**  
-   - Overview of what the app will do  
-   -  Tooltips for more info  
-   - Click **Next** to proceed  
-
-2. **Physical Setup**  
-   1. Unbox and install your drives  
-   2. Plug in the power cable  
-   3. Connect to your network  
-   4. Power on the server  
+Step-by-step instructions for every screen are in the [User Guide](docs/45Drives_Storage_Wizard_User_Guide.md).
 
 ---
 
-##  Discovering a Server
+## Development
 
-- Auto-detects 45Drives servers on your local network.  
-- Listed under **Discovered 45Drives Storage Servers**.
+```bash
+npm install
+npm run dev      # run the app in development
+npm run build    # build the renderer and main process
+```
 
-**If none appear:**  
-1. Click **Add a Server Manually**  
-2. Enter IP and SSH credentials  
-3. Click **Add Server**  
-4. The app installs required software via SSH.
+Packaging is driven by `electron-builder.json`. Release artifacts are named `${productName}-${version}-${os}-${arch}.${ext}` and published to GitHub releases, which is also the source for in-app automatic updates.
 
----
+### References
 
-##  Simple Setup
-
-### Configuration Prompts
-
--  **Server Name** (hostname)  
--  **Initial user** & password  
--  **Network Folder Name** (SMB share)
-
-Options:  
-- Set a root password  
-- Use the same or a new password for root  
-
- Root credentials cannot be recovered—store them safely!
+- [User Guide](docs/45Drives_Storage_Wizard_User_Guide.md)
+- [Bulk setup template example](docs/bulk-setup-template-example.json)
 
 ---
 
-##  Disk Summary
-
-3D disk viewer shows drive status:  
--  Orange = issue detected  
--  Green = selected
-
-Enable **Active Backup** to create two mirrored pools:  
-- **Primary Pool** (Magenta)  
-- **Backup Pool** (Teal)
-
----
-
-##  Final Summary & Setup
-
-- Review all settings  
-- Click **Back** to revise, or **Complete Setup** to start  
-- Progress checklist displays tasks as they run
-
----
-
-##  Post-Setup Options
-
-- **Go to Backup Manager** – schedule/run backups  
-- **Set Up More Storage Servers** – discovery screen  
-- **Go to Houston Command Center** – full UI in browser
-
----
-
-##  Backup Manager
-
-###  Welcome Page
-
-- Click **Next** to choose:  
-  - **Create Backup Schedule**  
-  - **Review Your Backups**
-
-###  Create Backup Schedule
-
-####  Simple Backup
-
-- Backup Location  
-- Interval (hourly/daily/weekly/monthly)  
-- Folders:  
-  - Add folder -> **OK**  
-  - Remove folder  
-
-> All folders share the same interval.
-
-####  Custom Backup
-
-1. Select **Backup Location**  
-2. Add folder  
-3. Calendar UI: set start date/time & frequency  
-4. **Save Schedule**  
-5. Repeat for more tasks  
-
- Edit or Delete tasks as needed.  
-Click **Next** when done.
-
-###  Server Credentials
-
-Enter setup Username & Password → **Next**.
-
-###  Backup Summary
-
-Shows:  
-- Backup Server  
-- Folder list  
-- Interval/settings  
-
- Notes:  
-- **Linux**: banner for initial \`sudo\` prompt.  
-- **Windows/macOS**: UAC/elevation prompts.
-
-Click **Next**.
-
-###  Backup Confirmation
-
-Success screen → **Go to Backup Manager**.
-
-###  Review Your Backups
-
-- List of scheduled tasks  
-
-**Controls per task:**  
--  Edit Schedule  
--  Backup Now  
--  Delete Task  
-
-**Multi-select:**  
-- Highlight tasks → **Delete Selected**
-
-###  Open Backup Folders
-
-1. Select tasks  
-2. **Next**  
-3. Enter credentials  
-4. **Open**  
-
-Mounts SMB share & opens server directories.
-
----
-
-###  Restore Backups
-
-In the Restore Backup module (menu):
-
-1. **Welcome & Server Selection**  
-   - **Restore Welcome** screen → **Next**  
-   - Choose server, enter Username & Password → **Next**
-
-2. **Browse Backups**  
-   - Select a backup on the left  
-   - View contents in main pane  
-   - Use **Search** to filter
-
-3. **Select Items**  
-   - Tick checkboxes for files/folders  
-   - **Select All** / **Deselect All**  
-   - Click **Restore Selected**
-
-4. **Confirm & Restore**  
-   - Warning: existing files will be **overwritten**  
-   - Click **Restore Now**  
-   - Progress bar shows status
-
-5. **Open & Finish**  
-   - **Open All** opens restored folders  
-   - **Dismiss** closes the dialog
-
- Your files are back in their original locations!
-
----
-
-_That’s it! More features are coming—Remote/Offsite backup, Snapshot rollback/restore, and additional quality-of-life improvements. Stay tuned for updates from 45Drives._
+_For support, contact your 45Drives representative or visit [45drives.com](https://www.45drives.com)._

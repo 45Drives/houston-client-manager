@@ -405,15 +405,15 @@ async function bootstrapServer(
   });
 
   let needsBootstrap = true;
-  let houstonMissing: string[] = [];
+  let houstonPending: string[] = [];
   try {
     const depCheck = await checkRemoteDeps(host, username, privateKeyPath);
     needsBootstrap = depCheck.baseMissing.length > 0;
-    houstonMissing = depCheck.houstonMissing;
-    if (depCheck.missing.length === 0) {
+    houstonPending = [...new Set([...depCheck.houstonMissing, ...depCheck.houstonOutdated])];
+    if (depCheck.missing.length === 0 && depCheck.houstonOutdated.length === 0) {
       emitProgress(ctx, {
         host, status: 'bootstrapping', step: 3, totalSteps: 10,
-        label: 'All dependencies already installed.',
+        label: 'All dependencies already installed and up to date.',
       });
       return { success: true, reboot: false };
     }
@@ -421,13 +421,13 @@ async function bootstrapServer(
 
   if (signal.aborted) return { success: false, reboot: false, error: 'Cancelled' };
 
-  // Base OS is fine — only 45Drives packages are missing, so skip the heavy bootstrap.
+  // Base OS is fine — only 45Drives packages need installing or updating.
   if (!needsBootstrap) {
     emitProgress(ctx, {
       host, status: 'bootstrapping', step: 2, totalSteps: 10,
-      label: `Installing 45Drives packages: ${houstonMissing.join(', ')}...`,
+      label: `Installing 45Drives packages: ${houstonPending.join(', ')}...`,
     });
-    await ensureHoustonPackages(host, username, privateKeyPath, entry.password, houstonMissing, (line) => {
+    await ensureHoustonPackages(host, username, privateKeyPath, entry.password, houstonPending, (line) => {
       if (/^\[(INFO|WARN|ERROR)/.test(line)) {
         emitProgress(ctx, { host, status: 'bootstrapping', step: 2, totalSteps: 10, label: line });
       }
@@ -453,12 +453,13 @@ async function bootstrapServer(
   // Bootstrap may predate some 45Drives packages; make sure the full suite is present.
   try {
     const after = await checkRemoteDeps(host, username, privateKeyPath);
-    if (after.houstonMissing.length > 0) {
+    const pending = [...new Set([...after.houstonMissing, ...after.houstonOutdated])];
+    if (pending.length > 0) {
       emitProgress(ctx, {
         host, status: 'bootstrapping', step: 2, totalSteps: 10,
-        label: `Installing 45Drives packages: ${after.houstonMissing.join(', ')}...`,
+        label: `Installing 45Drives packages: ${pending.join(', ')}...`,
       });
-      await ensureHoustonPackages(host, username, privateKeyPath, entry.password, after.houstonMissing, (line) => {
+      await ensureHoustonPackages(host, username, privateKeyPath, entry.password, pending, (line) => {
         if (/^\[(INFO|WARN|ERROR)/.test(line)) {
           emitProgress(ctx, { host, status: 'bootstrapping', step: 2, totalSteps: 10, label: line });
         }
