@@ -5,6 +5,7 @@
     },
     "productName": "45Drives-Storage-Wizard",
     "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
+    "npmRebuild": false,
     "publish": {
         "provider": "github",
         "owner": "45Drives",
@@ -94,6 +95,8 @@
         "!**/__tests__/**",
         "!**/*.map",
         "!**/MakeFile",
+        "!**/node_modules/cpu-features/**",
+        "!**/node_modules/buildcheck/**",
         "!**/.yarn/**",
         "!**/node_modules/*/test/**",
         "!**/node_modules/*/.git/**",
