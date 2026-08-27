@@ -152,6 +152,8 @@ export async function connectWithFallback(host: string, auth: SshAuth): Promise<
         transient: failure.transient,
         error: errMsg(err),
       }, failure.transient ? 'warn' : 'error');
+      // Half-open sockets left by the failed tiers count against sshd's MaxStartups.
+      try { ssh.dispose(); } catch { /* never connected */ }
       throw new Error(failureLine(failure));
     }
   }
@@ -164,6 +166,7 @@ export async function connectWithFallback(host: string, auth: SshAuth): Promise<
     transient: false,
     error: 'no valid auth method available',
   }, 'error');
+  try { ssh.dispose(); } catch { /* never connected */ }
   throw new Error(
     `No usable sign-in method for ${host}. Add a password or SSH key for this server and try again.`,
   );

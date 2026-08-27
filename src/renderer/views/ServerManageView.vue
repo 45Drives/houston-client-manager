@@ -75,13 +75,64 @@ The page is read-only until you click Edit. In edit mode changes are collected i
                     Probing server…
                 </div>
 
-                <!-- Probe error -->
-                <div v-else-if="!rebooting && probeError"
-                    class="py-8 text-center space-y-3">
-                    <ExclamationTriangleIcon class="w-8 h-8 text-amber-500 mx-auto" />
-                    <p class="text-sm text-gray-400">{{ probeError }}</p>
-                    <button class="btn btn-sm btn-primary h-fit" @click="probeServer">Retry</button>
-                </div>
+                <!-- Probe error — connection details stay editable so bad credentials can be fixed -->
+                <template v-else-if="!rebooting && probeError">
+                    <div class="rounded-lg border border-amber-300/60 dark:border-amber-500/30 bg-amber-50 dark:bg-amber-900/20 p-4 flex items-start gap-3">
+                        <ExclamationTriangleIcon class="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
+                        <div class="min-w-0 space-y-1">
+                            <p class="text-sm text-default">{{ probeError }}</p>
+                            <p class="text-xs text-gray-400">
+                                The login details below are stored on this computer, so you can still correct them.
+                                Click <strong>Edit</strong>, fix the username or password, save, then Retry.
+                            </p>
+                            <p v-if="probeAttempts > 1" class="text-xs text-gray-400">
+                                Attempt {{ probeAttempts }} · last tried {{ lastProbeAt }}.
+                                A server that has just refused several logins may block new ones for a minute — wait, then retry.
+                            </p>
+                        </div>
+                        <button class="btn btn-sm btn-primary h-fit ml-auto shrink-0" @click="probeServer"
+                            :disabled="probing">Retry</button>
+                    </div>
+
+                    <!-- Offline connection editor: locally-stored fields only -->
+                    <div v-if="activeTab === 'connection'" class="space-y-4">
+                        <div class="grid grid-cols-2 gap-4">
+                            <FieldCard label="Nickname" :value="server?.name || '—'" :editing="editing"
+                                v-model:editValue="editForm.name" field="name" tab="Connection" type="local"
+                                @stage="stageChange" />
+                            <FieldCard label="Host" :value="server?.host || '—'" :editing="false" />
+                        </div>
+                        <div class="space-y-4">
+                            <SectionDivider label="Admin Login" />
+                            <div class="grid grid-cols-2 gap-4">
+                                <FieldCard label="Username" :value="server?.username || '—'" :editing="editing"
+                                    v-model:editValue="editForm.username" field="username" tab="Connection" type="local"
+                                    @stage="stageChange" />
+                                <FieldCard label="Password" value="••••••••" :editing="editing"
+                                    v-model:editValue="editForm.password" field="password" tab="Connection" type="local"
+                                    inputType="password" @stage="stageChange" />
+                            </div>
+                        </div>
+                        <div class="space-y-4">
+                            <SectionDivider label="Samba Share" />
+                            <div class="grid grid-cols-2 gap-4">
+                                <FieldCard label="Share Name" :value="server?.shareName || '—'" :editing="editing"
+                                    v-model:editValue="editForm.shareName" field="shareName" tab="Connection" type="local"
+                                    @stage="stageChange" />
+                                <FieldCard label="SMB Username" :value="server?.smbUser || '—'" :editing="editing"
+                                    v-model:editValue="editForm.smbUser" field="smbUser" tab="Connection" type="local"
+                                    @stage="stageChange" />
+                            </div>
+                            <FieldCard label="SMB Password" value="••••••••" :editing="editing"
+                                v-model:editValue="editForm.smbPass" field="smbPass" tab="Connection" type="local"
+                                inputType="password" @stage="stageChange" />
+                        </div>
+                    </div>
+                    <div v-else class="py-10 text-center text-xs text-gray-400">
+                        This tab needs a working connection to the server.
+                        Fix the login details on the <strong>Connection</strong> tab, then click Retry.
+                    </div>
+                </template>
 
                 <!-- Tab content -->
                 <template v-else-if="probe">
@@ -1153,6 +1204,8 @@ const server = computed<StoredServer | undefined>(() =>
 const probing = ref(false)
 const probeError = ref('')
 const probe = ref<ServerProbeResult | null>(null)
+const probeAttempts = ref(0)
+const lastProbeAt = ref('')
 
 // ── VPN / WireShield ───────────────────────────────────────────────────────
 
@@ -1308,10 +1361,12 @@ function unstageChange(id: string) {
 
 async function probeServer() {
     const s = server.value
-    if (!s) return
+    if (!s || probing.value) return
 
     probing.value = true
     probeError.value = ''
+    // Seed the form up front so the Connection fields stay editable if the probe fails.
+    initEditForm()
 
     try {
         // Get credentials from credential store
@@ -1329,6 +1384,7 @@ async function probeServer() {
 
         if (result.success) {
             probe.value = result.data
+            probeAttempts.value = 0
             initEditForm()
         } else {
             probeError.value = result.error || 'Failed to probe server.'
@@ -1336,6 +1392,10 @@ async function probeServer() {
     } catch (e: any) {
         probeError.value = e?.message || 'Failed to connect to server.'
     } finally {
+        if (probeError.value) {
+            probeAttempts.value++
+            lastProbeAt.value = new Date().toLocaleTimeString()
+        }
         probing.value = false
     }
 }
@@ -1442,6 +1502,10 @@ async function applyChanges() {
         stagedChanges.value = []
         editing.value = false
         await refreshServers()
+        // A failed probe is usually bad login details — retry now that they've been corrected.
+        if (probeError.value && localChanges.some(c => c.field === 'username' || c.field === 'password')) {
+            probeServer()
+        }
         // Reload dataset props if any were changed
         if (datasetPropChanges.length > 0 && selectedDatasetName.value) {
             viewDatasetProps(selectedDatasetName.value)

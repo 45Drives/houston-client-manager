@@ -4,7 +4,7 @@
             <div class="flex items-center gap-3">
                 <button class="text-xs text-link transition-colors"
                     @click="$emit('manage')">
-                    Manage
+                    Manage Connections
                 </button>
                 <button class="text-xs text-link transition-colors"
                     @click="addServerModal?.open()">
@@ -52,6 +52,13 @@
                     <!-- Selected indicator -->
                     <span v-if="server.host === props.selectedHost"
                         class="text-xs font-medium text-primary shrink-0">Viewing</span>
+
+                    <button
+                        class="shrink-0 p-1 rounded text-gray-400 opacity-0 group-hover:opacity-100 focus:opacity-100 hover:text-primary hover:bg-hover transition-opacity"
+                        title="Manage this server"
+                        @click.stop="$emit('open-manage', server)">
+                        <Cog6ToothIcon class="w-4 h-4" />
+                    </button>
                 </div>
             </div>
 
@@ -77,7 +84,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { StarIcon } from '@heroicons/vue/24/solid'
-import { ExclamationTriangleIcon } from '@heroicons/vue/24/outline'
+import { ExclamationTriangleIcon, Cog6ToothIcon } from '@heroicons/vue/24/outline'
 import { useServers, type StoredServer } from '../../composables/useServers'
 import AddServerModal from './AddServerModal.vue'
 import DashboardCard from './DashboardCard.vue'

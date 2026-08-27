@@ -406,7 +406,9 @@ onMounted(() => {
 const selectedRemote = ref('');
 const selectedTaskName = ref('');
 const restoreTarget = ref<'server' | 'client'>('server');
-const destPath = ref('');
+const DEFAULT_SERVER_DEST = '/data/restored';
+const destPath = ref(DEFAULT_SERVER_DEST);
+const destPathTouched = ref(false);
 const focusedFile = ref<RemoteFileEntry | ServerFileEntry | null>(null);
 const sortDir = ref<'asc' | 'desc'>('asc');
 const createDirOnRestore = ref(true);
@@ -499,8 +501,28 @@ function onFileDblClick(file: RemoteFileEntry | ServerFileEntry) {
 }
 
 function onDestPathInput() {
+    destPathTouched.value = true;
     restore.fetchDirSuggestions(destPath.value);
 }
+
+function applyDefaultDest() {
+    if (restoreTarget.value !== 'server') {
+        destPath.value = '';
+        return;
+    }
+    destPath.value = restore.originalLocalPath.value || DEFAULT_SERVER_DEST;
+}
+
+// Server and client targets use different path spaces, so don't carry a value across
+watch(restoreTarget, () => {
+    destPathTouched.value = false;
+    applyDefaultDest();
+});
+
+// Follow the backed-up source path as the user picks a task / navigates folders
+watch(() => restore.originalLocalPath.value, () => {
+    if (!destPathTouched.value) applyDefaultDest();
+}, { immediate: true });
 
 function toggleSort() {
     sortDir.value = sortDir.value === 'asc' ? 'desc' : 'asc';
@@ -508,7 +530,10 @@ function toggleSort() {
 
 async function pickLocalFolder() {
     const folder = await window.electron.selectFolder();
-    if (folder) destPath.value = folder;
+    if (folder) {
+        destPath.value = folder;
+        destPathTouched.value = true;
+    }
 }
 
 async function onRestoreClick() {
@@ -531,7 +556,9 @@ async function onRestoreClick() {
 
     // Determine effective destination
     let effectiveDest = destPath.value;
-    if (restoreTarget.value === 'server' && restoreToOriginalPath.value && restore.originalLocalPath.value) {
+    const targetsOriginal = restore.originalLocalPath.value
+        && (restoreToOriginalPath.value || destPath.value.replace(/\/$/, '') === restore.originalLocalPath.value.replace(/\/$/, ''));
+    if (restoreTarget.value === 'server' && targetsOriginal && restore.originalLocalPath.value) {
         effectiveDest = restore.originalLocalPath.value;
         // Warn about overwrite
         const confirmed = await showConfirm({
@@ -554,7 +581,7 @@ async function onRestoreClick() {
     }
 
     // Create ZFS dataset if requested
-    if (restoreTarget.value === 'server' && !restoreToOriginalPath.value && createZfsDataset.value && zfsParentDataset.value.trim()) {
+    if (restoreTarget.value === 'server' && !targetsOriginal && createZfsDataset.value && zfsParentDataset.value.trim()) {
         const leafName = effectiveDest.split('/').filter(Boolean).pop() || 'restored';
         const datasetName = `${zfsParentDataset.value.replace(/\/$/, '')}/${leafName}`;
         const result = await restore.createZfsDataset(datasetName, effectiveDest);
@@ -564,7 +591,7 @@ async function onRestoreClick() {
         }
     }
     // Create directory if requested (and not creating a ZFS dataset, which handles its own mountpoint)
-    else if (restoreTarget.value === 'server' && !restoreToOriginalPath.value && createDirOnRestore.value) {
+    else if (restoreTarget.value === 'server' && !targetsOriginal && createDirOnRestore.value) {
         const result = await restore.createDirectory(effectiveDest);
         if (!result.success) {
             restore.error.value = `Failed to create directory: ${result.error}`;

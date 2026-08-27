@@ -91,7 +91,7 @@ export function useHoustonWebview() {
       await wv.executeJavaScript(`
         (function() {
           var p = window.location.pathname || "";
-          var isModulePage = p.includes("/super-simple-setup") || p.includes("/scheduler");
+          var isModulePage = p.includes("/super-simple-setup") || p.includes("/scheduler") || p.includes("/alerts");
           if (isModulePage && !document.querySelector("#login")) {
             document.documentElement.classList.add("houston-wizard-mode");
           }
@@ -139,7 +139,7 @@ export function useHoustonWebview() {
 
     function onModulePage() {
       var p = window.location.pathname || "";
-      return p.includes("/super-simple-setup") || p.includes("/scheduler");
+      return p.includes("/super-simple-setup") || p.includes("/scheduler") || p.includes("/alerts");
     }
 
     function setChromeMode(enabled) {

@@ -808,8 +808,10 @@ export function registerServerManageHandlers(ctx: ServerManageContext) {
       }
     }
 
-    const ssh = await connectSSH(safeHost, username, password, sshKeyPath, sshPassphrase);
+    let ssh: NodeSSH | undefined;
     try {
+      ssh = await connectSSH(safeHost, username, password, sshKeyPath, sshPassphrase);
+
       // Run probes sequentially to avoid exceeding SSH channel limits
       const system = await probeSystem(ssh);
       const network = await probeNetwork(ssh);
@@ -840,7 +842,7 @@ export function registerServerManageHandlers(ctx: ServerManageContext) {
       jsonLogger.error({ event: 'server:probe_error', host: safeHost, error: String(e) });
       return { success: false, error: e?.message || String(e) };
     } finally {
-      ssh.dispose();
+      ssh?.dispose();
     }
   });
 
@@ -858,8 +860,9 @@ export function registerServerManageHandlers(ctx: ServerManageContext) {
       return { success: true, applied: [], failed: [], rebootRequired: false };
     }
 
-    const ssh = await connectSSH(safeHost, username, password);
+    let ssh: NodeSSH | undefined;
     try {
+      ssh = await connectSSH(safeHost, username, password);
       const result = await applyRemoteChanges(ssh, remoteChanges);
       jsonLogger.info({ event: 'server:apply-changes_done', host: safeHost, result });
       return result;
@@ -867,7 +870,7 @@ export function registerServerManageHandlers(ctx: ServerManageContext) {
       jsonLogger.error({ event: 'server:apply-changes_error', host: safeHost, error: String(e) });
       return { success: false, applied: [], failed: [{ label: 'Connection', error: e?.message || String(e) }], rebootRequired: false };
     } finally {
-      ssh.dispose();
+      ssh?.dispose();
     }
   });
 
@@ -876,8 +879,9 @@ export function registerServerManageHandlers(ctx: ServerManageContext) {
     const safeHost = assertSafeHost(host);
     jsonLogger.info({ event: 'server:reboot', host: safeHost });
 
-    const ssh = await connectSSH(safeHost, username, password);
+    let ssh: NodeSSH | undefined;
     try {
+      ssh = await connectSSH(safeHost, username, password);
       // Fire-and-forget reboot — the SSH connection will drop
       ssh.execCommand('sleep 1 && sudo reboot &').catch(() => {});
       await new Promise(resolve => setTimeout(resolve, 2000));
@@ -886,7 +890,7 @@ export function registerServerManageHandlers(ctx: ServerManageContext) {
       // Connection drop during reboot is expected
       return { success: true };
     } finally {
-      ssh.dispose();
+      ssh?.dispose();
     }
   });
 
@@ -911,8 +915,9 @@ export function registerServerManageHandlers(ctx: ServerManageContext) {
       }
     }
 
-    const ssh = await connectSSH(safeHost, username, password, sshKeyPath, sshPassphrase);
+    let ssh: NodeSSH | undefined;
     try {
+      ssh = await connectSSH(safeHost, username, password, sshKeyPath, sshPassphrase);
       const result = await executeManageAction(ssh, action, params, jsonLogger);
       jsonLogger.info({ event: 'server:manage_done', host: safeHost, action, success: result.success });
       return result;
@@ -920,7 +925,7 @@ export function registerServerManageHandlers(ctx: ServerManageContext) {
       jsonLogger.error({ event: 'server:manage_error', host: safeHost, action, error: String(e) });
       return { success: false, error: e?.message || String(e) };
     } finally {
-      ssh.dispose();
+      ssh?.dispose();
     }
   });
 }

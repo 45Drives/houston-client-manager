@@ -181,8 +181,15 @@
 
             <!-- Footer -->
             <div class="flex items-center justify-between px-5 py-3 border-t border-default shrink-0">
-                <div v-if="dirty" class="text-xs text-muted">Unsaved changes</div>
-                <div v-else />
+                <div class="flex items-center gap-3">
+                    <a href="https://github.com/45Drives/houston-client-manager/blob/main/docs/45Drives_Storage_Wizard_User_Guide.md"
+                        target="_blank" rel="noopener noreferrer"
+                        class="text-xs text-link inline-flex items-center gap-1 hover:underline">
+                        <BookOpenIcon class="w-3.5 h-3.5" />
+                        User Guide
+                    </a>
+                    <span v-if="dirty" class="text-xs text-muted">Unsaved changes</span>
+                </div>
                 <div class="flex items-center gap-2">
                     <button class="btn btn-sm btn-outline-shadow h-fit" @click="close">Cancel</button>
                     <button class="btn btn-sm btn-primary h-fit" :disabled="!dirty" @click="saveAndClose">
@@ -204,7 +211,7 @@ import { useTourManager, type TourStep } from '../../composables/useTourManager'
 import {
     XMarkIcon, TrashIcon, PencilIcon,
     ServerStackIcon, SwatchIcon, BellIcon, SparklesIcon,
-    WifiIcon, Cog6ToothIcon,
+    WifiIcon, Cog6ToothIcon, BookOpenIcon,
 } from '@heroicons/vue/24/outline';
 import { StarIcon as StarIconSolid } from '@heroicons/vue/24/solid';
 import { StarIcon as StarIconOutline } from '@heroicons/vue/24/outline';

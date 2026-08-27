@@ -33,7 +33,7 @@ flowchart TD
     A -->|Setup Wizard| B
     A -->|Backup Manager| C
     A -->|Backup Manager| D
-    D -->|VPN Tunnel button| E
+    D -->|Connect Off-Site Server| E
     D --> F
     E --> G
     D -->|over the tunnel| G
@@ -64,6 +64,8 @@ flowchart TD
    - [Topology Map](#topology-map)
    - [Recent Activity and Upcoming Backups](#recent-activity-and-upcoming-backups)
 4. [The Menu — Navigation, Themes, Logs, and Settings](#4-the-menu--navigation-themes-logs-and-settings)
+   - [Settings](#settings)
+   - [The Settings Footer](#the-settings-footer)
 5. [Setting Up a New Server — The Setup Wizard](#5-setting-up-a-new-server--the-setup-wizard)
    - [Step 1: Welcome](#step-1-welcome)
    - [Step 2: Unboxing](#step-2-unboxing)
@@ -78,6 +80,9 @@ flowchart TD
    - [Applying the Configuration](#applying-the-configuration)
 7. [Bulk Server Setup](#7-bulk-server-setup)
 8. [Server Management](#8-server-management)
+   - [The Tabs](#the-tabs)
+   - [Staged Changes](#staged-changes)
+   - [VPN Tunnels](#vpn-tunnels)
 9. [Manage Connections — The Credential Vault](#9-manage-connections--the-credential-vault)
 10. [The Backup Manager](#10-the-backup-manager)
 11. [Local Backups — This Computer to the Server](#11-local-backups--this-computer-to-the-server)
@@ -87,10 +92,14 @@ flowchart TD
     - [Step 4: Congratulations](#step-4-congratulations)
     - [Managing Local Backup Tasks](#managing-local-backup-tasks)
 12. [Remote Backups — Server-Side Scheduled Tasks](#12-remote-backups--server-side-scheduled-tasks)
+    - [Two Toolbars](#two-toolbars)
     - [Connecting to a Server](#connecting-to-a-server)
     - [The Backup Task List](#the-backup-task-list)
     - [Creating a Backup Task](#creating-a-backup-task)
     - [Choosing a Backup Type](#choosing-a-backup-type)
+      - [Parameters — File Copy / Sync (Rsync)](#parameters--file-copy--sync-rsync)
+      - [Parameters — Cloud Backup](#parameters--cloud-backup)
+      - [Parameters — ZFS Backup (Server-to-Server)](#parameters--zfs-backup-server-to-server)
     - [Setting the Schedule](#setting-the-schedule)
     - [Running, Stopping, and Watching Progress](#running-stopping-and-watching-progress)
     - [Editing, Disabling, and Deleting Tasks](#editing-disabling-and-deleting-tasks)
@@ -236,18 +245,27 @@ If any tasks have failed, an alert banner appears: *"N backup tasks failed recen
 
 ### Saved Servers
 
-The **Saved Servers** card lists every server the app has discovered on your network plus any you have saved. Each entry shows its name, address, and reachability. Three buttons sit on this card:
+The **Saved Servers** card lists your saved servers, five at a time. Each row shows a reachability dot (green online, grey offline), the server's name, a gold star if it is a favourite, and `username@host` with the share name and when it was last used.
+
+Two buttons sit in the card header:
 
 | Button | What it does |
 |---|---|
-| **Setup** | Starts the Setup Wizard for a brand-new server |
 | **Manage Connections** | Opens the credential vault (saved logins) |
-| **Add Server** | Adds a server manually by IP address |
+| **+ Add** | Adds a server manually by IP address |
 
 ![Saved Servers card](images/dashboard-saved-servers.png)
-<!-- SCREENSHOT: The Saved Servers card with two or three servers listed (name, address, reachability dot) and the Setup / Manage Connections / Add Server buttons visible. -->
+<!-- SCREENSHOT: The Saved Servers card with two or three servers listed (status dot, name, favourite star, username@host subtitle), the Manage Connections and + Add buttons in the header, and one row hovered so its gear icon is visible. -->
 
-Clicking a server opens its **Server Management** page.
+The card works three ways:
+
+| Action | Result |
+|---|---|
+| **Single-click a row** | Selects that server, so the Storage, System Health, and Recent Activity panels show its details. The row is marked **Viewing**. |
+| **Gear icon** (hover a row) | Opens that server's **Server Management** page |
+| **Double-click a row** | Also opens **Server Management** |
+
+If any saved logins have gone unused for 30 days or more, an amber banner at the bottom of the card names them and points you at **Manage Connections**.
 
 Below Saved Servers, the **Storage** and **System Health** cards summarise capacity usage and overall server health for the selected server.
 
@@ -347,19 +365,34 @@ Your saved servers. For each one you can:
 
 **Network → Connection**
 
-| Setting | Description |
-|---|---|
-| **Auto-connect favorites** | Automatically connect when a favorite server is selected |
-| **SSH Connection timeout** | Seconds to wait when connecting to a server |
-| **Fast SSH ciphers** | Use AES-128-GCM for faster LAN transfers (requires AES-NI on both ends) |
-| **Fallback network scan** | Scan the network when automatic discovery fails |
+| Setting | Description | Range |
+|---|---|---|
+| **Auto-connect favorites** | Automatically connect when a favorite server is selected | On / Off |
+| **SSH Connection timeout** | Seconds to wait when connecting to a server | 5–120 seconds |
+| **Fast SSH ciphers** | Use AES-128-GCM for faster LAN transfers (requires AES-NI on both ends) | On / Off |
+| **Fallback network scan** | Scan the network when automatic discovery fails | On / Off |
+
+Below these, a **Discovery Timing** group holds two more values:
+
+| Setting | Description | Range |
+|---|---|---|
+| **Scan interval** | How often the app re-scans the network for servers | 2–60 seconds |
+| **Inactivity timeout** | How long a server may go unseen before it drops off the discovered list | 10–600 seconds |
 
 ![Settings — network and connection](images/settings-network-connection.png)
-<!-- SCREENSHOT: The Network > Connection panel showing all four rows with their toggles and inputs, especially the Fallback network scan toggle. -->
+<!-- SCREENSHOT: The Network > Connection panel showing the four setting rows with their toggles and inputs, plus the "Discovery Timing" heading below with the Scan interval and Inactivity timeout number fields. -->
 
 **System → Advanced**
 
-Includes **Log retention** — how long log files are kept before being cleaned up.
+| Setting | Description | Range |
+|---|---|---|
+| **Log retention** | How long to keep log files before they are cleaned up | 1–365 days |
+
+**Reset All Settings** sits at the bottom of this panel and returns every preference to its default — *"This resets all preferences to their defaults. Saved servers are not affected."*
+
+### The Settings Footer
+
+A footer runs along the bottom of the modal. **Unsaved changes** appears on the left the moment you alter anything, and **Save** stays disabled until then. **Cancel** closes without applying. A **User Guide** link opens this document on GitHub in your browser.
 
 > **Tip:** If discovery never finds your server, turn on **Fallback network scan**. Automatic discovery uses mDNS, which some networks block.
 
@@ -422,7 +455,7 @@ Press the power button on the server. Give it a minute or two to boot before con
 
 ### Step 6: Discovered 45Drives Servers
 
-*"Discovered 45Drives Servers"*
+*"Select a 45Drives Server to Setup"*
 
 This screen has two halves.
 
@@ -721,11 +754,6 @@ If you enabled Split Pools, the final step schedules the **Active Backup tasks**
 
 *"You now have a network attached server that you can start using immediately."*
 
-A **What happens next** section previews the two tools you will use from here:
-
-- **Backup Manager** — schedule what gets copied, and how often
-- **WireShield** — pair a second server over an encrypted tunnel for offsite copies
-
 Two buttons finish the flow:
 
 | Button | What it does |
@@ -734,7 +762,7 @@ Two buttons finish the flow:
 | **Setup More Storage Servers** | Restarts the setup wizard for another server |
 
 ![Setup complete — what happens next](images/sss-complete-next-steps.png)
-<!-- SCREENSHOT: The completed setup screen showing all steps ticked green, the success message, and the "What happens next" section with the Backup Manager and WireShield preview cards, plus the Configure Backups and Setup More Storage Servers buttons. -->
+<!-- SCREENSHOT: The completed setup screen showing all steps ticked green, the success message, and the Configure Backups and Setup More Storage Servers buttons. -->
 
 ---
 
@@ -769,27 +797,47 @@ Use **+ Add Server** to add a card for each machine, and fill in whatever differ
 
 ## 8. Server Management
 
-Clicking a server on the Dashboard opens its management page. The header shows the server name, `username@host · ip`, and a status dot — green when online, grey when offline.
+Open a server's management page from the Dashboard by hovering its row in **Saved Servers** and clicking the **gear icon**, or by double-clicking the row. The header shows the server name, `username@host · ip`, and a status dot — green when online, grey when offline.
 
 ![Server Management](images/server-management-overview.png)
-<!-- SCREENSHOT: The Server Management page for a connected server, showing the header with the name, username@host · ip subtitle and green status dot, the Edit and Refresh buttons, the full tab bar, and the Pools & Datasets tab content. -->
+<!-- SCREENSHOT: The Server Management page for a connected server, showing the header with the name, username@host · ip subtitle and green status dot, the Edit and Refresh buttons, the full six-tab bar, and the Storage tab content. -->
 
 | Control | Purpose |
 |---|---|
-| **Edit** | Switch into edit mode. Changes are staged and applied together. |
-| **Cancel** | Discard staged changes |
-| **Refresh** | Re-probe the server for current state |
+| **Edit** | Switch into edit mode so fields become editable |
+| **Cancel** | Leave edit mode |
+| **Refresh** | Re-probe the server for its current state |
 
-Tabs across the page cover:
+When you open the page it probes the server and shows *"Probing server…"*. If the probe fails you get the reason and a **Retry** button. If the server is rebooting after a hostname change, the tabs grey out and you see *"Server is rebooting… Waiting for `<name>` to come back online"* until it returns.
 
-- **Connection** — address, ports, credentials in use
-- **Pools & Datasets** — ZFS layout and capacity
-- **Users & Groups** — accounts on the server
-- **Samba Shares** — shares, paths, and access
-- **System Status** — health and service state
-- **Network** — including WireShield tunnels for this server
+### The Tabs
 
-> **Tip:** WireShield tunnels can be created and managed from **Server Management → Network** as well as from inside a backup task.
+Six tabs cover the whole server:
+
+| Tab | What it shows |
+|---|---|
+| **Connection** | How *this app* reaches the server: Nickname, Host, Hostname, IP Address, the **Admin Login** (username and password), and the **Samba Share** details (share name, SMB username, SMB password) |
+| **Network** | Hostname, every interface's IP address, DNS servers, **VPN Tunnels (WireGuard)**, and a **Backup Topology** map for this server |
+| **Storage** | The ZFS pool and dataset layout with capacity. A link to **Advanced Storage Management (Houston) →** opens the server's full ZFS tools. |
+| **Users & Groups** | System accounts and groups, with controls to add and remove them |
+| **Samba** | Shares, their paths and access, plus per-user Samba passwords |
+| **System** | OS and uptime, CPU model and core count, memory used and free, and a status dot for each detected service |
+
+### Staged Changes
+
+Editing here does not take effect immediately. As you change fields, a **Staged Changes** panel slides in from the right listing every pending edit with its old and new value, and a tag showing whether it applies **locally** (saved on this computer, such as a nickname or stored password) or on the **server** (such as the hostname).
+
+Passwords are masked in the panel. Click the **✕** on any entry to drop that one change, then **Save N Changes** to apply the rest together, or **Discard All** to abandon them.
+
+> **Important:** Changing the **Hostname** is a server-side change. The server reboots to finalise it, and the page waits for it to come back.
+
+### VPN Tunnels
+
+The **Network** tab lists each WireGuard interface with a **Connected** or **No handshake** badge, its listen port, the peer endpoint, and Rx/Tx byte counters. **Manage** opens the tunnel modal, **New Tunnel** starts pairing, and **Remove** (visible in edit mode) tears a tunnel down.
+
+If the server does not have WireShield, you will see *"WireShield is not installed on this server."*
+
+> **Tip:** WireShield tunnels can be created and managed from **Server Management → Network** as well as from inside a backup task. See [Off-Site Backups with WireShield](#14-off-site-backups-with-wireshield).
 
 ---
 
@@ -919,18 +967,20 @@ All tasks are configured and your data is now protected by scheduled backups.
 
 ### Managing Local Backup Tasks
 
-The Local Backups tab shows a table of every task with its name, Samba user, source, and destination. Select one or more tasks to enable the action buttons:
+The Local Backups tab shows a table of every task. The columns are **Name**, **User** (the Samba account), **Source**, **Destination**, **Freq**, **Status**, **Last Run**, **Next Run**, and an **Enabled** toggle. Drag the divider between two column headers to resize a column, and tick the checkbox in the header row to select every task at once.
+
+Select one or more tasks to enable the action buttons:
 
 ![Local Backups task list](images/local-backup-task-list.png)
-<!-- SCREENSHOT: The Local Backups tab with four or five tasks listed, one row selected so the Run Now / View / Edit / View Log / Delete action buttons are enabled, and the Refresh icon visible. -->
+<!-- SCREENSHOT: The Local Backups tab with four or five tasks listed, one row selected so the Run Now / View-Restore / Edit / Logs / Delete action buttons are enabled, and the Refresh icon visible. -->
 
 | Action | Description |
 |---|---|
 | **Run Now** | Runs the selected backup immediately instead of waiting for the schedule |
-| **View** | Browses the files inside a backup and restores individual files or whole backups |
+| **View/Restore** | Browses the files inside a backup and restores individual files or whole backups |
 | **Edit** | Changes a task's name, source folder, schedule, or credentials. Enabled when exactly one task is selected. |
-| **View Log** | Opens that task's run history |
-| **Delete** | Removes the task |
+| **Logs** | Opens that task's run history |
+| **Delete** (trash icon) | Removes the task |
 | **Refresh** | Re-reads tasks from the system |
 
 When no tasks exist you will see *"No backup tasks found"* and *"Click New Backup above to create your first backup task."*
@@ -945,6 +995,20 @@ While backups run, a progress panel appears at the bottom: *"N backups in progre
 ## 12. Remote Backups — Server-Side Scheduled Tasks
 
 Switch to the **Remote Backups** tab. These tasks run **on the server**, so they keep going whether or not your computer is on. This is where you set up server-to-server replication, cloud backups, and off-site copies.
+
+### Two Toolbars
+
+This tab shows two rows of controls, and knowing which is which saves confusion. The top row belongs to the desktop app. The row beneath it belongs to the Task Scheduler running on the server, displayed inside the app window.
+
+| Toolbar | Controls |
+|---|---|
+| **Top (desktop app)** | **Dashboard**, the **Local Backups** / **Remote Backups** tabs, the server dropdown, **Connect**, **Disconnect**, **Forget**, **Restore**, **Snapshots**, and a **gear** at the far right |
+| **Below it (Task Scheduler)** | **New Backup**, **Delete Tasks**, **Refresh**, a **gear**, and the **notification bell**. Selecting a task adds **Run Now**, **Stop**, **Logs**, **Edit**, and **Delete** to the left of this row. |
+
+> **Important:** Both rows have a gear icon and they open different things. The **top** gear opens the desktop app's Settings — saved servers, display, connection, and log retention. The **lower** gear, beside the refresh icon, opens [Remote Backup Settings](#remote-backup-settings) with the retry and status-refresh options.
+
+![The two Remote Backups toolbars](images/remote-two-toolbars.png)
+<!-- SCREENSHOT: The top of the Remote Backups tab with both rows visible and each gear icon called out — the upper row showing Dashboard, the two tabs, the server dropdown, Connect / Disconnect / Forget and Restore / Snapshots / gear, and the lower scheduler row showing New Backup / Delete Tasks / refresh / gear / bell. -->
 
 ### Connecting to a Server
 
@@ -1010,6 +1074,63 @@ Click **New Backup**. The **Create Backup Task** screen has two columns: paramet
 | **Cloud Backup** | Sending data to a cloud provider | Syncs to Dropbox, Google Drive, S3, B2, Azure, and more, using a saved Cloud Account. |
 | **ZFS Backup (Server-to-Server)** | Both servers use ZFS | The fastest and most faithful option. Only appears when local ZFS pools exist. |
 
+Below the template selector, the **Parameters** section changes to match your choice. Each type presents its own set of cards.
+
+#### Parameters — File Copy / Sync (Rsync)
+
+**What do you want to copy?** — *"Choose a folder stored on this server that was created by a client backup. This is the backed-up copy of your files, not your live PC."*
+
+| Field | What to do |
+|---|---|
+| **From (Source)** | A dropdown of folders your desktop app has already backed up to this server. A note reads *"Showing directories backed up to this server from your desktop app (SMB user: `<name>`)"*, and a line below shows the **Scope**, **Full Path**, and **User**. |
+| **Enter path manually instead** | Tick this to swap the dropdown for a free-text path field. In manual mode the source must end with `/`. |
+| **To (Target)** | Where the copy lands. End the path with `/` to copy the folder's *contents*, or leave it off to copy the folder itself. |
+
+While the folder list loads you see *"Discovering your folders…"*. If discovery fails, the error appears with *"You can still type a path manually below."* and a **Retry** button.
+
+![Rsync task parameters](images/remote-params-rsync.png)
+<!-- SCREENSHOT: The Rsync Parameters cards — "What do you want to copy?" with the From (Source) dropdown populated and the Scope / Full Path / User line beneath it, the To (Target) path field, and the "Copy to another server (optional)" card below showing the Server address, User and Password fields with the Connect Off-Site Server and Test Connection (SSH) buttons in its header. -->
+
+**Copy to another server (optional)** — *"Leave 'Server address' empty to copy on this machine."*
+
+| Field | What to do |
+|---|---|
+| **Server address** | The destination server's hostname or IP — for example `backup.example.com` or `10.0.0.5`. Leave blank for a local copy. |
+| **User** | The SSH account. Defaults to `root`. Disabled until you enter a server address. |
+| **Password** | That account's password, with an eye icon to reveal it. Disabled until you enter a server address. |
+
+Two buttons sit in this card's header:
+
+| Button | What it does |
+|---|---|
+| **Connect Off-Site Server** | Opens WireShield to build an encrypted tunnel to a server at another location |
+| **Test Connection (SSH)** | Verifies the credentials. Reads **Testing…** while it runs. |
+
+The first time you point a task at a tunnelled server, a **First-time setup** panel asks for that account's password so the two servers can exchange SSH keys — *"This is a one-time step — your servers will use SSH keys for all future connections."* Until it completes, the card footer warns *"SSH login must be configured before remote copies can work."*
+
+#### Parameters — Cloud Backup
+
+**What do you want to copy?** — the same folder picker as Rsync, labelled **Local folder**, with the same manual-path checkbox and *"Discovering your folders…"* / **Retry** behaviour.
+
+**Choose your cloud account** — *"Pick an existing account or add a new one."* Pick a saved account from the **Cloud account** dropdown and its provider logo appears beside it. **Add/Manage Cloud Accounts** opens the [Cloud Accounts](#13-cloud-accounts) screen.
+
+**How should we transfer?** — three radio options:
+
+| Option | Behaviour |
+|---|---|
+| **Copy** | Add/update files; don't delete at destination |
+| **Sync** | Make destination match source (may delete extras) |
+| **Move** | Copy then remove from source after success |
+
+> **Warning:** **Sync** deletes files at the destination that no longer exist at the source, and **Move** removes them from the source after a successful transfer. Use **Copy** unless you specifically want that behaviour.
+
+**Where do you want to copy it to?** — *"Choose where it will live in the cloud."* Type the **Cloud folder** path inside the selected account, for example `my-bucket/backups/`.
+
+![Cloud Backup task parameters](images/remote-params-cloud.png)
+<!-- SCREENSHOT: The Cloud Backup Parameters cards stacked — "What do you want to copy?" with the Local folder dropdown, "Choose your cloud account" with an account selected and its provider logo plus the Add/Manage Cloud Accounts button, "How should we transfer?" with the three Copy / Sync / Move radio tiles and their descriptions, and "Where do you want to copy it to?" with the Cloud folder field filled in. -->
+
+#### Parameters — ZFS Backup (Server-to-Server)
+
 When you pick the ZFS template, an information panel explains:
 
 > **ZFS Backup** uses ZFS replication to send only the changes (incremental snapshots) since the last backup — much faster than copying everything each time. It also preserves exact file permissions, timestamps, and metadata. Recommended when both servers use ZFS storage.
@@ -1017,9 +1138,14 @@ When you pick the ZFS template, an information panel explains:
 ![ZFS Backup information panel](images/remote-task-type-zfs-info.png)
 <!-- SCREENSHOT: The blue "ZFS Backup" information callout shown after selecting the ZFS template, with its full explanatory text. -->
 
-Below the template selector, the **Parameters** section changes to match your choice — source path, destination path, remote host, remote user, and the cloud account picker for cloud tasks.
+**Which folder do you want to back up?** — *"Pick the ZFS pool and dataset (folder) on this server that you want to protect."* Choose a **Pool**, then a **Dataset (Folder)**.
 
-> **Tip:** If the destination server is at another location, use the **VPN Tunnel** button in this section to set up a WireShield link first. See [Off-Site Backups with WireShield](#14-off-site-backups-with-wireshield).
+**Where should the backup go?** — *"Enter the backup server details and pick the destination ZFS pool and dataset."* Fill in **Server address**, **User**, and **Port**, then choose the **Destination Dataset**. This card carries the same **Connect Off-Site Server** and **Test Connection (SSH)** buttons in its header.
+
+![ZFS task parameters](images/remote-params-zfs.png)
+<!-- SCREENSHOT: The ZFS Parameters cards — "Which folder do you want to back up?" with the Pool and Dataset (Folder) dropdowns, and "Where should the backup go?" with the Server address / User / Port fields, the Destination Dataset picker, and the Connect Off-Site Server and Test Connection (SSH) buttons in the header. -->
+
+> **Tip:** If the destination server is at another location, use the **Connect Off-Site Server** button to set up a WireShield link first. See [Off-Site Backups with WireShield](#14-off-site-backups-with-wireshield).
 
 ### Setting the Schedule
 
@@ -1096,10 +1222,10 @@ Select a task and click **Logs** to open its execution history — every run wit
 
 ### Remote Backup Settings
 
-Click the gear icon to open **Settings**.
+Click the gear icon in the **lower** toolbar — the Task Scheduler row, beside the refresh icon — to open **Settings**. Hovering it shows a **Settings** tooltip. (The gear at the far right of the *top* toolbar opens the desktop app's own Settings instead.)
 
 ![Remote backup settings](images/remote-settings.png)
-<!-- SCREENSHOT: The remote backup Settings modal showing the Retry on Failure section with its two fields and the "Apply to Existing Backups" button, the Email Notifications section, and the Status Refresh Fast / Normal / Slow presets with Normal selected. -->
+<!-- SCREENSHOT: The remote backup Settings modal showing the Retry on Failure section with its two fields and the "Apply to Existing Backups" button, and the Status Refresh Fast / Normal / Slow presets with Normal selected. -->
 
 **Retry on Failure** — *"If a backup fails, it can automatically try again before giving up."*
 
@@ -1109,11 +1235,6 @@ Click the gear icon to open **Settings**.
 | **Total attempts** | 1–10, including the first run | 3 |
 
 Click **Save** to apply these to new backups. Existing backups keep their current settings until you click **Apply to Existing Backups**, which reports how many tasks were updated.
-
-**Email Notifications** — get an email when a backup fails or finishes.
-
-- If the **cockpit-alerts** package is not installed, click **Install Email Notifications** to add it.
-- Once installed, click **Open Email Settings** to manage recipients and alert levels.
 
 **Status Refresh** — *"How often the backup list checks for updates. Slower refresh reduces load on the server."*
 
@@ -1219,46 +1340,59 @@ You need WireShield whenever the backup destination is **not** on the same local
 Pairing uses a **6-character code**. One server creates the code, the other enters it, and the tunnel comes up. There are no long keys to copy and no configuration files to edit.
 
 ![WireShield simple view](images/wireshield-simple-view.png)
-<!-- SCREENSHOT: The WireShield simple view showing the collapsed "Connect to an Off-Site Server" panel and the "Off-Site Connections" section below it with one green Connected row and the Refresh button. -->
+<!-- SCREENSHOT: The WireShield simple view showing the "Off-Site Connections" page heading, the collapsed "Connect to an Off-Site Server" panel, and the "Off-Site Connections" list below it with one green Connected row, its Manage button, and the Refresh button. -->
+
+The page heading in this view is **Off-Site Connections**, with a gear icon in the header that opens WireShield's own settings. Everything you need is on this one page: a collapsible **Connect to an Off-Site Server** panel at the top, and the list of existing connections below it.
 
 > **Note:** A small 45Drives coordination service acts as a matchmaker. It helps the two servers discover each other's public address and exchange keys, then steps out of the way. **Your backup data never passes through it** — traffic flows directly between your two servers. You do not need to configure anything about this service.
 
 ### Before You Start — Ports and Firewalls
 
-Each tunnel needs one UDP port open on the internet-facing side:
+Each tunnel listens on its own UDP port. WireShield assigns the first free port starting at **51820** and counting upward, so your first tunnel is usually 51820, the next 51821, and so on. Ports are reused when a connection is removed, so the number you are given will not always be the next one in sequence — the pre-flight check tells you exactly which port this tunnel will use.
 
-| Tunnel | UDP Port |
-|---|---|
-| First | 51820 |
-| Second | 51821 |
-| Third | 51822 |
+WireShield tries to open that port automatically through your router using UPnP, which works on most home and office networks. If it cannot, an amber notice appears once you run [Check This Server](#check-this-server):
 
-WireShield tries to open the port automatically using UPnP, which works on most consumer routers. If it cannot, you will see this notice:
+> **This server may not be reachable from the internet.** We could not open a path through your router automatically. If the other server is **not** on this same network, ask whoever manages your firewall or router to forward **UDP port `<port>`** to this server. Each tunnel requires its own port to be forwarded.
+>
+> You can still continue — pairing usually works without this when both servers are on the same local network.
 
-> **This server may not be reachable from the internet.** We could not open a path through your router automatically. If the other server is not on this same network, ask whoever manages your firewall or router to forward UDP port 51820 to this server. Each tunnel requires its own port to be forwarded. You can still continue — pairing usually works without this when both servers are on the same local network.
+The same notice stays visible on the connection-code and enter-a-code screens, so the port number is always in front of you while you pair.
 
-![Port forwarding notice](images/wireshield-port-forward-notice.png)
-<!-- SCREENSHOT: The amber port-forwarding warning banner with its full text about UDP 51820 and the router. -->
 **To forward the port manually:**
 
 1. Log into your router's admin page (often `192.168.1.1` or `192.168.0.1`).
 2. Find **Port Forwarding** or **NAT**.
-3. Create a rule: external port **51820**, internal IP **your server's LAN IP**, internal port **51820**, protocol **UDP**.
+3. Create a rule using the port number shown in the notice: external port **`<port>`**, internal IP **your server's LAN IP**, internal port **`<port>`**, protocol **UDP**.
 4. Save and retry.
 
 > **Tip:** Only **one** of the two servers needs to be reachable from the internet. If your office server has a forwarded port, the remote site can sit entirely behind NAT.
 
 ### Check This Server
 
-In the WireShield simple view, click **Check This Server** before pairing. The button changes to **Checking…** and then reports:
+Expand **Connect to an Off-Site Server** and click **Check This Server** before pairing. The button changes to **Checking…**, and a status word appears beside it:
 
-- **Ready** (green) with *"Ready to pair"*, or
-- **Needs Attention** (amber) with an explanation — for example *"Could not reach pairing coordinator"*
+| Status | Colour | Meaning |
+|---|---|---|
+| **Ready** | Green | This server can pair |
+| **Needs Attention** | Amber | Something needs fixing first |
 
-Fix anything reported here before continuing.
+A detail box below the button explains the result. In the **Ready** state you will see one of two messages:
+
+- *"Ready to pair. Your router allows the connection automatically — no setup needed."* — the best case; the port was opened for you.
+- *"Ready to pair. WireShield will negotiate a path through your router during pairing, which works on most home and office networks."* — the port could not be opened in advance. The amber [port forwarding notice](#before-you-start--ports-and-firewalls) appears below this box with the exact UDP port to forward if pairing does not finish.
+
+**Needs Attention** messages include:
+
+| Message | What to do |
+|---|---|
+| *"Could not reach pairing coordinator"* | Check the server's internet connection and outbound firewall rules. |
+| *"Pairing coordinator is rate-limiting requests"* | Wait a minute and check again. |
+| *"This server is not enrolled with the pairing service"* | You can usually continue — WireShield registers the server automatically. |
+| *"Could not determine public IP"* | The server cannot see its own public address. Check the internet connection. |
+| A WireGuard kernel module message | WireGuard is not loaded on the server. Follow the hint shown in the message. |
 
 ![Check This Server result](images/wireshield-preflight-check.png)
-<!-- SCREENSHOT: The "Check This Server" result box in the green "Ready — Ready to pair" state. A second variant showing the amber "Needs Attention" state with an explanation would also be useful. -->
+<!-- SCREENSHOT: The "Check This Server" button with the green "Ready" label beside it and the detail box below showing the ready-to-pair message, with the amber port-forwarding notice directly underneath. A second variant showing the amber "Needs Attention" label with a failure message would also be useful. -->
 
 ### Pairing Two Servers
 
@@ -1266,7 +1400,15 @@ You will do this **twice** — once on each server. Start with whichever server 
 
 **Opening WireShield**
 
-From a backup task's parameters, click the **VPN Tunnel** button. This saves your in-progress task and opens WireShield. You can also reach it from **Server Management → Network**.
+From a backup task's parameters, click the **Connect Off-Site Server** button. This saves your in-progress task and opens WireShield.
+
+When you arrive this way, a banner appears at the top of WireShield:
+
+> Pick the off-site server you want to back up to, and we'll fill it in for you. **[Back to Task Scheduler]**
+
+That banner is your way back. WireShield remembers the task you were editing, so nothing is lost.
+
+> **Note:** The app's **Server Management → Network** tab can also start pairing via its **New Tunnel** button. That opens the app's own tunnel dialog rather than the WireShield view described here — see [VPN Tunnels](#vpn-tunnels).
 
 Expand **Connect to an Off-Site Server** — *"Link this server to one at another location using a 6-character code."*
 
@@ -1275,17 +1417,20 @@ Expand **Connect to an Off-Site Server** — *"Link this server to one at anothe
 
 **On the first server — create the code**
 
-1. In **Name this connection**, type a name such as `offsite-backup`. Letters, numbers, and dashes, up to 15 characters. **The other server uses the same name.**
+1. In **Name this connection**, type a name such as `offsite-backup`. Letters, numbers, and dashes, up to 15 characters.
 2. Set **Code expires after** — 15 minutes, 30 minutes, 1 hour, or 2 hours.
-3. Click **Start Here — Create a Code**.
+3. Click **Start Here — Create a Code**. The button reads **Creating Code…** while it contacts the pairing service.
    > *"Do this on one of the two servers. You get a 6-character code to type into the other one."*
-4. The **Your Connection Code** screen shows a large 6-character code — for example `ABC123`. Click **Copy Code** to copy it.
-5. A countdown appears: *"Waiting for the other server to connect — code expires in 3:45."*
+4. The **Your Connection Code** screen appears:
+   > *"Go to the other server, open WireShield, choose "I Already Have a Code", and type this in."*
 
-Leave this screen open.
+   It shows a large 6-character code — for example `ABC123`. Click **Copy Code** to copy it; the button changes to **Copied**.
+5. A countdown appears: *"Waiting for the other server to connect — code expires in 3:45 (at 14:32)."*
+
+Leave this screen open. **Cancel** abandons the code if you change your mind.
 
 ![Your Connection Code](images/wireshield-connection-code.png)
-<!-- SCREENSHOT: The "Your Connection Code" screen with the large 6-character code displayed prominently, the Copy Code button, and the "Waiting for the other server to connect — code expires in M:SS" countdown line. -->
+<!-- SCREENSHOT: The "Your Connection Code" screen with the instruction line, the large 6-character code in monospace, the Copy Code button, the "Waiting for the other server to connect — code expires in M:SS (at HH:MM)" countdown line, and the Cancel button. -->
 
 **On the second server — enter the code**
 
@@ -1293,10 +1438,13 @@ Leave this screen open.
 2. Click **I Already Have a Code**.
    > *"Do this on the second server, using the code from the first one."*
 3. Type the 6-character code into the large input field. It converts to uppercase automatically.
+   > *"Type the 6-character code shown on the other server. The connection is named automatically to match it."*
+
+   You do **not** need to type the connection name on this side — it is copied from the first server for you.
 4. Click **Connect** (or press Enter). The button reads **Connecting…**.
 
 ![Entering the connection code](images/wireshield-enter-code.png)
-<!-- SCREENSHOT: The "Enter the Code" screen with the large centred uppercase 6-character input partially filled, the Connect button, and the Back link. -->
+<!-- SCREENSHOT: The "Enter the Code" screen with its instruction line, the large centred uppercase input showing a partially typed code (placeholder is ABC123), the Connect button, and the ← Back link. -->
 
 **Both servers**
 
@@ -1311,47 +1459,60 @@ Click **Done** to return.
 
 > **Note:** The tunnel is enabled at boot on both servers, so it survives reboots and power outages without any action from you.
 
+> **Tip:** Each tunnel gets its own private `/24` subnet from the `10.45.0.0/16` range. The server that created the code takes the `.1` address and the server that joined takes `.2` — so a first tunnel is typically `10.45.0.1` and `10.45.0.2`.
+
 ### Managing Off-Site Connections
 
 The **Off-Site Connections** section lists every tunnel. *"Select a row to see the server on the other end."*
 
-Each row shows a status dot and a health label:
+Each row shows a status dot, the connection name, a health label, and a count such as *"1 server on the other end"*:
 
 | Dot | Label | Meaning |
 |---|---|---|
 | Green | **Connected** | The tunnel is up and traffic is flowing |
 | Amber | **Partially Connected** | Some peers are reachable, others are stale |
-| Grey | **Disconnected** | No recent handshake |
+| Red | **Disconnected** | No recent handshake |
+| Grey | **Empty** | The tunnel exists but nothing has joined it yet |
 
-Click a row to expand it. You will see **This Server IP** (this end's tunnel address, such as `10.45.0.1`) and a list of remote servers, each with its hostname, tunnel IP, and traffic counters — *"Received 1.2 GB · Sent 340 MB"*.
+> **Note:** **Empty** is normal right after you create a code on the first server — the connection stays empty until the second server joins.
+
+Click a row to expand it. The first line is **This server** with this end's tunnel address (such as `10.45.0.1`). Below it is each server on the other end, showing its name, its tunnel IP, and traffic counters — *"Received 1.4 MB · Sent 801.0 KB"*. If nothing has joined yet you will see *"Nothing connected on the other end yet."*
+
+> **Note:** Remote servers are usually listed under an automatically generated name like `peer-4PaQvxUb`, derived from that server's public key. If the server reported a hostname during pairing, that is shown instead. A server with no name at all appears as **Other server**.
 
 ![Expanded off-site connection](images/wireshield-connections-list.png)
-<!-- SCREENSHOT: The Off-Site Connections list with one row expanded, showing the status dot and "Connected" label, the "This Server IP" value (e.g. 10.45.0.1), and a remote server entry with its hostname, tunnel IP and Received / Sent traffic counters. -->
+<!-- SCREENSHOT: The Off-Site Connections list with one row expanded, showing the green dot and "Connected" label, the "N servers on the other end" count, the "This server" line with its 10.45.0.1 address, and a peer row with its auto-generated peer-XXXXXXXX name, tunnel IP and "Received … · Sent …" counters. -->
 
-**Refresh** re-checks status. When there are no tunnels: *"No off-site connections yet — Use 'Connect to an Off-Site Server' above to link another server."*
+**Refresh** re-checks status; it reads **Refreshing…** while it works. When there are no tunnels at all: *"No off-site connections yet — Use 'Connect to an Off-Site Server' above to link another server."*
 
 **Manage** opens a modal titled *"Manage `<connection name>`"*:
 
 | Control | What it does |
 |---|---|
-| **Status** / **Servers on the other end** | Current health and peer count |
+| **Status** | The same health label as the list row, or **Unknown** |
+| **Servers on the other end** | How many peers have joined |
 | **Remove** (per server) | Removes that server from the connection |
-| **Reconnect** | Restarts the tunnel — the first thing to try if a connection goes amber or grey |
+| **Reconnect** | Restarts the tunnel — the first thing to try if a connection goes amber or red. Reads **Working…** while it runs. |
 | **Remove Connection** | Deletes the tunnel entirely |
 
 ![Manage connection modal](images/wireshield-manage-modal.png)
-<!-- SCREENSHOT: The "Manage offsite-backup" modal showing the Status line, the "Servers on the other end" table with one peer and its Remove button, and the Reconnect and Remove Connection buttons at the bottom. -->
+<!-- SCREENSHOT: The "Manage offsite-backup" modal showing the Status and "Servers on the other end" count at the top, the "Servers on the other end" list with one peer, its tunnel IP and its red Remove button, and the Reconnect and Remove Connection buttons in the footer. -->
 
 ### Using the Tunnel in a Backup Task
 
-Once the tunnel is up, note the remote server's **tunnel IP** (for example `10.45.0.2`) from the expanded connection details.
+If you opened WireShield from a backup task, you do not need to copy any addresses by hand. While the *"Pick the off-site server you want to back up to"* banner is showing:
 
-Return to the Backup Manager's **Remote Backups** tab. Your in-progress task is restored automatically. In the task parameters, enter the tunnel IP as the remote host — the destination is then treated exactly like a server on your own LAN. Set your schedule and save.
+- Click **Use This Connection** on a connection row, or
+- Expand the row and click the server you want — each peer row becomes clickable and shows a **Use →** hint.
+
+Either way, WireShield hands the tunnel IP back to the Task Scheduler and returns you to the Backup Manager, where your in-progress task is restored with the remote host already filled in. Set your schedule and save.
+
+If you opened WireShield some other way, expand the connection, note the remote server's **tunnel IP** (for example `10.45.0.2`), and type it into the task's remote host field yourself. The destination is then treated exactly like a server on your own LAN.
 
 From that point on, every run of the task travels through the encrypted tunnel. Nothing else about the task changes.
 
 ![Tunnel IP used in a backup task](images/wireshield-tunnel-ip-in-task.png)
-<!-- SCREENSHOT: The remote backup task Parameters panel with the remote host field filled in with a tunnel IP such as 10.45.0.2, plus the remote user and destination path fields. -->
+<!-- SCREENSHOT: Two-part capture — first the WireShield list in select mode showing the "Use This Connection" button and an expanded peer row with the "Use →" hint, then the remote backup task Parameters panel with the remote host field auto-filled with the tunnel IP. -->
 
 > **Tip:** Every tunnel also appears on the Dashboard's **Topology Map**, which is the quickest way to confirm at a glance that your off-site link is live.
 
@@ -1361,10 +1522,10 @@ From that point on, every run of the task travels through the encrypted tunnel. 
 
 ### Restoring from a Local Backup
 
-On the **Local Backups** tab, select a task and click **View**. This opens the backup browser, where you can navigate the backed-up folder structure and restore individual files or entire folders back to this computer.
+On the **Local Backups** tab, select a task and click **View/Restore**. This opens the backup browser, where you can navigate the backed-up folder structure and restore individual files or entire folders back to this computer.
 
 ![Browsing a local backup](images/restore-local-browser.png)
-<!-- SCREENSHOT: The local backup file browser opened from View, showing the backed-up folder tree, a breadcrumb path, and several files selected ready to restore. -->
+<!-- SCREENSHOT: The local backup file browser opened from View/Restore, showing the backed-up folder tree, a breadcrumb path, and several files selected ready to restore. -->
 
 ### Restoring from a Remote Backup
 
@@ -1443,16 +1604,36 @@ To update the **server** components (Super Simple Setup, Task Scheduler, WireShi
 
 ## 17. Viewing Logs
 
-Open **View Logs** from the menu, or **Logs** from Quick Actions.
+Open **View Logs** from the menu, or **Logs** from Quick Actions. The page is titled **Log Viewer** — *"View logs from the local client app and connected servers."*
 
-The log viewer shows the desktop app's activity — discovery, SSH connections, backup scheduling, restores, and errors. Passwords, tokens, and other secrets are automatically redacted before anything is written to disk.
+Passwords, tokens, and other secrets are automatically redacted before anything is written to disk.
 
 ![Log viewer](images/log-viewer.png)
-<!-- SCREENSHOT: The log viewer showing a mix of info, warning and error entries with timestamps, plus the search / filter controls at the top. -->
+<!-- SCREENSHOT: The Log Viewer on the Client Logs tab, showing the "Log Viewer" heading and subtitle, the Refresh icon and Back button, the Client Logs / Server Logs tab bar, and a mix of info, warning and error entries with timestamps. -->
+
+Two tabs split the view:
+
+| Tab | What it shows |
+|---|---|
+| **Client Logs** | This desktop app's own activity — discovery, SSH connections, backup scheduling, restores, and errors |
+| **Server Logs** | Log files pulled from a connected server |
+
+On the **Server Logs** tab, a connection bar appears above the output:
+
+| Control | What to do |
+|---|---|
+| **Server** | Pick which server to pull logs from |
+| **Source** | Choose *All server logs*, *setup-module.log*, or *easysetup-\*.log* |
+| **Fetch Server Logs** | Retrieves the logs. Reads **Fetching…** while it works. |
+
+![Server logs tab](images/log-viewer-server.png)
+<!-- SCREENSHOT: The Log Viewer on the Server Logs tab, showing the Server dropdown, the Source dropdown expanded with its three options, and the Fetch Server Logs button. -->
+
+The **Refresh** icon in the header re-reads the current view, and **Back** returns you to where you came from.
 
 For a specific backup task:
 
-- **Local Backups:** select the task and click **View Log**
+- **Local Backups:** select the task and click **Logs**
 - **Remote Backups:** select the task and click **Logs**
 
 Log retention is controlled in **Settings → System → Advanced → Log retention**.
@@ -1483,7 +1664,7 @@ No. Split Pools protects against drive failure and mistakes, but both copies are
 If both servers run ZFS, use **ZFS Backup (Server-to-Server)** — it sends only incremental changes and preserves permissions and metadata exactly. Otherwise use **File Copy / Sync (Rsync)**.
 
 **Do I have to open ports for WireShield?**
-Only one side needs to be reachable. WireShield tries to open UDP 51820 automatically via UPnP. If it cannot and both servers are behind NAT, you will need to forward UDP 51820 on one of them. Servers on the same local network usually pair without any port forwarding.
+Only one side needs to be reachable. Each tunnel uses its own UDP port, assigned from 51820 upward, and WireShield tries to open it automatically via UPnP. Click **Check This Server** to see the exact port it will use. If UPnP fails and both servers are behind NAT, forward that port on one of them. Servers on the same local network usually pair without any port forwarding.
 
 **Does my backup data pass through 45Drives' servers?**
 No. The coordination service only helps the two servers find each other and exchange keys during pairing. All backup traffic flows directly between your servers through the encrypted tunnel.
@@ -1522,7 +1703,7 @@ Yes. It checks for updates shortly after launch, downloads them in the backgroun
 | **Cloud sign-in window never opens** | Allow pop-ups for the app and click **Authenticate with `<Provider>`** again. |
 | **WireShield says "Needs Attention"** | Read the reported reason. Most often the server cannot reach the pairing coordinator — check the server's internet access and DNS. |
 | **Pairing code expired** | Codes expire after the timeout you chose. Click **Cancel** and create a new code. |
-| **Tunnel shows amber or grey** | Open **Manage** on that connection and click **Reconnect**. If it stays down, confirm UDP 51820 is forwarded on at least one side. |
+| **Tunnel shows amber or red** | Open **Manage** on that connection and click **Reconnect**. If it stays down, run **Check This Server** to find the tunnel's UDP port and confirm it is forwarded on at least one side. |
 | **Backup over the tunnel is slow** | Confirm the task targets the tunnel IP (for example `10.45.0.2`) and not a public address, and check the traffic counters in the expanded connection view to confirm data is moving. |
 | **Backup list feels sluggish** | In Remote Backup Settings, set **Status Refresh** to **Slow** to reduce load on the server. |
 | **Something looks wrong in the UI** | Open **Settings → Client → Display** and click **Reset guided tours** to replay the walkthroughs, or check **View Logs** for errors. |
