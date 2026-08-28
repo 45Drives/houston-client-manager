@@ -49,7 +49,15 @@
         ],
         "vendor": "45Drives",
         "maintainer": "Matt Pyne <mpyne@45drives.com>",
-        "icon": "linux",
+        "icon": "linux"
+    },
+    "deb": {
+        "afterInstall": "assets/linux/after-install.tpl"
+    },
+    "rpm": {
+        "afterInstall": "assets/linux/after-install.tpl"
+    },
+    "pacman": {
         "afterInstall": "assets/linux/after-install.tpl"
     },
     "files": [
