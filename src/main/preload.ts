@@ -55,6 +55,10 @@ const INVOKE_CHANNELS = new Set([
   'settings:get',
   'settings:set',
   'settings:reset',
+  // Auto-update
+  'update:status',
+  'update:check',
+  'update:install',
   // Server Management
   'server:probe',
   'server:apply-changes',
@@ -113,6 +117,12 @@ const RECEIVE_CHANNELS = new Set([
   'bulk-setup:progress',
   'bulk-setup:result',
   'bulk-setup:complete',
+  'update:checking',
+  'update:available',
+  'update:none',
+  'update:progress',
+  'update:downloaded',
+  'update:error',
 ]);
 
 function assertAllowed(channel: string, set: Set<string>) {

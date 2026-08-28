@@ -28,6 +28,7 @@
     </main>
     <GlobalModalConfirm />
     <NotificationView />
+    <UpdateNotification />
     <LogModal />
     <SettingsModal :open="settingsModalOpen" @close="closeSettingsModal" @serversChanged="() => {}" />
     <GuidedTour v-if="activeTour" :steps="activeTour.steps" :active="true" @done="finishTour" @skip="finishTour" />
@@ -40,6 +41,7 @@ import { DynamicBrandingLogo, GlobalModalConfirm, NotificationView, reportError,
 import GlobalSetupWizardMenu from '../renderer/components/GlobalSetupWizardMenu.vue'
 import AppBreadcrumb from '../renderer/components/AppBreadcrumb.vue'
 import LogModal from '../renderer/components/LogModal.vue'
+import UpdateNotification from '../renderer/components/UpdateNotification.vue'
 import SettingsModal from '../renderer/views/backupSetupWizard/SettingsModal.vue'
 import GuidedTour from '../renderer/components/GuidedTour.vue'
 import { divisionCodeInjectionKey, currentServerInjectionKey, discoveryStateInjectionKey, discoveryRescanInjectionKey, thisOsInjectionKey } from '../renderer/keys/injection-keys'

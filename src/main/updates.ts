@@ -1,8 +1,22 @@
 import { app, BrowserWindow, ipcMain } from 'electron'
 
+type UpdateState = {
+    status: 'idle' | 'checking' | 'available' | 'none' | 'downloading' | 'downloaded' | 'error'
+    currentVersion: string
+    version?: string
+    releaseNotes?: string
+    percent?: number
+    message?: string
+}
+
 export function initAutoUpdates(getMainWindow: () => BrowserWindow | null) {
     // Never run auto-update in dev
-    if (!app.isPackaged) return
+    if (!app.isPackaged) {
+        ipcMain.handle('update:status', async () => ({ status: 'idle', currentVersion: app.getVersion() }))
+        ipcMain.handle('update:check', async () => ({ ok: false, devMode: true }))
+        ipcMain.handle('update:install', async () => ({ ok: false, devMode: true }))
+        return
+    }
 
     let autoUpdater: any
     try {
@@ -10,6 +24,14 @@ export function initAutoUpdates(getMainWindow: () => BrowserWindow | null) {
     } catch (e) {
         console.warn('[updates] electron-updater is unavailable; auto-update disabled.', e)
         return
+    }
+
+    // Cached so the renderer can recover state if it mounts after an event fired.
+    let lastState: UpdateState = { status: 'idle', currentVersion: app.getVersion() }
+
+    function emit(channel: string, state: UpdateState) {
+        lastState = state
+        getMainWindow()?.webContents.send(channel, state)
     }
 
     // Optional: safer UX defaults
@@ -44,40 +66,55 @@ export function initAutoUpdates(getMainWindow: () => BrowserWindow | null) {
         return 'We could not check for updates right now. Please try again later.'
     }
 
+    const base = () => ({ currentVersion: app.getVersion() })
+
     autoUpdater.on('checking-for-update', () => {
-        getMainWindow()?.webContents.send('update:checking')
+        emit('update:checking', { ...base(), status: 'checking' })
     })
 
     autoUpdater.on('update-available', (info) => {
-        getMainWindow()?.webContents.send('update:available', info)
+        console.info(`[updates] update available: ${info?.version}`)
+        emit('update:available', {
+            ...base(),
+            status: 'available',
+            version: info?.version,
+            releaseNotes: typeof info?.releaseNotes === 'string' ? info.releaseNotes : undefined,
+        })
     })
 
-    autoUpdater.on('update-not-available', (info) => {
-        getMainWindow()?.webContents.send('update:none', info)
+    autoUpdater.on('update-not-available', () => {
+        emit('update:none', { ...base(), status: 'none' })
     })
 
     autoUpdater.on('download-progress', (p) => {
-        getMainWindow()?.webContents.send('update:progress', {
-            percent: p.percent,
-            transferred: p.transferred,
-            total: p.total,
-            bytesPerSecond: p.bytesPerSecond,
+        emit('update:progress', {
+            ...base(),
+            status: 'downloading',
+            version: lastState.version,
+            percent: p?.percent ?? 0,
         })
     })
 
     autoUpdater.on('update-downloaded', (info) => {
-        getMainWindow()?.webContents.send('update:downloaded', info)
-    })
-
-    autoUpdater.on('error', (err) => {
-        getMainWindow()?.webContents.send('update:error', {
-            message: normalizeUpdaterError(err),
+        console.info(`[updates] update downloaded: ${info?.version}`)
+        emit('update:downloaded', {
+            ...base(),
+            status: 'downloaded',
+            version: info?.version ?? lastState.version,
         })
     })
 
+    autoUpdater.on('error', (err) => {
+        console.warn('[updates] updater error', err)
+        emit('update:error', { ...base(), status: 'error', message: normalizeUpdaterError(err) })
+    })
+
+    ipcMain.handle('update:status', async () => lastState)
+
     ipcMain.handle('update:check', async () => {
         try {
-            return await autoUpdater.checkForUpdates()
+            await autoUpdater.checkForUpdates()
+            return { ok: true }
         } catch (err) {
             throw new Error(normalizeUpdaterError(err))
         }
@@ -85,10 +122,14 @@ export function initAutoUpdates(getMainWindow: () => BrowserWindow | null) {
 
     ipcMain.handle('update:install', async () => {
         console.info('update:install — quitting and installing update');
-        autoUpdater.quitAndInstall(false, true)
+        // isSilent suppresses the NSIS installer UI on Windows; ignored on macOS/Linux.
+        autoUpdater.quitAndInstall(true, true)
         return { ok: true }
     })
 
-    // Do an initial check shortly after app is ready
-    setTimeout(() => autoUpdater.checkForUpdatesAndNotify(), 5_000)
+    const check = () => autoUpdater.checkForUpdates().catch(() => { /* surfaced via the error event */ })
+
+    // Initial check once the renderer has had time to subscribe, then every 6 hours.
+    setTimeout(check, 8_000)
+    setInterval(check, 6 * 60 * 60 * 1000)
 }

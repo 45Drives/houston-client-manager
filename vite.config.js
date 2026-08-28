@@ -14,6 +14,10 @@ const config = defineConfig({
   publicDir: 'public',
   server: {
     port: 8080,
+    fs: {
+      // The bulk-setup template example lives in docs/, outside the renderer root.
+      allow: [__dirname],
+    },
   },
   open: false,
   build: {
