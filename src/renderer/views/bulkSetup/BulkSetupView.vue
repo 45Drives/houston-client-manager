@@ -18,6 +18,9 @@ Parallel mode sets every server up at once. Anything that fails can be retried o
           <p class="text-sm text-muted mt-0.5">Configure and deploy multiple servers at once.</p>
         </div>
         <div class="flex items-center gap-2" data-tour="bulk-templates">
+          <button @click="showTemplateExample = true" class="btn btn-secondary text-sm h-fit px-3 py-2">
+            View Example Template
+          </button>
           <button @click="onImportTemplate" class="btn btn-secondary text-sm h-fit px-3 py-2">
             Import Template
           </button>
@@ -235,6 +238,8 @@ Parallel mode sets every server up at once. Anything that fails can be retried o
       @confirm="onConfirmDeploy"
       @cancel="showConfirmModal = false"
     />
+
+    <BulkTemplateExampleModal v-if="showTemplateExample" @close="showTemplateExample = false" />
   </div>
 </template>
 
@@ -250,11 +255,14 @@ import { useOnboarding } from '../../composables/useOnboarding';
 import { useTourManager, type TourStep } from '../../composables/useTourManager';
 import BulkServerCard from './BulkServerCard.vue';
 import BulkDeployConfirmModal from './BulkDeployConfirmModal.vue';
+import BulkTemplateExampleModal from './BulkTemplateExampleModal.vue';
 
 useHeader('Bulk Server Setup');
 
 const router = useRouter();
 const { discoveryState } = useServerDiscovery();
+
+const showTemplateExample = ref(false);
 
 const {
   servers,
