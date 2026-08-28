@@ -80,7 +80,7 @@ import http from 'http';
 import { Server } from './types';
 import mountSmbPopup from './smbMountPopup';
 import { IPCRouter } from '../../houston-common/houston-common-lib/lib/electronIPC/IPCRouter';
-import { getOS } from './utils';
+import { getOS, getAssetSync } from './utils';
 import { v4 as uuidv4 } from 'uuid';
 import { BackUpManager, BackUpManagerLin, BackUpManagerMac, BackUpManagerWin } from './backup';
 import { server, unwrap } from '@45drives/houston-common-lib';
@@ -278,6 +278,9 @@ function createWindow() {
   mainWindow = new BrowserWindow({
     width: 800,
     height: 600,
+    // Linux taskbars read _NET_WM_ICON; without this they match WM_CLASS against
+    // the .desktop file instead and often show a stale or generic icon.
+    ...(process.platform === 'linux' ? { icon: getAssetSync('static', 'app-icon.png') } : {}),
     webPreferences: {
       sandbox: false,
       preload: join(__dirname, 'preload.js'),

@@ -1,7 +1,6 @@
 <p align="center">
-  <img src="images/logo-storage-wizard.png" alt="45Drives Storage Wizard" width="600" />
+  <img src="assets/logos/logo-storage-wizard.png" alt="45Drives Storage Wizard" width="600" />
 </p>
-<!-- SCREENSHOT: Banner / hero image. 45Drives Storage Wizard logo or a wide composite of the app window on the Dashboard. Approx 1200x630 for link-preview friendliness. -->
 
 # 45Drives Storage Wizard — User Guide
 

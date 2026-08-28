@@ -26,34 +26,25 @@ export function getRsync() {
 }
 
 
-export async function getAsset(folder: string, fileName: string, isFolder: boolean = false): Promise<string> {
+export function getAssetSync(folder: string, fileName: string): string {
   const isDev = process.env.NODE_ENV === 'development';
 
   if (isDev) {
-
-    const os = getOS();
-    if (os === "mac") {
-      const filePath = path.join(__dirname, "..", "..", "..", "..", "src", "main", folder, fileName);
-
-      console.debug("asset: ", filePath);
-
-      return filePath;
-    } else {
-      const filePath = path.join(__dirname, "..", "..", folder, fileName);
-
-      console.debug("asset: ", filePath);
-
-      return filePath;
+    if (getOS() === "mac") {
+      return path.join(__dirname, "..", "..", "..", "..", "src", "main", folder, fileName);
     }
-    
-  } else {
+    return path.join(__dirname, "..", "..", folder, fileName);
+  }
 
-    const filePath = path.join(__dirname, "..", "..", "..", folder, fileName);
+  return path.join(__dirname, "..", "..", "..", folder, fileName);
+}
 
-    console.debug("asset: ", filePath);
+export async function getAsset(folder: string, fileName: string, isFolder: boolean = false): Promise<string> {
+  const filePath = getAssetSync(folder, fileName);
 
-    return filePath;
-  }  
+  console.debug("asset: ", filePath);
+
+  return filePath;
 }
 
 export function extractJsonFromOutput(output: string): any {
