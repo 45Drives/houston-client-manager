@@ -76,6 +76,9 @@ SSH_OPTS=(
   -o PreferredAuthentications=publickey
   -o PasswordAuthentication=no
   -o KbdInteractiveAuthentication=no
+  -o ConnectTimeout="${SSH_CONNECT_TIMEOUT:-15}"
+  -o ServerAliveInterval="${SSH_ALIVE_INTERVAL:-10}"
+  -o ServerAliveCountMax="${SSH_ALIVE_COUNT_MAX:-6}"
 )
 
 # SSH multiplexing can fail with stale control sockets (e.g. "master hello exchange failed").
@@ -186,9 +189,12 @@ rsync -a -e "${RSYNC_SSH[*]}" \
   "${ROOT_DIR}/${ENTITLEMENTS_FILE}" \
   "${SIGN_USER}@${SIGN_HOST}:${SIGN_INBOX}/${ENTITLEMENTS_FILE}"
 
-SIGN_GIT_PULL_CMD="${SIGN_GIT_PULL_CMD:-cd '${SIGN_INBOX}' && git pull --ff-only}"
+SIGN_GIT_PULL_CMD="${SIGN_GIT_PULL_CMD:-cd '${SIGN_INBOX}' && git pull --ff-only --tags --force}"
+# Without keepalives a half-open TCP session to GitHub blocks the whole release indefinitely.
+SIGN_GIT_SSH_COMMAND="${SIGN_GIT_SSH_COMMAND:-ssh -o BatchMode=yes -o ConnectTimeout=15 -o ServerAliveInterval=10 -o ServerAliveCountMax=3}"
 echo "Updating signing host repo..."
-SIGN_GIT_PULL_CMD_ESCAPED="$(printf '%q' "$SIGN_GIT_PULL_CMD")"
+SIGN_GIT_PULL_WRAPPED="export GIT_TERMINAL_PROMPT=0 GIT_ASKPASS= GIT_SSH_COMMAND=$(printf '%q' "$SIGN_GIT_SSH_COMMAND"); ${SIGN_GIT_PULL_CMD}"
+SIGN_GIT_PULL_CMD_ESCAPED="$(printf '%q' "$SIGN_GIT_PULL_WRAPPED")"
 "${SSH[@]}" "${SIGN_USER}@${SIGN_HOST}" "bash -lc $SIGN_GIT_PULL_CMD_ESCAPED"
 
 echo "Trigger signing/notarization on Intel..."
