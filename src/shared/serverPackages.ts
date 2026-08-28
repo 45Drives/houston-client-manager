@@ -69,9 +69,14 @@ export function compareVersions(a: string, b: string): number {
   return 0;
 }
 
+/** True when `installed` is older than `minimum`. */
+export function isOlderThan(installed: string, minimum: string): boolean {
+  return compareVersions(installed, minimum) < 0;
+}
+
 /** True when `installed` is older than the package's declared minimum. */
 export function isBelowMinimum(name: string, installed: string | undefined): boolean {
   const min = getHoustonPackage(name)?.minVersion;
   if (!min || !installed) return false;
-  return compareVersions(installed, min) < 0;
+  return isOlderThan(installed, min);
 }

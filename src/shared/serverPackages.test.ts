@@ -1,11 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import {
   compareVersions,
+  isOlderThan,
   isBelowMinimum,
   HOUSTON_PACKAGES,
-  getHoustonPackage,
 } from './serverPackages';
 
+// Version-specific cases use literals so bumping HOUSTON_PACKAGES cannot break them.
 describe('compareVersions', () => {
   it('ignores the rpm/deb release suffix', () => {
     expect(compareVersions('1.7.7-4', '1.7.7')).toBe(1);
@@ -49,35 +50,86 @@ describe('compareVersions', () => {
   });
 });
 
-describe('isBelowMinimum', () => {
-  it('flags packages older than the declared minimum', () => {
-    expect(isBelowMinimum('cockpit-scheduler', '1.7.6-9')).toBe(true);
+describe('isOlderThan', () => {
+  it('flags an older upstream version', () => {
+    expect(isOlderThan('1.7.6-9', '1.7.7-4')).toBe(true);
   });
 
-  it('flags an older build of the minimum version', () => {
-    expect(isBelowMinimum('cockpit-scheduler', '1.7.7-3.el8')).toBe(true);
-    expect(isBelowMinimum('cockpit-scheduler', '1.7.7-3focal')).toBe(true);
+  it('flags an older build of the same version', () => {
+    expect(isOlderThan('1.7.7-3.el8', '1.7.7-4')).toBe(true);
+    expect(isOlderThan('1.7.7-3focal', '1.7.7-4')).toBe(true);
   });
 
-  it('accepts the minimum build on every distro', () => {
-    for (const installed of ['1.7.7-4.el8', '1.7.7-4.el9', '1.7.7-4focal', '1.7.7-4bookworm']) {
-      expect(isBelowMinimum('cockpit-scheduler', installed)).toBe(false);
+  it('accepts the exact minimum on every distro', () => {
+    for (const installed of ['1.7.7-4', '1.7.7-4.el8', '1.7.7-4.el9', '1.7.7-4focal', '1.7.7-4bookworm']) {
+      expect(isOlderThan(installed, '1.7.7-4')).toBe(false);
     }
   });
 
-  it('accepts the minimum and anything newer', () => {
-    expect(isBelowMinimum('cockpit-scheduler', '1.7.7-4')).toBe(false);
-    expect(isBelowMinimum('cockpit-scheduler', '1.8.0-1')).toBe(false);
+  it('accepts anything newer', () => {
+    expect(isOlderThan('1.7.7-5', '1.7.7-4')).toBe(false);
+    expect(isOlderThan('1.8.0-1', '1.7.7-4')).toBe(false);
+  });
+});
+
+// Table-driven so the assertions hold whatever the declared minimums are.
+describe('isBelowMinimum', () => {
+  const gated = HOUSTON_PACKAGES.filter((p) => p.minVersion);
+  const ungated = HOUSTON_PACKAGES.filter((p) => !p.minVersion);
+
+  /** Decrements the last non-zero number, e.g. "1.7.7-5" -> "1.7.7-4". */
+  function previousVersion(version: string): string {
+    const numbers = [...version.matchAll(/\d+/g)];
+    for (let i = numbers.length - 1; i >= 0; i--) {
+      const match = numbers[i];
+      const value = Number(match[0]);
+      if (value === 0) continue;
+      return version.slice(0, match.index) + (value - 1) + version.slice(match.index + match[0].length);
+    }
+    throw new Error(`No version exists below ${version}`);
+  }
+
+  /** Increments the last number, e.g. "1.7.7-5" -> "1.7.7-6". */
+  function nextVersion(version: string): string {
+    const match = [...version.matchAll(/\d+/g)].pop()!;
+    return version.slice(0, match.index) + (Number(match[0]) + 1) + version.slice(match.index + match[0].length);
+  }
+
+  it('gates at least one package', () => {
+    expect(gated.length).toBeGreaterThan(0);
   });
 
-  it('accepts any version for packages without a minimum', () => {
-    expect(getHoustonPackage('cockpit-zfs')?.minVersion).toBeUndefined();
-    expect(isBelowMinimum('cockpit-zfs', '0.0.1')).toBe(false);
+  it.each(gated)('accepts $name at exactly its declared minimum', ({ name, minVersion }) => {
+    expect(isBelowMinimum(name, minVersion)).toBe(false);
+  });
+
+  it.each(gated)('accepts $name with a distro suffix on the minimum', ({ name, minVersion }) => {
+    for (const suffix of ['.el8', '.el9', 'focal', 'bookworm']) {
+      expect(isBelowMinimum(name, `${minVersion}${suffix}`)).toBe(false);
+    }
+  });
+
+  it.each(gated)('accepts $name one build above its minimum', ({ name, minVersion }) => {
+    expect(isBelowMinimum(name, nextVersion(minVersion!))).toBe(false);
+  });
+
+  it.each(gated)('flags $name one build below its minimum', ({ name, minVersion }) => {
+    expect(isBelowMinimum(name, previousVersion(minVersion!))).toBe(true);
+  });
+
+  it.each(gated)('flags $name one build below its minimum on every distro', ({ name, minVersion }) => {
+    for (const suffix of ['.el8', '.el9', 'focal', 'bookworm']) {
+      expect(isBelowMinimum(name, `${previousVersion(minVersion!)}${suffix}`)).toBe(true);
+    }
+  });
+
+  it.each(ungated)('accepts any version of $name, which declares no minimum', ({ name }) => {
+    expect(isBelowMinimum(name, '0.0.1-1')).toBe(false);
   });
 
   it('ignores unknown packages and undetectable versions', () => {
     expect(isBelowMinimum('not-a-45drives-package', '0.0.1')).toBe(false);
-    expect(isBelowMinimum('cockpit-scheduler', undefined)).toBe(false);
+    expect(isBelowMinimum(HOUSTON_PACKAGES[0].name, undefined)).toBe(false);
   });
 });
 
@@ -85,5 +137,11 @@ describe('HOUSTON_PACKAGES', () => {
   it('declares unique package names', () => {
     const names = HOUSTON_PACKAGES.map((p) => p.name);
     expect(new Set(names).size).toBe(names.length);
+  });
+
+  it('declares parseable minimums', () => {
+    for (const p of HOUSTON_PACKAGES) {
+      if (p.minVersion) expect(p.minVersion).toMatch(/^\d+(\.\d+)*(-\d+)?$/);
+    }
   });
 });
