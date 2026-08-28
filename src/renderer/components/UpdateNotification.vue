@@ -6,8 +6,7 @@
     leave-active-class="transition ease-in duration-150"
     leave-from-class="opacity-100"
     leave-to-class="opacity-0">
-    <div v-if="visible" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
-      @click.self="backdropDismiss">
+    <div v-if="visible" class="fixed inset-0 z-[1100] flex items-center justify-center bg-black/50 backdrop-blur-sm">
       <div
         class="bg-default rounded-xl shadow-2xl border border-neutral-200 dark:border-neutral-700 w-full max-w-md mx-4 overflow-hidden text-left">
 
@@ -74,7 +73,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
+import { computed } from 'vue'
 import {
   ArrowDownTrayIcon,
   CheckCircleIcon,
@@ -82,32 +81,17 @@ import {
   LockClosedIcon,
   XMarkIcon,
 } from '@heroicons/vue/24/outline'
+import { useUpdates } from '../composables/useUpdates'
 
-type UpdateState = {
-  status: 'idle' | 'checking' | 'available' | 'none' | 'downloading' | 'downloaded' | 'error'
-  currentVersion?: string
-  platform?: string
-  version?: string
-  releaseNotes?: string
-  percent?: number
-  message?: string
-}
-
-const state = ref<UpdateState>({ status: 'idle' })
-const hidden = ref(false)
-// Background check failures stay silent; errors are only shown after a click.
-const userActed = ref(false)
-
-const percent = computed(() => Math.min(100, Math.max(0, Math.round(state.value.percent ?? 0))))
-
-const releaseNotes = computed(() => (state.value.releaseNotes ?? '').replace(/<[^>]+>/g, '').trim())
-
-const visible = computed(() => {
-  if (hidden.value) return false
-  const s = state.value.status
-  if (s === 'error') return userActed.value
-  return s === 'available' || s === 'downloading' || s === 'downloaded'
-})
+const {
+  updateState: state,
+  percent,
+  releaseNotes,
+  modalVisible: visible,
+  dismissModal: dismiss,
+  download,
+  install,
+} = useUpdates()
 
 const title = computed(() => {
   switch (state.value.status) {
@@ -158,58 +142,5 @@ const installNote = computed(() => {
         body: 'The Storage Wizard restarts to finish installing the update.',
       }
   }
-})
-
-function dismiss() {
-  hidden.value = true
-}
-
-function backdropDismiss() {
-  if (state.value.status !== 'downloading') dismiss()
-}
-
-async function download() {
-  userActed.value = true
-  try {
-    await window.electron?.ipcRenderer.invoke('update:download')
-  } catch (err) {
-    console.error('[updates] download failed', err)
-  }
-}
-
-async function install() {
-  userActed.value = true
-  try {
-    await window.electron?.ipcRenderer.invoke('update:install')
-  } catch (err) {
-    console.error('[updates] install failed', err)
-  }
-}
-
-const channels = ['update:checking', 'update:available', 'update:none', 'update:progress', 'update:downloaded', 'update:error'] as const
-
-function onUpdate(_e: any, payload: UpdateState) {
-  if (!payload) return
-  state.value = payload
-}
-
-// Re-surface after "Continue in Background" once the download finishes or fails.
-watch(() => state.value.status, (status, previous) => {
-  if (status !== previous && (status === 'downloaded' || status === 'error')) hidden.value = false
-})
-
-onMounted(async () => {
-  for (const ch of channels) {
-    window.electron?.ipcRenderer.removeAllListeners?.(ch)
-    window.electron?.ipcRenderer.on(ch, onUpdate)
-  }
-  try {
-    const current = await window.electron?.ipcRenderer.invoke('update:status')
-    if (current) state.value = current
-  } catch { /* updater unavailable */ }
-})
-
-onBeforeUnmount(() => {
-  for (const ch of channels) window.electron?.ipcRenderer.removeListener?.(ch, onUpdate)
 })
 </script>

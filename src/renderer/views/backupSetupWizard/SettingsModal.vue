@@ -22,6 +22,9 @@
                             @click="activeSection = item.key">
                             <component :is="item.icon" class="w-4 h-4 shrink-0" />
                             {{ item.label }}
+                            <span v-if="item.key === 'updates' && updatePending"
+                                class="ml-auto w-2 h-2 rounded-full bg-green-500 shrink-0"
+                                title="An update is available" />
                         </button>
                     </template>
                 </nav>
@@ -159,6 +162,47 @@
                     </div>
                 </template>
 
+                <!-- ═══ Updates ═══════════════════════════════════════ -->
+                <template v-if="activeSection === 'updates'">
+                    <div class="divide-y divide-default">
+                        <SettingRow label="Current version" :description="updateStatusText">
+                            <span class="text-sm font-mono text-default">{{ updateState.currentVersion || '—' }}</span>
+                        </SettingRow>
+                    </div>
+
+                    <div v-if="updateState.status === 'downloading'" class="mt-4">
+                        <div class="h-2 w-full rounded-full bg-well overflow-hidden">
+                            <div class="h-full bg-green-600 dark:bg-green-500 transition-all duration-200"
+                                :style="{ width: `${updatePercent}%` }" />
+                        </div>
+                        <p class="text-xs text-muted mt-2">{{ updatePercent }}% complete</p>
+                    </div>
+
+                    <div v-else-if="updateState.status === 'available' && updateReleaseNotes"
+                        class="mt-4 max-h-32 overflow-y-auto text-xs text-muted whitespace-pre-line rounded-lg border border-default bg-default px-3 py-2">
+                        {{ updateReleaseNotes }}
+                    </div>
+
+                    <div class="flex items-center gap-2 mt-4">
+                        <button class="btn btn-sm btn-outline-shadow h-fit"
+                            :disabled="updateState.status === 'checking' || updateState.status === 'downloading'"
+                            @click="handleCheckForUpdates">
+                            {{ updateState.status === 'checking' ? 'Checking…' : 'Check for Updates' }}
+                        </button>
+                        <button v-if="updateState.status === 'available'" class="btn btn-sm btn-primary h-fit"
+                            @click="download">
+                            Download Update
+                        </button>
+                        <button v-if="updateState.status === 'downloaded'" class="btn btn-sm btn-primary h-fit"
+                            @click="install">
+                            {{ updateState.platform === 'linux' ? 'Install Now' : 'Restart &amp; Install' }}
+                        </button>
+                        <button v-if="updatePending" class="btn btn-sm btn-secondary h-fit" @click="showModal">
+                            Show Details
+                        </button>
+                    </div>
+                </template>
+
                 <!-- ═══ Advanced ══════════════════════════════════════ -->
                 <template v-if="activeSection === 'advanced'">
                     <div class="divide-y divide-default">
@@ -208,10 +252,11 @@ import { useSettings, type AppSettings } from '../../composables/useSettings';
 import { useServers, type StoredServer } from '../../composables/useServers';
 import { useOnboarding } from '../../composables/useOnboarding';
 import { useTourManager, type TourStep } from '../../composables/useTourManager';
+import { useUpdates } from '../../composables/useUpdates';
 import {
     XMarkIcon, TrashIcon, PencilIcon,
     ServerStackIcon, SwatchIcon, BellIcon, SparklesIcon,
-    WifiIcon, Cog6ToothIcon, BookOpenIcon,
+    WifiIcon, Cog6ToothIcon, BookOpenIcon, ArrowDownTrayIcon,
 } from '@heroicons/vue/24/outline';
 import { StarIcon as StarIconSolid } from '@heroicons/vue/24/solid';
 import { StarIcon as StarIconOutline } from '@heroicons/vue/24/outline';
@@ -229,6 +274,42 @@ const { settings, load, save, reset } = useSettings();
 const { savedServers: servers, displayServers, refresh: refreshServerList, setFavorite, updateServer, removeServer: removeServerEntry } = useServers();
 const { onboarding, markDone, resetAll: resetOnboarding } = useOnboarding();
 const { requestTour } = useTourManager();
+
+// ── Updates ──────────────────────────────────────────────────────────────
+
+const {
+    updateState,
+    percent: updatePercent,
+    releaseNotes: updateReleaseNotes,
+    isPending: updatePending,
+    showModal,
+    check,
+    download,
+    install,
+} = useUpdates();
+
+const updateStatusText = computed(() => {
+    switch (updateState.value.status) {
+        case 'checking': return 'Checking for updates…';
+        case 'available': return `Version ${updateState.value.version} is available to download.`;
+        case 'downloading': return `Downloading version ${updateState.value.version ?? ''}…`;
+        case 'downloaded': return `Version ${updateState.value.version} is downloaded and ready to install.`;
+        case 'none': return 'You are running the latest version.';
+        case 'error': return updateState.value.message || 'The last update check failed.';
+        default: return 'Check whether a newer version is available.';
+    }
+});
+
+async function handleCheckForUpdates() {
+    try {
+        const result: any = await check();
+        if (result?.devMode) {
+            reportSuccess('Updates are only checked in the installed app');
+        }
+    } catch {
+        /* the error surfaces in updateState */
+    }
+}
 
 // ── Guided tour (first time Settings is opened) ──────────────────────────
 
@@ -287,7 +368,7 @@ async function handleResetOnboarding() {
 
 // ── Section nav ──────────────────────────────────────────────────────────
 
-type Section = 'servers' | 'display' | 'connection' | 'advanced';
+type Section = 'servers' | 'display' | 'connection' | 'updates' | 'advanced';
 const activeSection = ref<Section>('servers');
 
 const navGroups = [
@@ -312,6 +393,7 @@ const navGroups = [
     {
         label: 'System',
         items: [
+            { key: 'updates' as Section, label: 'Updates', icon: ArrowDownTrayIcon },
             { key: 'advanced' as Section, label: 'Advanced', icon: Cog6ToothIcon },
         ],
     },

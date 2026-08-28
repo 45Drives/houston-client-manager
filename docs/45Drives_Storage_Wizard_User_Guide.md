@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/logos/logo-storage-wizard.png" alt="45Drives Storage Wizard" width="600" />
+  <img src="../assets/logos/logo-storage-wizard.png" alt="45Drives Storage Wizard" width="600" />
 </p>
 
 # 45Drives Storage Wizard — User Guide
