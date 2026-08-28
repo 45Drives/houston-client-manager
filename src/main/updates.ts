@@ -3,6 +3,7 @@ import { app, BrowserWindow, ipcMain } from 'electron'
 type UpdateState = {
     status: 'idle' | 'checking' | 'available' | 'none' | 'downloading' | 'downloaded' | 'error'
     currentVersion: string
+    platform: NodeJS.Platform
     version?: string
     releaseNotes?: string
     percent?: number
@@ -12,8 +13,13 @@ type UpdateState = {
 export function initAutoUpdates(getMainWindow: () => BrowserWindow | null) {
     // Never run auto-update in dev
     if (!app.isPackaged) {
-        ipcMain.handle('update:status', async () => ({ status: 'idle', currentVersion: app.getVersion() }))
+        ipcMain.handle('update:status', async () => ({
+            status: 'idle',
+            currentVersion: app.getVersion(),
+            platform: process.platform,
+        }))
         ipcMain.handle('update:check', async () => ({ ok: false, devMode: true }))
+        ipcMain.handle('update:download', async () => ({ ok: false, devMode: true }))
         ipcMain.handle('update:install', async () => ({ ok: false, devMode: true }))
         return
     }
@@ -27,16 +33,22 @@ export function initAutoUpdates(getMainWindow: () => BrowserWindow | null) {
     }
 
     // Cached so the renderer can recover state if it mounts after an event fired.
-    let lastState: UpdateState = { status: 'idle', currentVersion: app.getVersion() }
+    let lastState: UpdateState = {
+        status: 'idle',
+        currentVersion: app.getVersion(),
+        platform: process.platform,
+    }
 
     function emit(channel: string, state: UpdateState) {
         lastState = state
         getMainWindow()?.webContents.send(channel, state)
     }
 
-    // Optional: safer UX defaults
-    autoUpdater.autoDownload = true
-    autoUpdater.autoInstallOnAppQuit = true
+    // Both opt-in: the in-app prompt drives download and install, so the user is
+    // never surprised by a background download or an unexplained elevation prompt
+    // on quit (pkexec on Linux, the NSIS installer on Windows).
+    autoUpdater.autoDownload = false
+    autoUpdater.autoInstallOnAppQuit = false
     autoUpdater.fullChangelog = false
     autoUpdater.allowPrerelease = false
 
@@ -66,7 +78,7 @@ export function initAutoUpdates(getMainWindow: () => BrowserWindow | null) {
         return 'We could not check for updates right now. Please try again later.'
     }
 
-    const base = () => ({ currentVersion: app.getVersion() })
+    const base = () => ({ currentVersion: app.getVersion(), platform: process.platform })
 
     autoUpdater.on('checking-for-update', () => {
         emit('update:checking', { ...base(), status: 'checking' })
@@ -119,7 +131,18 @@ export function initAutoUpdates(getMainWindow: () => BrowserWindow | null) {
             throw new Error(normalizeUpdaterError(err))
         }
     })
-
+    ipcMain.handle('update:download', async () => {
+        console.info(`update:download \u2014 downloading v${lastState.version}`)
+        emit('update:progress', { ...base(), status: 'downloading', version: lastState.version, percent: 0 })
+        try {
+            await autoUpdater.downloadUpdate()
+            return { ok: true }
+        } catch (err) {
+            const message = normalizeUpdaterError(err)
+            emit('update:error', { ...base(), status: 'error', version: lastState.version, message })
+            throw new Error(message)
+        }
+    })
     ipcMain.handle('update:install', async () => {
         console.info('update:install — quitting and installing update');
         // isSilent suppresses the NSIS installer UI on Windows; ignored on macOS/Linux.

@@ -8,6 +8,7 @@ import net from 'net';
 import { loadSettings } from './settingsStore';
 import { logEvent, errMsg } from './logging';
 import { describeConnectionError, failureLine } from '../shared/connectionErrors';
+import { HOUSTON_PACKAGE_NAMES, isBelowMinimum } from '../shared/serverPackages';
 
 // ── Shared SSH auth types ────────────────────────────────────────────────────
 
@@ -260,14 +261,7 @@ export async function setupSshKey(
   ssh.dispose();
 }
 
-/** 45Drives packages the Storage Wizard drives from the community repo. */
-export const HOUSTON_PACKAGES = [
-  'houston-broadcaster',        // server API on :9095 the client talks to
-  'cockpit-super-simple-setup', // server setup
-  'cockpit-zfs',                // pool/dataset management used by the setup module
-  'cockpit-scheduler',          // remote backups
-  'wireshield',                 // VPN tunnels for remote backups
-] as const;
+export { HOUSTON_PACKAGES, HOUSTON_PACKAGE_NAMES } from '../shared/serverPackages';
 
 export interface RemoteDepCheck {
   /** Everything missing — base OS deps plus 45Drives packages. */
@@ -278,6 +272,10 @@ export interface RemoteDepCheck {
   houstonMissing: string[];
   /** 45Drives packages installed at an older version than the repo offers. */
   houstonOutdated: string[];
+  /** 45Drives packages older than the minimum this client supports. */
+  houstonBelowMinimum: string[];
+  /** Installed version per 45Drives package, for packages that are present. */
+  houstonVersions: Record<string, string>;
   /** Whether the 45Drives community repo is already configured. */
   repoConfigured: boolean;
 }
@@ -322,6 +320,18 @@ pkg_installed() {
   esac
 }
 
+# Prints the installed version, or nothing if it cannot be determined.
+pkg_version() {
+  case "$OS_LIKE" in
+    *rhel*|*fedora*|*centos*)
+      rpm -q --qf '%{VERSION}-%{RELEASE}' "$1" 2>/dev/null
+      ;;
+    *debian*|*ubuntu*)
+      dpkg-query -W -f='\${Version}' "$1" 2>/dev/null
+      ;;
+  esac
+}
+
 add_base() {
   if [ -z "$base_missing" ]; then base_missing="$1"; else base_missing="$base_missing $1"; fi
 }
@@ -360,11 +370,13 @@ case "$OS_LIKE" in
 esac
 
 # 45Drives packages
-HOUSTON_PKGS="${HOUSTON_PACKAGES.join(' ')}"
+HOUSTON_PKGS="${HOUSTON_PACKAGE_NAMES.join(' ')}"
 installed_pkgs=""
+installed_versions=""
 for p in $HOUSTON_PKGS; do
   if pkg_installed "$p"; then
     installed_pkgs="$installed_pkgs $p"
+    installed_versions="$installed_versions $p=$(pkg_version "$p")"
   else
     add_houston "$p"
   fi
@@ -413,6 +425,7 @@ echo "__REPO__ $repo"
 echo "__BASE__ $base_missing"
 echo "__HOUSTON__ $houston_missing"
 echo "__OUTDATED__ $houston_outdated"
+echo "__VERSIONS__ $installed_versions"
 `;
 
   const { stdout, stderr } = await ssh.execCommand(script);
@@ -428,6 +441,7 @@ echo "__OUTDATED__ $houston_outdated"
   const baseLine = readLine('__BASE__');
   const houstonLine = readLine('__HOUSTON__');
   const outdatedLine = readLine('__OUTDATED__');
+  const versionsLine = readLine('__VERSIONS__');
 
   if (repoLine === null || baseLine === null || houstonLine === null) {
     logEvent('ssh:check-remote-deps.error', { host, output: out }, 'error');
@@ -437,18 +451,35 @@ echo "__OUTDATED__ $houston_outdated"
   const baseMissing = baseLine ? baseLine.split(/\s+/) : [];
   const houstonMissing = houstonLine ? houstonLine.split(/\s+/) : [];
   const houstonOutdated = outdatedLine ? outdatedLine.split(/\s+/) : [];
+
+  const houstonVersions: Record<string, string> = {};
+  for (const entry of versionsLine ? versionsLine.split(/\s+/) : []) {
+    const eq = entry.indexOf('=');
+    if (eq <= 0) continue;
+    const version = entry.slice(eq + 1).trim();
+    if (version) houstonVersions[entry.slice(0, eq)] = version;
+  }
+
+  const houstonBelowMinimum = Object.keys(houstonVersions).filter((name) =>
+    isBelowMinimum(name, houstonVersions[name]),
+  );
+
   const result: RemoteDepCheck = {
     missing: [...baseMissing, ...houstonMissing],
     baseMissing,
     houstonMissing,
     houstonOutdated,
+    houstonBelowMinimum,
+    houstonVersions,
     repoConfigured: repoLine === 'yes',
   };
 
   logEvent(
     'ssh:check-remote-deps',
     { host, ...result },
-    result.missing.length || result.houstonOutdated.length ? 'warn' : 'info',
+    result.missing.length || result.houstonOutdated.length || result.houstonBelowMinimum.length
+      ? 'warn'
+      : 'info',
   );
   return result;
 }
@@ -463,7 +494,7 @@ export async function ensureHoustonPackages(
   username: string,
   privateKeyPath: string,
   password: string,
-  packages: readonly string[] = HOUSTON_PACKAGES,
+  packages: readonly string[] = HOUSTON_PACKAGE_NAMES,
   onLine?: (line: string, stream: "stdout" | "stderr") => void,
 ): Promise<boolean> {
   if (packages.length === 0) return true;

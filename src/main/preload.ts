@@ -58,6 +58,7 @@ const INVOKE_CHANNELS = new Set([
   // Auto-update
   'update:status',
   'update:check',
+  'update:download',
   'update:install',
   // Server Management
   'server:probe',
