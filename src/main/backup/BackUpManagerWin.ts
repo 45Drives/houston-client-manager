@@ -671,6 +671,7 @@ exit /b !RC!
   async unschedule(task: BackUpTask): Promise<void> {
     const { bat, cred } = this.getTaskPaths(task);
 
+    const hasSmbUser = !!task.smb_user;
     const batEsc = bat.replace(/\\/g, '\\\\');
     const credEsc = cred.replace(/\\/g, '\\\\');
     const scriptsDirEsc = SCRIPTS_DIR.replace(/\\/g, '\\\\');
@@ -690,16 +691,19 @@ Remove-Item -Path "${batEsc}" -Force -ErrorAction SilentlyContinue
 
 # 3) Remove the credential file only if no other BAT references the same cred path
 $credPath = "${credEsc}"
-$credInUse = $false
+$credInUse = ${hasSmbUser ? '$false' : '$true'}
 try {
-  $otherBats = Get-ChildItem -Path "${scriptsDirEsc}" -Filter "Houston_Backup_Task_*.bat" -ErrorAction SilentlyContinue
+  $otherBats = @(Get-ChildItem -Path "${scriptsDirEsc}" -Filter "Houston_Backup_Task_*.bat" -ErrorAction Stop)
   foreach ($b in $otherBats) {
     if (Select-String -Path $b.FullName -Pattern $credPath -SimpleMatch -Quiet) {
       $credInUse = $true
       break
     }
   }
-} catch {}
+} catch {
+  # Couldn't enumerate the remaining tasks - keep the cred file rather than guess.
+  $credInUse = $true
+}
 
 if (-not $credInUse) {
   Remove-Item -Path $credPath -Force -ErrorAction SilentlyContinue
@@ -749,7 +753,8 @@ $task | Set-ScheduledTask
     // Build lists for PS
     const taskNames = tasks.map(t => `${TASK_ID}_${t.uuid}`);
     const bats = tasks.map(t => this.getTaskPaths(t).bat);
-    const creds = tasks.map(t => this.getTaskPaths(t).cred);
+    // A blank smb_user yields a key that doesn't identify a real cred file - don't touch those.
+    const creds = [...new Set(tasks.filter(t => t.smb_user).map(t => this.getTaskPaths(t).cred))];
 
     // Escape for PS array literals
     const psTaskNames = taskNames.map(s => `"${s}"`).join(', ');
@@ -779,14 +784,14 @@ if ($BatPaths.Length -gt 0) {
 
 # 3) For each cred file, delete only if no remaining BAT references it
 try {
-  $remainingBats = @()
-  try { $remainingBats = Get-ChildItem -Path "${scriptsDirEsc}" -Filter "Houston_Backup_Task_*.bat" -ErrorAction SilentlyContinue } catch {}
+  # Enumerating the remaining tasks must succeed, otherwise every cred file would
+  # look unused and get deleted. Bail out instead.
+  $remainingBats = @(Get-ChildItem -Path "${scriptsDirEsc}" -Filter "Houston_Backup_Task_*.bat" -ErrorAction Stop)
 
   foreach ($credPath in $CredPaths) {
     $inUse = $false
-    $credEscaped = [regex]::Escape($credPath)
     foreach ($b in $remainingBats) {
-      if (Select-String -Path $b.FullName -Pattern $credEscaped -SimpleMatch -Quiet) {
+      if (Select-String -Path $b.FullName -Pattern $credPath -SimpleMatch -Quiet) {
         $inUse = $true
         break
       }
@@ -796,7 +801,9 @@ try {
       try { Remove-Item -Path $credPath -Force -ErrorAction SilentlyContinue } catch {}
     }
   }
-} catch {}
+} catch {
+  # Couldn't enumerate the remaining tasks - keep every cred file rather than guess.
+}
 `.trim();
 
     try {
