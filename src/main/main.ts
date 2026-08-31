@@ -244,25 +244,61 @@ const isPrivateV4 = (ip: string) =>
   /^192\.168\./.test(ip) ||
   /^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(ip);
 
-const getLocalIP = () => {
-  const nets = os.networkInterfaces();
-  for (const name of Object.keys(nets)) {
-    const items = nets[name];
-    if (!items) continue;
+/** VPN, point-to-point and virtual transports that never carry a 45Drives server on their link. */
+const VIRTUAL_IFACE_RE = /^(utun|tun|tap|wg|ppp|ipsec|awdl|llw|zt|vboxnet|docker|veth|virbr|br-)/i;
 
-    for (const net of items) {
-      if (net.family === 'IPv4' && !net.internal && isPrivateV4(net.address)) {
-        return net.address;
-      }
+/** Widest subnet we will sweep; anything larger falls back to the /24 around our own address. */
+const MAX_FALLBACK_HOSTS = 1024;
+const FALLBACK_SCAN_CONCURRENCY = 128;
+
+type LocalInterface = { name: string; address: string; netmask: string };
+
+function getLocalInterface(): LocalInterface | null {
+  const nets = os.networkInterfaces();
+  const candidates: LocalInterface[] = [];
+
+  for (const [name, items] of Object.entries(nets)) {
+    for (const net of items ?? []) {
+      if (net.family !== 'IPv4' || net.internal) continue;
+      if (!isPrivateV4(net.address)) continue;
+      candidates.push({ name, address: net.address, netmask: net.netmask });
     }
   }
-  return '127.0.0.1';
+
+  return candidates.find(c => !VIRTUAL_IFACE_RE.test(c.name)) ?? candidates[0] ?? null;
 };
 
+const getLocalIP = () => getLocalInterface()?.address ?? '127.0.0.1';
 
-function getSubnetBase(ip: string): string {
-  const parts = ip.split('.');
-  return `${parts[0]}.${parts[1]}.${parts[2]}`;
+function ipToInt(ip: string): number | null {
+  const parts = ip.split('.').map(Number);
+  if (parts.length !== 4 || parts.some(p => !Number.isInteger(p) || p < 0 || p > 255)) return null;
+  return (((parts[0] << 24) >>> 0) + (parts[1] << 16) + (parts[2] << 8) + parts[3]) >>> 0;
+}
+
+function intToIp(n: number): string {
+  return [(n >>> 24) & 255, (n >>> 16) & 255, (n >>> 8) & 255, n & 255].join('.');
+}
+
+/** Usable host addresses on the interface's real subnet, excluding network, broadcast and self. */
+function getSubnetHosts(address: string, netmask: string): string[] {
+  const addr = ipToInt(address);
+  const mask = ipToInt(netmask);
+  if (addr === null || mask === null || mask === 0) return [];
+
+  let network = (addr & mask) >>> 0;
+  let broadcast = (network | (~mask >>> 0)) >>> 0;
+
+  if (broadcast - network - 1 > MAX_FALLBACK_HOSTS) {
+    network = (addr & 0xffffff00) >>> 0;
+    broadcast = (network | 0xff) >>> 0;
+  }
+
+  const hosts: string[] = [];
+  for (let n = network + 1; n < broadcast; n++) {
+    if (n !== addr) hosts.push(intToIp(n));
+  }
+  return hosts;
 }
 
 
@@ -305,60 +341,75 @@ function createWindow() {
   });
 
   async function doFallbackScan(): Promise<Server[]> {
-    const ip = getLocalIP();
-    const subnet = getSubnetBase(ip);
-    const ips = Array
-      .from({ length: 256 }, (_, i) => `${subnet}.${i}`)
-      .filter(candidate => candidate !== ip);
+    const iface = getLocalInterface();
+    if (!iface) {
+      console.debug('[discovery] no usable local interface for fallback scan');
+      return [];
+    }
 
-    // scan all IPs in subnet for cockpit on port 9090
-    const scanned = await Promise.allSettled(
-      ips.map(async candidateIp => {
-
-
-        const portOpen = await isPortOpen(candidateIp, 9090);
-        if (!portOpen) return null;
-        console.debug("port open at 9090 ", candidateIp);
-        
-        try {
-          const res = await fetch(`https://${candidateIp}:9090/`, {
-            method: 'GET',
-            cache: 'no-store',
-            signal: AbortSignal.timeout(3000),
-            
-          });
-          if (!res.ok) return null;
-
-          console.debug("https at 9090 ", candidateIp);
-          
-          return {
-            ip: candidateIp,
-            name: candidateIp,
-            status: 'unknown',
-            setupComplete: false,
-            serverName: candidateIp,
-            shareName: '',
-            setupTime: '',
-            serverInfo: {
-              moboMake: '',
-              moboModel: '',
-              serverModel: '',
-              aliasStyle: '',
-              chassisSize: '',
-            },
-            lastSeen: Date.now(),
-            fallbackAdded: true
-          } as Server;
-
-        } catch {
-          return null;
-        }
-      })
+    const hosts = getSubnetHosts(iface.address, iface.netmask);
+    console.debug(
+      `[discovery] fallback scan on ${iface.name} ${iface.address}/${iface.netmask} — ${hosts.length} hosts`
     );
 
-    const fallbackServers = scanned
-      .map(r => r.status === 'fulfilled' ? r.value : null)
-      .filter((s): s is Server => s !== null);
+    async function probe(candidateIp: string): Promise<Server | null> {
+      const portOpen = await isPortOpen(candidateIp, 9090);
+      if (!portOpen) return null;
+      console.debug("port open at 9090 ", candidateIp);
+
+      try {
+        const res = await fetch(`https://${candidateIp}:9090/`, {
+          method: 'GET',
+          cache: 'no-store',
+          signal: AbortSignal.timeout(3000),
+        });
+        if (!res.ok) return null;
+
+        console.debug("https at 9090 ", candidateIp);
+
+        return {
+          ip: candidateIp,
+          name: candidateIp,
+          status: 'unknown',
+          setupComplete: false,
+          serverName: candidateIp,
+          shareName: '',
+          setupTime: '',
+          serverInfo: {
+            moboMake: '',
+            moboModel: '',
+            serverModel: '',
+            aliasStyle: '',
+            chassisSize: '',
+          },
+          lastSeen: Date.now(),
+          fallbackAdded: true
+        } as Server;
+
+      } catch {
+        return null;
+      }
+    }
+
+    // Sliding window: holds concurrency steady without making fast hosts wait on slow ones.
+    const fallbackServers: Server[] = [];
+    let next = 0;
+
+    async function worker() {
+      while (next < hosts.length) {
+        const candidateIp = hosts[next++];
+        try {
+          const server = await probe(candidateIp);
+          if (server) fallbackServers.push(server);
+        } catch {
+          // an unreachable host is not an error worth reporting
+        }
+      }
+    }
+
+    await Promise.all(
+      Array.from({ length: Math.min(FALLBACK_SCAN_CONCURRENCY, hosts.length) }, worker)
+    );
 
     if (fallbackServers.length) {
       discoveredServers = fallbackServers;

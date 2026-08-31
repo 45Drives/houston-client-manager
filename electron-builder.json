@@ -25,6 +25,12 @@
         "hardenedRuntime": true,
         "entitlements": "entitlements.mac.plist",
         "entitlementsInherit": "entitlements.mac.inherit.plist",
+        "extendInfo": {
+            "NSLocalNetworkUsageDescription": "45Drives Storage Wizard finds and configures 45Drives servers on your local network.",
+            "NSBonjourServices": [
+                "_houstonserver._tcp"
+            ]
+        },
         "signIgnore": [
             ".*\\.(png|jpe?g|svg|gif|webp|ico|icns)$",
             ".*\\.(mp3|wav|aac|mp4|mov|webm|ogg)$",
