@@ -21,3 +21,4 @@ scripts/test-pkg.sh
 .DS_Store
 .claude/CLAUDE.md
 .electron-dev-userdata/
+docs/training/
