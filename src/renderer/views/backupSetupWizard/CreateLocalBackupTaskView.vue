@@ -365,7 +365,7 @@ const handleFolderSelect = async () => {
 				description: `Backup task for ${folderName}`,
 				name: folderName,
 				source: folderPath,
-				target: `\\\\${selectedServer.value?.hostname || selectedServer.value?.host}\\${selectedServer.value?.shareName}`,
+				target: `\\\\${selectedServer.value?.host || selectedServer.value?.hostname}\\${selectedServer.value?.shareName}`,
 				mirror: false,
 				uuid: crypto.randomUUID(),
 			};
@@ -467,7 +467,8 @@ const proceedToNextStep = () => {
 	backUpSetupConfig?.backUpTasks.forEach((task: BackUpTask) => {
 		const targetDirForSourcePart = sanitizeFilePath(task.source);
 		const slashOrNotSlash = targetDirForSourcePart.startsWith("/") ? "" : "/";
-		task.target = `${srv.hostname || srv.host}:${srv.shareName}/${task.uuid}/${hostname}${slashOrNotSlash}${targetDirForSourcePart}`;
+		// Scheduled tasks run unattended, so target the IP rather than depending on mDNS.
+		task.target = `${srv.host || srv.hostname}:${srv.shareName}/${task.uuid}/${hostname}${slashOrNotSlash}${targetDirForSourcePart}`;
 	});
 
 	completeCurrentStep();

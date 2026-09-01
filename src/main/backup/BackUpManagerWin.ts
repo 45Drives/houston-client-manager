@@ -23,6 +23,11 @@ const HOUSTON_USER_DIR = path.join(USER_LOCALAPPDATA, 'houston-backups');
 const SCRIPTS_DIR = path.join(HOUSTON_USER_DIR, 'scripts');
 const CREDS_DIR = path.join(HOUSTON_USER_DIR, 'credentials');
 
+/* Registration runs elevated, where $env:USERNAME is whichever admin answered the UAC
+ * prompt rather than the person whose files are being backed up. Capture the real
+ * desktop identity here, while the app is still unelevated. */
+const DESKTOP_USER = `${process.env.USERDOMAIN || os.hostname()}\\${os.userInfo().username}`;
+
 interface TaskData {
   source?: string;
   target?: string;
@@ -96,7 +101,7 @@ export class BackUpManagerWin implements BackUpManager {
     Get-ScheduledTask |
       Where-Object {
         $_.TaskName -like '*${TASK_ID}*' -and
-        ($_.Principal.UserId -eq $me -or $_.Principal.UserId -eq $meShort)
+        ($_.Principal.UserId -eq $me -or $_.Principal.UserId -eq $meShort -or $_.Principal.UserId -eq '${DESKTOP_USER}')
       } |
       Select-Object TaskName, Triggers, Actions, State, Principal |
       ConvertTo-Json -Depth 10
@@ -451,9 +456,9 @@ if (-not $hasBatchLogon -or -not $hasServiceLogon) {
           $root = $svc.GetFolder("\\")
           $task = $svc.NewTask(0)
 
-          # 3.) Principal: use current user via S4U, with highest run level
+          # 3.) Principal: use the desktop user via S4U, with highest run level
           $principal = $task.Principal
-          $principal.UserId = $env:USERNAME
+          $principal.UserId = "${DESKTOP_USER}"
           $principal.LogonType = $TASK_LOGON_S4U
           $principal.RunLevel = $TASK_RUNLEVEL_HIGHEST
 
@@ -477,7 +482,7 @@ if (-not $hasBatchLogon -or -not $hasServiceLogon) {
             "${TASK_ID}_${t.uuid}",
             $task,
             $TASK_CREATE_OR_UPDATE,
-            $env:USERNAME,
+            "${DESKTOP_USER}",
             $null,
             $TASK_LOGON_S4U
           )
@@ -485,7 +490,7 @@ if (-not $hasBatchLogon -or -not $hasServiceLogon) {
       } else {
         psLines.push(`
           $act  = New-ScheduledTaskAction -Execute 'cmd.exe' -Argument ('/C "{0}"' -f "${batPathEsc}")
-          $prin = New-ScheduledTaskPrincipal -UserId "$env:USERNAME" -LogonType S4U -RunLevel Highest
+          $prin = New-ScheduledTaskPrincipal -UserId "${DESKTOP_USER}" -LogonType S4U -RunLevel Highest
           Register-ScheduledTask -TaskName "${TASK_ID}_${t.uuid}" -Action $act -Trigger $taskTrigger -Principal $prin
         `);
       }
