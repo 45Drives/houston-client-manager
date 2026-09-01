@@ -219,8 +219,6 @@ export class BackUpManagerLin implements BackUpManager {
 
       try { if (fs.existsSync(scriptPath)) fs.unlinkSync(scriptPath); } catch { }
       try { if (fs.existsSync(logPath)) fs.unlinkSync(logPath); } catch { }
-
-      this.teardownUnusedMounts([task]);
       resolve();
     });
   }
@@ -239,143 +237,8 @@ export class BackUpManagerLin implements BackUpManager {
       try { if (fs.existsSync(scriptPath)) fs.unlinkSync(scriptPath); } catch { }
       try { if (fs.existsSync(logPath)) fs.unlinkSync(logPath); } catch { }
     }
-
-    this.teardownUnusedMounts(tasks);
   }
-
-  /** `host_share_user` mount key for a task, or null if it can't be derived safely. */
-  protected mountKeyFor(task: BackUpTask): string | null {
-    const host = task.host || task.target?.split(":")[0];
-    const share = task.share || task.target?.split(":")[1]?.split("/")[0];
-    const user = task.smb_user;
-    if (!host || !share || !user) return null;
-
-    const safe = (s: string) => s.replace(/[^A-Za-z0-9_.-]/g, "_");
-    const key = `${safe(host)}_${safe(share)}_${safe(user)}`;
-    return /^[A-Za-z0-9_.-]+$/.test(key) ? key : null;
-  }
-
-  /** Mount keys referenced by every backup script still installed. Throws if any is unreadable. */
-  protected mountKeysInUse(): Set<string> {
-    const scriptPaths = new Set<string>();
-
-    if (fs.existsSync(SCRIPT_DIR)) {
-      for (const f of fs.readdirSync(SCRIPT_DIR)) {
-        if (f.startsWith("Houston_Backup_Task_") && f.endsWith(".sh")) {
-          scriptPaths.add(path.join(SCRIPT_DIR, f));
-        }
-      }
-    }
-    // Tasks from older builds live outside SCRIPT_DIR - pick those up from the crontab.
-    const crontab = execSync("crontab -l 2>/dev/null || true").toString();
-    for (const p of crontab.match(/\/\S*Houston_Backup_Task_\S*\.sh/g) ?? []) scriptPaths.add(p);
-
-    const inUse = new Set<string>();
-    for (const p of scriptPaths) {
-      if (!fs.existsSync(p)) continue;
-      const m = fs.readFileSync(p, "utf-8").match(/^MOUNT_DIR='([^']+)'/m);
-      if (m) inUse.add(path.basename(m[1]));
-    }
-    return inUse;
-  }
-
-  protected isMountPointActive(dir: string): boolean {
-    try {
-      return fs.readFileSync("/proc/mounts", "utf-8")
-        .split("\n")
-        .some(line => line.split(" ")[1] === dir);
-    } catch {
-      return true; // can't tell -> treat as in use
-    }
-  }
-
-  /**
-   * Drops the fstab entry, credential file and mount dir for keys that no remaining
-   * backup task references. Anything mounted, still referenced, or unverifiable is left alone.
-   */
-  protected teardownUnusedMounts(removed: BackUpTask[]): void {
-    const keys = [...new Set(removed.map(t => this.mountKeyFor(t)).filter((k): k is string => !!k))];
-    if (keys.length === 0) return;
-
-    let inUse: Set<string>;
-    try {
-      inUse = this.mountKeysInUse();
-    } catch (err) {
-      console.warn("teardownUnusedMounts: cannot verify usage, leaving mounts in place", err);
-      return;
-    }
-
-    const stale = keys.filter(k => !inUse.has(k) && !this.isMountPointActive(`/mnt/houston-mounts/${k}`));
-    if (stale.length === 0) return;
-
-    const uid = typeof process.getuid === "function" ? process.getuid() : -1;
-    if (uid < 0) return; // can't prove ownership -> leave everything alone
-
-    const removals = stale
-      .map(k => `remove_key ${shellQuote(`/mnt/houston-mounts/${k}`)} ${shellQuote(`/etc/samba/houston-credentials/${k}.cred`)}`)
-      .join("\n");
-
-    const script = `#!/bin/bash
-# Aborts as a unit: on distros with a generated/read-only /etc/fstab the rewrite
-# fails, and continuing would delete credentials while leaving the entry behind.
-set -euo pipefail
-TMP="$(mktemp)"
-trap 'rm -f "$TMP"' EXIT
-cp -a /etc/fstab "/etc/fstab.houston-bak.$(date +%s)"
-
-OWNER_UID=${shellQuote(String(uid))}
-
-# Every place a backup task can live, across all local users - not just the one
-# running the app. Root is the only context that can read other users' crontabs.
-key_referenced_elsewhere() {
-  local mdir="$1"
-  local f
-  for f in /var/spool/cron/crontabs/* /var/spool/cron/* /etc/cron.d/* \\
-           /home/*/.local/share/houston-backups/Houston_Backup_Task_*.sh \\
-           /root/.local/share/houston-backups/Houston_Backup_Task_*.sh; do
-    [ -f "$f" ] || continue
-    grep -qF "$mdir" "$f" && return 0
-  done
-  return 1
-}
-
-remove_key() {
-  local mdir="$1" cred="$2"
-  # Re-check under root: never touch a share that came up since the caller looked.
-  # Read the mount table rather than stat() the path - stat hangs indefinitely on
-  # an unreachable CIFS server, and this runs synchronously on the main process.
-  awk -v d="$mdir" '$2 == d { f = 1 } END { exit !f }' /proc/self/mounts && return 0
-  # Another local user's task still needs this system-wide entry.
-  key_referenced_elsewhere "$mdir" && return 0
-  # Only reclaim an entry this user owns; uid= is what the wizard wrote at setup.
-  local line
-  line="$(awk -v d="$mdir" '$2 == d' /etc/fstab)"
-  [ -n "$line" ] || return 0
-  case "$line" in
-    *"uid=$OWNER_UID,"*) ;;
-    *) return 0 ;;
-  esac
-  # Match on the mount-point field only, so no other fstab line can be caught.
-  awk -v d="$mdir" '$2 != d' /etc/fstab > "$TMP" && cat "$TMP" > /etc/fstab
-  rm -f "$cred"
-  rmdir "$mdir" 2>/dev/null || true   # rmdir refuses non-empty dirs; never rm -rf
-}
-
-${removals}
-`;
-
-    const tempScript = path.join(os.tmpdir(), `houston_mount_cleanup_${Date.now()}.sh`);
-    try {
-      fs.writeFileSync(tempScript, script, { mode: 0o700 });
-      execFileSync(this.pkexec, ["bash", tempScript]);
-    } catch (err) {
-      // Cancelled prompt or failed cleanup must never fail the delete itself.
-      console.warn("teardownUnusedMounts: cleanup skipped", err);
-    } finally {
-      try { fs.unlinkSync(tempScript); } catch { }
-    }
-  }
-
+  
   
   async updateSchedule(task: BackUpTask, username: string, password: string): Promise<void> {
     const crontabLines = execSync("crontab -l 2>/dev/null || true").toString().split("\n");

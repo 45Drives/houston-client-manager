@@ -386,7 +386,6 @@ EOF_${uuid}
     const filtered = existing.filter(l => !l.includes(scriptPath));
     this.applyCleanedCrontab(filtered);
     try { fs.unlinkSync(scriptPath); } catch { }
-    await this.teardownUnusedMounts([task]);
   }
 
   /** Remove multiple */
@@ -397,96 +396,11 @@ EOF_${uuid}
     for (const t of tasks) {
       try { fs.unlinkSync(path.join(this.scriptDir, `houston-backup-task-${t.uuid}.sh`)); } catch { }
     }
-    await this.teardownUnusedMounts(tasks);
-  }
-
-  /** Share names currently mounted under /Volumes, or null if that can't be determined. */
-  protected mountedVolumeNames(): Set<string> | null {
-    try {
-      const names = new Set<string>();
-      for (const line of execSync('/sbin/mount', { encoding: 'utf8' }).split(/\r?\n/)) {
-        const m = / on \/Volumes\/(.+?) \(/.exec(line);
-        if (m) names.add(m[1]);
-      }
-      return names;
-    } catch {
-      return null;
-    }
-  }
-
-  /**
-   * Drops keychain credentials and the ~/houston-mounts link for shares that no remaining
-   * backup task references. Anything mounted, still referenced, or unverifiable is left alone.
-   */
-  protected async teardownUnusedMounts(removed: BackUpTask[]): Promise<void> {
-    let remaining: BackUpTask[];
-    try {
-      remaining = await this.queryTasks();
-    } catch (err) {
-      console.warn('teardownUnusedMounts: cannot verify usage, leaving mounts in place', err);
-      return;
-    }
-
-    const mountedVolumes = this.mountedVolumeNames();
-    const cmds: string[] = [];
-    const seen = new Set<string>();
-
-    for (const t of removed) {
-      if (!t.host || !t.share || !t.smb_user) continue;
-
-      let host: string, share: string, user: string;
-      try {
-        host = assertSafeHost(t.host);
-        share = assertSafeShare(t.share);
-        user = assertSafeUsername(t.smb_user);
-      } catch {
-        continue; // unexpected characters -> leave it for the manual cleanup script
-      }
-
-      if (seen.has(`${host}|${share}|${user}`)) continue;
-      seen.add(`${host}|${share}|${user}`);
-
-      // Share password: scoped to host + share + user.
-      if (!remaining.some(r => r.host === t.host && r.share === t.share && r.smb_user === t.smb_user)) {
-        const svc = `houston-smb-${host}-${share}-${user}`;
-        cmds.push(`security delete-generic-password -s ${shellQuote(svc)} -a ${shellQuote(user)} >/dev/null 2>&1 || true`);
-      }
-
-      // Finder/mount password: scoped to host + user, so other shares on the same host keep it.
-      if (!remaining.some(r => r.host === t.host && r.smb_user === t.smb_user)) {
-        cmds.push(`security delete-internet-password -s ${shellQuote(host)} -a ${shellQuote(user)} -r "smb " -D "Network Password" >/dev/null 2>&1 || true`);
-      }
-
-      // Mount link is keyed on share alone, so every user of that share must be gone first.
-      const link = `${this.MOUNT_ROOT}/${share}`;
-      if (mountedVolumes && !mountedVolumes.has(share) && !remaining.some(r => r.share === t.share)) {
-        cmds.push(`if [ -L ${shellQuote(link)} ]; then rm -f ${shellQuote(link)}; fi`);
-        cmds.push(`if [ -d ${shellQuote(link)} ]; then rmdir ${shellQuote(link)} 2>/dev/null || true; fi`);
-      }
-    }
-
-    if (cmds.length === 0) return;
-
-    const cleanupPath = `/tmp/houston-mount-cleanup-${Date.now()}.sh`;
-    try {
-      fs.writeFileSync(cleanupPath, `#!/bin/bash\nset -uo pipefail\n${cmds.join('\n')}\n`, { mode: 0o700 });
-      this.runAsAdmin(`bash ${shellQuote(cleanupPath)}`, 'Removing saved credentials for the deleted backup…');
-    } catch (err) {
-      // Cancelled prompt or failed cleanup must never fail the delete itself.
-      console.warn('teardownUnusedMounts: cleanup skipped', err);
-    } finally {
-      try { fs.unlinkSync(cleanupPath); } catch { }
-    }
   }
 
   /** Replace schedule by unscheduling then rescheduling */
   async updateSchedule(task: BackUpTask, username: string, password: string): Promise<void> {
-    // Deliberately not this.unschedule(): the task is being re-created, so its
-    // credentials and mount link must survive.
-    const scriptPath = path.join(this.scriptDir, `houston-backup-task-${task.uuid}.sh`);
-    const existing = execSync('crontab -l 2>/dev/null', { encoding: 'utf8' }).split(/\r?\n/);
-    this.applyCleanedCrontab(existing.filter(l => !l.includes(scriptPath)));
-    try { fs.unlinkSync(scriptPath); } catch { }
+    await this.unschedule(task);
     await this.schedule(task, username, password);
   }
 
