@@ -1446,7 +1446,6 @@ app.whenReady().then(() => {
 
     const runCheck = (targetHost: string): Promise<Attempt> => new Promise((resolve) => {
       if (platform === 'win') {
-        // Script and secrets are passed via stdin/env so the password never lands in a command line.
         const ps = [
           '$ErrorActionPreference = "Stop"',
           '$secure = ConvertTo-SecureString $env:HCM_SMB_PASS -AsPlainText -Force',
@@ -1460,11 +1459,16 @@ app.whenReady().then(() => {
           '}',
         ].join('\n');
 
-        const child = execFileCb(
+        // -EncodedCommand avoids stdin and shell quoting entirely; the script carries no
+        // secrets, so only the credentials need to stay in the environment.
+        const encoded = Buffer.from(ps, 'utf16le').toString('base64');
+
+        execFileCb(
           'powershell',
-          ['-NoProfile', '-NonInteractive', '-Command', '-'],
+          ['-NoProfile', '-NonInteractive', '-EncodedCommand', encoded],
           {
             timeout: 20000,
+            windowsHide: true,
             env: {
               ...process.env,
               HCM_SMB_USER: safeUser,
@@ -1472,17 +1476,35 @@ app.whenReady().then(() => {
               HCM_SMB_ROOT: `\\\\${targetHost}\\${safeShare}`,
             },
           },
-          (err: any, stdout: string) => {
+          (err: any, stdout: string, stderr: string) => {
             const output = (stdout || '').trim();
+            jsonLogger.info({
+              event: 'smb:validate.powershell',
+              host: targetHost,
+              share: safeShare,
+              exitCode: err?.code ?? 0,
+              killed: !!err?.killed,
+              stdoutChars: output.length,
+              stderr: (stderr || '').trim().slice(0, 500) || undefined,
+            });
             if (output.split(/\r?\n/).some(line => line.trim() === 'OK')) {
               resolve({ valid: true });
               return;
             }
-            const detail = output.replace(/^FAIL:/m, '').trim() || err?.message || 'Connection failed';
+            if (err?.killed) {
+              resolve({
+                valid: false,
+                reason: 'unreachable',
+                error: `${targetHost} accepted the connection but never answered the file sharing request. This usually means traffic is being dropped between this computer and the server.`,
+              });
+              return;
+            }
+            const detail = output.replace(/^FAIL:/m, '').trim()
+              || (stderr || '').trim()
+              || `PowerShell exited without output (code ${err?.code ?? 'unknown'})`;
             resolve({ valid: false, error: detail, reason: classify(detail) });
           }
         );
-        child.stdin?.end(ps);
       } else {
         // smbclient on Linux/macOS — credentials go through the environment, not argv.
         const args = ['-L', `//${targetHost}`, '-U', safeUser, '-g'];
@@ -1520,6 +1542,11 @@ app.whenReady().then(() => {
             error: `Could not resolve "${targetHost}". The server name may have changed — reboot the server after a name change, or add it by IP address.`,
           };
         }
+        jsonLogger.info({
+          event: 'smb:validate.resolve',
+          host: targetHost,
+          addresses: addresses.map(a => `${a.address}/v${a.family}`),
+        });
         const routable = addresses.find(a => a.family === 4 || !/^fe80:/i.test(a.address));
         if (!routable) {
           return {
@@ -1530,7 +1557,9 @@ app.whenReady().then(() => {
         }
         probeHost = routable.address;
       }
-      if (!(await isPortOpen(probeHost, 445, 5000))) {
+      const portOpen = await isPortOpen(probeHost, 445, 5000);
+      jsonLogger.info({ event: 'smb:validate.probe', host: targetHost, probeHost, port: 445, open: portOpen });
+      if (!portOpen) {
         return {
           valid: false,
           reason: 'unreachable',
@@ -1540,7 +1569,17 @@ app.whenReady().then(() => {
       return runCheck(targetHost);
     };
 
+    jsonLogger.info({
+      event: 'smb:validate.start',
+      host: safeHost,
+      share: safeShare,
+      username: safeUser,
+      knownRecord: record ? { hostname: record.hostname || null, ip: record.ip || null } : null,
+      candidates,
+    });
+
     let lastFailure: Failure = { valid: false, error: 'Unable to connect to server', reason: 'unknown' };
+    let failedCandidate = safeHost;
     for (const candidate of candidates) {
       const result = await attempt(candidate);
       if (result.valid) {
@@ -1554,6 +1593,7 @@ app.whenReady().then(() => {
         return { valid: true, host: candidate };
       }
       lastFailure = result;
+      failedCandidate = candidate;
       // Wrong credentials or a missing share will fail the same way on every address
       if (result.reason === 'auth' || result.reason === 'share') break;
     }
@@ -1564,7 +1604,16 @@ app.whenReady().then(() => {
       lastFailure = { ...lastFailure, error: `The share "${safeShare}" was not found on ${safeHost}.` };
     }
 
-    jsonLogger.warn({ event: 'smb:validate', host: safeHost, share: safeShare, result: 'fail', reason: lastFailure.reason, error: lastFailure.error });
+    jsonLogger.warn({
+      event: 'smb:validate',
+      host: safeHost,
+      tried: candidates,
+      failedOn: failedCandidate,
+      share: safeShare,
+      result: 'fail',
+      reason: lastFailure.reason,
+      error: lastFailure.error,
+    });
     return lastFailure;
   });
 
