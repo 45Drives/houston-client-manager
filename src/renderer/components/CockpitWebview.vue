@@ -177,11 +177,19 @@ function withQs(path: string, qs: string) {
     return `${path}${path.includes('?') ? '&' : '?'}${qs}`
 }
 
+// `yarn dev` targets the `-test` builds of the Cockpit modules that developers
+// install alongside the released ones. Production builds always use the plain path.
+const resolvedRoutePath = computed(() => {
+    const path = props.routePath
+    if (!import.meta.env.DEV || path.endsWith('-test')) return path
+    return `${path}-test`
+})
+
 const currentUrl = computed(() => {
     const ip = currentServer.value?.ip
     if (!ip || !clientId.value) return 'about:blank'
 
-    const base = `https://${ip}:9090${props.routePath}`
+    const base = `https://${ip}:9090${resolvedRoutePath.value}`
     const route = props.hash ? (props.hash.startsWith('/') ? props.hash : `/${props.hash}`) : ''
 
     // Only include stable values in the URL – reactive flags like dark/advanced

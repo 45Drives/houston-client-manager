@@ -4,15 +4,21 @@
             Select a server to view storage.
         </div>
         <div v-else-if="loading" class="py-5 text-center text-gray-400 text-sm">Loading…</div>
-        <div v-else-if="errorMessage" class="py-5 text-center text-sm space-y-2">
-            <p class="text-gray-400">{{ errorMessage }}</p>
-            <button class="btn btn-secondary h-fit" type="button" @click="retry">Retry</button>
+        <div v-else-if="failure" class="py-5 text-center text-sm space-y-2">
+            <p class="text-default font-medium">Failed to connect to “{{ serverLabel }}”</p>
+            <p class="text-xs text-gray-400">{{ failureDetail }}</p>
+            <div class="flex items-center justify-center gap-2 pt-1">
+                <button v-if="props.serverId" class="btn btn-primary h-fit" type="button" @click="emit('manage')">
+                    {{ failure.kind === 'auth' ? 'Check Username &amp; Password' : 'Open Server Settings' }}
+                </button>
+                <button class="btn btn-secondary h-fit" type="button" @click="retry">Retry</button>
+            </div>
         </div>
         <div v-else-if="datasets.length === 0" class="py-5 text-center text-gray-400 text-sm">
             No ZFS datasets found on this server.
         </div>
         <div v-else class="space-y-3">
-            <div v-for="ds in topDatasets" :key="ds.name" class="space-y-1">
+            <div v-for="ds in visibleDatasets" :key="ds.name" class="space-y-1">
                 <div class="flex items-center justify-between text-sm">
                     <span class="text-default font-medium truncate flex-1" :title="ds.name">
                         {{ ds.name.split('/').pop() || ds.name }}
@@ -28,8 +34,15 @@
                 </div>
             </div>
 
-            <div v-if="datasets.length > 3" class="text-xs text-center text-gray-400">
-                +{{ datasets.length - 3 }} more dataset{{ datasets.length - 3 > 1 ? 's' : '' }}
+            <div v-if="datasets.length > COLLAPSED_COUNT" class="text-center">
+                <button type="button"
+                    class="text-xs text-gray-400 hover:text-default underline underline-offset-2 h-fit"
+                    @click="expanded = !expanded">
+                    <template v-if="expanded">Show less</template>
+                    <template v-else>
+                        +{{ datasets.length - COLLAPSED_COUNT }} more dataset{{ datasets.length - COLLAPSED_COUNT > 1 ? 's' : '' }}
+                    </template>
+                </button>
             </div>
         </div>
     </DashboardCard>
@@ -38,7 +51,7 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
 import DashboardCard from './DashboardCard.vue'
-import { describeConnectionError, failureLine } from '../../../shared/connectionErrors'
+import { describeConnectionError, type ConnectivityFailure } from '../../../shared/connectionErrors'
 
 interface DatasetInfo {
     name: string
@@ -57,13 +70,31 @@ interface DisplayDataset {
 
 const props = defineProps<{
     serverIp?: string
+    serverName?: string
+    serverId?: string
 }>()
+
+const emit = defineEmits<{ (e: 'manage'): void }>()
+
+const COLLAPSED_COUNT = 3
 
 const datasets = ref<DisplayDataset[]>([])
 const loading = ref(false)
-const errorMessage = ref<string | null>(null)
+const failure = ref<ConnectivityFailure | null>(null)
+const expanded = ref(false)
 
-const topDatasets = computed(() => datasets.value.slice(0, 3))
+const visibleDatasets = computed(() =>
+    expanded.value ? datasets.value : datasets.value.slice(0, COLLAPSED_COUNT)
+)
+
+const serverLabel = computed(() => props.serverName?.trim() || props.serverIp || 'this server')
+
+const failureDetail = computed(() => {
+    const f = failure.value
+    if (!f) return ''
+    if (f.kind === 'auth') return 'The saved username or password was rejected.'
+    return f.hint || f.message
+})
 
 function parseSize(s: string): number {
     const match = s.match(/([\d.]+)\s*([KMGTP]?)/i)
@@ -88,8 +119,9 @@ async function fetchDatasets(serverIp: string) {
     if (!serverIp || serverIp === currentFetchIp) return
     currentFetchIp = serverIp
     loading.value = true
-    errorMessage.value = null
+    failure.value = null
     datasets.value = []
+    expanded.value = false
     try {
         const cred = await window.electron.ipcRenderer.invoke('cred:get-for', serverIp)
         if (!cred) return
@@ -115,15 +147,15 @@ async function fetchDatasets(serverIp: string) {
             }
         }).sort((a, b) => b.percent - a.percent)
     } catch (e) {
-        const failure = describeConnectionError(e, serverIp)
-        errorMessage.value = failureLine(failure)
-        if (failure.transient) {
+        const described = describeConnectionError(e, serverLabel.value)
+        failure.value = described
+        if (described.transient) {
             // Reboots and network blips clear on their own — allow another attempt
             // and keep it out of the error log.
             currentFetchIp = ''
-            console.debug('[DashboardStorageCard]', failure.message, failure.detail)
+            console.debug('[DashboardStorageCard]', described.message, described.detail)
         } else {
-            console.error('[DashboardStorageCard] Failed to load datasets:', failure.detail || e)
+            console.debug('[DashboardStorageCard] connect failed:', serverLabel.value, described.detail || e)
         }
     } finally {
         loading.value = false

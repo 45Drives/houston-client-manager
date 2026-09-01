@@ -169,6 +169,13 @@ export async function acquireSSH(host: string, auth: SshAuth): Promise<NodeSSH> 
   throw new Error(`Could not hold a connection to ${host} open long enough to run the request.`);
 }
 
+/** Drop pooled connections to host+user — for callers that saw a command fail on a broken socket. */
+export function evictSSH(host: string, username: string) {
+  const list = pool.get(poolKey(host, username));
+  if (!list) return;
+  for (const entry of [...list]) evict(entry, 'caller-evicted');
+}
+
 /** Close every pooled connection. Call on app shutdown. */
 export function disposeAllSSH() {
   for (const list of [...pool.values()]) {

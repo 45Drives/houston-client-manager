@@ -76,6 +76,7 @@ import mdns from 'multicast-dns';
 import os from 'os';
 import fs from 'fs';
 import net from 'net';
+import { promises as dnsPromises } from 'dns';
 import http from 'http';
 import { Server } from './types';
 import mountSmbPopup from './smbMountPopup';
@@ -1236,7 +1237,7 @@ app.whenReady().then(() => {
     return getCredentialManager().listAllServers();
   });
 
-  ipcMain.handle('servers:add', (event, p: { host: string; shareName: string; username: string; password: string; smbUser?: string; smbPass?: string; sshKeyPath?: string; sshPassphrase?: string; name?: string; favorite?: boolean; setupComplete?: boolean }) => {
+  ipcMain.handle('servers:add', (event, p: { host: string; shareName: string; username: string; password: string; hostname?: string; smbUser?: string; smbPass?: string; sshKeyPath?: string; sshPassphrase?: string; name?: string; favorite?: boolean; setupComplete?: boolean }) => {
     assertMainWindowSender(event);
     const safeHost = assertSafeHost(p.host);
 
@@ -1259,6 +1260,7 @@ app.whenReady().then(() => {
       {
         name: p.name,
         favorite: p.favorite,
+        hostname: p.hostname ? assertSafeHost(p.hostname) : undefined,
         smbUser: p.smbUser ? assertSafeUsername(p.smbUser) : undefined,
         smbPass: p.smbPass,
         sshKeyPath: p.sshKeyPath,
@@ -1414,36 +1416,156 @@ app.whenReady().then(() => {
     const safeShare = assertSafeShare(share);
     const safeUser = assertSafeUsername(username);
     const { execFile: execFileCb } = require('child_process');
-    const os = getOS();
+    const platform = getOS();
 
-    return new Promise<{ valid: boolean; error?: string }>((resolve) => {
-      if (os === 'win') {
-        // Use PowerShell to test SMB connection
-        const ps = `$pass = ConvertTo-SecureString '${password.replace(/'/g, "''")}' -AsPlainText -Force; $cred = New-Object System.Management.Automation.PSCredential('${safeUser}', $pass); try { New-PSDrive -Name HTest -PSProvider FileSystem -Root "\\\\${safeHost}\\${safeShare}" -Credential $cred -ErrorAction Stop | Out-Null; Remove-PSDrive -Name HTest; Write-Output 'OK' } catch { Write-Output "FAIL:$($_.Exception.Message)" }`;
-        execFileCb('powershell', ['-NoProfile', '-Command', ps], { timeout: 15000 }, (err: any, stdout: string) => {
-          if (err || !stdout.trim().startsWith('OK')) {
-            const detail = stdout?.trim().replace(/^FAIL:/, '') || err?.message || 'Connection failed';
-            resolve({ valid: false, error: detail });
-          } else {
-            resolve({ valid: true });
+    type Failure = { valid: false; error: string; reason: 'auth' | 'unreachable' | 'share' | 'unknown' };
+    type Attempt = { valid: true } | Failure;
+
+    const isIpLiteral = (h: string) => /^\d{1,3}(\.\d{1,3}){3}$/.test(h) || h.includes(':');
+
+    // Avahi advertises an IPv6 link-local AAAA record alongside the A record, and the
+    // Windows SMB redirector cannot use a scoped fe80:: address as a UNC target — it
+    // fails with ERROR_GEN_FAILURE. Try the known IPv4 address first, name second.
+    const record = (() => {
+      try { return getCredentialManager().findServer(safeHost); } catch { return null; }
+    })();
+    const candidates = [
+      ...(isIpLiteral(safeHost) ? [safeHost] : [record?.ip ?? '', safeHost]),
+      ...(isIpLiteral(safeHost) ? [record?.hostname ?? ''] : []),
+    ]
+      .filter(Boolean)
+      .map(h => assertSafeHost(h))
+      .filter((h, i, all) => all.findIndex(x => x.toLowerCase() === h.toLowerCase()) === i);
+
+    const classify = (message: string): Failure['reason'] => {
+      if (/logon failure|user name or password is incorrect|access is denied|LOGON_FAILURE|ACCESS_DENIED|1326|1331|1327/i.test(message)) return 'auth';
+      if (/bad_network_name|network name cannot be found|network name is no longer available|NT_STATUS_BAD_NETWORK_NAME/i.test(message)) return 'share';
+      if (/network path was not found|network location cannot be reached|not functioning|cannot find path|no such host|ENOTFOUND|EAI_AGAIN|timed out|unreachable|53\b|64\b|67\b|1231\b/i.test(message)) return 'unreachable';
+      return 'unknown';
+    };
+
+    const runCheck = (targetHost: string): Promise<Attempt> => new Promise((resolve) => {
+      if (platform === 'win') {
+        // Script and secrets are passed via stdin/env so the password never lands in a command line.
+        const ps = [
+          '$ErrorActionPreference = "Stop"',
+          '$secure = ConvertTo-SecureString $env:HCM_SMB_PASS -AsPlainText -Force',
+          '$cred = New-Object System.Management.Automation.PSCredential($env:HCM_SMB_USER, $secure)',
+          'try {',
+          '  New-PSDrive -Name HCMTest -PSProvider FileSystem -Root $env:HCM_SMB_ROOT -Credential $cred -ErrorAction Stop | Out-Null',
+          '  Remove-PSDrive -Name HCMTest -Force -ErrorAction SilentlyContinue',
+          '  Write-Output "OK"',
+          '} catch {',
+          '  Write-Output ("FAIL:" + $_.Exception.Message)',
+          '}',
+        ].join('\n');
+
+        const child = execFileCb(
+          'powershell',
+          ['-NoProfile', '-NonInteractive', '-Command', '-'],
+          {
+            timeout: 20000,
+            env: {
+              ...process.env,
+              HCM_SMB_USER: safeUser,
+              HCM_SMB_PASS: password,
+              HCM_SMB_ROOT: `\\\\${targetHost}\\${safeShare}`,
+            },
+          },
+          (err: any, stdout: string) => {
+            const output = (stdout || '').trim();
+            if (output.split(/\r?\n/).some(line => line.trim() === 'OK')) {
+              resolve({ valid: true });
+              return;
+            }
+            const detail = output.replace(/^FAIL:/m, '').trim() || err?.message || 'Connection failed';
+            resolve({ valid: false, error: detail, reason: classify(detail) });
           }
-        });
+        );
+        child.stdin?.end(ps);
       } else {
-        // Use smbclient to validate credentials on Linux/macOS
-        const args = ['-L', `//${safeHost}`, '-U', `${safeUser}%${password}`, '-g'];
-        execFileCb('smbclient', args, { timeout: 15000 }, (err: any, stdout: string, stderr: string) => {
-          const output = `${stdout}\n${stderr}`;
-          if (/NT_STATUS_LOGON_FAILURE|NT_STATUS_ACCESS_DENIED/i.test(output)) {
-            resolve({ valid: false, error: 'Invalid username or password' });
-          } else if (err && !/Disk\|/i.test(stdout)) {
-            // smbclient returns non-zero but may still list shares
-            resolve({ valid: false, error: 'Unable to connect to server' });
-          } else {
-            resolve({ valid: true });
+        // smbclient on Linux/macOS — credentials go through the environment, not argv.
+        const args = ['-L', `//${targetHost}`, '-U', safeUser, '-g'];
+        const child = execFileCb(
+          'smbclient',
+          args,
+          { timeout: 20000, env: { ...process.env, PASSWD: password } },
+          (err: any, stdout: string, stderr: string) => {
+            const output = `${stdout}\n${stderr}`;
+            if (/NT_STATUS_LOGON_FAILURE|NT_STATUS_ACCESS_DENIED/i.test(output)) {
+              resolve({ valid: false, error: 'Invalid username or password', reason: 'auth' });
+            } else if (err && !/Disk\|/i.test(stdout)) {
+              // smbclient can exit non-zero while still listing shares
+              resolve({ valid: false, error: output.trim() || 'Unable to connect to server', reason: classify(output) });
+            } else {
+              resolve({ valid: true });
+            }
           }
-        });
+        );
+        // Close stdin so a password prompt can never block the check
+        child.stdin?.end();
       }
     });
+
+    const attempt = async (targetHost: string): Promise<Attempt> => {
+      let probeHost = targetHost;
+      if (!isIpLiteral(targetHost)) {
+        let addresses: { address: string; family: number }[];
+        try {
+          addresses = await dnsPromises.lookup(targetHost, { all: true });
+        } catch {
+          return {
+            valid: false,
+            reason: 'unreachable',
+            error: `Could not resolve "${targetHost}". The server name may have changed — reboot the server after a name change, or add it by IP address.`,
+          };
+        }
+        const routable = addresses.find(a => a.family === 4 || !/^fe80:/i.test(a.address));
+        if (!routable) {
+          return {
+            valid: false,
+            reason: 'unreachable',
+            error: `"${targetHost}" only resolves to an IPv6 link-local address, which Windows cannot use for file sharing. Connect to the server by IP address instead.`,
+          };
+        }
+        probeHost = routable.address;
+      }
+      if (!(await isPortOpen(probeHost, 445, 5000))) {
+        return {
+          valid: false,
+          reason: 'unreachable',
+          error: `${targetHost} is not reachable on file sharing port 445. Check that the server is powered on, on the same network, and that Samba is running.`,
+        };
+      }
+      return runCheck(targetHost);
+    };
+
+    let lastFailure: Failure = { valid: false, error: 'Unable to connect to server', reason: 'unknown' };
+    for (const candidate of candidates) {
+      const result = await attempt(candidate);
+      if (result.valid) {
+        // Remember the share credentials that worked so the next wizard run prefills them.
+        try {
+          if (record) getCredentialManager().store(safeHost, safeShare, safeUser, password);
+        } catch (e: any) {
+          console.warn('Could not persist validated SMB credentials:', e?.message || e);
+        }
+        jsonLogger.info({ event: 'smb:validate', host: candidate, share: safeShare, result: 'ok' });
+        return { valid: true, host: candidate };
+      }
+      lastFailure = result;
+      // Wrong credentials or a missing share will fail the same way on every address
+      if (result.reason === 'auth' || result.reason === 'share') break;
+    }
+
+    if (lastFailure.reason === 'auth') {
+      lastFailure = { ...lastFailure, error: 'Invalid username or password for this share.' };
+    } else if (lastFailure.reason === 'share') {
+      lastFailure = { ...lastFailure, error: `The share "${safeShare}" was not found on ${safeHost}.` };
+    }
+
+    jsonLogger.warn({ event: 'smb:validate', host: safeHost, share: safeShare, result: 'fail', reason: lastFailure.reason, error: lastFailure.error });
+    return lastFailure;
   });
 
   ipcMain.handle('credentials:retrieve', (event, { host, share, username }: { host: string; share: string; username?: string }) => {

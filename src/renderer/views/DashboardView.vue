@@ -57,7 +57,9 @@
                     </div>
                     <!-- Storage + System Health -->
                     <div class="grid grid-cols-2 gap-5" data-tour="storage-health">
-                        <DashboardStorageCard ref="storageCard" :serverIp="selectedServer?.host ?? ''" />
+                        <DashboardStorageCard ref="storageCard" :serverIp="selectedServer?.host ?? ''"
+                            :serverName="selectedServer?.name ?? ''" :serverId="selectedServer?.id ?? ''"
+                            @manage="selectedServer && goManageServer(selectedServer)" />
                         <DashboardHealthCard :storagePercent="maxStoragePercent"
                             :savedHosts="serverCard?.savedHosts ?? []"
                             @add-server="onAddDiscoveredServer" />

@@ -5,7 +5,8 @@ import { ipcMain } from 'electron';
 import { NodeSSH } from 'node-ssh';
 import type { Logger } from 'winston';
 import { assertSafeHost, assertSafeUsername } from '../security';
-import { connectWithFallback, type SshAuth } from '../setupSsh';
+import { type SshAuth } from '../setupSsh';
+import { acquireSSH, evictSSH } from '../sshPool';
 import { getCredentialManager } from '../credentialManager';
 
 interface WireShieldContext {
@@ -16,65 +17,32 @@ const WIRESHIELD_CLI = '/usr/sbin/wireshield-pair';
 const API_ENV = '/etc/wireshield/api.env';
 
 // ── SSH Connection Pool ────────────────────────────────────────────────────
-// Reuses a single SSH connection per host to avoid repeated handshake overhead.
-// Connections auto-close after 60s of inactivity.
-
-interface PoolEntry {
-  ssh: NodeSSH;
-  timer: ReturnType<typeof setTimeout>;
-  host: string;
-  username: string;
-}
-
-const sshPool = new Map<string, PoolEntry>();
-const POOL_IDLE_MS = 60_000; // close after 60s idle
-
-function poolKey(host: string, username: string): string {
-  return `${username}@${host}`;
-}
-
-function disposePoolEntry(key: string) {
-  const entry = sshPool.get(key);
-  if (entry) {
-    clearTimeout(entry.timer);
-    try { entry.ssh.dispose(); } catch {}
-    sshPool.delete(key);
-  }
-}
+// Delegates to the shared pool in sshPool.ts. A private pool here meant a
+// dashboard render opened a WireShield connection, a topology connection and a
+// restore connection to the same host at once — each walking up to four auth
+// tiers, which is enough concurrent pre-auth handshakes to trip sshd's
+// MaxStartups and leave every request timing out.
 
 async function getPooledSSH(host: string, username: string, password?: string): Promise<NodeSSH> {
-  const key = poolKey(host, username);
-  const existing = sshPool.get(key);
+  const stored = !password ? getCredentialManager().getForHost(host) : null;
+  const auth: SshAuth = stored?.sshKeyPath
+    ? { username, method: 'key', privateKeyPath: stored.sshKeyPath, passphrase: stored.sshPassphrase || undefined }
+    : { username, method: 'password', password: password || '' };
 
-  // Reuse if connected
-  if (existing && existing.ssh.isConnected()) {
-    clearTimeout(existing.timer);
-    existing.timer = setTimeout(() => disposePoolEntry(key), POOL_IDLE_MS);
-    return existing.ssh;
-  }
-
-  // Clean up stale entry
-  if (existing) {
-    disposePoolEntry(key);
-  }
-
-  // Create new connection
-  const ssh = await connectSSH(host, username, password);
-  const timer = setTimeout(() => disposePoolEntry(key), POOL_IDLE_MS);
-  sshPool.set(key, { ssh, timer, host, username });
+  const ssh = await acquireSSH(host, auth);
+  // Callers here don't own the connection; hand the lease straight back so the
+  // pool's idle timer governs its lifetime, as the private pool used to.
+  ssh.dispose();
   return ssh;
 }
 
-// ── Helpers ────────────────────────────────────────────────────────────────
+function poolKey(host: string, username: string): string {
+  return `${host}\u0000${username}`;
+}
 
-async function connectSSH(host: string, username: string, password?: string): Promise<NodeSSH> {
-  if (!password) {
-    const stored = getCredentialManager().getForHost(host);
-    if (stored?.sshKeyPath) {
-      return connectWithFallback(host, { username, method: 'key', privateKeyPath: stored.sshKeyPath, passphrase: stored.sshPassphrase || undefined });
-    }
-  }
-  return connectWithFallback(host, { username, method: 'password', password: password || '' });
+function disposePoolEntry(key: string) {
+  const [host, username] = key.split('\u0000');
+  evictSSH(host, username);
 }
 
 async function cmd(ssh: NodeSSH, command: string): Promise<string> {

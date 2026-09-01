@@ -1,6 +1,6 @@
 import path from "path"
 import fs from "fs";
-import { getAsset } from "./utils";
+import { getAsset, isDev } from "./utils";
 import { getAgentSocket, getKeyDir, ensureKeyPair } from "./crossPlatformSsh";
 import { NodeSSH } from 'node-ssh';
 import type { CipherAlgorithm } from 'ssh2';
@@ -460,9 +460,11 @@ echo "__VERSIONS__ $installed_versions"
     if (version) houstonVersions[entry.slice(0, eq)] = version;
   }
 
-  const houstonBelowMinimum = Object.keys(houstonVersions).filter((name) =>
-    isBelowMinimum(name, houstonVersions[name]),
-  );
+  // `yarn dev` runs against locally built server modules whose versions are
+  // often behind the released minimums, so the gate is skipped there.
+  const houstonBelowMinimum = isDev()
+    ? []
+    : Object.keys(houstonVersions).filter((name) => isBelowMinimum(name, houstonVersions[name]));
 
   const result: RemoteDepCheck = {
     missing: [...baseMissing, ...houstonMissing],

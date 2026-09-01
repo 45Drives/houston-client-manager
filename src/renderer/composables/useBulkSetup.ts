@@ -145,6 +145,7 @@ export function useBulkSetup() {
         shareName: shareName || 'share',
         username: srv.username,
         password: srv.password,
+        hostname: srv.result?.finalHostname || serverName || undefined,
         smbUser: smbUser || undefined,
         smbPass: smbPass || undefined,
         name: serverName || undefined,

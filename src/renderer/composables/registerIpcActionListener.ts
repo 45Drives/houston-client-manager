@@ -61,6 +61,13 @@ export function registerIpcActionListener(opts: Options) {
               break;
             }
 
+            if (wiz === "dashboard") {
+              setCurrentWizard?.(null);
+              setShowWebView?.(false);
+              pushRoute({ name: "dashboard" });
+              break;
+            }
+
             // Preserve old behavior for storage / restore-backup
             if (["storage", "restore-backup"].includes(wiz)) {
               setCurrentWizard?.(wiz);
@@ -92,6 +99,8 @@ export function registerIpcActionListener(opts: Options) {
             // After reboot, route accordingly:
             if (wiz === "backup") {
               pushRoute({ name: "backup-manage" });
+            } else if (wiz === "dashboard") {
+              pushRoute({ name: "dashboard" });
             } else if (wiz === "storage") {
               if (openStorageSetup) openStorageSetup(null);
               else pushRoute({ name: "setup" });

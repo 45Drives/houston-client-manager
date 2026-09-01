@@ -153,6 +153,16 @@ const proceedToNextStep = async () => {
         isValidating.value = false;
         return;
       }
+
+      // Validation may have succeeded on a fallback address (e.g. IP instead of an
+      // unresolvable .local name) — retarget the tasks so the backup uses what works.
+      if (result.host && result.host !== host) {
+        backUpSetupConfig.backUpTasks.forEach((task: any) => {
+          if (task.target?.startsWith(`${host}:`)) {
+            task.target = `${result.host}${task.target.slice(host.length)}`;
+          }
+        });
+      }
     } catch (err: any) {
       validationError.value = err?.message || 'Failed to validate credentials.';
       isValidating.value = false;

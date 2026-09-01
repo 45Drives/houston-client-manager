@@ -6,7 +6,7 @@
  */
 
 import { NodeSSH } from 'node-ssh';
-import { connectWithFallback } from './setupSsh';
+import { acquireSSH } from './sshPool';
 import { getCredentialManager } from './credentialManager';
 import { assertSafeHost, assertSafeUsername, shellQuote } from './security';
 import { logEvent } from './logging';
@@ -194,7 +194,7 @@ export async function probeServerTopology(host: string, username: string): Promi
 
   let ssh: NodeSSH;
   try {
-    ssh = await connectWithFallback(safeHost, {
+    ssh = await acquireSSH(safeHost, {
       username: safeUser,
       method: cred?.sshKeyPath ? 'key' : 'password',
       password: cred?.password,

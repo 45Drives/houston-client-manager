@@ -189,10 +189,16 @@ function isIpAddress(s: string): boolean {
   return /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(s);
 }
 
+/** mDNS reports "host.local." while records often hold the bare hostname — compare them equal. */
+function normalizeHost(host: string): string {
+  return host.trim().toLowerCase().replace(/\.$/, '').replace(/\.local$/, '');
+}
+
 function hostMatches(server: ServerRecord, hostOrIp: string): boolean {
-  const lower = hostOrIp.toLowerCase();
-  if (server.ip && server.ip.toLowerCase() === lower) return true;
-  if (server.hostname && server.hostname.toLowerCase() === lower) return true;
+  const key = normalizeHost(hostOrIp);
+  if (!key) return false;
+  if (server.ip && normalizeHost(server.ip) === key) return true;
+  if (server.hostname && normalizeHost(server.hostname) === key) return true;
   return false;
 }
 
@@ -569,7 +575,8 @@ export class CredentialManager {
       if (merged) {
         if (!merged.hostname) merged.hostname = hostname;
         if (!merged.ip) merged.ip = ip;
-        if (opts?.shareName && !merged.smbShare) merged.smbShare = opts.shareName;
+        // The server reports its current share, so a re-setup renaming it wins.
+        if (opts?.shareName && merged.smbShare !== opts.shareName) merged.smbShare = opts.shareName;
         if (opts?.setupComplete !== undefined) merged.setupComplete = opts.setupComplete;
         merged.updatedAt = new Date().toISOString();
         this.save();
@@ -577,7 +584,7 @@ export class CredentialManager {
     } else if (byHostname) {
       let changed = false;
       if (ip && !byHostname.ip) { byHostname.ip = ip; changed = true; }
-      if (opts?.shareName && !byHostname.smbShare) { byHostname.smbShare = opts.shareName; changed = true; }
+      if (opts?.shareName && byHostname.smbShare !== opts.shareName) { byHostname.smbShare = opts.shareName; changed = true; }
       if (opts?.setupComplete !== undefined && byHostname.setupComplete !== opts.setupComplete) {
         byHostname.setupComplete = opts.setupComplete; changed = true;
       }
@@ -585,7 +592,7 @@ export class CredentialManager {
     } else if (byIp) {
       let changed = false;
       if (hostname && byIp.hostname !== hostname) { byIp.hostname = hostname; changed = true; }
-      if (opts?.shareName && !byIp.smbShare) { byIp.smbShare = opts.shareName; changed = true; }
+      if (opts?.shareName && byIp.smbShare !== opts.shareName) { byIp.smbShare = opts.shareName; changed = true; }
       if (opts?.setupComplete !== undefined && byIp.setupComplete !== opts.setupComplete) {
         byIp.setupComplete = opts.setupComplete; changed = true;
       }
@@ -709,13 +716,14 @@ export class CredentialManager {
     shareName: string,
     username: string,
     password: string,
-    opts?: { name?: string; favorite?: boolean; smbUser?: string; smbPass?: string; sshKeyPath?: string; sshPassphrase?: string; setupComplete?: boolean }
+    opts?: { name?: string; favorite?: boolean; hostname?: string; smbUser?: string; smbPass?: string; sshKeyPath?: string; sshPassphrase?: string; setupComplete?: boolean }
   ): string {
     const hostname = isIpAddress(host) ? '' : host;
     const ip = isIpAddress(host) ? host : '';
 
     return this.addServer({
-      hostname, ip,
+      hostname: hostname || opts?.hostname,
+      ip,
       displayName: opts?.name,
       loginUser: username,
       loginPass: password,

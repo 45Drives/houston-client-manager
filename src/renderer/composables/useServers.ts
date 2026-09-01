@@ -44,6 +44,7 @@ let _refreshPromise: Promise<void> | null = null
 let _watcherRegistered = false
 const _prevOnline = new Map<string, boolean>()
 const _syncedNames = new Map<string, string>()
+const _syncedShares = new Map<string, string>()
 
 export function useServers() {
   const discoveryState = inject<DiscoveryState>(discoveryStateInjectionKey, undefined as any)
@@ -128,20 +129,22 @@ export function useServers() {
         if (!disc) continue
         const discoveredName = disc.name || disc.serverName || ''
         const discoveredShare = disc.shareName || ''
-        // Only sync if discovery has a real name that differs from stored
-        if (discoveredName && discoveredName !== disc.ip && discoveredName !== s.name) {
-          // Prevent firing the same update repeatedly
-          if (_syncedNames.get(s.id) === discoveredName) continue
-          _syncedNames.set(s.id, discoveredName)
-          // Fire-and-forget update to persist the new name + hostname
-          window.electron?.ipcRenderer.invoke('servers:update', {
-            id: s.id,
-            name: discoveredName,
-            hostname: discoveredName,
-            ...(disc.ip && disc.ip !== s.host ? { ip: disc.ip } : {}),
-            ...(discoveredShare && !s.shareName ? { shareName: discoveredShare } : {}),
-          }).then(() => refresh()).catch(e => console.error('Failed to sync server name:', e))
-        }
+        // Discovery reports the server's live name/share, so a rename or re-setup wins
+        const nameChanged = !!discoveredName && discoveredName !== disc.ip && discoveredName !== s.name
+        const shareChanged = !!discoveredShare && discoveredShare !== s.shareName
+        if (!nameChanged && !shareChanged) continue
+        // Prevent firing the same update repeatedly
+        if (nameChanged && _syncedNames.get(s.id) === discoveredName) continue
+        if (!nameChanged && _syncedShares.get(s.id) === discoveredShare) continue
+        if (nameChanged) _syncedNames.set(s.id, discoveredName)
+        if (shareChanged) _syncedShares.set(s.id, discoveredShare)
+        // Fire-and-forget update to persist the new name + hostname
+        window.electron?.ipcRenderer.invoke('servers:update', {
+          id: s.id,
+          ...(nameChanged ? { name: discoveredName, hostname: discoveredName } : {}),
+          ...(disc.ip && disc.ip !== s.host ? { ip: disc.ip } : {}),
+          ...(shareChanged ? { shareName: discoveredShare } : {}),
+        }).then(() => refresh()).catch(e => console.error('Failed to sync server from discovery:', e))
       }
     }, { deep: true })
   }
@@ -167,12 +170,14 @@ export function useServers() {
     shareName: string
     username: string
     password: string
+    hostname?: string
     smbUser?: string
     smbPass?: string
     sshKeyPath?: string
     sshPassphrase?: string
     name?: string
     favorite?: boolean
+    setupComplete?: boolean
   }): Promise<StoredServer> {
     const result = await window.electron.ipcRenderer.invoke('servers:add', opts)
     await refresh()

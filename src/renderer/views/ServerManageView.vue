@@ -115,17 +115,17 @@ The page is read-only until you click Edit. In edit mode changes are collected i
                         </div>
                         <div class="space-y-4">
                             <SectionDivider label="Samba Share" />
+                            <FieldCard label="Share Name" :value="server?.shareName || '—'" :editing="editing"
+                                v-model:editValue="editForm.shareName" field="shareName" tab="Connection" type="local"
+                                @stage="stageChange" />
                             <div class="grid grid-cols-2 gap-4">
-                                <FieldCard label="Share Name" :value="server?.shareName || '—'" :editing="editing"
-                                    v-model:editValue="editForm.shareName" field="shareName" tab="Connection" type="local"
-                                    @stage="stageChange" />
                                 <FieldCard label="SMB Username" :value="server?.smbUser || '—'" :editing="editing"
                                     v-model:editValue="editForm.smbUser" field="smbUser" tab="Connection" type="local"
                                     @stage="stageChange" />
+                                <FieldCard label="SMB Password" value="••••••••" :editing="editing"
+                                    v-model:editValue="editForm.smbPass" field="smbPass" tab="Connection" type="local"
+                                    inputType="password" @stage="stageChange" />
                             </div>
-                            <FieldCard label="SMB Password" value="••••••••" :editing="editing"
-                                v-model:editValue="editForm.smbPass" field="smbPass" tab="Connection" type="local"
-                                inputType="password" @stage="stageChange" />
                         </div>
                     </div>
                     <div v-else class="py-10 text-center text-xs text-gray-400">
@@ -162,17 +162,17 @@ The page is read-only until you click Edit. In edit mode changes are collected i
                         </div>
                         <div class="space-y-4" data-tour="sm-conn-share">
                             <SectionDivider label="Samba Share" />
+                            <FieldCard label="Share Name" :value="server?.shareName || '—'" :editing="editing"
+                                v-model:editValue="editForm.shareName" field="shareName" tab="Connection" type="local"
+                                @stage="stageChange" />
                             <div class="grid grid-cols-2 gap-4">
-                                <FieldCard label="Share Name" :value="server?.shareName || '—'" :editing="editing"
-                                    v-model:editValue="editForm.shareName" field="shareName" tab="Connection" type="local"
-                                    @stage="stageChange" />
                                 <FieldCard label="SMB Username" :value="server?.smbUser || '—'" :editing="editing"
                                     v-model:editValue="editForm.smbUser" field="smbUser" tab="Connection" type="local"
                                     @stage="stageChange" />
+                                <FieldCard label="SMB Password" value="••••••••" :editing="editing"
+                                    v-model:editValue="editForm.smbPass" field="smbPass" tab="Connection" type="local"
+                                    inputType="password" @stage="stageChange" />
                             </div>
-                            <FieldCard label="SMB Password" value="••••••••" :editing="editing"
-                                v-model:editValue="editForm.smbPass" field="smbPass" tab="Connection" type="local"
-                                inputType="password" @stage="stageChange" />
                         </div>
                     </div>
 
