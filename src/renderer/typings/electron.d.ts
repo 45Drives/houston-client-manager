@@ -18,6 +18,8 @@ interface ElectronApi {
   selectFolder: () => Promise<string | null>;
   getOS: () => Promise<string>;
   isFirstRunNeeded: (host: string, share: string, smbUser: string) => Promise<boolean>;
+  macFdaStatus: (source?: string) => Promise<MacFdaStatus>;
+  macOpenFdaSettings: () => Promise<boolean>;
   log: {
     debug: (...args: any[]) => void;
     info: (...args: any[]) => void;
@@ -25,6 +27,14 @@ interface ElectronApi {
     error: (...args: any[]) => void;
     log: (...args: any[]) => void;
   };
+}
+
+interface MacFdaStatus {
+  supported: boolean;
+  status?: 'granted' | 'denied' | 'unknown';
+  daemonInstalled?: boolean;
+  daemonPath?: string;
+  sourceNeedsAccess?: boolean;
 }
 
 interface Window {

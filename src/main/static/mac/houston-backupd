@@ -13,7 +13,7 @@
 #
 # DAEMON_VERSION must match MAC_DAEMON_VERSION in src/main/backup/macDaemon.ts. Bump both
 # on any change here, or installed copies will never be replaced.
-# DAEMON_VERSION = 1
+# DAEMON_VERSION = 2
 
 set -uo pipefail
 
@@ -22,6 +22,8 @@ export PATH=/usr/bin:/bin:/usr/sbin:/sbin
 SUPPORT_REL="Library/Application Support/45Drives/Houston"
 TASKS_REL="${SUPPORT_REL}/backup-tasks"
 STATE_REL="${SUPPORT_REL}/state"
+
+DAEMON_ROOT="/Library/Application Support/45Drives/Houston"
 
 LOG_DIR="/Library/Logs/45Drives"
 LOG_FILE="${LOG_DIR}/houston-backupd.log"
@@ -164,10 +166,14 @@ scan_user() {
     cron="$(header "$script" TASK_CRON)"
     [ -n "$freq" ] && [ -n "$cron" ] || { log "skip ${uuid}: missing TASK_FREQ/TASK_CRON"; continue; }
 
-    # shellcheck disable=SC2086
-    set -- $cron
-    [ $# -eq 5 ] || { log "skip ${uuid}: malformed TASK_CRON '${cron}'"; continue; }
-    local c_min="$1" c_hour="$2" c_dom="$3" c_dow="$5"
+    # read does not glob. `set -- $cron` did, so the * fields expanded against the working
+    # directory and every expression looked malformed.
+    local c_min c_hour c_dom c_mon c_dow c_extra
+    read -r c_min c_hour c_dom c_mon c_dow c_extra <<<"$cron"
+    if [ -z "${c_dow:-}" ] || [ -n "${c_extra:-}" ]; then
+      log "skip ${uuid}: malformed TASK_CRON '${cron}'"
+      continue
+    fi
     [ "$c_min" = "*" ] && c_min=0
     [ "$c_hour" = "*" ] && c_hour=0
     [ "$c_dom" = "*" ] && c_dom=1
@@ -184,8 +190,22 @@ scan_user() {
   done
 }
 
+# Only a process holding Full Disk Access can open the system TCC database, so this is the
+# standard way to ask "am I granted?". Without it, sources under Desktop/Documents/Downloads
+# and iCloud Drive are unreadable even as root. The app reads this file to decide whether to
+# ask the user for the grant, rather than waiting for a backup to fail at 2am.
+probe_fda() {
+  local status="denied"
+  if head -c 1 "/Library/Application Support/com.apple.TCC/TCC.db" >/dev/null 2>&1; then
+    status="granted"
+  fi
+  printf '%s' "$status" > "${DAEMON_ROOT}/fda-status" 2>/dev/null || true
+  chmod 644 "${DAEMON_ROOT}/fda-status" 2>/dev/null || true
+}
+
 main() {
   rotate_log
+  probe_fda
 
   # Real local accounts only: UniqueID >= 500 and no leading underscore.
   local line name uid home

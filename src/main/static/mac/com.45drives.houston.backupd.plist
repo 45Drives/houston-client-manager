@@ -6,7 +6,8 @@
 	<string>com.45drives.houston.backupd</string>
 	<key>ProgramArguments</key>
 	<array>
-		<string>/bin/bash</string>
+		<!-- Runs via its own shebang: TCC keys Full Disk Access to argv[0], and granting it to
+		     /bin/bash would be both useless and alarming. -->
 		<string>/Library/Application Support/45Drives/Houston/bin/houston-backupd</string>
 	</array>
 	<key>RunAtLoad</key>

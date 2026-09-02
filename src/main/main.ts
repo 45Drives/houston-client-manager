@@ -82,6 +82,14 @@ import { Server } from './types';
 import mountSmbPopup from './smbMountPopup';
 import { IPCRouter } from '../../houston-common/houston-common-lib/lib/electronIPC/IPCRouter';
 import { getOS, getAssetSync } from './utils';
+import {
+  getDaemonFdaStatus,
+  isDaemonInstalled,
+  isTccProtectedPath,
+  openFullDiskAccessSettings,
+  revealDaemonBinary,
+  MAC_DAEMON_BIN_PATH,
+} from './backup/macDaemon';
 import { v4 as uuidv4 } from 'uuid';
 import { BackUpManager, BackUpManagerLin, BackUpManagerMac, BackUpManagerWin } from './backup';
 import { server, unwrap } from '@45drives/houston-common-lib';
@@ -568,13 +576,36 @@ function createWindow() {
   ipcMain.handle("backup:isFirstRunNeeded", (event, host, share, smbUser) => {
     assertMainWindowSender(event);
     const manager = getBackUpManager();
+    const os = getOS();
     if (
       manager &&
-      (getOS() === "rocky" || getOS() === "debian") &&
+      (os === "rocky" || os === "debian" || os === "mac") &&
       typeof manager.isFirstBackupNeeded === "function"
     ) {
       return manager.isFirstBackupNeeded(host, share, smbUser);
     }
+    return true;
+  });
+
+  // macOS only. The daemon and the app are separate executables, so TCC grants one and not
+  // the other; the daemon reports its own status and the app just relays it.
+  ipcMain.handle('mac:fdaStatus', (event, source?: string) => {
+    assertMainWindowSender(event);
+    if (getOS() !== 'mac') return { supported: false };
+    return {
+      supported: true,
+      status: getDaemonFdaStatus(),
+      daemonInstalled: isDaemonInstalled(),
+      daemonPath: MAC_DAEMON_BIN_PATH,
+      sourceNeedsAccess: source ? isTccProtectedPath(source) : false,
+    };
+  });
+
+  ipcMain.handle('mac:openFdaSettings', (event) => {
+    assertMainWindowSender(event);
+    if (getOS() !== 'mac') return false;
+    openFullDiskAccessSettings();
+    revealDaemonBinary();
     return true;
   });
   

@@ -1,0 +1,29 @@
+#!/bin/bash
+#
+# Installed by the .pkg as root, which is the whole point of shipping a pkg: it gives the
+# LaunchDaemon an elevated install moment inside the password prompt the macOS Installer
+# already shows, so the app itself never has to ask.
+#
+# A daemon failure must not fail the app install — the app falls back to prompting via
+# osascript on first backup — so this always exits 0 and leaves a trail in the log.
+
+LOG="/Library/Logs/45Drives/pkg-postinstall.log"
+mkdir -p "$(dirname "$LOG")" 2>/dev/null
+
+{
+  echo "===== $(date -u '+%Y-%m-%dT%H:%M:%SZ') postinstall ====="
+
+  # $2 is the destination volume/path chosen in the installer.
+  DEST="${2:-/Applications}"
+  APP="${DEST%/}/45Drives-Storage-Wizard.app"
+  SRC="${APP}/Contents/Resources/static/mac"
+
+  if [ ! -d "$SRC" ]; then
+    echo "no daemon assets at $SRC, skipping"
+    exit 0
+  fi
+
+  /bin/bash "${SRC}/install-daemon.sh" --source "$SRC" || echo "daemon install failed, app will prompt on first backup"
+} >> "$LOG" 2>&1
+
+exit 0

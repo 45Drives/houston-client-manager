@@ -14,17 +14,16 @@ import { shellQuote } from "../security";
  */
 
 /** Bump together with DAEMON_VERSION in src/main/static/mac/houston-backupd. */
-export const MAC_DAEMON_VERSION = 1;
+export const MAC_DAEMON_VERSION = 2;
 
 export const MAC_DAEMON_LABEL = "com.45drives.houston.backupd";
 
 const DAEMON_ROOT = "/Library/Application Support/45Drives/Houston";
 const DAEMON_BIN = `${DAEMON_ROOT}/bin/houston-backupd`;
 const DAEMON_MARKER = `${DAEMON_ROOT}/.daemon-version`;
+const DAEMON_FDA_STATUS = `${DAEMON_ROOT}/fda-status`;
 const DAEMON_PLIST = `/Library/LaunchDaemons/${MAC_DAEMON_LABEL}.plist`;
-
-/** Legacy locations retired by the daemon; removed during the same privileged step. */
-const LEGACY_SCRIPT_DIR = "/Library/Application Support/Houston/scripts";
+const INSTALLER_NAME = "install-daemon.sh";
 
 export const MAC_SUPPORT_DIR = path.join(
   os.homedir(),
@@ -85,43 +84,25 @@ export function ensureBackupDaemon(): { installed: boolean; reason: string } {
 }
 
 function runInstaller(reason: string): { installed: boolean; reason: string } {
-  const runnerSrc = getAssetSync("static", path.join("mac", "houston-backupd"));
-  const plistSrc = getAssetSync("static", path.join("mac", `${MAC_DAEMON_LABEL}.plist`));
-
-  if (!fs.existsSync(runnerSrc) || !fs.existsSync(plistSrc)) {
-    throw new Error(`Backup daemon assets missing (looked for ${runnerSrc})`);
-  }
-
-  const currentUser = os.userInfo().username;
-  const installer = [
-    "#!/bin/bash",
-    "set -euo pipefail",
-    `mkdir -p ${shellQuote(`${DAEMON_ROOT}/bin`)} /Library/Logs/45Drives`,
-    `chown -R root:wheel ${shellQuote(DAEMON_ROOT)}`,
-    `chmod 755 ${shellQuote(DAEMON_ROOT)} ${shellQuote(`${DAEMON_ROOT}/bin`)}`,
-    `install -m 755 -o root -g wheel ${shellQuote(runnerSrc)} ${shellQuote(DAEMON_BIN)}`,
-    `install -m 644 -o root -g wheel ${shellQuote(plistSrc)} ${shellQuote(DAEMON_PLIST)}`,
-    `/bin/launchctl bootout system ${shellQuote(DAEMON_PLIST)} 2>/dev/null || true`,
-    `/bin/launchctl bootstrap system ${shellQuote(DAEMON_PLIST)} 2>/dev/null || /bin/launchctl load -w ${shellQuote(DAEMON_PLIST)}`,
-    `/bin/launchctl enable system/${MAC_DAEMON_LABEL} 2>/dev/null || true`,
-    `printf '%s' ${shellQuote(String(MAC_DAEMON_VERSION))} > ${shellQuote(DAEMON_MARKER)}`,
-    `chmod 644 ${shellQuote(DAEMON_MARKER)}`,
-    "",
-    "# Retire the pre-daemon layout in the same prompt.",
-    `rm -f ${shellQuote(`/private/etc/sudoers.d/houston-${currentUser}`)}`,
-    `rm -rf ${shellQuote(LEGACY_SCRIPT_DIR)}`,
-    `rmdir "/Library/Application Support/Houston" 2>/dev/null || true`,
-    "",
-  ].join("\n");
-
-  const installerPath = path.join(os.tmpdir(), `houston-daemon-install-${Date.now()}.sh`);
-  fs.writeFileSync(installerPath, installer, { mode: 0o700 });
+  const stageDir = fs.mkdtempSync(path.join(os.tmpdir(), "houston-daemon-"));
 
   try {
-    runAsAdmin(`/bin/bash ${shellQuote(installerPath)}`);
+    // The shipped assets may live inside app.asar, which install(1) and friends cannot read.
+    // Copying them out through fs works in dev and packaged alike.
+    for (const name of ["houston-backupd", `${MAC_DAEMON_LABEL}.plist`, INSTALLER_NAME]) {
+      const src = getAssetSync("static", path.join("mac", name));
+      if (!fs.existsSync(src)) {
+        throw new Error(`Backup daemon assets missing (looked for ${src})`);
+      }
+      fs.copyFileSync(src, path.join(stageDir, name));
+    }
+    fs.chmodSync(path.join(stageDir, INSTALLER_NAME), 0o700);
+
+    const cmd = `/bin/bash ${shellQuote(path.join(stageDir, INSTALLER_NAME))} --source ${shellQuote(stageDir)}`;
+    runAsAdmin(cmd);
   } finally {
     try {
-      fs.unlinkSync(installerPath);
+      fs.rmSync(stageDir, { recursive: true, force: true });
     } catch {
       /* best effort */
     }
@@ -141,11 +122,67 @@ function runAsAdmin(cmd: string): void {
   execFileSync("/usr/bin/osascript", ["-e", script], { encoding: "utf8" });
 }
 
+export type FdaStatus = "granted" | "denied" | "unknown";
+
+/**
+ * Whether the daemon currently holds Full Disk Access. The daemon writes this on every
+ * wake by probing the system TCC database, so it reflects the daemon's own grant rather
+ * than the app's — the two are separate executables and TCC keys grants per executable.
+ * "unknown" means the daemon has not run yet.
+ */
+export function getDaemonFdaStatus(): FdaStatus {
+  try {
+    const raw = fs.readFileSync(DAEMON_FDA_STATUS, "utf8").trim();
+    return raw === "granted" || raw === "denied" ? raw : "unknown";
+  } catch {
+    return "unknown";
+  }
+}
+
+/**
+ * TCC gates these locations even for root. Sources anywhere else need no grant at all,
+ * which is most of them, so only warn when it actually matters.
+ */
+export function isTccProtectedPath(source: string): boolean {
+  const home = os.homedir();
+  const resolved = path.resolve(source);
+  const protectedRoots = [
+    path.join(home, "Desktop"),
+    path.join(home, "Documents"),
+    path.join(home, "Downloads"),
+    path.join(home, "Library", "Mobile Documents"),
+    path.join(home, "Pictures", "Photos Library.photoslibrary"),
+    "/Volumes",
+  ];
+  return protectedRoots.some(
+    (root) => resolved === root || resolved.startsWith(root + path.sep)
+  );
+}
+
+/** Apple provides no API to request Full Disk Access, so the best we can do is open the pane. */
+export function openFullDiskAccessSettings(): void {
+  try {
+    execFileSync("/usr/bin/open", [
+      "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles",
+    ]);
+  } catch {
+    /* best effort */
+  }
+}
+
+/** Reveal the daemon binary in Finder so it can be dragged into the Full Disk Access list. */
+export function revealDaemonBinary(): void {
+  try {
+    execFileSync("/usr/bin/open", ["-R", DAEMON_BIN]);
+  } catch {
+    /* best effort */
+  }
+}
+
 /**
  * Drop the crontab lines written by the pre-daemon implementation. User-level, so no
  * prompt; safe to call on every schedule operation.
- */
-export function removeLegacyCronLines(): void {
+ */export function removeLegacyCronLines(): void {
   try {
     const crontab = execSync("crontab -l 2>/dev/null || true", { encoding: "utf8" });
     const lines = crontab.split(/\r?\n/);

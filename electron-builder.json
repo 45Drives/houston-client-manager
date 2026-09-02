@@ -22,11 +22,19 @@
     },
     "mac": {
         "icon": "mac/icon.icns",
+        "target": [
+            "dmg",
+            "zip"
+        ],
         "hardenedRuntime": true,
         "entitlements": "entitlements.mac.plist",
         "entitlementsInherit": "entitlements.mac.inherit.plist",
         "extendInfo": {
             "NSLocalNetworkUsageDescription": "45Drives Storage Wizard finds and configures 45Drives servers on your local network.",
+            "NSDesktopFolderUsageDescription": "45Drives Storage Wizard needs access to your Desktop to back it up.",
+            "NSDocumentsFolderUsageDescription": "45Drives Storage Wizard needs access to your Documents to back them up.",
+            "NSDownloadsFolderUsageDescription": "45Drives Storage Wizard needs access to your Downloads to back them up.",
+            "NSRemovableVolumesUsageDescription": "45Drives Storage Wizard needs access to removable volumes to back them up.",
             "NSBonjourServices": [
                 "_houstonserver._tcp"
             ]
@@ -40,6 +48,13 @@
             ".*/Electron Framework\\.framework/Versions/A/Resources/.*$",
             ".*/assets/.*"
         ]
+    },
+    "pkg": {
+        "scripts": "assets/mac/pkg-scripts",
+        "installLocation": "/Applications",
+        "isRelocatable": false,
+        "isVersionChecked": false,
+        "overwriteAction": "upgrade"
     },
     "win": {
         "target": "nsis",

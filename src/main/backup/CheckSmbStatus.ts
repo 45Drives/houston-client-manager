@@ -4,6 +4,7 @@ import * as fs from 'fs';
 import * as osDir from 'os';
 import * as path from 'path';
 import { BackUpTask } from '@45drives/houston-common-lib';
+import { MAC_CRED_DIR } from './macDaemon';
 
 export async function checkBackupTaskStatus(task: BackUpTask): Promise<BackUpTask['status']> {
     const os = getOS();
@@ -18,9 +19,7 @@ export async function checkBackupTaskStatus(task: BackUpTask): Promise<BackUpTas
 
     // Mac: check credential file first (new user-space path), then keychain (legacy)
     if (os === 'mac') {
-        const macCredPath = path.join(
-            process.env.HOME || path.join('/Users', process.env.USER || ''),
-            'Library', 'Application Support', 'Houston', 'credentials', `${credKey}.cred`);
+        const macCredPath = path.join(MAC_CRED_DIR, `${credKey}.cred`);
         const hasCredFile = fs.existsSync(macCredPath);
         if (!hasCredFile) {
             try {

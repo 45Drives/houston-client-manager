@@ -18,6 +18,8 @@ const INVOKE_CHANNELS = new Set([
   'add-manual-server',
   'get-os',
   'backup:isFirstRunNeeded',
+  'mac:fdaStatus',
+  'mac:openFdaSettings',
   'backup:validate-smb-credentials',
   'scan-network-fallback',
   'discovery:setEnabled',
@@ -162,6 +164,8 @@ contextBridge.exposeInMainWorld('electron', {
   getOS: () => ipcRenderer.invoke('get-os'),
   isFirstRunNeeded: (host: string, share: string, smbUser: string) =>
     ipcRenderer.invoke("backup:isFirstRunNeeded", host, share, smbUser),
+  macFdaStatus: (source?: string) => ipcRenderer.invoke('mac:fdaStatus', source),
+  macOpenFdaSettings: () => ipcRenderer.invoke('mac:openFdaSettings'),
   log: {
     debug: (...args: any[]) => ipcRenderer.send('renderer-log', { level: 'debug', args }),
     info: (...args: any[]) => ipcRenderer.send('renderer-log', { level: 'info', args }),
