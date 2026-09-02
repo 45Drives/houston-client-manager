@@ -156,6 +156,9 @@ describe('BackUpManagerWin hourly trigger', () => {
 
   it('sets repetition through New-ScheduledTaskTrigger parameters', () => {
     expect(src).toContain('-RepetitionInterval');
-    expect(src).toContain('-RepetitionDuration');
+  });
+
+  it('omits RepetitionDuration so the repetition is indefinite and in range', () => {
+    expect(src).not.toContain('-RepetitionDuration');
   });
 });

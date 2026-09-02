@@ -43,7 +43,8 @@ export function useServerDiscovery() {
       if (a.name !== a.ip && b.name === b.ip) return -1
       return 0
     })
-    discoveryState.loading = false
+    // An empty push means the sweep dropped a host, not that discovery finished.
+    if (discoveryState.servers.length) discoveryState.loading = false
   }
 
   async function runFallbackScanOnce() {

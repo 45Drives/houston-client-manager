@@ -637,9 +637,12 @@ function createWindow() {
 
     const scanInterval = loadSettings().discoveryScanIntervalMs;
 
-    mdnsInterval = setInterval(() => {
-      mDNSClient.query({ questions: [{ name: serviceType, type: 'PTR' }] });
-    }, scanInterval);
+    // Probe straight away, then a short burst: a single query that races the
+    // socket's group membership means waiting a whole scan interval to retry.
+    queryMdns();
+    [150, 500, 1500].forEach(delay => setTimeout(queryMdns, delay));
+
+    mdnsInterval = setInterval(queryMdns, scanInterval);
 
     clearInactiveServerInterval = setInterval(() => {
       const now = Date.now();
@@ -788,14 +791,19 @@ function createWindow() {
 
   // Set up mDNS for service discovery
   const mDNSClient = mdns(); // Correctly call as a function
-  mDNSClient.query({ questions: [{ name: serviceType, type: 'PTR' }] });
+
+  function queryMdns() {
+    try {
+      mDNSClient.query({ questions: [{ name: serviceType, type: 'PTR' }] });
+    } catch { }
+  }
+
+  queryMdns();
 
   // Start listening for devices
   mDNSClient.on('response', handleMdnsResponse);
 
   async function handleMdnsResponse(response: any) {
-    lastMdnsResponseAt = Date.now();
-
     // Combine answers + additionals into one array
     const records = [
       ...response.answers,
@@ -860,39 +868,34 @@ function createWindow() {
           };
 
           // Optionally refine using HTTP status if reachable
-          if (
-            discoveryEnabled &&
-            !server.manuallyAdded &&
-            !server.fallbackAdded
-          ) {
+          async function refineFromSetupStatus(target: Server) {
             try {
-              const fetchResponse = await fetch(`http://${server.ip}:9095/setup-status`, {
+              const fetchResponse = await fetch(`http://${target.ip}:9095/setup-status`, {
                 cache: 'no-store',
                 signal: AbortSignal.timeout(2000),
               });
 
-              if (fetchResponse.ok) {
-                const setupStatusResponse = await fetchResponse.json();
+              if (!fetchResponse.ok) return;
+              const setupStatusResponse = await fetchResponse.json();
 
-                if (typeof setupStatusResponse.setupComplete === 'boolean') {
-                  server.setupComplete = setupStatusResponse.setupComplete;
-                  server.status = setupStatusResponse.setupComplete ? 'complete' : 'not complete';
-                } else if (typeof setupStatusResponse.status === 'string') {
-                  server.status = setupStatusResponse.status;
-                  if (server.status === 'complete') server.setupComplete = true;
-                }
-
-                server.shareName = setupStatusResponse.shareName || server.shareName;
-                server.serverName = setupStatusResponse.serverName || server.serverName;
-                server.setupTime = setupStatusResponse.setupTime || server.setupTime;
-                server.serverInfo = {
-                  moboMake: setupStatusResponse.moboMake || server.serverInfo!.moboMake,
-                  moboModel: setupStatusResponse.moboModel || server.serverInfo!.moboModel,
-                  serverModel: setupStatusResponse.serverModel || server.serverInfo!.serverModel,
-                  aliasStyle: setupStatusResponse.aliasStyle || server.serverInfo!.aliasStyle,
-                  chassisSize: setupStatusResponse.chassisSize || server.serverInfo!.chassisSize,
-                };
+              if (typeof setupStatusResponse.setupComplete === 'boolean') {
+                target.setupComplete = setupStatusResponse.setupComplete;
+                target.status = setupStatusResponse.setupComplete ? 'complete' : 'not complete';
+              } else if (typeof setupStatusResponse.status === 'string') {
+                target.status = setupStatusResponse.status;
+                if (target.status === 'complete') target.setupComplete = true;
               }
+
+              target.shareName = setupStatusResponse.shareName || target.shareName;
+              target.serverName = setupStatusResponse.serverName || target.serverName;
+              target.setupTime = setupStatusResponse.setupTime || target.setupTime;
+              target.serverInfo = {
+                moboMake: setupStatusResponse.moboMake || target.serverInfo!.moboMake,
+                moboModel: setupStatusResponse.moboModel || target.serverInfo!.moboModel,
+                serverModel: setupStatusResponse.serverModel || target.serverInfo!.serverModel,
+                aliasStyle: setupStatusResponse.aliasStyle || target.serverInfo!.aliasStyle,
+                chassisSize: setupStatusResponse.chassisSize || target.serverInfo!.chassisSize,
+              };
             } catch {
               // Expected when server isn't reachable; silently fall back to mDNS TXT
             }
@@ -924,15 +927,27 @@ function createWindow() {
             setupComplete: server.setupComplete,
           });
 
+          // Show the server as soon as mDNS names it. The HTTP probe below only
+          // sharpens setup status and costs up to 2s against an unreachable host,
+          // so it must not gate the first paint of the list.
+          lastMdnsResponseAt = Date.now();
+          sendDiscoveredServers();
+
+          if (discoveryEnabled) {
+            await refineFromSetupStatus(existing ?? server);
+            sendDiscoveredServers();
+          }
+
           break server_search;
         }
       }
     }
+  }
 
-    if (mainWindow) {
-      mainWindow.webContents.send('discovered-servers', discoveredServers);
-      mainWindow.webContents.send('client-ip', getLocalIP());
-    }
+  function sendDiscoveredServers() {
+    if (!mainWindow || mainWindow.webContents?.isDestroyed()) return;
+    mainWindow.webContents.send('discovered-servers', discoveredServers);
+    mainWindow.webContents.send('client-ip', getLocalIP());
   }
 
 

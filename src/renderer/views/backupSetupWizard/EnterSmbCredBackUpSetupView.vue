@@ -5,17 +5,17 @@
       <div class="w-full max-w-lg space-y-5">
         <!-- Header -->
         <div class="text-center space-y-2">
-          <LockClosedIcon class="w-8 h-8 mx-auto text-muted" />
+          <LockClosedIcon class="w-8 h-8 mx-auto text-default" />
           <h2 class="text-xl font-semibold">Samba Login</h2>
-          <p class="text-sm text-muted">
+          <p class="text-sm text-default">
             Enter the Samba username and password for the backup share. If stored credentials are found, they'll be filled in automatically.
           </p>
         </div>
 
         <!-- Server info pill -->
         <div v-if="targetDisplay" class="flex items-center justify-center gap-2 px-3 py-2 rounded-lg bg-neutral-100 dark:bg-neutral-700/40 border border-neutral-200 dark:border-neutral-700 text-sm">
-          <ServerIcon class="w-4 h-4 text-muted shrink-0" />
-          <span class="text-muted">Destination:</span>
+          <ServerIcon class="w-4 h-4 text-default shrink-0" />
+          <span class="text-default">Destination:</span>
           <span :title="targetDisplay" class="font-medium text-default truncate">{{ targetDisplay }}</span>
         </div>
 
@@ -34,7 +34,7 @@
               class="bg-default p-2 input-textlike rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               placeholder="Enter your password" />
             <button type="button" @click="togglePassword"
-              class="absolute right-3 top-1/2 transform -translate-y-1/2 text-muted">
+              class="absolute right-3 top-1/2 transform -translate-y-1/2 text-default">
               <EyeIcon v-if="!showPassword" class="w-5 h-5" />
               <EyeSlashIcon v-if="showPassword" class="w-5 h-5" />
             </button>
@@ -46,12 +46,12 @@
               class="bg-default p-2 input-textlike rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               placeholder="Optional — avoids an administrator prompt" />
             <button type="button" @click="showWindowsPassword = !showWindowsPassword"
-              class="absolute right-3 top-1/2 transform -translate-y-1/2 text-muted">
+              class="absolute right-3 top-1/2 transform -translate-y-1/2 text-default">
               <EyeIcon v-if="!showWindowsPassword" class="w-5 h-5" />
               <EyeSlashIcon v-if="showWindowsPassword" class="w-5 h-5" />
             </button>
           </div>
-          <p v-if="isWindows" class="text-xs text-muted -mt-2">
+          <p v-if="isWindows" class="text-xs text-default -mt-2">
             The password you use to sign in to this computer. Windows stores it itself so backups can
             run while you are signed out; this app never saves it. Leave blank to be prompted for
             administrator approval instead.
@@ -65,7 +65,7 @@
           <span>{{ validationError }}</span>
         </div>
 
-        <p class="text-xs text-muted text-center">
+        <p class="text-xs text-default text-center">
           Your login details are stored securely on this computer and only used to connect to the server during backups.
         </p>
       </div>

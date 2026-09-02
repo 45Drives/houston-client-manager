@@ -22,11 +22,21 @@
               <span class="mb-1 text-sm font-semibold opacity-90">Select a server</span>
               <select v-model="selectedServerIp" :disabled="isInstalling || manualIp !== ''"
                 class="h-[2.9rem] text-default rounded-lg px-4 flex-1 border border-default w-full input-textlike">
-                <option value="" disabled>— Choose a detected server —</option>
+                <option value="" disabled>
+                  {{ discoveryState.servers.length
+                    ? '— Choose a detected server —'
+                    : discoveryState.loading
+                      ? 'Searching the network for servers…'
+                      : 'No servers found — enter an IP manually' }}
+                </option>
                 <option v-for="srv in discoveryState.servers" :key="srv.ip" :value="srv.ip">
                   {{ srv.name }} ({{ srv.ip }})
                 </option>
               </select>
+              <span v-if="discoveryState.loading && !discoveryState.servers.length"
+                class="mt-1 text-xs opacity-70">
+                Discovery can take a few seconds on networks that filter mDNS.
+              </span>
             </div>
 
             <div class="text-center text-xs tracking-widest uppercase opacity-70 leading-none min-h-[1rem] mt-2">OR</div>

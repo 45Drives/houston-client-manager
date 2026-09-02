@@ -984,10 +984,11 @@ if ($scanOk) {
     switch (sched.repeatFrequency) {
       case "hour":
         /* The trigger returned by -Once has no populated Repetition object, so assigning
-         * into it throws PropertyNotFound. Repetition must come from the parameters. */
+         * into it throws PropertyNotFound. Repetition must come from the parameters, and
+         * an omitted duration means "indefinitely" — a large finite one is out of range. */
         return `
 $startTime   = "${startDate}"
-$taskTrigger = New-ScheduledTaskTrigger -Once -At $startTime -RepetitionInterval (New-TimeSpan -Hours 1) -RepetitionDuration (New-TimeSpan -Days 36500)
+$taskTrigger = New-ScheduledTaskTrigger -Once -At $startTime -RepetitionInterval (New-TimeSpan -Hours 1)
 `;
       case "day":
         return `
