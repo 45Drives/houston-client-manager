@@ -161,6 +161,23 @@ describe('BackUpManagerWin hourly trigger', () => {
   it('omits RepetitionDuration so the repetition is indefinite and in range', () => {
     expect(src).not.toContain('-RepetitionDuration');
   });
+
+  // `temp` is `%TEMP%`. When the DriveLetter parse missed, the inherited
+  // C:\...\Temp value made the drive letter "C" and the backup copied to the
+  // local disk while reporting success.
+  it('does not parse the drive letter into a variable named temp', () => {
+    expect(src).not.toContain('set "temp=');
+    expect(src).toContain('set "RAWDL=');
+  });
+
+  it('refuses to back up to the system drive', () => {
+    expect(src).toContain('%SystemDrive:~0,1%');
+  });
+
+  it('gives the mount scratch file a per-task name', () => {
+    expect(src).not.toContain('mount_result_%RANDOM%');
+    expect(src).not.toContain('__extract.json');
+  });
 });
 
 // ── Generated .bat event snippet regression guard

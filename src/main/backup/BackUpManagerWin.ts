@@ -750,27 +750,31 @@ echo ----------------------------------------------------------
 :: --- mount SMB and extract drive letter via the helper ---------------------
 echo [DEBUG] mount command: cmd /c ""%MOUNTBAT%" "!SMB_HOST!" "!SMB_SHARE!" "!CRED_FILE!"" >> "%LOG%" 2>&1
 
-set "TEMP_JSON=%TEMP%\\mount_result_%RANDOM%.txt"
+:: Scratch file is named after the task. %RANDOM% is time-seeded, so tasks started
+:: in the same second collided, and the old extract file had no unique part at all.
+set "TEMP_JSON=%TEMP%\\houston_mount_${task.uuid}.txt"
 cmd /c ""%MOUNTBAT%" "!SMB_HOST!" "!SMB_SHARE!" "!CRED_FILE!"" > "!TEMP_JSON!" 2>&1
 
 echo [DEBUG] mount output: >> "%LOG%"
-type "!TEMP_JSON!" >> "%LOG%"
+type "!TEMP_JSON!" >> "%LOG%" 2>&1
 
-set "json="
-for /f "delims=" %%L in ('findstr "DriveLetter" "!TEMP_JSON!"') do (
-  call set "json=%%L"
-)
+:: Do not name this "temp": that shadows %TEMP%, and when the parse below found
+:: nothing the inherited C:\...\Temp value yielded drive "C" and the copy went local.
+set "RAWDL="
+for /f "tokens=2 delims=:" %%a in ('findstr /i "DriveLetter" "!TEMP_JSON!" 2^>nul') do set "RAWDL=%%a"
 del "!TEMP_JSON!" >nul 2>&1
-
-echo !json! > "%TEMP%\\__extract.json"
-for /f "tokens=2 delims=:" %%a in ('findstr /i "DriveLetter" "%TEMP%\\__extract.json"') do set "temp=%%a"
-set "temp=!temp:"=!"
-set "temp=!temp: =!"
-set "drive=!temp:~0,1!"
-del "%TEMP%\\__extract.json" >nul 2>&1
+set "RAWDL=!RAWDL:"=!"
+set "RAWDL=!RAWDL: =!"
+set "drive=!RAWDL:~0,1!"
 
 if not defined drive (
-  echo [ERROR] Could not determine drive letter >> "%LOG%" 2>&1
+  echo [ERROR] Could not determine drive letter - SMB mount failed >> "%LOG%" 2>&1
+  set "RC=8"
+  goto :_finish
+)
+
+if /i "!drive!"=="%SystemDrive:~0,1%" (
+  echo [ERROR] Mount resolved to the system drive - refusing to back up locally >> "%LOG%" 2>&1
   set "RC=8"
   goto :_finish
 )
