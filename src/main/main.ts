@@ -803,6 +803,11 @@ function createWindow() {
 
   mainWindow.maximize();
 
+  // X11 window managers (Cinnamon on Mint especially) can hand the window OS
+  // focus without Chromium restoring a focused frame, leaving inputs visually
+  // focusable but deaf to keystrokes until the view is remounted.
+  mainWindow.on('focus', () => mainWindow?.webContents.focus());
+
   mainWindow.webContents.setUserAgent(
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36 Edg/131.0.0.0'
   );

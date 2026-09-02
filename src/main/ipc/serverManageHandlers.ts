@@ -314,10 +314,28 @@ async function applyRemoteChanges(
             await sudoCmd(ssh, `hostname ${shellQuote(hostname)}`);
           }
 
-          // 4) Bounce daemons that read hostname (quietly, matching EasySetupConfigurator)
+          // 4) Rewrite the setup stamp. The broadcaster advertises serverName from
+          //    this file, so leaving it alone makes clients keep the pre-rename name.
+          const stampScript = [
+            'import json,sys',
+            'p="/etc/45drives/simple-setup-log.json"',
+            'try: d=json.load(open(p))',
+            'except Exception: sys.exit(0)',
+            'if not isinstance(d,dict): sys.exit(0)',
+            'for v in d.values():',
+            '    if isinstance(v,dict): v["serverName"]=sys.argv[1]',
+            'json.dump(d,open(p,"w"),indent=2)',
+          ].join('\n');
+          await sudoCmd(ssh, `python3 -c ${shellQuote(stampScript)} ${shellQuote(hostname)}`);
+
+          // 5) Bounce daemons that read hostname. The broadcaster caches it in its
+          //    avahi service file, so it must restart or discovery stays stale.
           await sudoCmd(ssh, 'systemctl restart systemd-hostnamed 2>/dev/null || true');
           await sudoCmd(ssh, 'systemctl restart avahi-daemon 2>/dev/null || true');
-          await sudoCmd(ssh, 'systemctl restart houston-broadcaster-legacy.service 2>/dev/null || true');
+          const rb = await sudoCmd(ssh, 'systemctl restart houston-broadcaster.service');
+          if (rb.code !== 0 && rb.code !== null) {
+            console.warn(`[serverManage] houston-broadcaster restart failed: ${rb.stdout || rb.stderr}`);
+          }
 
           rebootRequired = true;
           applied.push(change.label);
