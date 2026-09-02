@@ -629,6 +629,8 @@ function createWindow() {
   let mdnsInterval: NodeJS.Timeout | null = null;
   let pollActionInterval: NodeJS.Timeout | null = null;
   let clearInactiveServerInterval: NodeJS.Timeout | null = null;
+  let lastMdnsResponseAt = Date.now();
+  let lastMdnsResetAt = Date.now();
 
   function startDiscoveryLoops() {
     if (discoveryEnabled) return;
@@ -643,6 +645,14 @@ function createWindow() {
     clearInactiveServerInterval = setInterval(() => {
       const now = Date.now();
       const before = discoveredServers.length;
+
+      // Silence from every server at once means our own multicast socket went
+      // deaf (interface/route change), not that the whole fleet went offline.
+      // Rebuild the socket and keep the list rather than clearing the UI.
+      if (now - lastMdnsResponseAt > TIMEOUT_DURATION()) {
+        if (now - lastMdnsResetAt > TIMEOUT_DURATION()) resetMdnsClient();
+        return;
+      }
 
       discoveredServers = discoveredServers.filter(srv =>
         now - srv.lastSeen <= TIMEOUT_DURATION() || srv.manuallyAdded === true
@@ -781,12 +791,24 @@ function createWindow() {
   mainWindow.webContents.send('client-ip', getLocalIP());
 
   // Set up mDNS for service discovery
-  const mDNSClient = mdns(); // Correctly call as a function
+  let mDNSClient = mdns(); // Correctly call as a function
   mDNSClient.query({ questions: [{ name: serviceType, type: 'PTR' }] });
 
+  function resetMdnsClient() {
+    lastMdnsResetAt = Date.now();
+    try { mDNSClient.removeListener('response', handleMdnsResponse); } catch { }
+    try { mDNSClient.destroy(); } catch { }
+    mDNSClient = mdns();
+    mDNSClient.on('response', handleMdnsResponse);
+    mDNSClient.query({ questions: [{ name: serviceType, type: 'PTR' }] });
+  }
 
   // Start listening for devices
-  mDNSClient.on('response', async (response) => {
+  mDNSClient.on('response', handleMdnsResponse);
+
+  async function handleMdnsResponse(response: any) {
+    lastMdnsResponseAt = Date.now();
+
     // Combine answers + additionals into one array
     const records = [
       ...response.answers,
@@ -924,13 +946,19 @@ function createWindow() {
       mainWindow.webContents.send('discovered-servers', discoveredServers);
       mainWindow.webContents.send('client-ip', getLocalIP());
     }
-  });
+  }
 
 
   async function pollActions(server: Server) {
     try {
-      const response = await fetch(`http://${server.ip}:9095/actions?client_ip=${getLocalIP()}`);
+      const response = await fetch(`http://${server.ip}:9095/actions?client_ip=${getLocalIP()}`, {
+        signal: AbortSignal.timeout(3000),
+      });
       const data = await response.json();
+
+      // A server answering HTTP is alive, so keep it out of the inactivity sweep
+      // even when its mDNS announcements get dropped (reflected/cross-subnet mDNS).
+      server.lastSeen = Date.now();
 
       if (data.action) {
 
