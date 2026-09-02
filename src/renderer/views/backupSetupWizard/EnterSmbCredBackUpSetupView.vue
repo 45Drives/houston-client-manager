@@ -101,7 +101,11 @@ const togglePassword = () => {
 const targetDisplay = computed(() => {
   const target = backUpSetupConfig?.backUpTasks?.[0]?.target;
   if (!target) return '';
-  return target;
+  const displayHost = (backUpSetupConfig as any)?.serverDisplayHost;
+  const share = (backUpSetupConfig as any)?.serverShare;
+  if (displayHost && share) return `${displayHost}:${share}`;
+  const [host, rest] = target.split(':');
+  return rest ? `${host}:${rest.split('/')[0]}` : target;
 });
 
 // Try to auto-fill SMB credentials from the stored server entry

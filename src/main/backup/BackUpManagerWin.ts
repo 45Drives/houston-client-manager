@@ -8,7 +8,7 @@ import { app } from 'electron';
 import fs from 'fs';
 import os from 'os';
 import { exec } from "child_process";
-import { assertSafeHost, assertSafeShare, assertSafeUsername, escapeCmdValue, toBase64 } from "../security";
+import { assertSafeHost, assertSafeShare, assertSafeUsername, escapeCmdValue } from "../security";
 import { getCredentialManager } from '../credentialManager';
 import { syncBackupConfig, getClientId, batchEventSnippet } from './broadcasterApi';
 
@@ -95,13 +95,18 @@ export class BackUpManagerWin implements BackUpManager {
 
   
   queryTasks(): Promise<BackUpTask[]> {
+    /* Task Scheduler normalises the principal of an S4U task to a SID, so a
+     * name-only comparison silently matches nothing. Compare against both. */
     const powerShellScript = `
-    $me = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
+    $id = [System.Security.Principal.WindowsIdentity]::GetCurrent()
+    $me = $id.Name
+    $meSid = $id.User.Value
     $meShort = $env:USERNAME
     Get-ScheduledTask |
       Where-Object {
         $_.TaskName -like '*${TASK_ID}*' -and
-        ($_.Principal.UserId -eq $me -or $_.Principal.UserId -eq $meShort -or $_.Principal.UserId -eq '${DESKTOP_USER}')
+        ($_.Principal.UserId -eq $me -or $_.Principal.UserId -eq $meShort -or
+         $_.Principal.UserId -eq $meSid -or $_.Principal.UserId -eq '${DESKTOP_USER}')
       } |
       Select-Object TaskName, Triggers, Actions, State, Principal |
       ConvertTo-Json -Depth 10
@@ -324,61 +329,63 @@ export class BackUpManagerWin implements BackUpManager {
     return { stdout: logContent, stderr: '' };
   }
 
-  addUserToBackupOperatorsGroup() {
+  /* S4U registration requires the desktop account to hold "Log on as a batch job".
+   * Administrators hold it by default; standard users usually do not. Granting the
+   * right directly is far narrower than the previous Backup Operators membership,
+   * and it is the only operation in this class that genuinely needs elevation. */
+  private grantBatchLogonRightScript(): string {
     return `
-# Get current members of Backup Operators
-$groupMembers = Get-LocalGroupMember -Group "Backup Operators" | Select-Object -ExpandProperty Name
-Write-Output "Group Members: $groupMembers"
+$ErrorActionPreference = 'Stop'
+$account = "${DESKTOP_USER}"
+$sid = (New-Object System.Security.Principal.NTAccount($account)).Translate([System.Security.Principal.SecurityIdentifier]).Value
 
-# Check if user is already a member before adding
-if ($groupMembers -notcontains $user) {
-    Add-LocalGroupMember -Group "Backup Operators" -Member $user
-    Write-Output "$user added to Backup Operators."
+$cfg = Join-Path $env:TEMP 'houston_secpol.cfg'
+$db  = Join-Path $env:TEMP 'houston_secpol.sdb'
+secedit /export /areas USER_RIGHTS /cfg $cfg | Out-Null
+
+$content = Get-Content $cfg
+$existing = ($content | Select-String '^SeBatchLogonRight').Line
+
+if ($existing -and $existing -like "*$sid*") {
+    Write-Output "HOUSTON_RIGHT_ALREADY_PRESENT"
 } else {
-    Write-Output "$user is already a member of Backup Operators."
-}    
-`
+    if ($existing) {
+        $updated = "$existing,*$sid"
+        $content = $content -replace '^SeBatchLogonRight\\s*=.*', $updated
+    } else {
+        $content += "SeBatchLogonRight = *$sid"
+    }
+    $content | Set-Content $cfg -Encoding Unicode
+    secedit /configure /db $db /cfg $cfg /areas USER_RIGHTS /quiet
+    Write-Output "HOUSTON_RIGHT_GRANTED"
+}
+Remove-Item $cfg, $db -ErrorAction SilentlyContinue
+`;
   }
 
-  getAddBackupGroupsToLogOnBatchAndService() {
-    return `
-# Check if "Backup Operators" has the required rights
-$backupOperatorsGroup = "Backup Operators"
-$requiredRights = @("SeBatchLogonRight", "SeServiceLogonRight")
-
-# Export current security settings
-$cfgFile = "$env:TEMP\\secpol.cfg"
-secedit /export /areas USER_RIGHTS /cfg $cfgFile
-
-# Get current rights from the policy
-$content = Get-Content $cfgFile
-$batchLogonRight = ($content | Select-String "SeBatchLogonRight").Line
-$serviceLogonRight = ($content | Select-String "SeServiceLogonRight").Line
-
-# Check if Backup Operators already have the rights
-$hasBatchLogon = $batchLogonRight -like "*S-1-5-32-551"
-$hasServiceLogon = $serviceLogonRight -like "*S-1-5-32-551"
-
-# If Backup Operators do not have the required rights, modify the policy
-if (-not $hasBatchLogon -or -not $hasServiceLogon) {
-    Write-Output "Backup Operators do not have the required rights. Updating permissions..."
-
-    # Modify the policy file
-    if (-not $hasBatchLogon) {
-        $content = $content -replace "(SeBatchLogonRight =.*)", "\`$1, *S-1-5-32-551"
-    }
-    if (-not $hasServiceLogon) {
-        $content = $content -replace "(SeServiceLogonRight =.*)", "\`$1, *S-1-5-32-551"
-    }
-
-    # Save changes and apply policy
-    $content | Set-Content $cfgFile
-    secedit /configure /db c:\\windows\\security\\local.sdb /cfg $cfgFile /areas USER_RIGHTS /quiet
-    Write-Output "Permissions updated. Restart required for changes to take effect."
-} else {
-    Write-Output "Backup Operators already have the required rights."
+  /* Returns the uuids that are NOT present in Task Scheduler. PowerShell exits 0
+   * on non-terminating errors, so registration success is never assumed. */
+  private async findUnregisteredTasks(uuids: string[]): Promise<string[]> {
+    const names = uuids.map(u => `'${TASK_ID}_${u}'`).join(',');
+    const ps = `
+$ErrorActionPreference = 'SilentlyContinue'
+foreach ($n in @(${names})) {
+  if (Get-ScheduledTask -TaskName $n) { Write-Output "OK:$n" } else { Write-Output "MISSING:$n" }
 }
-`
+`;
+    try {
+      const { stdout } = await this.runScript(ps, 'verify_schedule');
+      return uuids.filter(u => stdout.includes(`MISSING:${TASK_ID}_${u}`));
+    } catch {
+      return uuids;
+    }
+  }
+
+  private async ensureBatchLogonRight(): Promise<void> {
+    const marker = path.join(HOUSTON_USER_DIR, '.batch-logon-granted');
+    if (fs.existsSync(marker)) return;
+    await this.runScriptAdmin(this.grantBatchLogonRightScript(), 'grant_batch_logon');
+    try { fs.writeFileSync(marker, `${DESKTOP_USER}\n${new Date().toISOString()}\n`); } catch { /* retry next time */ }
   }
 
   async scheduleAllTasks(
@@ -403,10 +410,8 @@ if (-not $hasBatchLogon -or -not $hasServiceLogon) {
       t.host = smbHost;
       t.share = smbShare;
 
-      // Store credential in encrypted vault
+      // store() also creates the server record, so the SMB creds never touch login creds
       getCredentialManager().store(smbHost, smbShare, username, password);
-      // Ensure server-level entry exists so server appears in Saved Servers
-      getCredentialManager().storeServer(smbHost, username, password);
 
       // Write cred file (user-level %LOCALAPPDATA%)
       const safe = (s: string) => s.replace(/[^A-Za-z0-9_.-]/g, '_');
@@ -420,23 +425,14 @@ if (-not $hasBatchLogon -or -not $hasServiceLogon) {
       batPaths.push(batPath);
     });
 
-    /* ── Phase 2: Admin-only (group/policy setup + task registration) ── */
-    const userB64 = toBase64(safeUser);
-    const passB64 = toBase64(password);
-
+    /* ── Phase 2: Task registration (no elevation in the common case) ── */
     const psLines: string[] = [
-      `# Backup-Operators membership & rights`,
-      `$user = "$env:USERNAME"`,
-      `$userVal = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String("${userB64}"))`,
-      `$passVal = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String("${passB64}"))`,
-      `${this.addUserToBackupOperatorsGroup()}`,
-      `${this.getAddBackupGroupsToLogOnBatchAndService()}`
+      `$ErrorActionPreference = 'Stop'`,
     ];
 
     tasks.forEach((t, idx) => {
       const batPathEsc = this.scriptPath(t.uuid).replace(/\\/g, '\\\\');
 
-      /* ScheduledTask registration (requires admin for S4U) */
       psLines.push(this.scheduleToTaskTrigger(t.schedule));
 
       if (t.schedule.repeatFrequency == 'month'){
@@ -446,7 +442,7 @@ if (-not $hasBatchLogon -or -not $hasServiceLogon) {
           $TASK_ACTION_EXEC = 0
           $TASK_CREATE_OR_UPDATE = 6
           $TASK_LOGON_S4U = 2
-          $TASK_RUNLEVEL_HIGHEST = 1
+          $TASK_RUNLEVEL_LUA = 0
 
           # 1.) Connect to the scheduler
           $svc = New-Object -ComObject "Schedule.Service"
@@ -456,15 +452,19 @@ if (-not $hasBatchLogon -or -not $hasServiceLogon) {
           $root = $svc.GetFolder("\\")
           $task = $svc.NewTask(0)
 
-          # 3.) Principal: use the desktop user via S4U, with highest run level
+          # 3.) Principal: desktop user via S4U, at the user's own privilege level
           $principal = $task.Principal
           $principal.UserId = "${DESKTOP_USER}"
           $principal.LogonType = $TASK_LOGON_S4U
-          $principal.RunLevel = $TASK_RUNLEVEL_HIGHEST
+          $principal.RunLevel = $TASK_RUNLEVEL_LUA
 
           # 4.) Task metadata
           $task.RegistrationInfo.Description = "45 drives backup task"
           $task.Settings.Enabled = $true
+          # Defaults refuse to start on battery and skip triggers missed while powered off
+          $task.Settings.DisallowStartIfOnBatteries = $false
+          $task.Settings.StopIfGoingOnBatteries = $false
+          $task.Settings.StartWhenAvailable = $true
 
           # 5.) Action execute .bat
           $action = $task.Actions.Create(0)
@@ -490,8 +490,10 @@ if (-not $hasBatchLogon -or -not $hasServiceLogon) {
       } else {
         psLines.push(`
           $act  = New-ScheduledTaskAction -Execute 'cmd.exe' -Argument ('/C "{0}"' -f "${batPathEsc}")
-          $prin = New-ScheduledTaskPrincipal -UserId "${DESKTOP_USER}" -LogonType S4U -RunLevel Highest
-          Register-ScheduledTask -TaskName "${TASK_ID}_${t.uuid}" -Action $act -Trigger $taskTrigger -Principal $prin
+          $prin = New-ScheduledTaskPrincipal -UserId "${DESKTOP_USER}" -LogonType S4U -RunLevel Limited
+          # Defaults refuse to start on battery and skip triggers missed while powered off
+          $set  = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable
+          Register-ScheduledTask -TaskName "${TASK_ID}_${t.uuid}" -Action $act -Trigger $taskTrigger -Principal $prin -Settings $set
         `);
       }
 
@@ -499,7 +501,31 @@ if (-not $hasBatchLogon -or -not $hasServiceLogon) {
       if (onProgress) psLines.push(`Write-Host "PROGRESS:${idx + 1}"`);
     });
 
-    await this.runScriptAdmin(psLines.join('\n'), 'bulk_schedule');
+    const registrationScript = psLines.join('\n');
+    const uuids = tasks.map(t => t.uuid);
+
+    try {
+      await this.runScript(registrationScript, 'bulk_schedule');
+    } catch { /* verified below rather than trusted */ }
+
+    let missing = await this.findUnregisteredTasks(uuids);
+
+    if (missing.length > 0) {
+      /* Almost always a missing batch-logon right. Grant it once, then retry
+       * unelevated so subsequent task creation never prompts again. */
+      await this.ensureBatchLogonRight();
+      try {
+        await this.runScript(registrationScript, 'bulk_schedule_retry');
+      } catch { /* verified below */ }
+      missing = await this.findUnregisteredTasks(uuids);
+    }
+
+    if (missing.length > 0) {
+      throw new Error(
+        `Failed to register ${missing.length} of ${tasks.length} scheduled backup task(s). ` +
+        `Unregistered task IDs: ${missing.join(', ')}`
+      );
+    }
 
     // Sync all backup configs to broadcaster API (best-effort, non-blocking)
     const clientId = getClientId();
@@ -693,18 +719,22 @@ if ($t) {
 # 2) Remove the BAT script for this task
 Remove-Item -Path "${batEsc}" -Force -ErrorAction SilentlyContinue
 
-# 3) Remove the credential file only if no other BAT references the same cred path
+# 3) Remove the credential file only if no other BAT references the same cred path.
+#    A scan that fails counts as in-use — never delete on incomplete evidence.
 $credPath = "${credEsc}"
-$credInUse = $false
+$credInUse = $true
 try {
-  $otherBats = Get-ChildItem -Path "${scriptsDirEsc}" -Filter "Houston_Backup_Task_*.bat" -ErrorAction SilentlyContinue
+  $otherBats = @(Get-ChildItem -Path "${scriptsDirEsc}" -Filter "Houston_Backup_Task_*.bat" -ErrorAction Stop)
+  $credInUse = $false
   foreach ($b in $otherBats) {
-    if (Select-String -Path $b.FullName -Pattern $credPath -SimpleMatch -Quiet) {
+    if (Select-String -Path $b.FullName -Pattern $credPath -SimpleMatch -Quiet -ErrorAction Stop) {
       $credInUse = $true
       break
     }
   }
-} catch {}
+} catch {
+  $credInUse = $true
+}
 
 if (-not $credInUse) {
   Remove-Item -Path $credPath -Force -ErrorAction SilentlyContinue
@@ -782,26 +812,37 @@ if ($BatPaths.Length -gt 0) {
   try { Remove-Item -Path $BatPaths -Force -ErrorAction SilentlyContinue } catch {}
 }
 
-# 3) For each cred file, delete only if no remaining BAT references it
+# 3) For each cred file, delete only if no remaining BAT references it.
+#    If enumeration fails we cannot prove a credential is unused, so keep them all.
+$scanOk = $false
+$remainingBats = @()
 try {
-  $remainingBats = @()
-  try { $remainingBats = Get-ChildItem -Path "${scriptsDirEsc}" -Filter "Houston_Backup_Task_*.bat" -ErrorAction SilentlyContinue } catch {}
+  $remainingBats = @(Get-ChildItem -Path "${scriptsDirEsc}" -Filter "Houston_Backup_Task_*.bat" -ErrorAction Stop)
+  $scanOk = $true
+} catch {
+  $scanOk = $false
+}
 
+if ($scanOk) {
   foreach ($credPath in $CredPaths) {
     $inUse = $false
-    $credEscaped = [regex]::Escape($credPath)
     foreach ($b in $remainingBats) {
-      if (Select-String -Path $b.FullName -Pattern $credEscaped -SimpleMatch -Quiet) {
+      try {
+        if (Select-String -Path $b.FullName -Pattern $credPath -SimpleMatch -Quiet -ErrorAction Stop) {
+          $inUse = $true
+          break
+        }
+      } catch {
         $inUse = $true
         break
       }
     }
 
     if (-not $inUse) {
-      try { Remove-Item -Path $credPath -Force -ErrorAction SilentlyContinue } catch {}
+      Remove-Item -Path $credPath -Force -ErrorAction SilentlyContinue
     }
   }
-} catch {}
+}
 `.trim();
 
     try {

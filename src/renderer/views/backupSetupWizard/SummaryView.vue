@@ -85,7 +85,8 @@ onMounted(async () => {
 
   const [host, path] = target.split(":");
   const share = path.split("/")[0];
-  actualHost.value = host;
+  // display prefers the name the user picked; the probe below needs the real host
+  actualHost.value = (backUpSetupConfig as any)?.serverDisplayHost || host;
   actualShare.value = share;
   const result = await window.electron.isFirstRunNeeded(host, share, backUpSetupConfig.username);
 

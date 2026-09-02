@@ -115,10 +115,8 @@ export class BackUpManagerMac implements BackUpManager {
     task.host = safeHost;
     task.share = safeShare;
 
-    // Store credential in encrypted vault
+    // store() also creates the server record, so the SMB creds never touch login creds
     getCredentialManager().store(safeHost, safeShare, username, password);
-    // Ensure server-level entry exists so server appears in Saved Servers
-    getCredentialManager().storeServer(safeHost, username, password);
 
     const installerPath = `/tmp/houston-installer-${uuid}.sh`;
     const scriptPayload = this.getShellScriptContent(task, safeUser);   // big bash body

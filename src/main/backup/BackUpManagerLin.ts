@@ -125,9 +125,8 @@ export class BackUpManagerLin implements BackUpManager {
       const [smbHost, smbSharePart] = task.target.split(":");
       const smbShare = smbSharePart.split("/")[0];
 
-      // Store credential in encrypted vault
-      getCredentialManager().store(smbHost, smbShare, username, password);      // Ensure server-level entry exists so server appears in Saved Servers
-      getCredentialManager().storeServer(smbHost, username, password);
+      // store() also creates the server record, so the SMB creds never touch login creds
+      getCredentialManager().store(smbHost, smbShare, username, password);
       this.ensureFstabEntry(smbHost, smbShare, username, password);
 
       this.generateBackupScript(task, username, password, scriptPath);
@@ -167,10 +166,8 @@ export class BackUpManagerLin implements BackUpManager {
       const [smbHost, smbSharePart] = task.target.split(":");
       const smbShare = smbSharePart.split("/")[0];
 
-      // Store credential in encrypted vault
+      // store() also creates the server record, so the SMB creds never touch login creds
       getCredentialManager().store(smbHost, smbShare, username, password);
-      // Ensure server-level entry exists so server appears in Saved Servers
-      getCredentialManager().storeServer(smbHost, username, password);
 
       this.ensureFstabEntry(smbHost, smbShare, username, password);
 

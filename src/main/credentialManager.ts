@@ -410,8 +410,8 @@ export class CredentialManager {
     hostname?: string;
     ip?: string;
     displayName?: string;
-    loginUser: string;
-    loginPass: string;
+    loginUser?: string;
+    loginPass?: string;
     sshKeyPath?: string;
     sshPassphrase?: string;
     smbShare?: string;
@@ -435,8 +435,9 @@ export class CredentialManager {
       if (opts.hostname) changes.hostname = opts.hostname;
       if (opts.ip && !existing.ip) changes.ip = opts.ip;
       if (opts.displayName !== undefined) changes.displayName = opts.displayName;
-      changes.loginUser = opts.loginUser;
-      changes.loginPass = opts.loginPass;
+      // Never blank an existing SSH login just because an SMB-only caller omitted it
+      if (opts.loginUser) changes.loginUser = opts.loginUser;
+      if (opts.loginPass) changes.loginPass = opts.loginPass;
       if (opts.sshKeyPath !== undefined) changes.sshKeyPath = opts.sshKeyPath;
       if (opts.sshPassphrase !== undefined) changes.sshPassphrase = opts.sshPassphrase;
       if (opts.smbShare !== undefined) changes.smbShare = opts.smbShare;
@@ -456,8 +457,8 @@ export class CredentialManager {
       hostname: opts.hostname || '',
       ip: opts.ip || '',
       displayName: opts.displayName || '',
-      loginUser: opts.loginUser,
-      loginPass: encryptPassword(opts.loginPass),
+      loginUser: opts.loginUser || '',
+      loginPass: opts.loginPass ? encryptPassword(opts.loginPass) : '',
       sshKeyPath: opts.sshKeyPath || '',
       sshPassphrase: opts.sshPassphrase ? encryptPassword(opts.sshPassphrase) : '',
       smbShare: opts.smbShare || '',
@@ -873,8 +874,6 @@ export class CredentialManager {
         this.addServer({
           hostname: isIpAddress(host) ? '' : host,
           ip: isIpAddress(host) ? host : '',
-          loginUser: username,
-          loginPass: password,
           smbShare: share,
           smbUser: username,
           smbPass: password,

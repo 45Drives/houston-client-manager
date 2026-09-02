@@ -229,6 +229,14 @@ const selectedServer = computed<StoredServer | null>(() =>
 	savedServers.value.find(srv => srv.id === selectedServerId.value) ?? null
 );
 
+/* task.target must stay an IP so unattended jobs never depend on mDNS, but users
+ * should still see the name they picked. Carried separately for later steps. */
+const serverDisplayHost = computed(() => {
+	const srv = selectedServer.value;
+	if (!srv) return '';
+	return srv.name || srv.hostname || srv.host;
+});
+
 // Calendar modal state (custom mode)
 const selectedTaskSchedule = ref<any>();
 const showCalendar = ref(false);
@@ -464,6 +472,10 @@ const proceedToNextStep = () => {
 	}
 
 	const srv = selectedServer.value!;
+	if (backUpSetupConfig) {
+		(backUpSetupConfig as any).serverDisplayHost = serverDisplayHost.value;
+		(backUpSetupConfig as any).serverShare = srv.shareName;
+	}
 	backUpSetupConfig?.backUpTasks.forEach((task: BackUpTask) => {
 		const targetDirForSourcePart = sanitizeFilePath(task.source);
 		const slashOrNotSlash = targetDirForSourcePart.startsWith("/") ? "" : "/";
