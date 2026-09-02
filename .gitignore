@@ -22,3 +22,4 @@ scripts/test-pkg.sh
 .claude/CLAUDE.md
 .electron-dev-userdata/
 docs/training/
+docs/*-plan.md

@@ -630,7 +630,6 @@ function createWindow() {
   let pollActionInterval: NodeJS.Timeout | null = null;
   let clearInactiveServerInterval: NodeJS.Timeout | null = null;
   let lastMdnsResponseAt = Date.now();
-  let lastMdnsResetAt = Date.now();
 
   function startDiscoveryLoops() {
     if (discoveryEnabled) return;
@@ -648,11 +647,8 @@ function createWindow() {
 
       // Silence from every server at once means our own multicast socket went
       // deaf (interface/route change), not that the whole fleet went offline.
-      // Rebuild the socket and keep the list rather than clearing the UI.
-      if (now - lastMdnsResponseAt > TIMEOUT_DURATION()) {
-        if (now - lastMdnsResetAt > TIMEOUT_DURATION()) resetMdnsClient();
-        return;
-      }
+      // Hold the list until we hear something rather than emptying the UI.
+      if (now - lastMdnsResponseAt > TIMEOUT_DURATION()) return;
 
       discoveredServers = discoveredServers.filter(srv =>
         now - srv.lastSeen <= TIMEOUT_DURATION() || srv.manuallyAdded === true
@@ -791,17 +787,8 @@ function createWindow() {
   mainWindow.webContents.send('client-ip', getLocalIP());
 
   // Set up mDNS for service discovery
-  let mDNSClient = mdns(); // Correctly call as a function
+  const mDNSClient = mdns(); // Correctly call as a function
   mDNSClient.query({ questions: [{ name: serviceType, type: 'PTR' }] });
-
-  function resetMdnsClient() {
-    lastMdnsResetAt = Date.now();
-    try { mDNSClient.removeListener('response', handleMdnsResponse); } catch { }
-    try { mDNSClient.destroy(); } catch { }
-    mDNSClient = mdns();
-    mDNSClient.on('response', handleMdnsResponse);
-    mDNSClient.query({ questions: [{ name: serviceType, type: 'PTR' }] });
-  }
 
   // Start listening for devices
   mDNSClient.on('response', handleMdnsResponse);
