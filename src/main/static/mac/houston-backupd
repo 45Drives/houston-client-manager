@@ -13,7 +13,7 @@
 #
 # DAEMON_VERSION must match MAC_DAEMON_VERSION in src/main/backup/macDaemon.ts. Bump both
 # on any change here, or installed copies will never be replaced.
-# DAEMON_VERSION = 2
+# DAEMON_VERSION = 3
 
 set -uo pipefail
 
@@ -102,6 +102,16 @@ threshold_reached() {
   esac
 }
 
+# A lock whose recorded pid is gone belongs to a run that was killed, so it is reclaimable.
+# Without this a cancelled backup would never run again.
+lock_is_stale() {
+  local pid
+  pid="$(cat "$1/pid" 2>/dev/null || echo '')"
+  [ -n "$pid" ] || return 0
+  kill -0 "$pid" 2>/dev/null && return 1
+  return 0
+}
+
 # run_task <uid> <home> <script> <uuid> <key>
 run_task() {
   local uid="$1" home="$2" script="$3" uuid="$4" key="$5"
@@ -109,12 +119,23 @@ run_task() {
   local lock="${state_dir}/${uuid}.lock"
 
   mkdir -p "$state_dir" 2>/dev/null || true
+  # The app takes this same lock as the user, so the directory must stay user-writable.
+  chown "$uid" "$state_dir" 2>/dev/null || true
 
-  # mkdir is atomic, so this also skips a task whose previous run is still going.
+  # mkdir is atomic, so this also skips a task the app or an earlier run is still doing.
   if ! mkdir "$lock" 2>/dev/null; then
-    log "skip ${uuid}: previous run still in progress"
-    return 0
+    if lock_is_stale "$lock"; then
+      log "reclaiming stale lock for ${uuid}"
+      rm -rf "$lock" 2>/dev/null || true
+      mkdir "$lock" 2>/dev/null || { log "skip ${uuid}: lock contended"; return 0; }
+    else
+      log "skip ${uuid}: already running ($(cat "${lock}/holder" 2>/dev/null || echo unknown))"
+      return 0
+    fi
   fi
+  printf '%s' "$$" >"${lock}/pid" 2>/dev/null || true
+  printf 'daemon' >"${lock}/holder" 2>/dev/null || true
+  chown -R "$uid" "$lock" 2>/dev/null || true
 
   # Recorded before the run, not after: a task that crashes must not re-fire every minute.
   printf '%s' "$key" >"${state_dir}/${uuid}.lastrun" 2>/dev/null || true
@@ -129,7 +150,7 @@ run_task() {
     >"${state_dir}/${uuid}.laststatus" 2>/dev/null || true
   chown "$uid" "${state_dir}/${uuid}.laststatus" 2>/dev/null || true
 
-  rmdir "$lock" 2>/dev/null || true
+  rmdir "$lock" 2>/dev/null || rm -rf "$lock" 2>/dev/null || true
 }
 
 # scan_user <name> <uid> <home>

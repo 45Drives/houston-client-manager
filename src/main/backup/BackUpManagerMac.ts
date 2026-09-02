@@ -9,10 +9,13 @@ import { assertSafeHost, assertSafeShare, assertSafeUsername, shellQuote } from 
 import { getCredentialManager } from '../credentialManager';
 import { syncBackupConfig, getClientId, bashEventSnippet } from './broadcasterApi';
 import {
+  acquireTaskLock,
   ensureBackupDaemon,
   ensureUserDirs,
   isDaemonInstalled,
+  releaseTaskLock,
   removeLegacyCronLines,
+  taskLockHolder,
   MAC_CRED_DIR,
   MAC_STATE_DIR,
   MAC_TASK_DIR,
@@ -213,10 +216,32 @@ export class BackUpManagerMac implements BackUpManager {
     this.refreshTaskScript(task);
     const scriptPath = this.scriptPathFor(task.uuid);
 
+    const holder = taskLockHolder(task.uuid);
+    if (holder) {
+      return Promise.reject({
+        message:
+          holder.holder === "daemon"
+            ? 'This backup is already running on its schedule. Wait for it to finish, then try again.'
+            : 'This backup is already running.',
+        stdout: '',
+        stderr: '',
+      });
+    }
+    if (!acquireTaskLock(task.uuid)) {
+      return Promise.reject({
+        message: 'This backup is already running.',
+        stdout: '',
+        stderr: '',
+      });
+    }
+
     return new Promise((resolve, reject) => {
       const child = spawn('/bin/bash', [scriptPath], {
         env: process.env,
       });
+
+      // The lock records the process that actually holds the mount.
+      if (child.pid) acquireTaskLock(task.uuid, child.pid);
 
       let stdout = '';
       let stderr = '';
@@ -242,6 +267,7 @@ export class BackUpManagerMac implements BackUpManager {
       });
 
       child.on('close', (code) => {
+        releaseTaskLock(task.uuid);
         if (code === 0) {
           resolve({ stdout, stderr });
         } else {
@@ -255,6 +281,7 @@ export class BackUpManagerMac implements BackUpManager {
       });
 
       child.on('error', (err) => {
+        releaseTaskLock(task.uuid);
         reject({
           message: `Failed to spawn backup task process: ${err.message}`,
           stdout,
@@ -278,6 +305,7 @@ export class BackUpManagerMac implements BackUpManager {
     for (const suffix of ['lastrun', 'laststatus']) {
       try { fs.unlinkSync(path.join(MAC_STATE_DIR, `${uuid}.${suffix}`)); } catch { /* already gone */ }
     }
+    releaseTaskLock(uuid);
   }
 
   /**
@@ -540,6 +568,10 @@ cleanup() {
   fi
 }
 trap cleanup EXIT
+# bash skips the EXIT trap when it dies on a signal, so convert the signal into an exit and
+# let the trap unmount. Otherwise cancelling a backup strands the share mounted.
+trap 'exit 143' TERM
+trap 'exit 130' INT
 
 echo "===== [$(date -u '+%Y-%m-%dT%H:%M:%SZ')] [INFO] Backup task started: $UUID ====="
 
@@ -615,11 +647,17 @@ fi
 echo "[SUCCESS] SMB share mounted at $MOUNT_DIR"
 
 # ---- marker -----------------------------------------------------------------
+# Identifies this client to the server's backup browser. It is metadata, not backup data,
+# and some SMB servers veto dot-directories outright, so a failure here must not cost the
+# user the run that follows it.
 MARKER_UUID="$(printf '%s' "$TARGET" | awk -F/ '{print $2}')"
 MARKER_DIR="$MOUNT_DIR/$MARKER_UUID/.houston"
-mkdir -p "$MARKER_DIR"
-printf '{"install_id":"%s","smb_user":"%s","source":"%s","user":"%s","host":"%s","platform":"mac"}\\n' \\
-  "$INSTALL_ID" "$SMB_USER" "$SOURCE" "$(id -un)" "$(hostname -s)" > "$MARKER_DIR/client.json"
+if mkdir -p "$MARKER_DIR" 2>/dev/null && printf '{"install_id":"%s","smb_user":"%s","source":"%s","user":"%s","host":"%s","platform":"mac"}\\n' \\
+  "$INSTALL_ID" "$SMB_USER" "$SOURCE" "$(id -un)" "$(hostname -s)" > "$MARKER_DIR/client.json" 2>/dev/null; then
+  :
+else
+  echo "[WARN] Could not write client marker to $MARKER_DIR - continuing with the backup"
+fi
 
 # ---- copy -------------------------------------------------------------------
 mkdir -p "$DEST_DIR"

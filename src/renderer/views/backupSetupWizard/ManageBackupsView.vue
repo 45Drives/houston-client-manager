@@ -196,6 +196,7 @@ import { useSettingsModal } from '../../composables/useSettingsModal';
 import { DiscoveryState, type Server as ServerType } from '../../types';
 import { useSettings } from '../../composables/useSettings';
 import { useOnboarding } from '../../composables/useOnboarding';
+import { useBackupProgress } from '../../composables/useBackupProgress';
 import {
     ComputerDesktopIcon, GlobeAltIcon, PlusIcon,
     ArrowLeftIcon, ArrowDownTrayIcon, Cog6ToothIcon, XMarkIcon,
@@ -537,36 +538,11 @@ const deleteSelectedTasks = () => {
 
 async function runSelected() {
     if (selectedBackUpTasks.value.length === 0 || isRunningNow.value) return;
-    isRunningNow.value = true;
-    runningTaskIds.value = selectedBackUpTasks.value.map(t => t.uuid);
-    runningTaskNames.value = selectedBackUpTasks.value.map(t => (t.description || '').trim());
-    // Seed per-task progress entries
-    for (const t of selectedBackUpTasks.value) {
-        const name = t.name || t.description || t.source?.split('/').pop() || t.uuid.slice(0, 8);
-        taskProgressMap.value[t.uuid] = { name, percent: null, message: 'Starting…' };
-    }
+    beginTasks(selectedBackUpTasks.value);
     try {
         await backUpListRef.value?.runSelectedNow?.();
     } catch {
         stopRunningUi();
-    }
-}
-
-function maybeClearFromNotification(message: string) {
-    if (!isRunningNow.value) return;
-    const m = message.match(/Backup task "(.+?)"/i);
-    if (m) {
-        const name = m[1].trim();
-        // Find and remove the matching task by description
-        const matchUuid = Object.entries(taskProgressMap.value)
-            .find(([, info]) => info.name === name)?.[0]
-            ?? runningTaskIds.value.find((id, i) => runningTaskNames.value[i] === name);
-        if (matchUuid) {
-            removeFinishedTask(matchUuid);
-        }
-        IPCRouter.getInstance().send('backend', 'action',
-            JSON.stringify({ type: 'fetchBackupEvents' })
-        );
     }
 }
 
@@ -589,48 +565,20 @@ function viewSelectedLog() {
     openLogModal(tasks);
 }
 
-const isRunningNow = ref(false);
-const runningTaskIds = ref<string[]>([]);
-const runningTaskNames = ref<string[]>([]);
+const {
+    isRunningNow,
+    runningTaskIds,
+    taskProgressMap,
+    runningTaskCount,
+    beginTasks,
+    stopRunningUi,
+    removeFinishedTask,
+    maybeClearFromNotification,
+    syncRunningUuids,
+    setTaskNameResolver,
+} = useBackupProgress();
 
-// ── Per-task progress tracking ──────────────────────────────────────────────
-const taskProgressMap = ref<Record<string, { name: string; percent: number | null; message: string }>>({});
-const runningTaskCount = computed(() => Object.keys(taskProgressMap.value).length);
-
-function stopRunningUi() {
-    isRunningNow.value = false;
-    runningTaskIds.value = [];
-    runningTaskNames.value = [];
-    taskProgressMap.value = {};
-}
-
-function removeFinishedTask(uuid: string) {
-    delete taskProgressMap.value[uuid];
-    runningTaskIds.value = runningTaskIds.value.filter(id => id !== uuid);
-    if (Object.keys(taskProgressMap.value).length === 0) {
-        stopRunningUi();
-    }
-}
-
-const backupProgressHandler = (data: { taskUuid: string; percent: number | null; message?: string }) => {
-    if (!runningTaskIds.value.includes(data.taskUuid)) {
-        // Accept progress for tasks we didn't explicitly start (detected from event log)
-        runningTaskIds.value.push(data.taskUuid);
-        isRunningNow.value = true;
-    }
-    const existing = taskProgressMap.value[data.taskUuid];
-    const name = existing?.name || backUpListRef.value?.getTaskName?.(data.taskUuid) || data.taskUuid.slice(0, 8);
-    taskProgressMap.value[data.taskUuid] = {
-        name,
-        percent: data.percent,
-        message: data.message ?? '',
-    };
-
-    // Auto-clear completed tasks after a short delay so the user sees 100%
-    if (data.percent === 100) {
-        setTimeout(() => removeFinishedTask(data.taskUuid), 3000);
-    }
-};
+setTaskNameResolver((uuid) => backUpListRef.value?.getTaskName?.(uuid));
 
 const actionHandler = (raw: string) => {
     try {
@@ -638,50 +586,19 @@ const actionHandler = (raw: string) => {
         if (msg?.type === 'notification' && msg.message) {
             maybeClearFromNotification(msg.message);
         }
-        if (msg?.type === 'backUpStatusesUpdated') {
-            // Status polling completed — individual task completion is handled
-            // by the notification handler (maybeClearFromNotification)
-        }
         // Restore running state from event log (backup_start without backup_end)
         if (msg?.type === 'sendBackupEvents' && 'runningUuids' in msg) {
-            const currentRunning: string[] = Array.isArray(msg.runningUuids) ? msg.runningUuids : [];
-
-            // Remove tasks that are no longer reported as running by the backend
-            // (their backup_end was written since the last poll)
-            for (const uuid of Object.keys(taskProgressMap.value)) {
-                // Only auto-remove event-log-detected tasks (percent is still null),
-                // not tasks started via Run Now that are actively reporting progress.
-                const entry = taskProgressMap.value[uuid];
-                if (entry && entry.percent == null && !currentRunning.includes(uuid)) {
-                    removeFinishedTask(uuid);
-                }
-            }
-
-            // Add newly-detected running tasks
-            for (const uuid of currentRunning) {
-                if (!runningTaskIds.value.includes(uuid)) {
-                    runningTaskIds.value.push(uuid);
-                }
-                if (!taskProgressMap.value[uuid]) {
-                    const resolvedName = backUpListRef.value?.getTaskName?.(uuid) || uuid.slice(0, 8);
-                    taskProgressMap.value[uuid] = { name: resolvedName, percent: null, message: 'In progress…' };
-                }
-            }
-            if (currentRunning.length > 0) {
-                isRunningNow.value = true;
-            }
+            syncRunningUuids(Array.isArray(msg.runningUuids) ? msg.runningUuids : []);
         }
     } catch (e) { console.debug('actionHandler parse error:', e); }
 };
 
 onMounted(() => {
     IPCRouter.getInstance().addEventListener('action', actionHandler);
-    IPCRouter.getInstance().addEventListener('backupProgress', backupProgressHandler);
 });
 
 onBeforeUnmount(() => {
     try { IPCRouter.getInstance().removeEventListener?.('action', actionHandler); } catch { }
-    try { IPCRouter.getInstance().removeEventListener?.('backupProgress', backupProgressHandler); } catch { }
 });
 
 function refreshBackups() {

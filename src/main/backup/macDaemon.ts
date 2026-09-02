@@ -14,7 +14,7 @@ import { shellQuote } from "../security";
  */
 
 /** Bump together with DAEMON_VERSION in src/main/static/mac/houston-backupd. */
-export const MAC_DAEMON_VERSION = 2;
+export const MAC_DAEMON_VERSION = 3;
 
 export const MAC_DAEMON_LABEL = "com.45drives.houston.backupd";
 
@@ -45,6 +45,98 @@ export function ensureUserDirs(): void {
     fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
   }
   fs.mkdirSync(MAC_CRED_DIR, { recursive: true, mode: 0o700 });
+}
+
+// ---------------------------------------------------------------------------
+// Run locks
+//
+// The daemon and the app can both start the same task, and they mount the same path. When
+// they overlap the first to finish unmounts the share while the other is still writing to
+// it, which surfaces as EPERM part-way through a run that was otherwise fine. Both sides
+// take this lock, so a task only ever has one runner.
+//
+// mkdir is the primitive because it is atomic on every filesystem involved and needs no
+// daemon round-trip. The pid inside lets either side reclaim a lock left behind by a
+// process that was killed — without that, cancelling a backup would block it forever.
+// ---------------------------------------------------------------------------
+
+export interface TaskLockInfo {
+  pid: number;
+  holder: string;
+}
+
+function lockDirFor(uuid: string): string {
+  return path.join(MAC_STATE_DIR, `${uuid}.lock`);
+}
+
+function pidAlive(pid: number): boolean {
+  if (!Number.isInteger(pid) || pid <= 0) return false;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (err: any) {
+    // EPERM means the pid exists but belongs to another user, e.g. the root daemon.
+    return err?.code === "EPERM";
+  }
+}
+
+export function readTaskLock(uuid: string): TaskLockInfo | null {
+  const dir = lockDirFor(uuid);
+  if (!fs.existsSync(dir)) return null;
+  const read = (name: string): string => {
+    try {
+      return fs.readFileSync(path.join(dir, name), "utf-8").trim();
+    } catch {
+      return "";
+    }
+  };
+  return { pid: parseInt(read("pid"), 10) || 0, holder: read("holder") || "unknown" };
+}
+
+/** Whoever holds the lock, or null if the task is free to run. */
+export function taskLockHolder(uuid: string): TaskLockInfo | null {
+  const info = readTaskLock(uuid);
+  if (!info) return null;
+  if (pidAlive(info.pid)) return info;
+  try {
+    fs.rmSync(lockDirFor(uuid), { recursive: true, force: true });
+  } catch {
+    /* the other side may have cleared it first */
+  }
+  return null;
+}
+
+export function acquireTaskLock(uuid: string, pid: number = process.pid): boolean {
+  const dir = lockDirFor(uuid);
+  fs.mkdirSync(MAC_STATE_DIR, { recursive: true, mode: 0o700 });
+
+  try {
+    fs.mkdirSync(dir);
+  } catch (err: any) {
+    if (err?.code !== "EEXIST") throw err;
+    if (taskLockHolder(uuid)) return false;
+    try {
+      fs.mkdirSync(dir);
+    } catch {
+      return false;
+    }
+  }
+
+  try {
+    fs.writeFileSync(path.join(dir, "pid"), String(pid));
+    fs.writeFileSync(path.join(dir, "holder"), "app");
+  } catch {
+    /* a lock with no pid is treated as stale, which is the safe direction */
+  }
+  return true;
+}
+
+export function releaseTaskLock(uuid: string): void {
+  try {
+    fs.rmSync(lockDirFor(uuid), { recursive: true, force: true });
+  } catch {
+    /* already gone */
+  }
 }
 
 export function isDaemonInstalled(): boolean {

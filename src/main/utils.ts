@@ -36,7 +36,24 @@ export function getAssetSync(folder: string, fileName: string): string {
     return path.join(__dirname, "..", "..", folder, fileName);
   }
 
-  return path.join(__dirname, "..", "..", "..", folder, fileName);
+  // The archived copy inside app.asar cannot be read by sftp/child processes,
+  // so prefer the extraResources copy that lives on the real filesystem.
+  const unpacked = process.resourcesPath
+    ? path.join(process.resourcesPath, folder, fileName)
+    : null;
+  const packed = path.join(__dirname, "..", "..", "..", folder, fileName);
+
+  if (!unpacked) return packed;
+  if (safeExists(unpacked)) return unpacked;
+  return safeExists(packed) ? packed : unpacked;
+}
+
+function safeExists(target: string): boolean {
+  try {
+    return fs.existsSync(target);
+  } catch {
+    return false;
+  }
 }
 
 export async function getAsset(folder: string, fileName: string, isFolder: boolean = false): Promise<string> {

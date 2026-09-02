@@ -357,10 +357,6 @@ const allOnboardingDone = computed(() =>
 
 async function handleResetOnboarding() {
     await resetOnboarding();
-    // Sync draft so saving doesn't overwrite the reset with stale values
-    if (settings.value) {
-        Object.assign(draft.onboarding, settings.value.onboarding);
-    }
     // Re-enable guided tours if they were off
     draft.guidedToursEnabled = true;
     reportSuccess('Guided tours have been reset');
@@ -437,6 +433,30 @@ const draft = reactive<AppSettings>({
     },
 });
 
+// Only these are edited here. Everything else (onboarding flags, restore
+// history, topology cache) is written elsewhere and must never be saved from
+// this modal's snapshot, or it would revert changes made while it was open.
+type EditableKey =
+    | 'serverDisplayFormat' | 'autoConnectFavorites' | 'discoveryScanIntervalMs'
+    | 'discoveryInactivityTimeoutMs' | 'discoveryFallbackEnabled' | 'sshTimeoutMs'
+    | 'sshFastCiphers' | 'logRetentionDays' | 'showNotifications' | 'guidedToursEnabled';
+
+const EDITABLE_KEYS: EditableKey[] = [
+    'serverDisplayFormat', 'autoConnectFavorites', 'discoveryScanIntervalMs',
+    'discoveryInactivityTimeoutMs', 'discoveryFallbackEnabled', 'sshTimeoutMs',
+    'sshFastCiphers', 'logRetentionDays', 'showNotifications', 'guidedToursEnabled',
+];
+
+function copyEditableInto(target: AppSettings, source: AppSettings) {
+    for (const k of EDITABLE_KEYS) (target as any)[k] = source[k];
+}
+
+function editablePayload(): Partial<AppSettings> {
+    const out: any = {};
+    for (const k of EDITABLE_KEYS) out[k] = draft[k];
+    return out;
+}
+
 // Derived seconds fields (convert ms ↔ sec for display)
 const sshTimeoutSec = computed({
     get: () => Math.round(draft.sshTimeoutMs / 1000),
@@ -453,12 +473,7 @@ const inactivitySec = computed({
 
 const dirty = computed(() => {
     if (!settings.value) return false;
-    return (Object.keys(draft) as (keyof AppSettings)[]).some(k => {
-        const a = draft[k];
-        const b = settings.value![k];
-        if (typeof a === 'object' && a !== null) return JSON.stringify(a) !== JSON.stringify(b);
-        return a !== b;
-    });
+    return EDITABLE_KEYS.some(k => draft[k] !== settings.value![k]);
 });
 
 // ── Server list state ────────────────────────────────────────────────────
@@ -504,14 +519,14 @@ async function confirmRemoveServer(srv: StoredServer) {
 watch(() => props.open, async (isOpen) => {
     if (isOpen) {
         await load();
-        if (settings.value) Object.assign(draft, settings.value);
+        if (settings.value) copyEditableInto(draft, settings.value);
         await loadServers();
         activeSection.value = 'servers';
     }
 });
 
 async function saveAndClose() {
-    await save(JSON.parse(JSON.stringify(draft)));
+    await save(editablePayload());
     reportSuccess('Settings saved');
     emit('saved');
     emit('close');
@@ -525,7 +540,7 @@ async function confirmReset() {
     const ok = window.confirm('Reset all settings to defaults? This cannot be undone.');
     if (!ok) return;
     await reset();
-    if (settings.value) Object.assign(draft, settings.value);
+    if (settings.value) copyEditableInto(draft, settings.value);
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────
