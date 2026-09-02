@@ -198,6 +198,18 @@ describe('BackUpManagerWin hourly trigger', () => {
     expect(src).toContain(':: SCRIPT_VER  = ${ACTION_BAT_VERSION}');
     expect(src).toContain('this.refreshActionBat(task);');
   });
+
+  // robocopy output goes to the self-capture file, never to %LOG%, so polling
+  // %LOG% for progress produced no updates at all between start and completion.
+  it('polls the console log for progress, not the task log', () => {
+    expect(src).toContain('fs.statSync(consoleFile).size');
+  });
+
+  // Only local folders can be a backup source, so say so rather than leaking rc=16.
+  it('rejects network sources with an explicit message', () => {
+    expect(src).toContain('Network locations are not supported as a backup source');
+    expect(src).toContain('Mapped network drives are not supported');
+  });
 });
 
 // ── Generated .bat event snippet regression guard

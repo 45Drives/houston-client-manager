@@ -34,7 +34,7 @@ const WIN_PASS_ENV = 'HOUSTON_WIN_ACCOUNT_PASSWORD';
 
 /* buildActionBat only runs when a task is scheduled, so fixes to the generated
  * script never reach tasks that already exist. Bump on every script change. */
-const ACTION_BAT_VERSION = 2;
+const ACTION_BAT_VERSION = 4;
 
 interface TaskData {
   source?: string;
@@ -257,11 +257,15 @@ export class BackUpManagerWin implements BackUpManager {
     const taskName = `${TASK_ID}_${task.uuid}`;
     this.refreshActionBat(task);
     const logFile = path.join(logPath, `Houston_Backup_Task_${task.uuid}.log`);
+    // robocopy writes to the self-capture file, not %LOG%, so progress lives here.
+    const consoleFile = path.join(logPath, `Houston_Backup_Task_${task.uuid}.console.log`);
     const ps = `Start-ScheduledTask -TaskName "${taskName}"`;
 
     // Record log file size before running so we can read only new content
     let logSizeBefore = 0;
     try { logSizeBefore = fs.statSync(logFile).size; } catch {}
+    let consoleSizeBefore = 0;
+    try { consoleSizeBefore = fs.statSync(consoleFile).size; } catch {}
 
     onProgress?.(null, 'Starting scheduled task...');
 
@@ -306,11 +310,11 @@ export class BackUpManagerWin implements BackUpManager {
       // Emit progress based on latest log content
       if (onProgress) {
         try {
-          const currentSize = fs.statSync(logFile).size;
-          if (currentSize > logSizeBefore) {
-            const buf = Buffer.alloc(currentSize - logSizeBefore);
-            const fd = fs.openSync(logFile, 'r');
-            fs.readSync(fd, buf, 0, buf.length, logSizeBefore);
+          const currentSize = fs.statSync(consoleFile).size;
+          if (currentSize > consoleSizeBefore) {
+            const buf = Buffer.alloc(currentSize - consoleSizeBefore);
+            const fd = fs.openSync(consoleFile, 'r');
+            fs.readSync(fd, buf, 0, buf.length, consoleSizeBefore);
             fs.closeSync(fd);
             const newContent = buf.toString('utf8');
             if (newContent.includes('Running robocopy')) {
@@ -325,8 +329,11 @@ export class BackUpManagerWin implements BackUpManager {
             if (pctMatches.length > 0) {
               onProgress(Math.round(parseFloat(pctMatches[pctMatches.length - 1][1])), 'Copying files...');
             } else {
-              // Count files processed for a rough indicator
-              const fileLines = newContent.split('\n').filter(l => /^\t/.test(l) && !l.includes('---'));
+              // /MT suppresses the percentage lines, so fall back to counting
+              // robocopy's per-file status column.
+              const fileLines = newContent.split('\n').filter(
+                l => /^[\t ]+(New File|Newer|Older|Same|Changed|modified|new file|\*EXTRA File)\b/i.test(l)
+              );
               if (fileLines.length > 0) {
                 onProgress(null, `Copied ${fileLines.length} files...`);
               }
@@ -779,6 +786,23 @@ echo  Source      : !SOURCE!
 echo  Target      : !DST_PATH!
 echo  NetworkPath : !NETWORK_PATH!
 echo ----------------------------------------------------------
+
+:: --- validate the source ---------------------------------------------------
+:: A scheduled task runs in its own logon session: mapped drive letters from the
+:: interactive session do not exist there, so only local folders can be a source.
+if "!SOURCE:~0,2!"=="\\\\" (
+  echo [ERROR] Network locations are not supported as a backup source: !SOURCE! >> "%LOG%" 2>&1
+  echo [ERROR] Choose a folder on a local drive of this PC instead. >> "%LOG%" 2>&1
+  set "RC=16"
+  goto :_finish
+)
+
+if not exist "!SOURCE!" (
+  echo [ERROR] Source folder not found: !SOURCE! >> "%LOG%" 2>&1
+  echo [ERROR] Mapped network drives are not supported - a scheduled backup cannot see them. Choose a folder on a local drive of this PC instead. >> "%LOG%" 2>&1
+  set "RC=16"
+  goto :_finish
+)
 
 :: --- mount SMB and extract drive letter via the helper ---------------------
 echo [DEBUG] mount command: cmd /c ""%MOUNTBAT%" "!SMB_HOST!" "!SMB_SHARE!" "!CRED_FILE!"" >> "%LOG%" 2>&1
