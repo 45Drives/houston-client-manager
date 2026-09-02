@@ -59,8 +59,6 @@ function safeExists(target: string): boolean {
 export async function getAsset(folder: string, fileName: string, isFolder: boolean = false): Promise<string> {
   const filePath = getAssetSync(folder, fileName);
 
-  console.debug("asset: ", filePath);
-
   return filePath;
 }
 

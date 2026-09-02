@@ -88,20 +88,27 @@ export async function checkBackupTaskStatus(task: BackUpTask): Promise<BackUpTas
         const scriptAsset = await getAsset("static", scriptName);
         const escape = (arg: string) => `"${arg.replace(/(["\\$`])/g, '\\$1')}"`;
 
-        // On Mac, create a temporary .cred file from the Keychain so the
-        // check script can read it in the same format as Linux/Win.
+        // The check script reads a Linux/Windows-shaped .cred file. Since the daemon rewrite
+        // that file already exists on disk, so only pre-daemon installs still fall back to the
+        // keychain — which exportMacCredFile deletes once it has migrated an entry.
         let effectiveCredPath = credPath;
+        let tempCredPath: string | null = null;
         if (os === 'mac') {
-            try {
-                const pw = execSync(
-                    `security find-generic-password -s ${JSON.stringify(`houston-smb-${smbHost}-${smbShare}-${smbUser}`)} -a ${JSON.stringify(smbUser)} -w`,
-                    { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }
-                ).trim();
-                const tmpCred = path.join(osDir.tmpdir(), `houston-smb-check-${task.uuid}.cred`);
-                fs.writeFileSync(tmpCred, `username=${smbUser}\npassword=${pw}\n`, { mode: 0o600 });
-                effectiveCredPath = tmpCred;
-            } catch {
-                return 'offline_invalid_credentials';
+            const macCredPath = path.join(MAC_CRED_DIR, `${credKey}.cred`);
+            if (fs.existsSync(macCredPath)) {
+                effectiveCredPath = macCredPath;
+            } else {
+                try {
+                    const pw = execSync(
+                        `security find-generic-password -s ${JSON.stringify(`houston-smb-${smbHost}-${smbShare}-${smbUser}`)} -a ${JSON.stringify(smbUser)} -w`,
+                        { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }
+                    ).trim();
+                    tempCredPath = path.join(osDir.tmpdir(), `houston-smb-check-${task.uuid}.cred`);
+                    fs.writeFileSync(tempCredPath, `username=${smbUser}\npassword=${pw}\n`, { mode: 0o600 });
+                    effectiveCredPath = tempCredPath;
+                } catch {
+                    return 'offline_invalid_credentials';
+                }
             }
         }
 
@@ -109,9 +116,9 @@ export async function checkBackupTaskStatus(task: BackUpTask): Promise<BackUpTas
 
         return new Promise((resolve) => {
             exec(cmd, (error, stdout, stderr) => {
-                // Clean up temp cred file on Mac
-                if (os === 'mac' && effectiveCredPath !== credPath) {
-                    try { fs.unlinkSync(effectiveCredPath); } catch {}
+                // Only ever the throwaway copy — never the real cred file.
+                if (tempCredPath) {
+                    try { fs.unlinkSync(tempCredPath); } catch {}
                 }
 
                 console.debug(`[SMB Check] stdout for ${task.uuid}:`, stdout);
