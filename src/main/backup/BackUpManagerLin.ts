@@ -549,7 +549,7 @@ else
   if mount "$MOUNT_DIR" 2>/dev/null; then
     echo "[INFO] Mounted via fstab entry"
   elif [ -f "$CRED_FILE" ]; then
-    echo "[INFO] fstab mount failed, trying direct mount with credentials..."
+    echo "[WARN] fstab mount failed, trying direct mount with credentials..."
     mount -t cifs "//$SMB_HOST/$SMB_SHARE" "$MOUNT_DIR" -o "credentials=$CRED_FILE,iocharset=utf8,rw,vers=3.0"
   else
     echo "[ERROR] No fstab entry and no credential file found at $CRED_FILE"
@@ -574,29 +574,46 @@ printf '{"install_id":"%s","smb_user":"%s","source":"%s","user":"%s","host":"%s"
 
 mkdir -p "$MOUNT_DIR/$TARGET"
 echo "[INFO] Running rsync..."
-rsync -az --compress-level=1 --info=progress2 --no-inc-recursive "$SOURCE" "$MOUNT_DIR/$TARGET" || true
-RSYNC_STATUS=\${PIPESTATUS[0]:-$?}
+# 'rsync ... || true' is an AND-OR list, not a pipeline, so PIPESTATUS reported the status
+# of 'true' and every failure read as success. Capture the real status directly.
+set +e
+rsync -az --compress-level=1 --info=progress2 --no-inc-recursive "$SOURCE" "$MOUNT_DIR/$TARGET"
+RSYNC_STATUS=$?
+set -e
 
-if [ $RSYNC_STATUS -ne 0 ]; then
-  echo "[ERROR] rsync failed with exit code $RSYNC_STATUS"
-  _BCAST_STATUS="failure"
-  _BCAST_ERROR="rsync exit code $RSYNC_STATUS"
-else
-  echo "[SUCCESS] rsync completed successfully"
-  _BCAST_STATUS="success"
-  _BCAST_ERROR=""
-fi
+case "$RSYNC_STATUS" in
+  0)
+    echo "[SUCCESS] rsync completed successfully"
+    _BCAST_STATUS="success"
+    _BCAST_ERROR=""
+    EXIT_CODE=0
+    ;;
+  23|24)
+    # 23: some files could not be transferred. 24: files vanished during transfer.
+    echo "[WARN] Some files were skipped or vanished during transfer (rsync exit $RSYNC_STATUS)"
+    echo "[SUCCESS] rsync completed with warnings (exit $RSYNC_STATUS)"
+    # Reported as success: the transfer ran, some files were simply not copyable.
+    _BCAST_STATUS="success"
+    _BCAST_ERROR="rsync exit code $RSYNC_STATUS"
+    EXIT_CODE=0
+    ;;
+  *)
+    echo "[ERROR] rsync failed with exit code $RSYNC_STATUS"
+    _BCAST_STATUS="failure"
+    _BCAST_ERROR="rsync exit code $RSYNC_STATUS"
+    EXIT_CODE=$RSYNC_STATUS
+    ;;
+esac
 
-STATUS=$([ $RSYNC_STATUS -eq 0 ] && echo "success" || echo "failure")
-write_backup_end "$STATUS"
+write_backup_end "$_BCAST_STATUS"
 
 # Report end event to broadcaster API (best-effort)
 ${bashEventSnippet(smbHost, 'end', task.uuid)}
 
 echo "===== [$(date -Iseconds)] Backup task completed ====="
 
-# Exit with rsync status so cron sees the real result
-exit $RSYNC_STATUS
+# Exit with the classified result so cron sees what actually happened
+exit $EXIT_CODE
 `;
 
     fs.writeFileSync(scriptPath, scriptContent, { mode: 0o700 });

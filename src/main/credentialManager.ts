@@ -1049,7 +1049,7 @@ export class CredentialManager {
     const platform = os.platform();
     if (platform === 'linux') this.exportLinuxCredFile(cred);
     else if (platform === 'win32') this.exportWindowsCredFile(cred);
-    else if (platform === 'darwin') this.exportMacKeychain(cred);
+    else if (platform === 'darwin') this.exportMacCredFile(cred);
   }
 
   private exportLinuxCredFile(cred: PlaintextCredential): void {
@@ -1087,10 +1087,27 @@ chmod 600 ${shellQuote(credFile)}
     fs.writeFileSync(credFile, `username=${cred.username}\npassword=${cred.password}\n`, { mode: 0o600 });
   }
 
-  private exportMacKeychain(cred: PlaintextCredential): void {
+  /**
+   * macOS scheduled backups run from a LaunchDaemon with nobody signed in, and the login
+   * keychain is locked in that state. The runtime credential is therefore a 0600 file in
+   * the user's own support directory, matching the Linux and Windows export shape.
+   */
+  private exportMacCredFile(cred: PlaintextCredential): void {
+    const credDir = path.join(
+      os.homedir(), 'Library', 'Application Support', '45Drives', 'Houston', 'credentials'
+    );
+    fs.mkdirSync(credDir, { recursive: true, mode: 0o700 });
+    const credFile = path.join(credDir, `${cred.host}_${cred.share}_${cred.username}.cred`);
+    fs.writeFileSync(credFile, `username=${cred.username}\npassword=${cred.password}\n`, { mode: 0o600 });
+    fs.chmodSync(credFile, 0o600);
+
+    // Retire the login-keychain item the pre-daemon implementation relied on.
     const svc = `houston-smb-${cred.host}-${cred.share}-${cred.username}`;
-    execSync(`security delete-generic-password -s ${shellQuote(svc)} -a ${shellQuote(cred.username)} 2>/dev/null || true`);
-    execSync(`security add-generic-password -s ${shellQuote(svc)} -a ${shellQuote(cred.username)} -w -U`, { input: cred.password });
+    try {
+      execSync(
+        `security delete-generic-password -s ${shellQuote(svc)} -a ${shellQuote(cred.username)} 2>/dev/null || true`
+      );
+    } catch { /* best effort */ }
   }
 }
 

@@ -1,92 +1,94 @@
-import { jsonLogger } from '../main';
 import { BackUpManager, BackupProgressCallback } from "./types";
 import { BackUpTask, TaskSchedule } from "@45drives/houston-common-lib";
 import * as fs from "fs";
-import * as os from "os";
 import { execSync, spawn } from "child_process";
 import * as path from "path";
 import { app } from 'electron';
-import { getRsync, getSmbTargetFromSmbTarget } from "../utils";
+import { getSmbTargetFromSmbTarget } from "../utils";
 import { assertSafeHost, assertSafeShare, assertSafeUsername, shellQuote } from "../security";
 import { getCredentialManager } from '../credentialManager';
-import { syncBackupConfig, getClientId, bashEventSnippetMac } from './broadcasterApi';
+import { syncBackupConfig, getClientId, bashEventSnippet } from './broadcasterApi';
+import {
+  ensureBackupDaemon,
+  ensureUserDirs,
+  isDaemonInstalled,
+  removeLegacyCronLines,
+  MAC_CRED_DIR,
+  MAC_STATE_DIR,
+  MAC_TASK_DIR,
+} from './macDaemon';
 
+/**
+ * Bump on any change to getShellScriptContent(). Scripts already on disk are rewritten
+ * when their stamp falls behind, so a script fix reaches tasks created before it shipped.
+ * The Windows ACTION_BAT_VERSION exists for the same reason.
+ */
+const TASK_SCRIPT_VERSION = 1;
+
+const LEGACY_SCRIPT_DIR = "/Library/Application Support/Houston/scripts";
+
+/**
+ * macOS backups are driven by a LaunchDaemon, not cron, so they fire with nobody signed
+ * in. Task scripts and credentials live in the user's own home, so creating, editing,
+ * deleting and running a task costs no administrator prompt. The only privileged step is
+ * installing the daemon, which happens once per machine.
+ */
 export class BackUpManagerMac implements BackUpManager {
-  protected scriptDir = "/Library/Application Support/Houston/scripts";
-  // protected logDir = "/Library/Logs/Houston";
+  protected scriptDir = MAC_TASK_DIR;
   protected logDir = path.join(app.getPath('userData'), 'logs');
   protected HOME = process.env.HOME || `/Users/${process.env.USER}`;
   protected MOUNT_ROOT = `${this.HOME}/houston-mounts`; 
   
-  /** Read crontab, reconstruct every task + its schedule */
+  private scriptPathFor(uuid: string): string {
+    return path.join(this.scriptDir, `houston-backup-task-${uuid}.sh`);
+  }
+
+  private credFileFor(host: string, share: string, username: string): string {
+    return path.join(MAC_CRED_DIR, `${host}_${share}_${username}.cred`);
+  }
+
+  /** Read a `# KEY="value"` metadata line out of a generated task script. */
+  private static header(text: string, key: string): string {
+    return (new RegExp(`^#\\s*${key}="([^"]*)"`, 'm').exec(text)?.[1] ?? '').trim();
+  }
+
+  /** Reconstruct every task from the scripts in this user's task directory. */
   async queryTasks(): Promise<BackUpTask[]> {
-    const crontab = execSync('crontab -l 2>/dev/null || true', { encoding: 'utf8' });
+    this.migrateLegacyTasks();
+
+    if (!fs.existsSync(this.scriptDir)) return [];
+
     const tasks: BackUpTask[] = [];
-
-    // cron: 5 timing fields … anything … houston-backup-task-<uuid>.sh
-    const cronRx = /^(\S+\s+\S+\s+\S+\s+\S+\s+\S+).*?houston-backup-task-([a-f0-9\-]+)\.sh/i;
-
-    for (const line of crontab.split(/\r?\n/)) {
-      const m = cronRx.exec(line);
+    for (const file of fs.readdirSync(this.scriptDir)) {
+      const m = /^houston-backup-task-([a-f0-9-]+)\.sh$/i.exec(file);
       if (!m) continue;
 
-      /* 1) schedule from first 5 fields */
-      const cronExpr = m[1];
-      const schedule = this.parseCronSchedule(cronExpr);
+      let txt = '';
+      try {
+        txt = fs.readFileSync(path.join(this.scriptDir, file), 'utf8');
+      } catch {
+        continue;
+      }
+
+      const grab = (key: string) => BackUpManagerMac.header(txt, key);
+      const schedule = this.parseCronSchedule(grab('TASK_CRON'));
       if (!schedule) continue;
 
-      /* 2) script path from uuid */
-      const uuid = m[2];
-      const scriptPath = path.join(this.scriptDir, `houston-backup-task-${uuid}.sh`);
-
-      /* 3) parse metadata from script (if present) */
-      let host = '', share = '', source = '', target = '';
-      let smb_user = '';
-
-
-      let txt = '';
-      if (fs.existsSync(scriptPath)) {
-        txt = fs.readFileSync(scriptPath, 'utf8');
-
-        const grab = (re: RegExp) => (re.exec(txt)?.[1] ?? '').trim();
-
-        host = grab(/#\s*TASK_HOST="([^"]+)"/);
-        share = grab(/#\s*TASK_SHARE="([^"]+)"/);
-        source = grab(/#\s*TASK_SOURCE="([^"]+)"/);
-        target = grab(/#\s*TASK_TARGET="([^"]+)"/);
-
-
-        // Prefer comment tag, fall back to shell var
-        smb_user = grab(/#\s*TASK_SMB_USER="([^"]+)"/)
-          || ((/(?:^|\n)\s*SMB_USER=['"]([^'"]+)['"]/.exec(txt)?.[1] ?? '').trim());
-
-        // Fallback for source/target from rsync line if missing
-        if ((!source || !target) && txt) {
-          const rsync = /rsync\s+[^\n]*?"([^"]+?)\/"\s+"([^"]+?)\/"/.exec(txt);
-          if (rsync) { source ||= rsync[1]; target ||= rsync[2]; }
-        }
-      }
-
-      // Derive host/share from TARGET if still missing
-      if ((!host || !share) && target) {
-        const parts = target.split(':');
-        if (parts.length >= 2) {
-          host = host || parts[0];
-          share = share || parts[1].split('/')[0];
-        }
-      }
-
-      const disabledMatch = txt ? /#\s*TASK_DISABLED="([^"]*)"/i.exec(txt) : null;
+      const source = grab('TASK_SOURCE');
+      const target = grab('TASK_TARGET');
 
       tasks.push({
-        uuid,
+        uuid: m[1],
         description: `Backup ${source || '(unknown)'} → ${target || '(unknown)'}`,
-        name: txt ? (/#\s*TASK_NAME="([^"]*)"/i.exec(txt)?.[1] || undefined) : undefined,
-        disabled: disabledMatch ? disabledMatch[1] === 'true' : false,
+        name: grab('TASK_NAME') || undefined,
+        disabled: grab('TASK_DISABLED') === 'true',
         schedule,
-        source, target, host, share,
+        source,
+        target,
+        host: grab('TASK_HOST'),
+        share: grab('TASK_SHARE'),
         status: 'checking',
-        smb_user,
+        smb_user: grab('TASK_SMB_USER'),
       });
     }
 
@@ -95,19 +97,12 @@ export class BackUpManagerMac implements BackUpManager {
 
 
 
-  /** Write script + cron line with ONE privileged prompt */
-  schedule(
+  /** Write the task script and its runtime credential. No administrator prompt. */
+  async schedule(
     task: BackUpTask,
     username: string,
     password: string
   ): Promise<{ stdout: string; stderr: string }> {
-
-    /* ---------- paths & vars ---------- */
-    const uuid = task.uuid;
-    const scriptPath = path.join(this.scriptDir, `houston-backup-task-${uuid}.sh`);
-    const logFile = `${this.logDir}/Houston_Backup_Task_${uuid}.log`;
-
-    /* host/share already filled in the caller, but make sure: */
     const [host, sharePart] = task.target.split(':');
     const safeHost = assertSafeHost(host);
     const safeShare = assertSafeShare(sharePart.split('/')[0]);
@@ -118,186 +113,105 @@ export class BackUpManagerMac implements BackUpManager {
     // store() also creates the server record, so the SMB creds never touch login creds
     getCredentialManager().store(safeHost, safeShare, username, password);
 
-    const installerPath = `/tmp/houston-installer-${uuid}.sh`;
-    const scriptPayload = this.getShellScriptContent(task, safeUser);   // big bash body
-    const mntRoot = `${this.HOME}/houston-mounts`;
-    const mntDir  = `${mntRoot}/${safeShare}`;
-    const homeDir = os.homedir();
-    const currentUser = os.userInfo().username;
-    const userGroup = require("child_process").execSync(`id -gn ${currentUser}`).toString().trim();
-    const service = `houston-smb-${safeHost}-${safeShare}-${safeUser}`;
-    const installer = `#!/bin/bash
-    set -e
-    PASSWORD=${shellQuote(password)}
-    
-    # 1 ─ one-time directories (no special permissions needed later)
-    
-    mkdir -p "${this.scriptDir}" "${this.logDir}" "${mntRoot}"
-    rm -rf "${mntDir}"
-    mkdir -p "${mntRoot}"
-    ln -s "/Volumes/${task.share}" "${mntRoot}"
-
-    # 2 ─ system key-chain secret (for our script to retrieve)
-    security delete-generic-password -s "${service}" -a "${safeUser}" 2>/dev/null || true
-    security add-generic-password    -s "${service}" -a "${safeUser}" -w "$PASSWORD" -U
-
-    # 2b ─ internet-password (so macOS Finder/mount won't prompt)
-    security delete-internet-password -s "${safeHost}" -a "${safeUser}" -r "smb " -D "Network Password" 2>/dev/null || true
-    security add-internet-password    -s "${safeHost}" -a "${safeUser}" -w "$PASSWORD" -r "smb " -D "Network Password"
-    
-    # 3 ─ write the task script
-    cat <<'EOF_${uuid}' > "${scriptPath}"
-    ${scriptPayload}
-EOF_${uuid}
-     chmod 755 "${scriptPath}"
-
-    # 4 ─ let this local user mount/umount the share without a password
-    echo "${currentUser} ALL=(root) NOPASSWD: /sbin/mount_smbfs, /sbin/umount" \
-        > /private/etc/sudoers.d/houston-${currentUser}
-     chmod 440 /private/etc/sudoers.d/houston-${currentUser}
-    `;
-
-    fs.writeFileSync(installerPath, installer, { mode: 0o700 });
-
-    /* ---------- single privilege prompt ---------- */
-    this.runAsAdmin(`bash "${installerPath}"`, "Installing backup task…");
-
-    /* ---------- cron line (no sudo needed) ---------- */
-    const cronLine = this.generateCronLine(task, scriptPath, logFile);
-    const existing = execSync("crontab -l 2>/dev/null || true", { encoding: "utf8" })
-      .split(/\r?\n/)
-      .filter(l => !l.includes(scriptPath));         // drop any old line
-    this.applyCleanedCrontab([...existing, cronLine]);
+    this.prepareRuntime(safeHost, safeShare, safeUser);
+    this.writeTaskScript(task, safeUser);
 
     // Sync backup config to broadcaster API (best-effort, non-blocking)
-    syncBackupConfig(safeHost, username, password, task, getClientId()).catch(() => {});
+    syncBackupConfig(safeHost, username, password, task, getClientId()).catch(() => { });
 
-    return Promise.resolve({ stdout: "", stderr: "" });
+    return { stdout: 'Scheduled via Houston backup daemon', stderr: '' };
   }
 
 
-  /** Bulk-install many tasks with a single privileged prompt */
+  /** Bulk-install many tasks. The daemon check happens once, not once per task. */
   async scheduleAllTasks(
     tasks: BackUpTask[],
     username: string,
     password: string,
     onProgress?: (step: number, total: number, message: string) => void
   ): Promise<void> {
-    
     const total = tasks.length;
-    const scriptDir = this.scriptDir;          // “/Library/Application Support/Houston/scripts”
-    const logDir = this.logDir;             // “/Library/Logs/Houston”
-    // const homeDir = os.homedir();
-    const currentUser = os.userInfo().username;
-    const userGroup = require("child_process").execSync(`id -gn ${currentUser}`).toString().trim();
-    const servicePrefix = "houston-smb-";
-
-    /* ------------------------------------------------------------------
-       1.  BUILD a root-only installer shell script as one big heredoc
-    ------------------------------------------------------------------ */
     const safeUser = assertSafeUsername(username);
-
-    const installerLines: string[] = [
-      "#!/bin/bash",
-      "set -e",                                            // Stop on first error
-      `PASSWORD=${shellQuote(password)}`,
-      `mkdir -p "${scriptDir}" "${logDir}"`,
-      `chmod 750 "${logDir}"`
-    ];
-
-    /* 1a ─ System-keychain credentials (once per host+share+user) */
-    const uniqueHostShares = new Set<string>();
-    for (const t of tasks) {
-      const host = assertSafeHost(t.host || t.target.split(':')[0]);
-      const share = assertSafeShare((t.share || t.target.split(":")[1].split("/")[0]));
-      uniqueHostShares.add(`${host}\0${share}`);
-    }
-    for (const key of uniqueHostShares) {
-      const [host, share] = key.split('\0');
-      const svc = `${servicePrefix}${host}-${share}-${safeUser}`;
-
-      installerLines.push(
-        `security delete-generic-password -s "${svc}" -a "${safeUser}" 2>/dev/null || true`,
-        `security add-generic-password -s "${svc}" -a "${safeUser}" -w "$PASSWORD" -U`,
-        `security delete-internet-password -s "${host}" -a "${safeUser}" -r "smb " -D "Network Password" 2>/dev/null || true`,
-        `security add-internet-password    -s "${host}" -a "${safeUser}" -w "$PASSWORD" -r "smb " -D "Network Password"`,
-        `rm -rf "${this.HOME}/houston-mounts/${share}"`,
-        `mkdir -p "${this.HOME}/houston-mounts/${share}"`
-      );
-    }
-
-    /* 1b ─ One shell script per task */
-    for (const task of tasks) {
-      const uuid = task.uuid;
-      const scriptPath = path.join(scriptDir, `houston-backup-task-${uuid}.sh`);
-      const [host, sharePart] = task.target.split(":");
-      task.host = assertSafeHost(host);
-      task.share = assertSafeShare(sharePart.split("/")[0]);
-      const scriptBody = this.getShellScriptContent(task, safeUser)
-        // heredoc must not contain an unescaped EOF on its own line
-        .replace(/\\EOF/g, '\\\\EOF');
-
-        installerLines.push(
-          `cat <<EOF_${uuid} > "${scriptPath}"`,
-          scriptBody,
-          "EOF_${uuid}",
-          `chmod 755 "${scriptPath}"`
-        );
-    }
-
-    /* ------------------------------------------------------------------
-       2.  WRITE installer to /tmp and run it once under sudo
-    ------------------------------------------------------------------ */
-    const tmpInstaller = `/tmp/houston-bulk-installer-${Date.now()}.sh`;
-    fs.writeFileSync(tmpInstaller, installerLines.join("\n"), { mode: 0o700 });
-
-    this.runAsAdmin(`bash "${tmpInstaller}"`, "Installing all backup tasks…");
-
-    /* ------------------------------------------------------------------
-       3.  UPDATE the user crontab (no privileges required)
-    ------------------------------------------------------------------ */
-    const crontabLines = execSync("crontab -l 2>/dev/null || true", { encoding: "utf8" })
-      .split(/\r?\n/);
-
-    /* remove any existing lines that point at our tasks */
-    const cleaned = crontabLines.filter(
-      l => !tasks.some(t => l.includes(`houston-backup-task-${t.uuid}.sh`))
-    );
-
-    /* add fresh cron lines */
-    for (const task of tasks) {
-      const scriptPath = path.join(scriptDir, `houston-backup-task-${task.uuid}.sh`);
-      const logFile = path.join(logDir, `Houston_Backup_Task_${task.uuid}.log`);
-      cleaned.push(this.generateCronLine(task, scriptPath, logFile));
-    }
-
-    /* write back the new crontab */
-    this.applyCleanedCrontab(cleaned);
-
-    // Sync all backup configs to broadcaster API (best-effort, non-blocking)
     const clientId = getClientId();
-    for (const task of tasks) {
-      const serverHost = task.host || task.target.split(':')[0];
-      syncBackupConfig(serverHost, username, password, task, clientId).catch(() => {});
-    }
+    const prepared = new Set<string>();
 
-    /* ------------------------------------------------------------------
-       4.  Progress callbacks
-    ------------------------------------------------------------------ */
-    tasks.forEach((task, i) =>
-      onProgress?.(i + 1, total, `Scheduled task ${task.uuid}`)
-    );
+    for (let i = 0; i < total; i++) {
+      const task = tasks[i];
+      const [host, sharePart] = task.target.split(':');
+      task.host = assertSafeHost(host);
+      task.share = assertSafeShare(sharePart.split('/')[0]);
+
+      // store() also creates the server record, so the SMB creds never touch login creds
+      getCredentialManager().store(task.host, task.share, username, password);
+
+      const key = `${task.host}\0${task.share}`;
+      if (!prepared.has(key)) {
+        prepared.add(key);
+        this.prepareRuntime(task.host, task.share, safeUser);
+      }
+
+      this.writeTaskScript(task, safeUser);
+      syncBackupConfig(task.host, username, password, task, clientId).catch(() => { });
+      onProgress?.(i + 1, total, `Scheduled task ${task.uuid}`);
+    }
   }
 
-  /** Immediately execute the real task script (no tmp wrapper) */
-  runNow(task: BackUpTask, onProgress?: BackupProgressCallback): Promise<{ stdout: string; stderr: string }> {
-    const scriptPath = path.join(
-      this.scriptDir,
-      `houston-backup-task-${task.uuid}.sh`
-    );
+  /**
+   * The only path that can escalate: install the LaunchDaemon when it is missing or out
+   * of date. Once it is current this is a no-op, so no later task creation, edit or
+   * delete produces a prompt.
+   */
+  private prepareRuntime(host: string, share: string, username: string): void {
+    ensureUserDirs();
+    getCredentialManager().exportForRuntime(host, share, username);
+    ensureBackupDaemon();
+    removeLegacyCronLines();
+  }
 
-    // Patch existing script to ensure progress flags are present
-    this.ensureProgressFlags(scriptPath);
+  private writeTaskScript(task: BackUpTask, username: string): void {
+    fs.mkdirSync(this.scriptDir, { recursive: true, mode: 0o700 });
+    fs.mkdirSync(this.logDir, { recursive: true });
+    const scriptPath = this.scriptPathFor(task.uuid);
+    fs.writeFileSync(scriptPath, this.getShellScriptContent(task, username), { mode: 0o700 });
+    fs.chmodSync(scriptPath, 0o700);
+  }
+
+  /**
+   * Rewrite a script whose generator version is stale, so script fixes reach tasks that
+   * were created before the fix shipped.
+   */
+  private refreshTaskScript(task: BackUpTask): void {
+    const scriptPath = this.scriptPathFor(task.uuid);
+    let existing = '';
+    try {
+      existing = fs.readFileSync(scriptPath, 'utf8');
+    } catch {
+      return;
+    }
+    if (BackUpManagerMac.header(existing, 'TASK_SCRIPT_VER') === String(TASK_SCRIPT_VERSION)) return;
+
+    // Metadata that may not survive the IPC round-trip is recovered from the old script.
+    const grab = (key: string) => BackUpManagerMac.header(existing, key);
+    const username = task.smb_user || grab('TASK_SMB_USER');
+    if (!username) return;
+
+    task.host = task.host || grab('TASK_HOST');
+    task.share = task.share || grab('TASK_SHARE');
+    task.source = task.source || grab('TASK_SOURCE');
+    task.target = task.target || grab('TASK_TARGET');
+    if (!(task.schedule?.startDate instanceof Date)) {
+      const recovered = this.parseCronSchedule(grab('TASK_CRON'));
+      if (!recovered) return;
+      task.schedule = recovered;
+    }
+
+    this.writeTaskScript(task, assertSafeUsername(username));
+  }
+
+  /** Run the real task script immediately, as this user. */
+  runNow(task: BackUpTask, onProgress?: BackupProgressCallback): Promise<{ stdout: string; stderr: string }> {
+    this.refreshTaskScript(task);
+    const scriptPath = this.scriptPathFor(task.uuid);
 
     return new Promise((resolve, reject) => {
       const child = spawn('/bin/bash', [scriptPath], {
@@ -313,7 +227,7 @@ EOF_${uuid}
         if (onProgress) {
           if (chunk.includes('[INFO] rsync to')) {
             onProgress(null, 'Running rsync...');
-          } else if (chunk.includes('mount volume')) {
+          } else if (chunk.includes('[INFO] Mounting')) {
             onProgress(null, 'Mounting share...');
           }
           const matches = [...chunk.matchAll(/(\d+)%/g)];
@@ -350,68 +264,127 @@ EOF_${uuid}
     });
   }
 
-  /** Patch an existing on-disk script to add progress flags if missing */
-  protected ensureProgressFlags(scriptPath: string): void {
-    try {
-      let script = fs.readFileSync(scriptPath, 'utf8');
-      let changed = false;
-
-      // Add --info=progress2 --no-inc-recursive to rsync if missing
-      if (script.includes('rsync ') && !script.includes('--info=progress2')) {
-        script = script.replace(/(rsync\b.*?)-a\b/, '$1-a --info=progress2 --no-inc-recursive');
-        changed = true;
-      }
-
-      // Upgrade exec >>LOG to unbuffered tee if still using old direct redirect
-      if (script.includes('exec >>"$LOG"') || script.includes("exec >>\"$LOG\"")) {
-        script = script.replace(
-          /exec >>"?\$LOG"? 2>&1/,
-          'exec > >(stdbuf -o0 tee -a "$LOG" 2>/dev/null || tee -a "$LOG") 2>&1'
-        );
-        changed = true;
-      }
-
-      if (changed) {
-        fs.writeFileSync(scriptPath, script, { mode: 0o700 });
-      }
-    } catch { /* script doesn't exist yet or can't be read */ }
-  }
-
-  /** Remove one cron + script */
+  /** Remove one task. No administrator prompt, and no credential teardown. */
   async unschedule(task: BackUpTask): Promise<void> {
-    const scriptPath = path.join(this.scriptDir, `houston-backup-task-${task.uuid}.sh`);
-    const existing = execSync('crontab -l 2>/dev/null', { encoding: 'utf8' }).split(/\r?\n/);
-    const filtered = existing.filter(l => !l.includes(scriptPath));
-    this.applyCleanedCrontab(filtered);
-    try { fs.unlinkSync(scriptPath); } catch { }
+    this.removeTaskFiles(task.uuid);
   }
 
-  /** Remove multiple */
   async unscheduleSelectedTasks(tasks: BackUpTask[]): Promise<void> {
-    const existing = execSync('crontab -l 2>/dev/null', { encoding: 'utf8' }).split(/\r?\n/);
-    const filtered = existing.filter(line => !tasks.some(t => line.includes(`houston-backup-task-${t.uuid}.sh`)));
-    this.applyCleanedCrontab(filtered);
-    for (const t of tasks) {
-      try { fs.unlinkSync(path.join(this.scriptDir, `houston-backup-task-${t.uuid}.sh`)); } catch { }
+    for (const t of tasks) this.removeTaskFiles(t.uuid);
+  }
+
+  private removeTaskFiles(uuid: string): void {
+    try { fs.unlinkSync(this.scriptPathFor(uuid)); } catch { /* already gone */ }
+    for (const suffix of ['lastrun', 'laststatus']) {
+      try { fs.unlinkSync(path.join(MAC_STATE_DIR, `${uuid}.${suffix}`)); } catch { /* already gone */ }
     }
   }
 
-  /** Replace schedule by unscheduling then rescheduling */
+  /**
+   * Rewrite the script in place. Deliberately not unschedule-then-schedule: that path is
+   * what made every macOS schedule edit cost a second administrator prompt.
+   */
   async updateSchedule(task: BackUpTask, username: string, password: string): Promise<void> {
-    await this.unschedule(task);
     await this.schedule(task, username, password);
   }
 
-  private runAsAdmin(cmd: string, message: string): void {
-    execSync(`osascript -e 'display dialog "${message.replace(/"/g, '\\"')}" with title "Backup Scheduler" buttons {"OK"} default button 1'`);
-    execSync(`osascript -e 'do shell script "${this.escapeForAppleScript(cmd)}" with administrator privileges'`);
+  /**
+   * True while the next backup still needs the one-time administrator prompt, i.e. until
+   * the LaunchDaemon is installed. No task after that one needs it.
+   */
+  isFirstBackupNeeded(_host: string, _share: string, _smbUser: string): boolean {
+    return !isDaemonInstalled();
   }
 
-  private escapeForAppleScript(cmd: string): string {
-    return cmd.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+  /**
+   * Carry pre-daemon tasks over. Their scripts lived in a root-owned directory and were
+   * driven by cron; the password is still in the login keychain, which is readable here
+   * because the user is signed in.
+   */
+  private migrateLegacyTasks(): void {
+    if (!fs.existsSync(LEGACY_SCRIPT_DIR)) return;
+
+    let files: string[] = [];
+    try { files = fs.readdirSync(LEGACY_SCRIPT_DIR); } catch { return; }
+
+    for (const file of files) {
+      const m = /^houston-backup-task-([a-f0-9-]+)\.sh$/i.exec(file);
+      if (!m) continue;
+      const uuid = m[1];
+      if (fs.existsSync(this.scriptPathFor(uuid))) continue;
+
+      let txt = '';
+      try { txt = fs.readFileSync(path.join(LEGACY_SCRIPT_DIR, file), 'utf8'); } catch { continue; }
+
+      const grab = (key: string) => BackUpManagerMac.header(txt, key);
+      const host = grab('TASK_HOST');
+      const share = grab('TASK_SHARE');
+      const smbUser = grab('TASK_SMB_USER');
+      const source = grab('TASK_SOURCE');
+      const target = grab('TASK_TARGET');
+      if (!host || !share || !smbUser || !source || !target) continue;
+
+      const schedule = this.legacyCronScheduleFor(uuid);
+      if (!schedule) continue;
+
+      try {
+        ensureUserDirs();
+        this.migrateLegacyCredential(host, share, smbUser);
+        this.writeTaskScript({
+          uuid,
+          description: `Backup ${source} → ${target}`,
+          name: grab('TASK_NAME') || undefined,
+          disabled: grab('TASK_DISABLED') === 'true',
+          schedule,
+          source,
+          // Legacy scripts stored TASK_TARGET already stripped of the host:share prefix.
+          target: target.startsWith('/') ? `${host}:${share}${target}` : target,
+          host,
+          share,
+          status: 'checking',
+          smb_user: smbUser,
+        } as BackUpTask, assertSafeUsername(smbUser));
+      } catch (err) {
+        console.warn(`[BackUpManagerMac] legacy migration failed for ${uuid}:`, err);
+      }
+    }
   }
 
-  /** Build cron timing for any repeatFrequency */
+  /** Recover a legacy task's schedule from the crontab line that still points at it. */
+  private legacyCronScheduleFor(uuid: string): TaskSchedule | null {
+    try {
+      const crontab = execSync('crontab -l 2>/dev/null || true', { encoding: 'utf8' });
+      for (const line of crontab.split(/\r?\n/)) {
+        if (!line.includes(`houston-backup-task-${uuid}.sh`)) continue;
+        return this.parseCronSchedule(line.trim().split(/\s+/).slice(0, 5).join(' '));
+      }
+    } catch { /* no crontab */ }
+    return null;
+  }
+
+  /** Move a legacy keychain secret into the daemon-readable credential file. */
+  private migrateLegacyCredential(host: string, share: string, username: string): void {
+    if (fs.existsSync(this.credFileFor(host, share, username))) return;
+
+    try {
+      getCredentialManager().exportForRuntime(host, share, username);
+      return;
+    } catch { /* not in the vault — fall back to the login keychain */ }
+
+    const svc = `houston-smb-${host}-${share}-${username}`;
+    const password = execSync(
+      `security find-generic-password -s ${shellQuote(svc)} -a ${shellQuote(username)} -w 2>/dev/null || true`,
+      { encoding: 'utf8' }
+    ).trim();
+    if (!password) return;
+
+    fs.mkdirSync(MAC_CRED_DIR, { recursive: true, mode: 0o700 });
+    const credFile = this.credFileFor(host, share, username);
+    fs.writeFileSync(credFile, `username=${username}\npassword=${password}\n`, { mode: 0o600 });
+    fs.chmodSync(credFile, 0o600);
+  }
+
+  /** Build cron timing for any repeatFrequency. The daemon reads these five fields. */
   protected scheduleToCron(s: TaskSchedule): string {
     const m = s.startDate.getMinutes();
     const h = s.startDate.getHours();
@@ -424,49 +397,15 @@ EOF_${uuid}
     }
   }
 
-  /** Compose full cron line with comment tag */
-  protected generateCronLine(task: BackUpTask, scriptPath: string, logFile: string): string {
-    const cron = this.scheduleToCron(task.schedule);
-    const iso = task.schedule.startDate.toISOString();
-    const tag = `# TASK start=${iso} src=${task.source} tgt=${task.target}`;
-    return `${cron} /bin/bash "${scriptPath}" >> "${logFile}" 2>&1 ${tag}`;
-  }
-
-  /** Parse a cron line back into a full BackUpTask */
-  protected cronToBackupTask(line: string): BackUpTask | null {
-    const parts = line.split(/\s+/);
-    const sched = this.parseCronSchedule(parts.slice(0, 5).join(' '));
-    if (!sched) return null;
-    const scriptPart = parts.find(p => p.includes('houston-backup-task-'));
-    if (!scriptPart) return null;
-    const uuidMatch = scriptPart.match(/houston-backup-task-(.+?)\.sh/);
-    if (!uuidMatch) return null;
-    const uuid = uuidMatch[1];
-    const matchTag = line.match(/#\s*TASK\s+start=([^\s]+)\s+src=([^\s]+)\s+tgt=([^\s]+)/);
-    const [, , src, tgt] = matchTag || [];
-    // re-read script for host/share/mirror
-    const scriptPath = path.join(this.scriptDir, `houston-backup-task-${uuid}.sh`);
-    const content = fs.existsSync(scriptPath) ? fs.readFileSync(scriptPath, 'utf8') : '';
-    const hostMatch = content.match(/# TASK_HOST="(.+)"/);
-    const shareMatch = content.match(/# TASK_SHARE="(.+)"/);
-    return {
-      uuid,
-      description: `Backup ${src} → ${tgt}`,
-      schedule: sched,
-      source: src || '',
-      target: tgt || '',
-      host: hostMatch ? hostMatch[1] : '',
-      share: shareMatch ? shareMatch[1] : '',
-      status: 'checking'
-    };
-  }
-
   /**
- * Convert the first 5 cron fields into { repeatFrequency, startDate }
+ * Convert the five cron fields into { repeatFrequency, startDate }
  * – supports "*" everywhere, defaulting to 0 / today’s month / today’s weekday.
  */
   protected parseCronSchedule(expr: string): TaskSchedule | null {
-    const [minS, hourS, domS, monS, dowS] = expr.trim().split(/\s+/);
+    if (!expr) return null;
+    const fields = expr.trim().split(/\s+/);
+    if (fields.length !== 5) return null;
+    const [minS, hourS, domS, monS, dowS] = fields;
 
     // helper → either numeric value or fallback
     const numOr = (s: string, fallback: number) => (s === '*' ? fallback : +s);
@@ -525,140 +464,205 @@ EOF_${uuid}
 
 
 
-  /** Install a cleaned crontab – or erase it safely when empty */
-  protected applyCleanedCrontab(lines: string[]): void {
-    const cleaned = lines.map(l => l.trim()).filter(Boolean);
-
-    if (cleaned.length === 0) {
-      // remove crontab; ignore “no crontab for user” exit-code
-      try { execSync("crontab -r", { stdio: "ignore" }); } catch { /* noop */ }
-      return;
-    }
-
-    // push the lines to stdin of `crontab -`  → no quoting issues
-    const input = cleaned.join("\n") + "\n";
-    execSync("crontab -", { input });
-  }
-
   private getShellScriptContent(task: BackUpTask, username: string): string {
-    const mountRoot = this.MOUNT_ROOT;                     // e.g., ~/houston-mounts
-    const mountPoint = `${mountRoot}/${task.share}`;
-    const volumesMount = `/Volumes/${task.share}`;
-    const rel = task.target!.split('/').slice(1).join('/'); // strip leading /
-    const dir = `${mountPoint}/${rel}`;
-    const svc = `houston-smb-${task.host}-${task.share}-${username}`;
+    const host = assertSafeHost(task.host || task.target.split(':')[0]);
+    const share = assertSafeShare(task.share || task.target.split(':')[1].split('/')[0]);
+    const mountPoint = `${this.MOUNT_ROOT}/${share}`;
     const target = getSmbTargetFromSmbTarget(task.target);
-    const rsyncCmd = `COPYFILE_DISABLE=1 ${getRsync()} -a --compress-level=1 --info=progress2 --no-inc-recursive ${shellQuote(`${task.source}/`)} ${shellQuote(`${dir}/`)}`;
+    const destDir = `${mountPoint}/${target.replace(/^\/+/, '')}`;
+    const cron = this.scheduleToCron(task.schedule);
 
-    return (`
-#!/bin/bash
-set -e
-
-EVENT_LOG="${this.logDir}/45drives_backup_events.json"
-LOG="${this.logDir}/Houston_Backup_Task_${task.uuid}.log"
-START_DATE='${task.schedule.startDate.toISOString()}'
-HOST=${shellQuote(task.host || "")}
-SHARE=${shellQuote(task.share || "")}
-SOURCE=${shellQuote(task.source)}
-TARGET=${shellQuote(target)}
-
-# identities
-CLIENT_ID_FILE='${path.join(app.getPath("userData"), "client-id.txt")}'
-INSTALL_ID="$(cat "$CLIENT_ID_FILE" 2>/dev/null || true)"
-SMB_USER='${username}'
-
-# ---- Houston backup task metadata (for queryTasks) -------------------------
-# TASK_HOST="${task.host}"
-# TASK_SHARE="${task.share}"
+    return (`#!/bin/bash
+#
+# Generated by 45Drives Storage Wizard. Executed by the Houston backup LaunchDaemon,
+# which runs it as this user. Do not edit by hand: it is rewritten whenever
+# TASK_SCRIPT_VER falls behind the app.
+#
+# TASK_SCRIPT_VER="${TASK_SCRIPT_VERSION}"
+# TASK_HOST="${host}"
+# TASK_SHARE="${share}"
 # TASK_SOURCE="${task.source}"
-# TASK_TARGET="${getSmbTargetFromSmbTarget(task.target)}"
+# TASK_TARGET="${task.target}"
 # TASK_SMB_USER="${username}"
 # TASK_NAME="${(task.name || '').replace(/"/g, '')}"
 # TASK_DISABLED="${task.disabled ? 'true' : 'false'}"
+# TASK_CRON="${cron}"
+# TASK_FREQ="${task.schedule.repeatFrequency}"
 
-mkdir -p "$(dirname "$LOG")"
-# Use unbuffered tee for real-time progress; fall back to regular tee if stdbuf unavailable
-if command -v stdbuf &>/dev/null; then
-  exec > >(stdbuf -o0 tee -a "$LOG") 2>&1
-elif command -v gstdbuf &>/dev/null; then
-  exec > >(gstdbuf -o0 tee -a "$LOG") 2>&1
-else
-  exec > >(tee -a "$LOG") 2>&1
-fi
+set -euo pipefail
 
-# Skip execution if task is disabled
-if [ "${task.disabled ? 'true' : 'false'}" = "true" ]; then
+EVENT_LOG=${shellQuote(path.join(this.logDir, '45drives_backup_events.json'))}
+LOG=${shellQuote(path.join(this.logDir, `Houston_Backup_Task_${task.uuid}.log`))}
+UUID=${shellQuote(task.uuid)}
+HOST=${shellQuote(host)}
+SHARE=${shellQuote(share)}
+SMB_USER=${shellQuote(username)}
+SOURCE=${shellQuote(task.source)}
+TARGET=${shellQuote(target)}
+MOUNT_DIR=${shellQuote(mountPoint)}
+DEST_DIR=${shellQuote(destDir)}
+CRED_FILE=${shellQuote(this.credFileFor(host, share, username))}
+CLIENT_ID_FILE=${shellQuote(path.join(app.getPath('userData'), 'client-id.txt'))}
+INSTALL_ID="$(cat "$CLIENT_ID_FILE" 2>/dev/null || true)"
+DISABLED='${task.disabled ? 'true' : 'false'}'
+
+if [ "$DISABLED" = "true" ]; then
   echo "[INFO] Task is disabled, skipping."
   exit 0
 fi
 
+mkdir -p "$(dirname "$LOG")"
+if command -v stdbuf >/dev/null 2>&1; then
+  exec > >(stdbuf -o0 tee -a "$LOG") 2>&1
+else
+  exec > >(tee -a "$LOG") 2>&1
+fi
+
+WE_MOUNTED=false
 BACKUP_ENDED=false
+
 write_backup_end() {
   local end_status="\${1:-failure}"
   if [ "$BACKUP_ENDED" = "false" ]; then
     BACKUP_ENDED=true
-    echo '{"event":"backup_end","timestamp":"'"$(date -u +%Y-%m-%dT%H:%M:%SZ)"'","uuid":"'"${task.uuid}"'","host":"'"$HOST"'","share":"'"$SHARE"'","source":"'"$SOURCE"'","target":"'"$TARGET"'","status":"'"$end_status"'","install_id":"'"$INSTALL_ID"'","smb_user":"'"$SMB_USER"'"}' >> "$EVENT_LOG"
+    echo '{"event":"backup_end","timestamp":"'"$(date -u +%Y-%m-%dT%H:%M:%SZ)"'","uuid":"'"$UUID"'","host":"'"$HOST"'","share":"'"$SHARE"'","source":"'"$SOURCE"'","target":"'"$TARGET"'","status":"'"$end_status"'","install_id":"'"$INSTALL_ID"'","smb_user":"'"$SMB_USER"'"}' >> "$EVENT_LOG"
   fi
 }
-trap 'write_backup_end failure' EXIT
 
-echo "===== $(/bin/date -u '+%Y-%m-%dT%H:%M:%SZ') START ${task.uuid} ====="
-
-# --- backup_start (with install_id + smb_user) ------------------------------
-echo '{"event":"backup_start","timestamp":"'"$(date -u +%Y-%m-%dT%H:%M:%SZ)"'","uuid":"'"${task.uuid}"'","host":"'"$HOST"'","share":"'"$SHARE"'","source":"'"$SOURCE"'","target":"'"$TARGET"'","install_id":"'"$INSTALL_ID"'","smb_user":"'"$SMB_USER"'"}' >> "$EVENT_LOG"
-
-${bashEventSnippetMac(task.host || '', 'start', task.uuid, svc, username)}
-
-# keychain lookup for password
-PASSWORD=$(security find-generic-password -s "${svc}" -a "${username}" -w) || {
-  echo "[ERROR] key-chain lookup failed"
-  exit 1
+cleanup() {
+  write_backup_end failure
+  # Unmount only what this run mounted. The mount point itself is never removed: an
+  # unprivileged run cannot recreate one it does not own, and an empty directory is free.
+  if [ "$WE_MOUNTED" = "true" ]; then
+    /sbin/umount "$MOUNT_DIR" 2>/dev/null \\
+      || /usr/sbin/diskutil unmount force "$MOUNT_DIR" >/dev/null 2>&1 \\
+      || true
+  fi
 }
+trap cleanup EXIT
 
-# ---------- (1) try Finder / user-level mount first -------------------------
-if ! /sbin/mount | /usr/bin/grep -qE "${mountPoint}|${volumesMount}"; then
-  /usr/bin/osascript <<EOT
-    try
-      mount volume "smb://${username}:$PASSWORD@${task.host}/${task.share}"
-    end try
-EOT
-  sleep 2
-  real_mnt=$(/sbin/mount | grep "${username}@${task.host}/${task.share}" | awk '{ print $3; exit }')
-  if [ -z "$real_mnt" ]; then
-    echo "[ERROR] SMB mount failed or volume not detected"
-    exit 1
-  fi
-  if [ "$real_mnt" != "${mountPoint}" ]; then
-    [ -d "${mountPoint}" ] && rmdir "${mountPoint}" 2>/dev/null || true
-    ln -snf "$real_mnt" "${mountPoint}"
-  fi
+echo "===== [$(date -u '+%Y-%m-%dT%H:%M:%SZ')] [INFO] Backup task started: $UUID ====="
+
+echo '{"event":"backup_start","timestamp":"'"$(date -u +%Y-%m-%dT%H:%M:%SZ)"'","uuid":"'"$UUID"'","host":"'"$HOST"'","share":"'"$SHARE"'","source":"'"$SOURCE"'","target":"'"$TARGET"'","install_id":"'"$INSTALL_ID"'","smb_user":"'"$SMB_USER"'"}' >> "$EVENT_LOG"
+
+${bashEventSnippet(host, 'start', task.uuid)}
+
+# ---- pre-flight -------------------------------------------------------------
+case "$SOURCE" in
+  //*|/Volumes/*)
+    echo "[ERROR] Network locations are not supported as a backup source: $SOURCE"
+    exit 16
+    ;;
+esac
+
+if [ ! -d "$SOURCE" ]; then
+  echo "[ERROR] Backup source does not exist: $SOURCE"
+  exit 16
 fi
 
-# ---- marker: write install_id + smb_user at /<UUID>/.houston/client.json ---
-uuid="$(printf '%s' "${target}" | awk -F/ '{print $2}')"
-marker_dir="${mountPoint}/$uuid/.houston"
-mkdir -p "$marker_dir"
-printf '{"install_id":"%s","smb_user":"%s","source":"%s","user":"%s","host":"%s","platform":"mac"}\n' \
-  "$INSTALL_ID" "$SMB_USER" "$SOURCE" "$(id -un)" "$(hostname -s)" > "$marker_dir/client.json"
+# A TCC denial presents as an unreadable directory, so name the cause here rather than
+# letting rsync report a bare permission error at 2am.
+if [ ! -r "$SOURCE" ]; then
+  echo "[ERROR] Backup source is not readable: $SOURCE"
+  echo "[ERROR] Grant Full Disk Access to the Houston backup daemon in System Settings > Privacy & Security > Full Disk Access."
+  exit 13
+fi
 
-# ---------- copy -------------------------------------------------------------
-mkdir -p "${dir}"
-echo "[INFO] rsync to ${dir}"
-${rsyncCmd} || true
-ST=\${PIPESTATUS[0]:-$?}
+if [ ! -f "$CRED_FILE" ]; then
+  echo "[ERROR] No credential file at $CRED_FILE - re-run the backup setup for this server."
+  exit 1
+fi
 
-# --- backup_end (with install_id + smb_user) --------------------------------
-STATUS=$([ $ST -eq 0 ] && echo success || echo failure)
-write_backup_end "$STATUS"
+PASSWORD="$(grep '^password=' "$CRED_FILE" | head -1 | cut -d= -f2-)"
+if [ -z "$PASSWORD" ]; then
+  echo "[ERROR] Credential file $CRED_FILE has no password - re-run the backup setup."
+  exit 1
+fi
 
-_BCAST_STATUS="$STATUS"
-_BCAST_ERROR=""
-if [ $ST -ne 0 ]; then _BCAST_ERROR="rsync exit code $ST"; fi
-${bashEventSnippetMac(task.host || '', 'end', task.uuid, svc, username)}
+# ---- mount ------------------------------------------------------------------
+# mount_smbfs is headless. The previous implementation drove Finder through osascript,
+# which needs a GUI session and so could never run with the user signed out.
+urlenc() {
+  local s="\$1" out='' i c
+  for (( i = 0; i < \${#s}; i++ )); do
+    c="\${s:i:1}"
+    case "$c" in
+      [a-zA-Z0-9.~_-]) out+="$c" ;;
+      *) out+="$(printf '%%%02X' "'$c")" ;;
+    esac
+  done
+  printf '%s' "$out"
+}
 
-echo "===== $(/bin/date -u '+%Y-%m-%dT%H:%M:%SZ') END $ST ====="
-exit $ST
-  `).trimStart();
+mkdir -p "$MOUNT_DIR"
+
+if /sbin/mount | grep -q " on $MOUNT_DIR "; then
+  echo "[INFO] Already mounted at $MOUNT_DIR"
+else
+  echo "[INFO] Mounting //$HOST/$SHARE at $MOUNT_DIR"
+  if ! /sbin/mount_smbfs -N "//$(urlenc "$SMB_USER"):$(urlenc "$PASSWORD")@$HOST/$SHARE" "$MOUNT_DIR"; then
+    echo "[ERROR] SMB mount failed for //$HOST/$SHARE"
+    exit 1
+  fi
+  WE_MOUNTED=true
+fi
+
+if ! /sbin/mount | grep -q " on $MOUNT_DIR "; then
+  echo "[ERROR] $MOUNT_DIR is not mounted after mount_smbfs reported success"
+  exit 1
+fi
+
+echo "[SUCCESS] SMB share mounted at $MOUNT_DIR"
+
+# ---- marker -----------------------------------------------------------------
+MARKER_UUID="$(printf '%s' "$TARGET" | awk -F/ '{print $2}')"
+MARKER_DIR="$MOUNT_DIR/$MARKER_UUID/.houston"
+mkdir -p "$MARKER_DIR"
+printf '{"install_id":"%s","smb_user":"%s","source":"%s","user":"%s","host":"%s","platform":"mac"}\\n' \\
+  "$INSTALL_ID" "$SMB_USER" "$SOURCE" "$(id -un)" "$(hostname -s)" > "$MARKER_DIR/client.json"
+
+# ---- copy -------------------------------------------------------------------
+mkdir -p "$DEST_DIR"
+echo "[INFO] rsync to $DEST_DIR"
+
+# 'rsync ... || true' is an AND-OR list, not a pipeline, so PIPESTATUS would report the
+# status of 'true' and every failure would read as success. Capture \$? directly.
+set +e
+COPYFILE_DISABLE=1 rsync -a --compress-level=1 --info=progress2 --no-inc-recursive "$SOURCE/" "$DEST_DIR/"
+ST=$?
+set -e
+
+case "$ST" in
+  0)
+    echo "[SUCCESS] rsync completed successfully"
+    _BCAST_STATUS="success"
+    _BCAST_ERROR=""
+    EXIT_CODE=0
+    ;;
+  23|24)
+    # 23: some files could not be transferred. 24: files vanished during transfer.
+    echo "[WARN] Some files were skipped or vanished during transfer (rsync exit $ST)"
+    echo "[SUCCESS] rsync completed with warnings (exit $ST)"
+    # Reported as success: the transfer ran, some files were simply not copyable.
+    _BCAST_STATUS="success"
+    _BCAST_ERROR="rsync exit code $ST"
+    EXIT_CODE=0
+    ;;
+  *)
+    echo "[ERROR] rsync failed with exit code $ST"
+    _BCAST_STATUS="failure"
+    _BCAST_ERROR="rsync exit code $ST"
+    EXIT_CODE=$ST
+    ;;
+esac
+
+write_backup_end "$_BCAST_STATUS"
+
+${bashEventSnippet(host, 'end', task.uuid)}
+
+echo "===== [$(date -u '+%Y-%m-%dT%H:%M:%SZ')] [INFO] Backup task finished: rsync exit $ST ====="
+exit $EXIT_CODE
+`);
   }
 
 }

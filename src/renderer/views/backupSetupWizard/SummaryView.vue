@@ -14,8 +14,12 @@
         Note: On Linux, if this is your first backup, you will be prompted for your admin password
         to set up the server connection.
       </p>
-      <p v-if="thisOs === 'mac'" class="p-2 text-sm bg-red-500/50 font-bold rounded-md text-center">
-        <strong>Note:</strong> On macOS, you'll need to grant scheduled backups (<code>cron</code>) <em>Full Disk Access</em> via
+      <p v-if="thisOs === 'mac' && isFirstBackupRun"
+        class="p-2 text-sm bg-red-500/50 font-bold rounded-md text-center">
+        <strong>Note:</strong> On macOS, the first backup installs a background service so your backups can run
+        even when you're signed out. You'll be asked for your admin password once. If your backup source is in a
+        protected folder (Desktop, Documents, Downloads), also grant <em>Full Disk Access</em> to
+        <code>/Library/Application Support/45Drives/Houston/bin/houston-backupd</code> via
         <strong>System Settings → Privacy &amp; Security → Full Disk Access</strong>.
       </p>
 

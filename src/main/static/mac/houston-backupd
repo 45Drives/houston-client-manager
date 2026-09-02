@@ -1,0 +1,204 @@
+#!/bin/bash
+#
+# houston-backupd — LaunchDaemon runner for 45Drives Storage Wizard backups.
+#
+# Installed to /Library/Application Support/45Drives/Houston/bin/houston-backupd and
+# started by /Library/LaunchDaemons/com.45drives.houston.backupd.plist. Because it is a
+# LaunchDaemon it runs at boot and keeps running with nobody signed in, which is what
+# makes logged-out backups possible on macOS. cron is not used.
+#
+# It never executes a task script as root. Task scripts live in each user's home and are
+# run with sudo -u as the account that owns them, after an ownership and writability
+# check — a user-writable script executed as root would be a local privilege escalation.
+#
+# DAEMON_VERSION must match MAC_DAEMON_VERSION in src/main/backup/macDaemon.ts. Bump both
+# on any change here, or installed copies will never be replaced.
+# DAEMON_VERSION = 1
+
+set -uo pipefail
+
+export PATH=/usr/bin:/bin:/usr/sbin:/sbin
+
+SUPPORT_REL="Library/Application Support/45Drives/Houston"
+TASKS_REL="${SUPPORT_REL}/backup-tasks"
+STATE_REL="${SUPPORT_REL}/state"
+
+LOG_DIR="/Library/Logs/45Drives"
+LOG_FILE="${LOG_DIR}/houston-backupd.log"
+MAX_LOG_BYTES=5242880
+
+mkdir -p "$LOG_DIR" 2>/dev/null || true
+
+log() {
+  printf '%s [%s] %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$$" "$*" >>"$LOG_FILE" 2>/dev/null || true
+}
+
+rotate_log() {
+  local size
+  size="$(stat -f %z "$LOG_FILE" 2>/dev/null || echo 0)"
+  if [ "$size" -gt "$MAX_LOG_BYTES" ]; then
+    tail -n 2000 "$LOG_FILE" >"${LOG_FILE}.tmp" 2>/dev/null && mv "${LOG_FILE}.tmp" "$LOG_FILE"
+  fi
+}
+
+# Read a `# KEY="value"` metadata line out of a generated task script.
+header() {
+  sed -n "s/^# $2=\"\(.*\)\"[[:space:]]*\$/\1/p" "$1" 2>/dev/null | head -1
+}
+
+# ---------------------------------------------------------------------------
+# Due-ness
+#
+# The app writes the five cron timing fields into the script header, but cron itself is
+# not involved. Due-ness is decided by comparing a period key (the hour, day, week or
+# month a trigger belongs to) against the key recorded for the last run. A trigger missed
+# because the Mac was asleep or powered off therefore fires on the next wake instead of
+# being lost, which is the behaviour a nightly backup needs.
+# ---------------------------------------------------------------------------
+period_key() {
+  case "$1" in
+    hour)  date '+%Y%m%d%H' ;;
+    day)   date '+%Y%m%d' ;;
+    week)  date '+%Y%U' ;;      # %U starts weeks on Sunday, matching cron's dow numbering
+    month) date '+%Y%m' ;;
+    *)     date '+%Y%m%d' ;;
+  esac
+}
+
+# threshold_reached <freq> <cron_min> <cron_hour> <cron_dom> <cron_dow>
+threshold_reached() {
+  local freq="$1" c_min="$2" c_hour="$3" c_dom="$4" c_dow="$5"
+  local now_min now_hour now_dom now_dow now_total sched_total
+
+  now_min=$(date '+%-M')
+  now_hour=$(date '+%-H')
+  now_dom=$(date '+%-d')
+  now_dow=$(date '+%w')
+  now_total=$(( now_hour * 60 + now_min ))
+
+  case "$freq" in
+    hour)
+      [ "$now_min" -ge "${c_min:-0}" ]
+      ;;
+    day)
+      sched_total=$(( ${c_hour:-0} * 60 + ${c_min:-0} ))
+      [ "$now_total" -ge "$sched_total" ]
+      ;;
+    week)
+      sched_total=$(( ${c_hour:-0} * 60 + ${c_min:-0} ))
+      if [ "$now_dow" -gt "${c_dow:-0}" ]; then return 0; fi
+      [ "$now_dow" -eq "${c_dow:-0}" ] && [ "$now_total" -ge "$sched_total" ]
+      ;;
+    month)
+      sched_total=$(( ${c_hour:-0} * 60 + ${c_min:-0} ))
+      if [ "$now_dom" -gt "${c_dom:-1}" ]; then return 0; fi
+      [ "$now_dom" -eq "${c_dom:-1}" ] && [ "$now_total" -ge "$sched_total" ]
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+# run_task <uid> <home> <script> <uuid> <key>
+run_task() {
+  local uid="$1" home="$2" script="$3" uuid="$4" key="$5"
+  local state_dir="${home}/${STATE_REL}"
+  local lock="${state_dir}/${uuid}.lock"
+
+  mkdir -p "$state_dir" 2>/dev/null || true
+
+  # mkdir is atomic, so this also skips a task whose previous run is still going.
+  if ! mkdir "$lock" 2>/dev/null; then
+    log "skip ${uuid}: previous run still in progress"
+    return 0
+  fi
+
+  # Recorded before the run, not after: a task that crashes must not re-fire every minute.
+  printf '%s' "$key" >"${state_dir}/${uuid}.lastrun" 2>/dev/null || true
+  chown "$uid" "${state_dir}/${uuid}.lastrun" 2>/dev/null || true
+
+  log "run ${uuid} as uid ${uid}"
+  sudo -n -H -u "#${uid}" /bin/bash "$script" >/dev/null 2>>"$LOG_FILE"
+  local rc=$?
+  log "done ${uuid} rc=${rc}"
+
+  printf '%s rc=%s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$rc" \
+    >"${state_dir}/${uuid}.laststatus" 2>/dev/null || true
+  chown "$uid" "${state_dir}/${uuid}.laststatus" 2>/dev/null || true
+
+  rmdir "$lock" 2>/dev/null || true
+}
+
+# scan_user <name> <uid> <home>
+scan_user() {
+  local name="$1" uid="$2" home="$3"
+  local task_dir="${home}/${TASKS_REL}"
+  [ -d "$task_dir" ] || return 0
+
+  local script
+  for script in "$task_dir"/houston-backup-task-*.sh; do
+    [ -f "$script" ] || continue
+
+    # A script this user cannot have authored, or that anyone else can rewrite, is not run.
+    local owner mode
+    owner="$(stat -f %u "$script" 2>/dev/null || echo -1)"
+    mode="$(stat -f %Lp "$script" 2>/dev/null || echo 777)"
+    if [ "$owner" != "$uid" ]; then
+      log "refuse ${script}: owned by uid ${owner}, expected ${uid}"
+      continue
+    fi
+    if [ $(( 8#$mode & 8#022 )) -ne 0 ]; then
+      log "refuse ${script}: group- or world-writable (mode ${mode})"
+      continue
+    fi
+
+    local uuid
+    uuid="$(basename "$script" .sh)"
+    uuid="${uuid#houston-backup-task-}"
+
+    [ "$(header "$script" TASK_DISABLED)" = "true" ] && continue
+
+    local freq cron
+    freq="$(header "$script" TASK_FREQ)"
+    cron="$(header "$script" TASK_CRON)"
+    [ -n "$freq" ] && [ -n "$cron" ] || { log "skip ${uuid}: missing TASK_FREQ/TASK_CRON"; continue; }
+
+    # shellcheck disable=SC2086
+    set -- $cron
+    [ $# -eq 5 ] || { log "skip ${uuid}: malformed TASK_CRON '${cron}'"; continue; }
+    local c_min="$1" c_hour="$2" c_dom="$3" c_dow="$5"
+    [ "$c_min" = "*" ] && c_min=0
+    [ "$c_hour" = "*" ] && c_hour=0
+    [ "$c_dom" = "*" ] && c_dom=1
+    [ "$c_dow" = "*" ] && c_dow=0
+
+    local key last
+    key="$(period_key "$freq")"
+    last="$(cat "${home}/${STATE_REL}/${uuid}.lastrun" 2>/dev/null || echo '')"
+    [ "$key" = "$last" ] && continue
+
+    threshold_reached "$freq" "$c_min" "$c_hour" "$c_dom" "$c_dow" || continue
+
+    run_task "$uid" "$home" "$script" "$uuid" "$key"
+  done
+}
+
+main() {
+  rotate_log
+
+  # Real local accounts only: UniqueID >= 500 and no leading underscore.
+  local line name uid home
+  while read -r name uid; do
+    case "$name" in ''|_*|daemon|nobody|root) continue ;; esac
+    [ -n "$uid" ] || continue
+    [ "$uid" -ge 500 ] 2>/dev/null || continue
+
+    home="$(dscl . -read "/Users/${name}" NFSHomeDirectory 2>/dev/null | sed -n 's/^NFSHomeDirectory: //p')"
+    [ -n "$home" ] && [ -d "$home" ] || continue
+
+    scan_user "$name" "$uid" "$home"
+  done < <(dscl . -list /Users UniqueID 2>/dev/null)
+}
+
+main "$@"
