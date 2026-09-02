@@ -222,9 +222,14 @@ const canProceed = computed(() => {
   return true;
 });
 
+let rescanTimer: ReturnType<typeof setTimeout> | null = null;
+
 function onRescanServers() {
   selectedServerIp.value = '';
   manualIp.value = '';
+  discoveryState.loading = true;
+  if (rescanTimer) clearTimeout(rescanTimer);
+  rescanTimer = setTimeout(() => { discoveryState.loading = false; }, 20000);
   IPCRouter.getInstance().send(
     'backend',
     'action',

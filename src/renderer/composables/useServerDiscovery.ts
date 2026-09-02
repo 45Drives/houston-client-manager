@@ -9,6 +9,16 @@ export function useServerDiscovery() {
     loading: true,
   })
 
+  let searchTimer: ReturnType<typeof setTimeout> | null = null
+
+  // Discovery keeps probing in the background, so don't claim it finished the
+  // moment the fallback scan returns — that reads as "no servers" far too early.
+  function beginSearch() {
+    discoveryState.loading = true
+    if (searchTimer) clearTimeout(searchTimer)
+    searchTimer = setTimeout(() => { discoveryState.loading = false }, 20000)
+  }
+
   function onDiscovered(_evt:any, mdnsList: Server[]) {
     // Build set of IPs the main process currently considers active
     const activeIps = new Set(mdnsList.map(m => m.ip))
@@ -59,12 +69,12 @@ export function useServerDiscovery() {
     } catch (err) {
       console.error('Fallback scan failed:', err)
     } finally {
-      discoveryState.loading = false
+      if (discoveryState.servers.length) discoveryState.loading = false
     }
   }
 
   function rescan() {
-    discoveryState.loading = true
+    beginSearch()
     discoveryState.fallbackTriggered = false
     discoveryState.servers.splice(0)
     window.electron?.ipcRenderer.invoke('discovery:setEnabled', false).then(() => {
@@ -74,12 +84,14 @@ export function useServerDiscovery() {
   }
 
   onMounted(() => {
+    beginSearch()
     window.electron?.ipcRenderer.on('discovered-servers', onDiscovered)
     window.electron?.ipcRenderer.invoke('discovery:setEnabled', true)
     setTimeout(runFallbackScanOnce, 3000)
   })
 
   onBeforeUnmount(() => {
+    if (searchTimer) clearTimeout(searchTimer)
     window.electron?.ipcRenderer.removeListener?.('discovered-servers', onDiscovered)
     window.electron?.ipcRenderer.invoke('discovery:setEnabled', false)
   })

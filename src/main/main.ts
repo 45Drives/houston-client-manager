@@ -792,10 +792,34 @@ function createWindow() {
   // Set up mDNS for service discovery
   const mDNSClient = mdns(); // Correctly call as a function
 
+  // multicast-dns joins the group on every interface, but pins *outbound* queries
+  // to setMulticastInterface('0.0.0.0'), which lets Windows pick the send adapter
+  // from the routing table — usually WSL/Hyper-V/VPN rather than the LAN NIC, so
+  // queries never reach the servers. Bind an extra socket per real interface.
+  const extraMdnsClients: any[] = process.platform !== 'win32' ? [] :
+    Object.entries(os.networkInterfaces())
+      .filter(([name]) => !VIRTUAL_IFACE_RE.test(name))
+      .flatMap(([, addrs]) => addrs ?? [])
+      .filter(a => a.family === 'IPv4' && !a.internal && isPrivateV4(a.address))
+      .map(a => {
+        try {
+          const client = mdns({ interface: a.address });
+          client.on('error', () => { });
+          client.on('warning', () => { });
+          client.on('response', handleMdnsResponse);
+          return client;
+        } catch {
+          return null;
+        }
+      })
+      .filter(client => client !== null);
+
   function queryMdns() {
-    try {
-      mDNSClient.query({ questions: [{ name: serviceType, type: 'PTR' }] });
-    } catch { }
+    for (const client of [mDNSClient, ...extraMdnsClients]) {
+      try {
+        client.query({ questions: [{ name: serviceType, type: 'PTR' }] });
+      } catch { }
+    }
   }
 
   queryMdns();
@@ -992,6 +1016,7 @@ function createWindow() {
     ipcMain.removeAllListeners('message')
     stopDiscoveryLoops();
     mDNSClient.destroy();
+    extraMdnsClients.forEach(client => { try { client.destroy(); } catch { } });
     if (process.platform !== 'darwin') {
       app.quit();
     }
