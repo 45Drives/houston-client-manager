@@ -25,6 +25,12 @@ export class BackUpSetupConfigurator {
 
       const backUpManager = this.getBackUpManager();
 
+      /* Optional on the wizard config (see planType for the same convention). Lets
+       * standard Windows users register tasks without a UAC prompt. */
+      if (backUpManager instanceof BackUpManagerWin) {
+        backUpManager.windowsAccountPassword = (config as any).windowsPassword || '';
+      }
+
       // If scheduleAllTasks exists on the manager, always prefer it
       if (backUpManager.scheduleAllTasks && config.backUpTasks.length > 1) {
         await backUpManager.scheduleAllTasks(

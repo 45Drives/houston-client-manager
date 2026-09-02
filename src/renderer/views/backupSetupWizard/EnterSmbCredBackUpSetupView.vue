@@ -39,6 +39,23 @@
               <EyeSlashIcon v-if="showPassword" class="w-5 h-5" />
             </button>
           </div>
+          <div v-if="isWindows" class="grid relative grid-cols-[200px_1fr] items-center">
+            <label for="winpassword" class="font-semibold">Windows password:</label>
+            <input v-model="windowsPassword" v-enter-next :type="showWindowsPassword ? 'text' : 'password'"
+              id="winpassword"
+              class="bg-default p-2 input-textlike rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="Optional — avoids an administrator prompt" />
+            <button type="button" @click="showWindowsPassword = !showWindowsPassword"
+              class="absolute right-3 top-1/2 transform -translate-y-1/2 text-muted">
+              <EyeIcon v-if="!showWindowsPassword" class="w-5 h-5" />
+              <EyeSlashIcon v-if="showWindowsPassword" class="w-5 h-5" />
+            </button>
+          </div>
+          <p v-if="isWindows" class="text-xs text-muted -mt-2">
+            The password you use to sign in to this computer. Windows stores it itself so backups can
+            run while you are signed out; this app never saves it. Leave blank to be prompted for
+            administrator approval instead.
+          </p>
           <button type="submit" class="hidden">Submit</button>
         </form>
 
@@ -91,6 +108,9 @@ const backUpSetupConfig = inject(backUpSetupConfigKey)!;
 
 const openingBackup = ref(false);
 const showPassword = ref(false);
+const showWindowsPassword = ref(false);
+const windowsPassword = ref('');
+const isWindows = ref(false);
 const validationError = ref('');
 const isValidating = ref(false);
 const autoFilling = ref(false);
@@ -110,6 +130,8 @@ const targetDisplay = computed(() => {
 
 // Try to auto-fill SMB credentials from the stored server entry
 onMounted(async () => {
+  try { isWindows.value = (await window.electron.getOS()) === 'win'; } catch { /* leave hidden */ }
+
   if (backUpSetupConfig.username && backUpSetupConfig.password) return; // already filled
 
   const target = backUpSetupConfig?.backUpTasks?.[0]?.target;
@@ -174,6 +196,7 @@ const proceedToNextStep = async () => {
     }
 
     isValidating.value = false;
+    (backUpSetupConfig as any).windowsPassword = windowsPassword.value;
     nextStep();
   }
 };

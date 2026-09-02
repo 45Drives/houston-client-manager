@@ -28,6 +28,10 @@ const CREDS_DIR = path.join(HOUSTON_USER_DIR, 'credentials');
  * desktop identity here, while the app is still unelevated. */
 const DESKTOP_USER = `${process.env.USERDOMAIN || os.hostname()}\\${os.userInfo().username}`;
 
+/* Carries the Windows account password to PowerShell without writing it into the temp
+ * .ps1, which persists in %TEMP% and is readable by other local accounts. */
+const WIN_PASS_ENV = 'HOUSTON_WIN_ACCOUNT_PASSWORD';
+
 interface TaskData {
   source?: string;
   target?: string;
@@ -41,7 +45,28 @@ interface TaskData {
   [key: string]: string | boolean | undefined;
 }
 
+/* exec() rejects with an Error whose message is just "Command failed", discarding the
+ * PowerShell diagnostic that explains why. Keep both streams on the error object. */
+function attachOutput(error: any, stdout: unknown, stderr: unknown): any {
+  error.stdout = stdout === undefined ? '' : String(stdout);
+  error.stderr = stderr === undefined ? '' : String(stderr);
+  return error;
+}
+
+function describeFailure(e: any): string {
+  return [e?.stderr, e?.stdout, e?.message]
+    .map((s) => (s ? String(s).trim() : ''))
+    .filter(Boolean)
+    .join(' | ')
+    .replace(/\s+/g, ' ')
+    .slice(0, 1500);
+}
+
 export class BackUpManagerWin implements BackUpManager {
+
+  /* Set by the configurator when the user supplied it. Kept in memory only — Task
+   * Scheduler persists it as an LSA secret, so we must never write it to disk. */
+  windowsAccountPassword = '';
 
   protected runScriptAdmin(powershellScript: string, scriptName: string): Promise<{ stdout: string, stderr: string }> {
     const options = {
@@ -56,22 +81,22 @@ export class BackUpManagerWin implements BackUpManager {
 
     return new Promise((resolve, reject) => {
       sudo.exec(`powershell -ExecutionPolicy Bypass -File "${scriptPath}"`, options, (error, stdout, stderr) => {
-        if (error) return reject(error);
+        if (error) return reject(attachOutput(error, stdout, stderr));
         resolve({ stdout: stdout === undefined ? "" : stdout.toString(), stderr: stderr === undefined ? "" : stderr.toString() });
       });
     });
 
   }
 
-  protected runScript(powershellScript: string, scriptName: string): Promise<{ stdout: string, stderr: string }> {
+  protected runScript(powershellScript: string, scriptName: string, env?: Record<string, string>): Promise<{ stdout: string, stderr: string }> {
     // Save to file
     const tempDir = os.tmpdir();
     const scriptPath = path.join(tempDir, `${scriptName}.ps1`);
     fs.writeFileSync(scriptPath, powershellScript);
 
     return new Promise((resolve, reject) => {
-      exec(`powershell -ExecutionPolicy Bypass -File "${scriptPath}"`, (error, stdout, stderr) => {
-        if (error) return reject(error);
+      exec(`powershell -ExecutionPolicy Bypass -File "${scriptPath}"`, { env: { ...process.env, ...env } }, (error, stdout, stderr) => {
+        if (error) return reject(attachOutput(error, stdout, stderr));
         resolve({ stdout: stdout === undefined ? "" : stdout.toString(), stderr: stderr === undefined ? "" : stderr.toString() });
       });
     });
@@ -376,16 +401,36 @@ foreach ($n in @(${names})) {
     try {
       const { stdout } = await this.runScript(ps, 'verify_schedule');
       return uuids.filter(u => stdout.includes(`MISSING:${TASK_ID}_${u}`));
-    } catch {
+    } catch (e) {
+      console.error('[BackUpManagerWin] verify_schedule failed', describeFailure(e));
       return uuids;
     }
   }
 
-  private async ensureBatchLogonRight(): Promise<void> {
+  /* Returns a short status for the failure diagnostic. The marker means "we already
+   * spent the user's one UAC prompt", not "the right is definitely present" \u2014 so the
+   * caller reports it rather than treating a skip as success. */
+  private async ensureBatchLogonRight(): Promise<string> {
     const marker = path.join(HOUSTON_USER_DIR, '.batch-logon-granted');
-    if (fs.existsSync(marker)) return;
-    await this.runScriptAdmin(this.grantBatchLogonRightScript(), 'grant_batch_logon');
+    if (fs.existsSync(marker)) return 'skipped, marker already present';
+    const { stdout } = await this.runScriptAdmin(this.grantBatchLogonRightScript(), 'grant_batch_logon');
     try { fs.writeFileSync(marker, `${DESKTOP_USER}\n${new Date().toISOString()}\n`); } catch { /* retry next time */ }
+    return stdout.trim().replace(/\s+/g, ' ') || 'no output';
+  }
+
+  /* Some policies deny S4U registration to an unelevated caller outright (HRESULT
+   * 0x80070005), which the batch-logon right alone does not resolve. Grant and register
+   * in one elevated pass so the fallback costs a single prompt rather than two. */
+  private elevatedFallbackScript(registrationScript: string): string {
+    return `
+try {
+${this.grantBatchLogonRightScript()}
+} catch {
+  Write-Output "GRANTFAIL: $($_.Exception.Message)"
+}
+
+${registrationScript}
+`;
   }
 
   async scheduleAllTasks(
@@ -426,22 +471,26 @@ foreach ($n in @(${names})) {
     });
 
     /* ── Phase 2: Task registration (no elevation in the common case) ── */
+    const buildRegistrationScript = (usePassword: boolean): string => {
     const psLines: string[] = [
       `$ErrorActionPreference = 'Stop'`,
     ];
 
     tasks.forEach((t, idx) => {
       const batPathEsc = this.scriptPath(t.uuid).replace(/\\/g, '\\\\');
+      const taskName = `${TASK_ID}_${t.uuid}`;
+      const body: string[] = [];
 
-      psLines.push(this.scheduleToTaskTrigger(t.schedule));
+      body.push(this.scheduleToTaskTrigger(t.schedule));
 
       if (t.schedule.repeatFrequency == 'month'){
 
-        psLines.push(`
+        body.push(`
           $TASK_TRIGGER_MONTHLY = 4
           $TASK_ACTION_EXEC = 0
           $TASK_CREATE_OR_UPDATE = 6
           $TASK_LOGON_S4U = 2
+          $TASK_LOGON_PASSWORD = 1
           $TASK_RUNLEVEL_LUA = 0
 
           # 1.) Connect to the scheduler
@@ -452,10 +501,10 @@ foreach ($n in @(${names})) {
           $root = $svc.GetFolder("\\")
           $task = $svc.NewTask(0)
 
-          # 3.) Principal: desktop user via S4U, at the user's own privilege level
+          # 3.) Principal: desktop user, at the user's own privilege level
           $principal = $task.Principal
           $principal.UserId = "${DESKTOP_USER}"
-          $principal.LogonType = $TASK_LOGON_S4U
+          $principal.LogonType = ${usePassword ? '$TASK_LOGON_PASSWORD' : '$TASK_LOGON_S4U'}
           $principal.RunLevel = $TASK_RUNLEVEL_LUA
 
           # 4.) Task metadata
@@ -477,53 +526,115 @@ foreach ($n in @(${names})) {
           $trigger.DaysOfMonth = 1
           $trigger.MonthsOfYear = 0x0FFF
 
-          # 7.) Register the task (no password needed for S4U)
+          # 7.) Register the task
           $root.RegisterTaskDefinition(
             "${TASK_ID}_${t.uuid}",
             $task,
             $TASK_CREATE_OR_UPDATE,
             "${DESKTOP_USER}",
-            $null,
-            $TASK_LOGON_S4U
+            ${usePassword ? `$env:${WIN_PASS_ENV}` : '$null'},
+            ${usePassword ? '$TASK_LOGON_PASSWORD' : '$TASK_LOGON_S4U'}
           )
           `);
       } else {
-        psLines.push(`
+        body.push(`
           $act  = New-ScheduledTaskAction -Execute 'cmd.exe' -Argument ('/C "{0}"' -f "${batPathEsc}")
-          $prin = New-ScheduledTaskPrincipal -UserId "${DESKTOP_USER}" -LogonType S4U -RunLevel Limited
           # Defaults refuse to start on battery and skip triggers missed while powered off
           $set  = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable
-          Register-ScheduledTask -TaskName "${TASK_ID}_${t.uuid}" -Action $act -Trigger $taskTrigger -Principal $prin -Settings $set
+${usePassword
+  ? `          Register-ScheduledTask -TaskName "${taskName}" -Action $act -Trigger $taskTrigger -Settings $set -User "${DESKTOP_USER}" -Password $env:${WIN_PASS_ENV} -RunLevel Limited`
+  : `          $prin = New-ScheduledTaskPrincipal -UserId "${DESKTOP_USER}" -LogonType S4U -RunLevel Limited
+          Register-ScheduledTask -TaskName "${taskName}" -Action $act -Trigger $taskTrigger -Principal $prin -Settings $set`}
         `);
       }
 
       // progress ping (harmless in PS if nobody is listening)
-      if (onProgress) psLines.push(`Write-Host "PROGRESS:${idx + 1}"`);
+      if (onProgress) body.push(`Write-Host "PROGRESS:${idx + 1}"`);
+
+      /* Per-task try/catch: without it the first failure aborts every later task under
+       * $ErrorActionPreference='Stop', and the reason never reaches the caller. */
+      psLines.push(`
+try {
+${body.join('\n')}
+  Write-Output "TASKOK:${taskName}"
+} catch {
+  Write-Output "TASKFAIL:${taskName}: $($_.Exception.Message)"
+}
+`);
     });
 
-    const registrationScript = psLines.join('\n');
+      return psLines.join('\n');
+    };
+
     const uuids = tasks.map(t => t.uuid);
+    const diagnostics: string[] = [];
 
-    try {
-      await this.runScript(registrationScript, 'bulk_schedule');
-    } catch { /* verified below rather than trusted */ }
+    const attemptRegistration = async (label: string, script: string, elevated = false, env?: Record<string, string>): Promise<void> => {
+      try {
+        const { stdout, stderr } = elevated
+          ? await this.runScriptAdmin(script, label)
+          : await this.runScript(script, label, env);
+        stdout.split(/\r?\n/)
+          .filter(l => l.startsWith('TASKFAIL:') || l.startsWith('GRANTFAIL:'))
+          .forEach(l => diagnostics.push(`[${label}] ${l.trim()}`));
+        if (stderr.trim()) diagnostics.push(`[${label}] ${stderr.trim().replace(/\s+/g, ' ').slice(0, 1500)}`);
+      } catch (e) {
+        diagnostics.push(`[${label}] ${describeFailure(e)}`);
+      }
+    };
 
-    let missing = await this.findUnregisteredTasks(uuids);
+    let missing = uuids;
+
+    /* Preferred path: stored-password logon. A standard user may register this for
+     * themselves unelevated, unlike S4U, so it costs no UAC prompt at all. The secret
+     * travels by environment variable so it never lands in the temp .ps1. */
+    if (this.windowsAccountPassword) {
+      await attemptRegistration(
+        'bulk_schedule_password',
+        buildRegistrationScript(true),
+        false,
+        { [WIN_PASS_ENV]: this.windowsAccountPassword }
+      );
+      missing = await this.findUnregisteredTasks(uuids);
+    }
+
+    const s4uScript = buildRegistrationScript(false);
 
     if (missing.length > 0) {
-      /* Almost always a missing batch-logon right. Grant it once, then retry
-       * unelevated so subsequent task creation never prompts again. */
-      await this.ensureBatchLogonRight();
-      try {
-        await this.runScript(registrationScript, 'bulk_schedule_retry');
-      } catch { /* verified below */ }
+      await attemptRegistration('bulk_schedule', s4uScript);
       missing = await this.findUnregisteredTasks(uuids);
     }
 
     if (missing.length > 0) {
+      /* Often just a missing batch-logon right, which is cheap to grant and lets every
+       * later task register unelevated. */
+      try {
+        diagnostics.push(`[grant_batch_logon] ${await this.ensureBatchLogonRight()}`);
+        await attemptRegistration('bulk_schedule_retry', s4uScript);
+        missing = await this.findUnregisteredTasks(uuids);
+      } catch (e) {
+        diagnostics.push(`[grant_batch_logon] ${describeFailure(e)}`);
+      }
+    }
+
+    if (missing.length > 0) {
+      /* Degrade rather than fail: a working backup behind one UAC prompt beats a
+       * setup that completes with nothing scheduled. */
+      await attemptRegistration('bulk_schedule_elevated', this.elevatedFallbackScript(s4uScript), true);
+      missing = await this.findUnregisteredTasks(uuids);
+    }
+
+    if (missing.length > 0) {
+      const denied = diagnostics.some(d => /access is denied|0x80070005/i.test(d));
+      const hint = denied
+        ? ` Registration was denied for ${DESKTOP_USER}. Creating a task that runs while logged out requires ` +
+          `administrator approval on this machine; the elevated retry was cancelled or also denied.`
+        : '';
+      const detail = diagnostics.length ? ` Details: ${diagnostics.join(' ;; ')}` : ' No PowerShell diagnostic was produced.';
+      console.error('[BackUpManagerWin] registration failed', { missing, diagnostics });
       throw new Error(
         `Failed to register ${missing.length} of ${tasks.length} scheduled backup task(s). ` +
-        `Unregistered task IDs: ${missing.join(', ')}`
+        `Unregistered task IDs: ${missing.join(', ')}.${hint}${detail}`
       );
     }
 
@@ -872,11 +983,11 @@ if ($scanOk) {
     const startDate = formatDateForTask(sched.startDate); // e.g., "2025-02-25 10:00:00"
     switch (sched.repeatFrequency) {
       case "hour":
+        /* The trigger returned by -Once has no populated Repetition object, so assigning
+         * into it throws PropertyNotFound. Repetition must come from the parameters. */
         return `
 $startTime   = "${startDate}"
-$taskTrigger = New-ScheduledTaskTrigger -Once -At $startTime
-$taskTrigger.Repetition.Interval  = "PT1H"
-$taskTrigger.Repetition.Duration  = "P100Y"
+$taskTrigger = New-ScheduledTaskTrigger -Once -At $startTime -RepetitionInterval (New-TimeSpan -Hours 1) -RepetitionDuration (New-TimeSpan -Days 36500)
 `;
       case "day":
         return `

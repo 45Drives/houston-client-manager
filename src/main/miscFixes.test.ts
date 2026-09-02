@@ -1,4 +1,6 @@
 import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 
 // ── Constants extracted in server.js
 // These mirror what was extracted to verify the values are correct.
@@ -135,5 +137,25 @@ describe('findValue() — recursive parameter tree search', () => {
 
   it('returns null for null input', () => {
     expect(findValue(null, 'key', 'key')).toBeNull();
+  });
+});
+
+// ── Windows hourly trigger regression guard
+// New-ScheduledTaskTrigger -Once returns a trigger with no populated Repetition object.
+// Assigning into it throws PropertyNotFound, which aborted the whole registration script
+// under $ErrorActionPreference='Stop' and left hourly backups silently unregistered.
+describe('BackUpManagerWin hourly trigger', () => {
+  const src = readFileSync(
+    resolve(__dirname, 'backup/BackUpManagerWin.ts'),
+    'utf8'
+  );
+
+  it('never assigns into $taskTrigger.Repetition', () => {
+    expect(src).not.toMatch(/\$taskTrigger\.Repetition\./);
+  });
+
+  it('sets repetition through New-ScheduledTaskTrigger parameters', () => {
+    expect(src).toContain('-RepetitionInterval');
+    expect(src).toContain('-RepetitionDuration');
   });
 });
