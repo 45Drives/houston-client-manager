@@ -162,3 +162,19 @@ describe('BackUpManagerWin hourly trigger', () => {
     expect(src).not.toContain('-RepetitionDuration');
   });
 });
+
+// ── Generated .bat event snippet regression guard
+// Batch executes one command per line. A multi-line PowerShell block meant cmd ran
+// `powershell ... -Command "& {` on its own and then tried to execute `try {` and
+// `$cred = ...` as commands, aborting the whole backup script with exit 255.
+describe('batchEventSnippet', () => {
+  const src = readFileSync(
+    resolve(__dirname, 'backup/broadcasterApi.ts'),
+    'utf8'
+  );
+
+  it('emits the powershell invocation on a single line', () => {
+    expect(src).toContain(`].join(' ');`);
+    expect(src).not.toContain('-Command "& {`,');
+  });
+});

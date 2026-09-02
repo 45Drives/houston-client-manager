@@ -166,22 +166,27 @@ export function bashEventSnippet(host: string, eventType: 'start' | 'end' | 'err
  */
 export function batchEventSnippet(host: string, eventType: 'start' | 'end' | 'error', uuid: string): string {
   const port = BROADCASTER_PORT;
-  const lines = [
+
+  /* Batch runs one command per line, so this must stay a single line. Batch variables
+   * are expanded by cmd before PowerShell starts, which rules out -EncodedCommand. */
+  const ps = [
+    `try {`,
+    `$cred = @{};`,
+    `Get-Content '%CRED_FILE%' -ErrorAction SilentlyContinue | ForEach-Object { $k,$v = $_ -split '=',2; $cred[$k]=$v };`,
+    `$body = @{username=$cred['username']; password=$cred['password']} | ConvertTo-Json;`,
+    `$login = Invoke-RestMethod -Uri 'http://${host}:${port}/api/login' -Method POST -ContentType 'application/json' -Body $body -TimeoutSec 5;`,
+    `if ($login.token) {`,
+    `$evt = @{backup_uuid='${uuid}'; client_id='!INSTALL_ID!'; event_type='${eventType}'; status='!BACKUP_STATUS!'; error='!BACKUP_ERROR!'} | ConvertTo-Json;`,
+    `$headers = @{Authorization='Bearer '+$login.token};`,
+    `Invoke-RestMethod -Uri 'http://${host}:${port}/api/storage-wizard/backup-events' -Method POST -ContentType 'application/json' -Body $evt -Headers $headers -TimeoutSec 5 | Out-Null`,
+    `}`,
+    `} catch {}`,
+  ].join(' ');
+
+  return [
     `:: --- Report ${eventType} event to broadcaster API (best-effort) ---`,
-    `powershell -NoProfile -NonInteractive -Command "& {`,
-    `  try {`,
-    `    $cred = @{}; Get-Content '%CRED_FILE%' -ErrorAction SilentlyContinue | ForEach-Object { $k,$v = $_ -split '=',2; $cred[$k]=$v }`,
-    `    $body = @{username=$cred['username']; password=$cred['password']} | ConvertTo-Json`,
-    `    $login = Invoke-RestMethod -Uri 'http://${host}:${port}/api/login' -Method POST -ContentType 'application/json' -Body $body -TimeoutSec 5`,
-    `    if ($login.token) {`,
-    `      $evt = @{backup_uuid='${uuid}'; client_id='!INSTALL_ID!'; event_type='${eventType}'; status='!BACKUP_STATUS!'; error='!BACKUP_ERROR!'} | ConvertTo-Json`,
-    `      $headers = @{Authorization='Bearer '+$login.token}`,
-    `      Invoke-RestMethod -Uri 'http://${host}:${port}/api/storage-wizard/backup-events' -Method POST -ContentType 'application/json' -Body $evt -Headers $headers -TimeoutSec 5 | Out-Null`,
-    `    }`,
-    `  } catch {}`,
-    `}" >nul 2>&1`,
-  ];
-  return lines.join('\n');
+    `powershell -NoProfile -NonInteractive -Command "& { ${ps} }" >nul 2>&1`,
+  ].join('\n');
 }
 
 /**

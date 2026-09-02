@@ -671,6 +671,7 @@ ${body.join('\n')}
     const safeSmbUser = escapeCmdValue(smbUser);
 
     const logFile = path.join(logPath, `Houston_Backup_Task_${task.uuid}.log`);
+    const consoleLog = path.join(logPath, `Houston_Backup_Task_${task.uuid}.console.log`);
     const eventLog = path.join(logPath, `45drives_backup_events.json`);
 
     return `
@@ -688,6 +689,13 @@ setlocal enabledelayedexpansion
 :: SMB_HOST    = ${task.host}
 :: SMB_SHARE   = ${task.share}
 :: SMB_USER    = ${smbUser}
+
+:: Task Scheduler discards stdout, so re-invoke ourselves with everything captured.
+if not "%~1"=="__HOUSTON_RUN" (
+  if not exist "${logPath.replace(/\\/g, '\\\\')}" mkdir "${logPath.replace(/\\/g, '\\\\')}"
+  call "%~f0" __HOUSTON_RUN >> "${consoleLog.replace(/\\/g, '\\\\')}" 2>&1
+  exit /b !errorlevel!
+)
 
 :: Skip execution if task is disabled
 if "${task.disabled ? 'true' : 'false'}"=="true" (
