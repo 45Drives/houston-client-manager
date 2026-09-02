@@ -26,7 +26,7 @@ import {
  * when their stamp falls behind, so a script fix reaches tasks created before it shipped.
  * The Windows ACTION_BAT_VERSION exists for the same reason.
  */
-const TASK_SCRIPT_VERSION = 2;
+const TASK_SCRIPT_VERSION = 3;
 
 const LEGACY_SCRIPT_DIR = "/Library/Application Support/Houston/scripts";
 
@@ -652,8 +652,9 @@ echo "[SUCCESS] SMB share mounted at $MOUNT_DIR"
 # user the run that follows it.
 MARKER_UUID="$(printf '%s' "$TARGET" | awk -F/ '{print $2}')"
 MARKER_DIR="$MOUNT_DIR/$MARKER_UUID/.houston"
-if mkdir -p "$MARKER_DIR" 2>/dev/null && printf '{"install_id":"%s","smb_user":"%s","source":"%s","user":"%s","host":"%s","platform":"mac"}\\n' \\
-  "$INSTALL_ID" "$SMB_USER" "$SOURCE" "$(id -un)" "$(hostname -s)" > "$MARKER_DIR/client.json" 2>/dev/null; then
+# Grouped so the shell's own redirect error is suppressed too, not just printf's stderr.
+if { mkdir -p "$MARKER_DIR" && printf '{"install_id":"%s","smb_user":"%s","source":"%s","user":"%s","host":"%s","platform":"mac"}\\n' \\
+  "$INSTALL_ID" "$SMB_USER" "$SOURCE" "$(id -un)" "$(hostname -s)" > "$MARKER_DIR/client.json"; } 2>/dev/null; then
   :
 else
   echo "[WARN] Could not write client marker to $MARKER_DIR - continuing with the backup"
@@ -663,10 +664,30 @@ fi
 mkdir -p "$DEST_DIR"
 echo "[INFO] rsync to $DEST_DIR"
 
+# The daemon runs with a minimal PATH, so a bare 'rsync' finds Apple's 2.6.9 build, which
+# rejects --info=progress2 and aborts the whole copy. Resolve the binary explicitly and
+# choose flags it actually supports.
+RSYNC_BIN=""
+for _cand in /opt/homebrew/bin/rsync /usr/local/bin/rsync /usr/bin/rsync; do
+  if [ -x "$_cand" ]; then RSYNC_BIN="$_cand"; break; fi
+done
+if [ -z "$RSYNC_BIN" ]; then
+  echo "[ERROR] rsync not found"
+  exit 1
+fi
+
+RSYNC_ARGS=(-a --compress-level=1)
+if "$RSYNC_BIN" --help 2>&1 | grep -q -- '--info='; then
+  RSYNC_ARGS+=(--info=progress2 --no-inc-recursive)
+else
+  RSYNC_ARGS+=(--progress)
+fi
+echo "[INFO] Using rsync at $RSYNC_BIN"
+
 # 'rsync ... || true' is an AND-OR list, not a pipeline, so PIPESTATUS would report the
 # status of 'true' and every failure would read as success. Capture \$? directly.
 set +e
-COPYFILE_DISABLE=1 rsync -a --compress-level=1 --info=progress2 --no-inc-recursive "$SOURCE/" "$DEST_DIR/"
+COPYFILE_DISABLE=1 "$RSYNC_BIN" "\${RSYNC_ARGS[@]}" "$SOURCE/" "$DEST_DIR/"
 ST=$?
 set -e
 
