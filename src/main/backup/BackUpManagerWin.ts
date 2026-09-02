@@ -32,6 +32,10 @@ const DESKTOP_USER = `${process.env.USERDOMAIN || os.hostname()}\\${os.userInfo(
  * .ps1, which persists in %TEMP% and is readable by other local accounts. */
 const WIN_PASS_ENV = 'HOUSTON_WIN_ACCOUNT_PASSWORD';
 
+/* buildActionBat only runs when a task is scheduled, so fixes to the generated
+ * script never reach tasks that already exist. Bump on every script change. */
+const ACTION_BAT_VERSION = 2;
+
 interface TaskData {
   source?: string;
   target?: string;
@@ -216,6 +220,29 @@ export class BackUpManagerWin implements BackUpManager {
     );
   }
 
+  /* Task Scheduler runs whatever .bat is on disk, so rewriting a stale one here
+   * also repairs the task's future scheduled runs, not just this manual one. */
+  private refreshActionBat(task: BackUpTask): void {
+    const batPath = this.scriptPath(task.uuid);
+    let existing: string;
+    try { existing = fs.readFileSync(batPath, 'utf8'); } catch { return; }
+    if (existing.includes(`:: SCRIPT_VER  = ${ACTION_BAT_VERSION}`)) return;
+
+    try {
+      // The task arriving over IPC may have lost its Date type and SMB fields.
+      const meta = this.parseBackupCommand(batPath) || {};
+      fs.writeFileSync(batPath, this.buildActionBat({
+        ...task,
+        host: task.host || meta.SMB_HOST,
+        share: task.share || meta.SMB_SHARE,
+        schedule: { ...task.schedule, startDate: new Date(task.schedule.startDate) },
+      }, task.smb_user || meta.SMB_USER || ''));
+      jsonLogger.info({ event: 'backup:action-script-upgraded', uuid: task.uuid });
+    } catch (e: any) {
+      jsonLogger.warn({ event: 'backup:action-script-upgrade-failed', uuid: task.uuid, error: e?.message });
+    }
+  }
+
 
   async schedule(
     task: BackUpTask,
@@ -228,6 +255,7 @@ export class BackUpManagerWin implements BackUpManager {
 
   async runNow(task: BackUpTask, onProgress?: BackupProgressCallback): Promise<{ stdout: string; stderr: string }> {
     const taskName = `${TASK_ID}_${task.uuid}`;
+    this.refreshActionBat(task);
     const logFile = path.join(logPath, `Houston_Backup_Task_${task.uuid}.log`);
     const ps = `Start-ScheduledTask -TaskName "${taskName}"`;
 
@@ -689,6 +717,7 @@ setlocal enabledelayedexpansion
 :: SMB_HOST    = ${task.host}
 :: SMB_SHARE   = ${task.share}
 :: SMB_USER    = ${smbUser}
+:: SCRIPT_VER  = ${ACTION_BAT_VERSION}
 
 :: Task Scheduler discards stdout, so re-invoke ourselves with everything captured.
 if not "%~1"=="__HOUSTON_RUN" (

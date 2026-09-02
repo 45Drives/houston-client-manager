@@ -191,6 +191,13 @@ describe('BackUpManagerWin hourly trigger', () => {
     expect(src).toContain('===== [!TS2!] !ENDMSG! =====');
     expect(src).not.toContain('[!date! !time!]  END');
   });
+
+  // The .bat is written once at scheduling time, so script fixes reach existing
+  // tasks only if a stale script is detected and rewritten.
+  it('stamps a script version and rewrites stale scripts on run', () => {
+    expect(src).toContain(':: SCRIPT_VER  = ${ACTION_BAT_VERSION}');
+    expect(src).toContain('this.refreshActionBat(task);');
+  });
 });
 
 // ── Generated .bat event snippet regression guard
