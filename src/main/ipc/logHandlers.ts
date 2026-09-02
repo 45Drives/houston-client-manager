@@ -33,12 +33,13 @@ function parseTextLogLine(line: string, index: number, source: string): ParsedLo
   );
   if (bannerMatch) {
     const msg = bannerMatch[2];
-    const isComplete = /completed/i.test(msg);
+    const isFailure = /fail|error/i.test(msg);
+    const isComplete = /complet|finish/i.test(msg);
     return {
       id: `${source}-${index}`,
       timestamp: bannerMatch[1],
-      level: 'info',
-      event: isComplete ? 'Backup Completed' : 'Backup Started',
+      level: isFailure ? 'error' : 'info',
+      event: isFailure ? 'Backup Failed' : isComplete ? 'Backup Completed' : 'Backup Started',
       summary: msg,
       source,
     };

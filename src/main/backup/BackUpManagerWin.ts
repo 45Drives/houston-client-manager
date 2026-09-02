@@ -733,6 +733,10 @@ if not exist "${logPath.replace(/\\/g, '\\\\')}" mkdir "${logPath.replace(/\\/g,
 :: timestamp(ISO 8601)
 for /f "delims=" %%I in ('powershell -NoProfile -Command "Get-Date -Format o"') do set "TS=%%I"
 
+:: Log viewer anchors every later line to this banner. %DATE%/%TIME% are locale
+:: dependent, so the timestamp has to come from PowerShell.
+>> "%LOG%" echo ===== [!TS!] Backup started =====
+
 :: --- backup_start (with install_id + smb_user) -----------------------------
 >> "%EVENT_LOG%" echo {^"event^":^"backup_start^",^"timestamp^":^"!TS!^",^"uuid^":^"${task.uuid}"^,^"host^":^"${task.host}"^,^"share^":^"${task.share}"^,^"source^":^"${task.source}"^,^"target^":^"${rawDst}"^,^"install_id^":^"!INSTALL_ID!"^,^"smb_user^":^"!SMB_USER!"^}
 
@@ -792,7 +796,9 @@ set "JSON_SOURCE=!SOURCE:\=\\!"
 :: --- copy payload ----------------------------------------------------------
 mkdir "!DEST!" 2>nul
 echo [INFO] Running robocopy ...
-robocopy "!SOURCE!" "!DEST!" /E /Z /FFT /R:2 /W:5 /MT:8 /V /NJH /bytes
+:: /XJ: user profile folders contain deny-ACL junctions (My Music, My Pictures,
+:: My Videos) kept only for XP compatibility; following them returns error 5.
+robocopy "!SOURCE!" "!DEST!" /E /Z /FFT /XJ /R:2 /W:5 /MT:8 /V /NJH /bytes
 set "RC=!errorlevel!"
 
 :_finish
@@ -812,11 +818,13 @@ if defined drive net use !drive!: /delete /y >> "%LOG%" 2>&1
 
 if !RC! GEQ 8 (
   echo [ERROR] robocopy returned !RC! >> "%LOG%" 2>&1
-  exit /b !RC!
+  set "ENDMSG=Backup failed rc=!RC!"
 ) else (
   echo [INFO] robocopy completed with code !RC! >> "%LOG%" 2>&1
+  set "ENDMSG=Backup completed rc=!RC!"
 )
-echo [!date! !time!]  END    rc=!RC! >> "%LOG%" 2>&1
+>> "%LOG%" echo ===== [!TS2!] !ENDMSG! =====
+if !RC! GEQ 8 exit /b !RC!
 exit /b !RC!
 `.trimStart();
   }

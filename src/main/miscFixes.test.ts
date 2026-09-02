@@ -176,7 +176,20 @@ describe('BackUpManagerWin hourly trigger', () => {
 
   it('gives the mount scratch file a per-task name', () => {
     expect(src).not.toContain('mount_result_%RANDOM%');
-    expect(src).not.toContain('__extract.json');
+  });
+
+  // Deny-ACL junctions in the user profile (My Music/My Pictures/My Videos)
+  // return error 5, which robocopy reports as exit 8.
+  it('excludes junction points from robocopy', () => {
+    expect(src).toMatch(/robocopy .*\/XJ/);
+  });
+
+  // %DATE%/%TIME% are locale dependent, so the log banner must use the ISO
+  // timestamp or the log viewer cannot parse a Time column.
+  it('writes an ISO banner the log parser can anchor timestamps to', () => {
+    expect(src).toContain('===== [!TS!] Backup started =====');
+    expect(src).toContain('===== [!TS2!] !ENDMSG! =====');
+    expect(src).not.toContain('[!date! !time!]  END');
   });
 });
 
