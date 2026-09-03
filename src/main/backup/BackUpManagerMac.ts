@@ -185,15 +185,42 @@ export class BackUpManagerMac implements BackUpManager {
    * Claim the current period for a brand-new task. The daemon treats "no lastrun" as a
    * missed trigger and fires immediately, which is right after downtime but wrong for a
    * task the user just created — it would back up seconds after being scheduled.
+   *
+   * Only claim it when this period's trigger has already gone by, or a task created in the
+   * morning for an evening run would be marked done and skip its own first run.
    */
   private seedLastRun(task: BackUpTask): void {
     const marker = path.join(MAC_STATE_DIR, `${task.uuid}.lastrun`);
     if (fs.existsSync(marker)) return;
+    if (!BackUpManagerMac.thresholdReached(task.schedule)) return;
     try {
       fs.mkdirSync(MAC_STATE_DIR, { recursive: true, mode: 0o700 });
       fs.writeFileSync(marker, BackUpManagerMac.periodKey(task.schedule.repeatFrequency));
     } catch {
       /* worst case the task runs once at the next daemon tick */
+    }
+  }
+
+  /** Mirrors threshold_reached() in houston-backupd: has this period's trigger passed? */
+  private static thresholdReached(schedule: TaskSchedule): boolean {
+    const start = schedule.startDate instanceof Date
+      ? schedule.startDate
+      : new Date(schedule.startDate);
+    const now = new Date();
+    const nowTotal = now.getHours() * 60 + now.getMinutes();
+    const schedTotal = start.getHours() * 60 + start.getMinutes();
+
+    switch (schedule.repeatFrequency) {
+      case 'hour':
+        return now.getMinutes() >= start.getMinutes();
+      case 'week':
+        if (now.getDay() > start.getDay()) return true;
+        return now.getDay() === start.getDay() && nowTotal >= schedTotal;
+      case 'month':
+        if (now.getDate() > start.getDate()) return true;
+        return now.getDate() === start.getDate() && nowTotal >= schedTotal;
+      default:
+        return nowTotal >= schedTotal;
     }
   }
 
