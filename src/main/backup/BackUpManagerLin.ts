@@ -12,10 +12,14 @@ import { app } from 'electron';
 import { getCredentialManager } from '../credentialManager';
 import { ensureClientTools } from '../installDepsPopup';
 import { syncBackupConfig, getClientId, bashEventSnippet } from './broadcasterApi';
+import { LIN_STATE_DIR } from './progressWatcher';
 
 const SCRIPT_DIR = path.join(os.homedir(), ".local", "share", "houston-backups");
 
 const LOG_DIR = path.join(app.getPath('userData'), 'logs');
+
+// Bump whenever the generated script changes so existing tasks are rewritten on their next run.
+const TASK_SCRIPT_VERSION = 1;
 
 export class BackUpManagerLin implements BackUpManager {
   protected pkexec: string = "pkexec";
@@ -302,6 +306,7 @@ export class BackUpManagerLin implements BackUpManager {
     const scriptPath = path.join(SCRIPT_DIR, `Houston_Backup_Task_${task.uuid}.sh`);
 
     // Patch existing script to ensure progress flags are present
+    this.refreshTaskScript(task, scriptPath);
     this.ensureProgressFlags(scriptPath);
 
     return new Promise((resolve, reject) => {
@@ -358,6 +363,31 @@ export class BackUpManagerLin implements BackUpManager {
         });
       });
     });
+  }
+
+  /** Rewrite a script left behind by an older app version. The SMB user is the only field
+   *  the script body needs, and it is already embedded in the file. */
+  protected refreshTaskScript(task: BackUpTask, scriptPath: string): boolean {
+    try {
+      const script = fs.readFileSync(scriptPath, 'utf8');
+      if (script.includes(`# SCRIPT_VER = ${TASK_SCRIPT_VERSION}`)) return false;
+      const username = task.smb_user || script.match(/SMB_USER='([^']+)'/)?.[1];
+      if (!username) return false;
+      this.generateBackupScript(task, username, '', scriptPath);
+      return true;
+    } catch { /* script doesn't exist yet; scheduling will create it */ }
+    return false;
+  }
+
+  async refreshAllTaskScripts(): Promise<number> {
+    let count = 0;
+    for (const task of await this.queryTasks()) {
+      const scriptPath = path.join(SCRIPT_DIR, `Houston_Backup_Task_${task.uuid}.sh`);
+      try {
+        if (this.refreshTaskScript(task, scriptPath)) count++;
+      } catch { /* one bad task must not stop the rest */ }
+    }
+    return count;
   }
 
   /** Patch an existing on-disk script to add progress flags if missing */
@@ -488,6 +518,7 @@ ${ hasFstab ? '' : `echo ${shellQuote(fstabEntry)} >> /etc/fstab` }
     const scriptContent = `#!/bin/bash
 set -euo pipefail
 
+# SCRIPT_VER = ${TASK_SCRIPT_VERSION}
 EVENT_LOG=${shellQuote(path.join(LOG_DIR, "45drives_backup_events.json"))}
 SMB_HOST=${shellQuote(smbHost)}
 SMB_SHARE=${shellQuote(smbShare)}
@@ -502,6 +533,7 @@ DESC=${shellQuote(task.description)}
 BACKUP_NAME=${shellQuote(task.name || '')}
 DISABLED='${task.disabled ? 'true' : 'false'}'
 CLIENT_ID_FILE=${shellQuote(path.join(app.getPath("userData"), "client-id.txt"))}
+PROGRESS_FILE=${shellQuote(path.join(LIN_STATE_DIR, `${task.uuid}.progress`))}
 INSTALL_ID="$(cat "$CLIENT_ID_FILE" 2>/dev/null || true)"
 
 # Skip execution if task is disabled
@@ -520,6 +552,16 @@ echo '{"event":"backup_start","timestamp":"'$(date -Iseconds)'","uuid":"'"${task
 # Report start event to broadcaster API (best-effort)
 ${bashEventSnippet(smbHost, 'start', task.uuid)}
 
+# cron gives the app no pipe to this run, so progress is published to a file it can poll.
+set_progress() {
+  local pct="\${1:-}" msg="\${2:-}"
+  mkdir -p "$(dirname "$PROGRESS_FILE")" 2>/dev/null || return 0
+  if printf '{"percent":%s,"message":"%s"}' "\${pct:-null}" "$msg" > "\${PROGRESS_FILE}.tmp" 2>/dev/null; then
+    chmod 644 "\${PROGRESS_FILE}.tmp" 2>/dev/null || true
+    mv -f "\${PROGRESS_FILE}.tmp" "$PROGRESS_FILE" 2>/dev/null || true
+  fi
+}
+
 BACKUP_ENDED=false
 write_backup_end() {
   local end_status="\${1:-failure}"
@@ -532,6 +574,7 @@ write_backup_end() {
 cleanup() {
   # Write backup_end if it wasn't written (script crashed/errored early)
   write_backup_end "failure"
+  rm -f "$PROGRESS_FILE" "\${PROGRESS_FILE}.tmp" 2>/dev/null || true
   # Only attempt unmount if it's actually mounted
   if mountpoint -q "$MOUNT_DIR"; then
     echo "[CLEANUP] Unmounting $MOUNT_DIR"
@@ -546,6 +589,7 @@ echo "[INFO] Target: $TARGET"
 echo "[INFO] Mount directory: $MOUNT_DIR"
 
 mkdir -p "$MOUNT_DIR"
+set_progress "" "Mounting share..."
 
 # Mount if not already mounted (fstab entry must exist for $MOUNT_DIR)
 if mountpoint -q "$MOUNT_DIR"; then
@@ -580,10 +624,29 @@ printf '{"install_id":"%s","smb_user":"%s","source":"%s","user":"%s","host":"%s"
 
 mkdir -p "$MOUNT_DIR/$TARGET"
 echo "[INFO] Running rsync..."
+set_progress "" "Transferring files..."
+
+# rsync separates progress lines with CR, so they are read as records rather than lines.
+run_rsync() {
+  local line pct last=""
+  rsync -az --compress-level=1 --info=progress2 --no-inc-recursive "$SOURCE" "$MOUNT_DIR/$TARGET" 2>&1 \\
+    | while IFS= read -r -d $'\\r' line || [ -n "$line" ]; do
+        pct="$(printf '%s' "$line" | sed -n 's/.*[^0-9]\\([0-9][0-9]*\\)%.*/\\1/p' | tail -1)"
+        if [ -n "$pct" ]; then
+          if [ "$pct" != "$last" ]; then
+            last="$pct"; set_progress "$pct" "Transferring files..."; printf '%s\\n' "$line"
+          fi
+        else
+          printf '%s\\n' "$line"
+        fi
+      done
+  return "\${PIPESTATUS[0]}"
+}
+
 # 'rsync ... || true' is an AND-OR list, not a pipeline, so PIPESTATUS reported the status
 # of 'true' and every failure read as success. Capture the real status directly.
 set +e
-rsync -az --compress-level=1 --info=progress2 --no-inc-recursive "$SOURCE" "$MOUNT_DIR/$TARGET"
+run_rsync
 RSYNC_STATUS=$?
 set -e
 

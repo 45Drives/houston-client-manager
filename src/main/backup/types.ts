@@ -16,6 +16,8 @@ export interface BackUpManager {
     onProgress?: (step: number, total: number, message: string) => void
   ): Promise<void>;
   runNow?(task: BackUpTask, onProgress?: BackupProgressCallback): Promise<{ stdout: string; stderr: string }>;
+  /** Rewrite on-disk task scripts left behind by an older app version. */
+  refreshAllTaskScripts?(): Promise<number>;
 }
 
 export const backupTaskTag = "45drives-setup-wizard-backup-task"

@@ -1743,6 +1743,19 @@ app.whenReady().then(() => {
 
   registerLogHandlers(assertMainWindowSender);
 
+  // Scripts are generated files; without this, fixes only reach tasks the user happens to
+  // run manually, since cron/launchd/Task Scheduler just execute whatever is on disk.
+  void (async () => {
+    const backUpManager = getBackUpManager();
+    if (!backUpManager?.refreshAllTaskScripts) return;
+    try {
+      const upgraded = await backUpManager.refreshAllTaskScripts();
+      if (upgraded > 0) jsonLogger.info({ event: 'backup:task-scripts-upgraded', count: upgraded });
+    } catch (err) {
+      jsonLogger.warn({ event: 'backup:task-scripts-upgrade-failed', error: String(err) });
+    }
+  })();
+
   createWindow();
   app.on('activate', function () {
     // On macOS it's common to re-create a window in the app when the

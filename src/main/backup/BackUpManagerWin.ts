@@ -222,11 +222,11 @@ export class BackUpManagerWin implements BackUpManager {
 
   /* Task Scheduler runs whatever .bat is on disk, so rewriting a stale one here
    * also repairs the task's future scheduled runs, not just this manual one. */
-  private refreshActionBat(task: BackUpTask): void {
+  private refreshActionBat(task: BackUpTask): boolean {
     const batPath = this.scriptPath(task.uuid);
     let existing: string;
-    try { existing = fs.readFileSync(batPath, 'utf8'); } catch { return; }
-    if (existing.includes(`:: SCRIPT_VER  = ${ACTION_BAT_VERSION}`)) return;
+    try { existing = fs.readFileSync(batPath, 'utf8'); } catch { return false; }
+    if (existing.includes(`:: SCRIPT_VER  = ${ACTION_BAT_VERSION}`)) return false;
 
     try {
       // The task arriving over IPC may have lost its Date type and SMB fields.
@@ -238,9 +238,21 @@ export class BackUpManagerWin implements BackUpManager {
         schedule: { ...task.schedule, startDate: new Date(task.schedule.startDate) },
       }, task.smb_user || meta.SMB_USER || ''));
       jsonLogger.info({ event: 'backup:action-script-upgraded', uuid: task.uuid });
+      return true;
     } catch (e: any) {
       jsonLogger.warn({ event: 'backup:action-script-upgrade-failed', uuid: task.uuid, error: e?.message });
+      return false;
     }
+  }
+
+  async refreshAllTaskScripts(): Promise<number> {
+    let count = 0;
+    for (const task of await this.queryTasks()) {
+      try {
+        if (this.refreshActionBat(task)) count++;
+      } catch { /* one bad task must not stop the rest */ }
+    }
+    return count;
   }
 
 

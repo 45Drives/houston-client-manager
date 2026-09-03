@@ -14,6 +14,7 @@ import { app } from 'electron';
 import { execFileSync } from 'child_process';
 import type { IPCHandlerContext } from './types';
 import { getCredentialManager } from '../credentialManager';
+import { startBackupProgressWatcher } from '../backup/progressWatcher';
 import { removeBackupConfig, syncBackupConfig, getClientId } from '../backup/broadcasterApi';
 
 /** Resolve SMB password: use provided password, or look it up from the credential vault */
@@ -68,6 +69,9 @@ function errMsg(err: unknown): string {
 
 export async function handleBackupMessage(message: any, ctx: IPCHandlerContext): Promise<boolean> {
   const router = IPCRouter.getInstance();
+  startBackupProgressWatcher((taskUuid, percent, message) =>
+    router.send('renderer', 'backupProgress', { taskUuid, percent, message })
+  );
 
   switch (message.type) {
     case 'configureBackUp': {
@@ -562,6 +566,9 @@ export async function handleBackupMessage(message: any, ctx: IPCHandlerContext):
       // we consider it stale (crashed/interrupted). 12 hours.
       const MAX_RUNNING_AGE_MS = 12 * 60 * 60 * 1000;
 
+      // How long a Windows console log may go without a write before the run is presumed dead.
+      const WIN_RUNNING_STALE_MS = 5 * 60 * 1000;
+
       if (fs.existsSync(logPath)) {
         const lines = fs.readFileSync(logPath, 'utf8')
           .split(/\r?\n/)
@@ -616,6 +623,18 @@ export async function handleBackupMessage(message: any, ctx: IPCHandlerContext):
             // pgrep succeeded — process is running, keep it
           } catch {
             // pgrep failed (exit code 1) — no matching process, stale entry
+            startedUuids.delete(uuid);
+          }
+        }
+      } else if (startedUuids.size > 0) {
+        // No pgrep on Windows. The action script self-captures its console output, so a log
+        // that has stopped growing is the equivalent signal that the run is gone.
+        const consoleDir = path.join(app.getPath('userData'), 'logs');
+        for (const uuid of [...startedUuids.keys()]) {
+          try {
+            const stat = fs.statSync(path.join(consoleDir, `Houston_Backup_Task_${uuid}.console.log`));
+            if (now - stat.mtimeMs > WIN_RUNNING_STALE_MS) startedUuids.delete(uuid);
+          } catch {
             startedUuids.delete(uuid);
           }
         }

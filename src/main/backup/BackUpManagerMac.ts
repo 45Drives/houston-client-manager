@@ -26,7 +26,7 @@ import {
  * when their stamp falls behind, so a script fix reaches tasks created before it shipped.
  * The Windows ACTION_BAT_VERSION exists for the same reason.
  */
-const TASK_SCRIPT_VERSION = 3;
+const TASK_SCRIPT_VERSION = 5;
 
 const LEGACY_SCRIPT_DIR = "/Library/Application Support/Houston/scripts";
 
@@ -222,20 +222,20 @@ export class BackUpManagerMac implements BackUpManager {
    * Rewrite a script whose generator version is stale, so script fixes reach tasks that
    * were created before the fix shipped.
    */
-  private refreshTaskScript(task: BackUpTask): void {
+  private refreshTaskScript(task: BackUpTask): boolean {
     const scriptPath = this.scriptPathFor(task.uuid);
     let existing = '';
     try {
       existing = fs.readFileSync(scriptPath, 'utf8');
     } catch {
-      return;
+      return false;
     }
-    if (BackUpManagerMac.header(existing, 'TASK_SCRIPT_VER') === String(TASK_SCRIPT_VERSION)) return;
+    if (BackUpManagerMac.header(existing, 'TASK_SCRIPT_VER') === String(TASK_SCRIPT_VERSION)) return false;
 
     // Metadata that may not survive the IPC round-trip is recovered from the old script.
     const grab = (key: string) => BackUpManagerMac.header(existing, key);
     const username = task.smb_user || grab('TASK_SMB_USER');
-    if (!username) return;
+    if (!username) return false;
 
     task.host = task.host || grab('TASK_HOST');
     task.share = task.share || grab('TASK_SHARE');
@@ -243,11 +243,22 @@ export class BackUpManagerMac implements BackUpManager {
     task.target = task.target || grab('TASK_TARGET');
     if (!(task.schedule?.startDate instanceof Date)) {
       const recovered = this.parseCronSchedule(grab('TASK_CRON'));
-      if (!recovered) return;
+      if (!recovered) return false;
       task.schedule = recovered;
     }
 
     this.writeTaskScript(task, assertSafeUsername(username));
+    return true;
+  }
+
+  async refreshAllTaskScripts(): Promise<number> {
+    let count = 0;
+    for (const task of await this.queryTasks()) {
+      try {
+        if (this.refreshTaskScript(task)) count++;
+      } catch { /* one bad task must not stop the rest */ }
+    }
+    return count;
   }
 
   /** Run the real task script immediately, as this user. */
@@ -572,6 +583,7 @@ MOUNT_DIR=${shellQuote(mountPoint)}
 DEST_DIR=${shellQuote(destDir)}
 CRED_FILE=${shellQuote(this.credFileFor(host, share, username))}
 CLIENT_ID_FILE=${shellQuote(path.join(app.getPath('userData'), 'client-id.txt'))}
+PROGRESS_FILE=${shellQuote(path.join(MAC_STATE_DIR, `${task.uuid}.progress`))}
 INSTALL_ID="$(cat "$CLIENT_ID_FILE" 2>/dev/null || true)"
 DISABLED='${task.disabled ? 'true' : 'false'}'
 
@@ -590,6 +602,16 @@ fi
 WE_MOUNTED=false
 BACKUP_ENDED=false
 
+# Progress is published to a file rather than stdout alone, because a run started by the
+# daemon has no pipe back to the app. Either way the app reads the same source.
+set_progress() {
+  local pct="\${1:-}" msg="\${2:-}"
+  mkdir -p "$(dirname "$PROGRESS_FILE")" 2>/dev/null || return 0
+  if printf '{"percent":%s,"message":"%s"}' "\${pct:-null}" "$msg" > "\${PROGRESS_FILE}.tmp" 2>/dev/null; then
+    mv -f "\${PROGRESS_FILE}.tmp" "$PROGRESS_FILE" 2>/dev/null || true
+  fi
+}
+
 write_backup_end() {
   local end_status="\${1:-failure}"
   if [ "$BACKUP_ENDED" = "false" ]; then
@@ -600,6 +622,7 @@ write_backup_end() {
 
 cleanup() {
   write_backup_end failure
+  rm -f "$PROGRESS_FILE" "\${PROGRESS_FILE}.tmp" 2>/dev/null || true
   # Unmount only what this run mounted. The mount point itself is never removed: an
   # unprivileged run cannot recreate one it does not own, and an empty directory is free.
   if [ "$WE_MOUNTED" = "true" ]; then
@@ -673,6 +696,7 @@ if /sbin/mount | grep -q " on $MOUNT_DIR "; then
   echo "[INFO] Already mounted at $MOUNT_DIR"
 else
   echo "[INFO] Mounting //$HOST/$SHARE at $MOUNT_DIR"
+  set_progress "" "Mounting share..."
   if ! /sbin/mount_smbfs -N "//$(urlenc "$SMB_USER"):$(urlenc "$PASSWORD")@$HOST/$SHARE" "$MOUNT_DIR"; then
     echo "[ERROR] SMB mount failed for //$HOST/$SHARE"
     exit 1
@@ -718,17 +742,50 @@ if [ -z "$RSYNC_BIN" ]; then
 fi
 
 RSYNC_ARGS=(-a --compress-level=1)
-if "$RSYNC_BIN" --help 2>&1 | grep -q -- '--info='; then
+HAVE_PROGRESS2=false
+# Capture --help into a variable first. Piping it straight into 'grep -q' lets grep close
+# the pipe on the first match, killing rsync with SIGPIPE (141); under 'set -o pipefail'
+# that reads as "no --info support" and silently downgrades to the verbose --progress path.
+RSYNC_HELP="$("$RSYNC_BIN" --help 2>&1 || true)"
+if printf '%s\\n' "$RSYNC_HELP" | grep -q -- '--info='; then
   RSYNC_ARGS+=(--info=progress2 --no-inc-recursive)
+  HAVE_PROGRESS2=true
 else
+  # Apple's rsync 2.6.9 only reports per-file percentages, which cannot be turned into an
+  # overall figure. The app shows an indeterminate bar when percent stays null.
   RSYNC_ARGS+=(--progress)
 fi
 echo "[INFO] Using rsync at $RSYNC_BIN"
+set_progress "" "Transferring files..."
+
+# rsync separates progress updates with carriage returns, so read on \\r and republish only
+# when the whole-number percentage actually changes. Without that the task log would gain
+# thousands of near-identical lines.
+run_rsync() {
+  local line pct last=""
+  COPYFILE_DISABLE=1 "$RSYNC_BIN" "\${RSYNC_ARGS[@]}" "$SOURCE/" "$DEST_DIR/" 2>&1 \\
+    | while IFS= read -r -d $'\\r' line || [ -n "$line" ]; do
+        pct=""
+        if [ "$HAVE_PROGRESS2" = "true" ]; then
+          pct="$(printf '%s' "$line" | sed -n 's/.*[^0-9]\\([0-9][0-9]*\\)%.*/\\1/p' | tail -1)"
+        fi
+        if [ -n "$pct" ]; then
+          if [ "$pct" != "$last" ]; then
+            last="$pct"
+            set_progress "$pct" "Transferring files..."
+            printf '%s\\n' "$line"
+          fi
+        else
+          printf '%s\\n' "$line"
+        fi
+      done
+  return "\${PIPESTATUS[0]}"
+}
 
 # 'rsync ... || true' is an AND-OR list, not a pipeline, so PIPESTATUS would report the
 # status of 'true' and every failure would read as success. Capture \$? directly.
 set +e
-COPYFILE_DISABLE=1 "$RSYNC_BIN" "\${RSYNC_ARGS[@]}" "$SOURCE/" "$DEST_DIR/"
+run_rsync
 ST=$?
 set -e
 
