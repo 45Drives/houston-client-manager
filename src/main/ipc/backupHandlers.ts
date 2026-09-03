@@ -236,10 +236,22 @@ export async function handleBackupMessage(message: any, ctx: IPCHandlerContext):
 
     case 'updateBackUpTask': {
       const task: BackUpTask = message.task;
-      const username: string = message.username || '';
-      const password: string = message.password || '';
       const backupManager = ctx.getBackUpManager();
       if (!backupManager) { ctx.notify('Error: No Backup Manager available.'); return true; }
+
+      // The schedule survives the IPC hop as an ISO string; the managers need a real Date.
+      if (task.schedule?.startDate) task.schedule.startDate = new Date(task.schedule.startDate);
+
+      const taskHost = task.host || task.target?.split(':')[0] || '';
+      const taskShare = task.share || task.target?.split(':')[1]?.split('/')[0] || '';
+      // Blank fields in the edit dialog mean "keep the existing credentials".
+      const username: string = message.username || task.smb_user || '';
+      const password: string = message.password || resolvePassword(taskHost, taskShare, username, '');
+
+      if (!username || !password) {
+        ctx.notify('Error: No saved credentials for this task. Enter the Samba username and password.');
+        return true;
+      }
 
       try {
         await backupManager.updateSchedule(task, username, password);
@@ -251,13 +263,8 @@ export async function handleBackupMessage(message: any, ctx: IPCHandlerContext):
         ctx.notify(`Updated backup task "${label}" (schedule: ${hour}:${minute})`);
 
         // Sync updated config to broadcaster (best-effort)
-        const host = task.host || task.target?.split(':')[0];
-        if (host) {
-          const resolvedUser = username || task.smb_user || '';
-          const resolvedPass = password || resolvePassword(host, task.share || '', resolvedUser, '');
-          if (resolvedUser && resolvedPass) {
-            syncBackupConfig(host, resolvedUser, resolvedPass, task, getClientId()).catch(() => {});
-          }
+        if (taskHost) {
+          syncBackupConfig(taskHost, username, password, task, getClientId()).catch(() => {});
         }
 
         // Refresh task list in UI

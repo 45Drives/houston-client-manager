@@ -1,7 +1,12 @@
 <template>
   <CardContainer class="overflow-y-auto min-h-0">
 
-    <div class="flex flex-col h-full justify-center items-center text-default">
+    <div v-if="autoAdvancing" class="flex flex-col h-full justify-center items-center text-default gap-3">
+      <LockClosedIcon class="w-8 h-8 text-default" />
+      <p class="text-sm text-default">Using saved Samba credentials…</p>
+    </div>
+
+    <div v-else class="flex flex-col h-full justify-center items-center text-default">
       <div class="w-full max-w-lg space-y-5">
         <!-- Header -->
         <div class="text-center space-y-2">
@@ -73,7 +78,7 @@
 
     <!-- Buttons -->
     <template #footer>
-      <div class="button-group-row w-full justify-between">
+      <div v-if="!autoAdvancing" class="button-group-row w-full justify-between">
 
         <button @click="proceedToPreviousStep" class="btn btn-secondary h-fit">
           Back
@@ -114,6 +119,7 @@ const isWindows = ref(false);
 const validationError = ref('');
 const isValidating = ref(false);
 const autoFilling = ref(false);
+const autoAdvancing = ref(false);
 const togglePassword = () => {
   showPassword.value = !showPassword.value;
 };
@@ -132,33 +138,43 @@ const targetDisplay = computed(() => {
 onMounted(async () => {
   try { isWindows.value = (await window.electron.getOS()) === 'win'; } catch { /* leave hidden */ }
 
-  if (backUpSetupConfig.username && backUpSetupConfig.password) return; // already filled
-
   const target = backUpSetupConfig?.backUpTasks?.[0]?.target;
-  if (!target) return;
+  const host = target ? target.split(':')[0] : '';
 
-  const [host] = target.split(':');
-  if (!host) return;
+  if (!backUpSetupConfig.username || !backUpSetupConfig.password) {
+    if (!host) return;
 
-  autoFilling.value = true;
-  try {
-    const result = await window.electron.ipcRenderer.invoke('servers:get-smb-creds', { host });
-    if (result?.found && result.username && result.password) {
-      backUpSetupConfig.username = result.username;
-      backUpSetupConfig.password = result.password;
+    autoFilling.value = true;
+    try {
+      const result = await window.electron.ipcRenderer.invoke('servers:get-smb-creds', { host });
+      if (result?.found && result.username && result.password) {
+        backUpSetupConfig.username = result.username;
+        backUpSetupConfig.password = result.password;
+      }
+    } catch {
+      // Couldn't auto-fill, user will enter manually
+    } finally {
+      autoFilling.value = false;
     }
-  } catch {
-    // Couldn't auto-fill, user will enter manually
-  } finally {
-    autoFilling.value = false;
   }
+
+  if (!backUpSetupConfig.username || !backUpSetupConfig.password) return;
+  // Windows still needs this step so the optional Windows password can be supplied.
+  if (isWindows.value) return;
+  // Only skip on the first forward pass; going Back must show the form again.
+  if (wizardData.smbCredsPrompted) return;
+  wizardData.smbCredsPrompted = true;
+
+  autoAdvancing.value = true;
+  const advanced = await proceedToNextStep();
+  if (!advanced) autoAdvancing.value = false;
 });
 
 // Check if the "Open" button should be disabled
 const isButtonDisabled = computed(() => !backUpSetupConfig?.username || !backUpSetupConfig?.password || openingBackup.value || isValidating.value);
 
 // Method to handle the "Open" button action
-const proceedToNextStep = async () => {
+const proceedToNextStep = async (): Promise<boolean> => {
   if (backUpSetupConfig.username && backUpSetupConfig.password) {
     validationError.value = '';
     isValidating.value = true;
@@ -177,7 +193,7 @@ const proceedToNextStep = async () => {
       if (!result.valid) {
         validationError.value = result.error || 'Invalid credentials. Please check your username and password.';
         isValidating.value = false;
-        return;
+        return false;
       }
 
       // Validation may have succeeded on a fallback address (e.g. IP instead of an
@@ -192,16 +208,19 @@ const proceedToNextStep = async () => {
     } catch (err: any) {
       validationError.value = err?.message || 'Failed to validate credentials.';
       isValidating.value = false;
-      return;
+      return false;
     }
 
     isValidating.value = false;
     (backUpSetupConfig as any).windowsPassword = windowsPassword.value;
     nextStep();
+    return true;
   }
+  return false;
 };
 
 const proceedToPreviousStep = async () => {
+  autoAdvancing.value = false;
   prevStep();
 };
 

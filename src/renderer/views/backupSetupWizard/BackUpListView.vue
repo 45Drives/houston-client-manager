@@ -224,15 +224,17 @@
 
           <!-- Credentials -->
           <div class="border-t border-default pt-4 mt-4">
-            <p class="text-sm text-muted mb-3">Leave blank to keep your current login details.</p>
+            <p class="text-sm text-muted mb-3">
+              Samba credentials for the backup share (the user credentials created during Setup). Leave both blank to keep the saved ones.
+            </p>
             <div class="flex items-center gap-3 mb-3">
-              <label class="w-[140px] font-semibold text-sm shrink-0">Server Username</label>
+              <label class="w-[140px] font-semibold text-sm shrink-0">Samba Username</label>
               <input v-model="editUsername" type="text"
                 class="input-textlike flex-1 rounded-lg px-3 py-2 border border-default"
                 :placeholder="editTask.smb_user || 'Username'" />
             </div>
             <div class="flex items-center gap-3">
-              <label class="w-[140px] font-semibold text-sm shrink-0">Server Password</label>
+              <label class="w-[140px] font-semibold text-sm shrink-0">Samba Password</label>
               <div class="flex-1 relative">
                 <input v-model="editPassword" :type="showEditPassword ? 'text' : 'password'"
                   class="input-textlike w-full rounded-lg px-3 py-2 border border-default pr-10"

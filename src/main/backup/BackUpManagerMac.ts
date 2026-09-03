@@ -175,8 +175,47 @@ export class BackUpManagerMac implements BackUpManager {
     fs.mkdirSync(this.scriptDir, { recursive: true, mode: 0o700 });
     fs.mkdirSync(this.logDir, { recursive: true });
     const scriptPath = this.scriptPathFor(task.uuid);
+    const isNewTask = !fs.existsSync(scriptPath);
     fs.writeFileSync(scriptPath, this.getShellScriptContent(task, username), { mode: 0o700 });
     fs.chmodSync(scriptPath, 0o700);
+    if (isNewTask) this.seedLastRun(task);
+  }
+
+  /**
+   * Claim the current period for a brand-new task. The daemon treats "no lastrun" as a
+   * missed trigger and fires immediately, which is right after downtime but wrong for a
+   * task the user just created — it would back up seconds after being scheduled.
+   */
+  private seedLastRun(task: BackUpTask): void {
+    const marker = path.join(MAC_STATE_DIR, `${task.uuid}.lastrun`);
+    if (fs.existsSync(marker)) return;
+    try {
+      fs.mkdirSync(MAC_STATE_DIR, { recursive: true, mode: 0o700 });
+      fs.writeFileSync(marker, BackUpManagerMac.periodKey(task.schedule.repeatFrequency));
+    } catch {
+      /* worst case the task runs once at the next daemon tick */
+    }
+  }
+
+  /** Mirrors period_key() in houston-backupd; the two must agree or every task re-fires. */
+  private static periodKey(freq: TaskSchedule['repeatFrequency']): string {
+    const d = new Date();
+    const p = (n: number) => String(n).padStart(2, '0');
+    const y = d.getFullYear();
+    switch (freq) {
+      case 'hour':
+        return `${y}${p(d.getMonth() + 1)}${p(d.getDate())}${p(d.getHours())}`;
+      case 'week': {
+        const yday = Math.floor(
+          (d.getTime() - new Date(y, 0, 1).getTime()) / 86400000
+        );
+        return `${y}${p(Math.floor((yday + 7 - d.getDay()) / 7))}`;
+      }
+      case 'month':
+        return `${y}${p(d.getMonth() + 1)}`;
+      default:
+        return `${y}${p(d.getMonth() + 1)}${p(d.getDate())}`;
+    }
   }
 
   /**
@@ -414,13 +453,15 @@ export class BackUpManagerMac implements BackUpManager {
 
   /** Build cron timing for any repeatFrequency. The daemon reads these five fields. */
   protected scheduleToCron(s: TaskSchedule): string {
-    const m = s.startDate.getMinutes();
-    const h = s.startDate.getHours();
+    // startDate can arrive as an ISO string when the task round-trips through IPC.
+    const start = s.startDate instanceof Date ? s.startDate : new Date(s.startDate);
+    const m = start.getMinutes();
+    const h = start.getHours();
     switch (s.repeatFrequency) {
       case 'hour': return `${m} * * * *`;
       case 'day': return `${m} ${h} * * *`;
-      case 'week': return `${m} ${h} * * ${s.startDate.getDay()}`;
-      case 'month': return `${m} ${h} ${s.startDate.getDate()} * *`;
+      case 'week': return `${m} ${h} * * ${start.getDay()}`;
+      case 'month': return `${m} ${h} ${start.getDate()} * *`;
       default: return `${m} ${h} * * *`;
     }
   }

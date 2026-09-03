@@ -382,15 +382,17 @@ export class BackUpManagerLin implements BackUpManager {
 
 
   protected scheduleToCron(sched: TaskSchedule): string {
+    // startDate can arrive as an ISO string when the task round-trips through IPC.
+    const start = sched.startDate instanceof Date ? sched.startDate : new Date(sched.startDate);
     switch (sched.repeatFrequency) {
       case "hour":
-        return `${sched.startDate.getMinutes()} * * * *`;
+        return `${start.getMinutes()} * * * *`;
       case "day":
-        return `${sched.startDate.getMinutes()} ${sched.startDate.getHours()} * * *`;
+        return `${start.getMinutes()} ${start.getHours()} * * *`;
       case "week":
-        return `${sched.startDate.getMinutes()} ${sched.startDate.getHours()} * * ${sched.startDate.getDay()}`;
+        return `${start.getMinutes()} ${start.getHours()} * * ${start.getDay()}`;
       case "month":
-        return `${sched.startDate.getMinutes()} ${sched.startDate.getHours()} ${sched.startDate.getDate()} * *`;
+        return `${start.getMinutes()} ${start.getHours()} ${start.getDate()} * *`;
       default:
         return '';
     }
