@@ -6,6 +6,9 @@ builds
 # Generated bundle
 src/main/static/easysetup-bundle.js
 
+# Compiled on the packaging Mac by scripts/mac/build-shim.sh
+src/main/static/mac/houston-backupd
+
 .yarn/
 yarn.lock
 .vscode

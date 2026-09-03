@@ -13,8 +13,8 @@ import { shellQuote } from "../security";
  * and is guarded by a version marker.
  */
 
-/** Bump together with DAEMON_VERSION in src/main/static/mac/houston-backupd. */
-export const MAC_DAEMON_VERSION = 3;
+/** Bump together with DAEMON_VERSION in src/main/static/mac/houston-backupd.sh. */
+export const MAC_DAEMON_VERSION = 4;
 
 export const MAC_DAEMON_LABEL = "com.45drives.houston.backupd";
 
@@ -181,7 +181,12 @@ function runInstaller(reason: string): { installed: boolean; reason: string } {
   try {
     // The shipped assets may live inside app.asar, which install(1) and friends cannot read.
     // Copying them out through fs works in dev and packaged alike.
-    for (const name of ["houston-backupd", `${MAC_DAEMON_LABEL}.plist`, INSTALLER_NAME]) {
+    for (const name of [
+      "houston-backupd",
+      "houston-backupd.sh",
+      `${MAC_DAEMON_LABEL}.plist`,
+      INSTALLER_NAME,
+    ]) {
       const src = getAssetSync("static", path.join("mac", name));
       if (!fs.existsSync(src)) {
         throw new Error(`Backup daemon assets missing (looked for ${src})`);

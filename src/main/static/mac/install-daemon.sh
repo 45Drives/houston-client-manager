@@ -9,7 +9,7 @@
 #
 # Idempotent. Safe to run repeatedly and safe to run when nothing has changed.
 #
-# Usage: install-daemon.sh --source <dir containing houston-backupd and the plist>
+# Usage: install-daemon.sh --source <dir containing houston-backupd, houston-backupd.sh and the plist>
 
 set -euo pipefail
 
@@ -35,10 +35,12 @@ fi
 LABEL="com.45drives.houston.backupd"
 ROOT="/Library/Application Support/45Drives/Houston"
 BIN="${ROOT}/bin/houston-backupd"
+RUNNER="${ROOT}/bin/houston-backupd.sh"
 MARKER="${ROOT}/.daemon-version"
 PLIST="/Library/LaunchDaemons/${LABEL}.plist"
 
-RUNNER_SRC="${SOURCE_DIR}/houston-backupd"
+SHIM_SRC="${SOURCE_DIR}/houston-backupd"
+RUNNER_SRC="${SOURCE_DIR}/houston-backupd.sh"
 PLIST_SRC="${SOURCE_DIR}/${LABEL}.plist"
 
 if [ "$(id -u)" -ne 0 ]; then
@@ -46,7 +48,7 @@ if [ "$(id -u)" -ne 0 ]; then
   exit 1
 fi
 
-for f in "$RUNNER_SRC" "$PLIST_SRC"; do
+for f in "$SHIM_SRC" "$RUNNER_SRC" "$PLIST_SRC"; do
   if [ ! -f "$f" ]; then
     echo "install-daemon.sh: missing $f" >&2
     exit 1
@@ -65,7 +67,8 @@ mkdir -p "${ROOT}/bin" /Library/Logs/45Drives
 chown root:wheel "$ROOT" "${ROOT}/bin"
 chmod 755 "$ROOT" "${ROOT}/bin"
 
-install -m 755 -o root -g wheel "$RUNNER_SRC" "$BIN"
+install -m 755 -o root -g wheel "$SHIM_SRC" "$BIN"
+install -m 755 -o root -g wheel "$RUNNER_SRC" "$RUNNER"
 install -m 644 -o root -g wheel "$PLIST_SRC" "$PLIST"
 
 # bootout first so an upgraded runner is picked up instead of the running copy.

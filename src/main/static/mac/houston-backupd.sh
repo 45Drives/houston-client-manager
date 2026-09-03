@@ -1,19 +1,21 @@
 #!/bin/bash
 #
-# houston-backupd — LaunchDaemon runner for 45Drives Storage Wizard backups.
+# houston-backupd.sh — LaunchDaemon runner for 45Drives Storage Wizard backups.
 #
-# Installed to /Library/Application Support/45Drives/Houston/bin/houston-backupd and
-# started by /Library/LaunchDaemons/com.45drives.houston.backupd.plist. Because it is a
-# LaunchDaemon it runs at boot and keeps running with nobody signed in, which is what
-# makes logged-out backups possible on macOS. cron is not used.
+# Installed to /Library/Application Support/45Drives/Houston/bin/houston-backupd.sh and
+# started by the compiled houston-backupd binary alongside it, which is what launchd runs.
+# That indirection exists so the job can hold Full Disk Access; see houston-backupd.c.
+# Because it is a LaunchDaemon it runs at boot and keeps running with nobody signed in,
+# which is what makes logged-out backups possible on macOS. cron is not used.
 #
 # It never executes a task script as root. Task scripts live in each user's home and are
-# run with sudo -u as the account that owns them, after an ownership and writability
-# check — a user-writable script executed as root would be a local privilege escalation.
+# run as the account that owns them via the shim's --as-user mode, after an ownership and
+# writability check — a user-writable script executed as root would be a local privilege
+# escalation.
 #
 # DAEMON_VERSION must match MAC_DAEMON_VERSION in src/main/backup/macDaemon.ts. Bump both
 # on any change here, or installed copies will never be replaced.
-# DAEMON_VERSION = 3
+# DAEMON_VERSION = 4
 
 set -uo pipefail
 
@@ -24,6 +26,7 @@ TASKS_REL="${SUPPORT_REL}/backup-tasks"
 STATE_REL="${SUPPORT_REL}/state"
 
 DAEMON_ROOT="/Library/Application Support/45Drives/Houston"
+SHIM="${DAEMON_ROOT}/bin/houston-backupd"
 
 LOG_DIR="/Library/Logs/45Drives"
 LOG_FILE="${LOG_DIR}/houston-backupd.log"
@@ -141,8 +144,10 @@ run_task() {
   printf '%s' "$key" >"${state_dir}/${uuid}.lastrun" 2>/dev/null || true
   chown "$uid" "${state_dir}/${uuid}.lastrun" 2>/dev/null || true
 
+  # Not sudo: it is setuid and resets the TCC responsible process, which loses the
+  # daemon's Full Disk Access grant before rsync ever starts.
   log "run ${uuid} as uid ${uid}"
-  sudo -n -H -u "#${uid}" /bin/bash "$script" >/dev/null 2>>"$LOG_FILE"
+  "$SHIM" --as-user "$uid" "$script" >/dev/null 2>>"$LOG_FILE"
   local rc=$?
   log "done ${uuid} rc=${rc}"
 

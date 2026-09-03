@@ -7,7 +7,8 @@ LABEL="com.45drives.houston.backupd"
 ROOT="/Library/Application Support/45Drives/Houston"
 
 echo "== files =="
-ls -l "${ROOT}/bin/houston-backupd" 2>/dev/null || echo "  runner NOT installed"
+ls -l "${ROOT}/bin/houston-backupd" 2>/dev/null || echo "  shim NOT installed"
+ls -l "${ROOT}/bin/houston-backupd.sh" 2>/dev/null || echo "  runner NOT installed"
 ls -l "/Library/LaunchDaemons/${LABEL}.plist" 2>/dev/null || echo "  plist NOT installed"
 printf '  version marker: %s\n' "$(cat "${ROOT}/.daemon-version" 2>/dev/null || echo none)"
 
