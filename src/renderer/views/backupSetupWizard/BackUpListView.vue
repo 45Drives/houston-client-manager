@@ -218,7 +218,7 @@
             </button>
             <span v-if="editTask.schedule" class="text-sm text-muted">
               {{ formatFrequency(editTask.schedule.repeatFrequency) }} starting
-              {{ new Date(editTask.schedule.startDate).toLocaleDateString() }}
+              {{ new Date(editTask.schedule.startDate).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) }}
             </span>
           </div>
 
@@ -544,12 +544,21 @@ const editUsername = ref('');
 const editPassword = ref('');
 const showEditPassword = ref(false);
 
+/** Simple mode always lands on the top of the hour or midnight, so anything else was custom. */
+function inferScheduleMode(schedule: BackUpTask['schedule']): 'interval' | 'custom' {
+  const start = new Date(schedule.startDate);
+  if (schedule.repeatFrequency === 'hour') {
+    return start.getMinutes() === 0 ? 'interval' : 'custom';
+  }
+  return start.getHours() === 0 && start.getMinutes() === 0 ? 'interval' : 'custom';
+}
+
 async function editSelectedSchedules() {
   if (selectedBackUps.value.length !== 1) return;
   const task = selectedBackUps.value[0];
   editTask.value = JSON.parse(JSON.stringify(task));
   editTask.value!.schedule.startDate = new Date(task.schedule.startDate);
-  editScheduleMode.value = 'interval';
+  editScheduleMode.value = inferScheduleMode(task.schedule);
   editFrequency.value = task.schedule.repeatFrequency;
   editUsername.value = '';
   editPassword.value = '';
