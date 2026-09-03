@@ -39,6 +39,7 @@ interface BackUpManager {
     onProgress?: (step: number, total: number, message: string) => void
   ): Promise<void>;
   runNow?(task: BackUpTask): Promise<{ stdout: string; stderr: string }>;
+  cancelNow?(task: BackUpTask): Promise<{ cancelled: boolean; method: string }>;
 }
 
 function makeMockTask(overrides: Partial<BackUpTask> = {}): BackUpTask {
@@ -64,9 +65,11 @@ describe('BackUpManager interface contract', () => {
       isFirstBackupNeeded: () => true,
       scheduleAllTasks: async () => {},
       runNow: async () => ({ stdout: 'done', stderr: '' }),
+      cancelNow: async () => ({ cancelled: true, method: 'child' }),
     };
 
     expect(manager.runNow).toBeDefined();
+    expect(manager.cancelNow).toBeDefined();
     expect(manager.scheduleAllTasks).toBeDefined();
     expect(manager.isFirstBackupNeeded).toBeDefined();
   });
@@ -80,6 +83,7 @@ describe('BackUpManager interface contract', () => {
     };
 
     expect(manager.runNow).toBeUndefined();
+    expect(manager.cancelNow).toBeUndefined();
     expect(manager.scheduleAllTasks).toBeUndefined();
   });
 

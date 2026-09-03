@@ -7,7 +7,14 @@
         :class="selectedBackUps.length > 0 || activeTour?.id === 'backup-manager' ? '' : 'invisible pointer-events-none'">
         <span class="text-xs text-gray-500 mr-1">{{ selectedBackUps.length }} selected</span>
 
-        <button class="btn btn-sm btn-primary btn-with-icon h-fit" data-tour="run-now"
+        <button v-if="selectedRunning.length > 0"
+          class="btn btn-sm btn-secondary btn-with-icon h-fit text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20"
+          @click="$emit('stop')">
+          <StopIcon class="w-4 h-4" />
+          Stop Run
+        </button>
+
+        <button v-else class="btn btn-sm btn-primary btn-with-icon h-fit" data-tour="run-now"
           :disabled="isRunningNow || selectedBackUps.length < 1" @click="$emit('run')">
           <PlayIcon class="w-4 h-4" />
           <template v-if="!isRunningNow">Run Now</template>
@@ -119,6 +126,12 @@
                 :class="taskStatusClass(task)">
                 <span class="w-1.5 h-1.5 rounded-full" :class="taskStatusDotClass(task)" />
                 {{ taskStatusLabel(task) }}
+                <button v-if="taskStatus(task) === 'running'"
+                  class="-mr-1 ml-0.5 rounded-full p-0.5 hover:bg-blue-200/70 dark:hover:bg-blue-800/50"
+                  :aria-label="`Stop backup ${taskDisplayName(task)}`" title="Stop this run"
+                  @click.stop="stopTasks([task])">
+                  <StopIcon class="w-3 h-3" />
+                </button>
               </span>
             </td>
             <td class="px-3 py-1.5 text-gray-500" :title="formatDateTime(getLastRunAt(task))">{{ formatRelativeTime(getLastRunAt(task)) }}
@@ -284,7 +297,7 @@ import CredentialsModal from "../../components/CredentialsModal.vue";
 import { formatFrequency } from "./utils";
 import { SimpleCalendar } from "../../components/calendar";
 import { thisOsInjectionKey } from '../../keys/injection-keys';
-import { ArrowPathIcon, CalendarIcon, PlayIcon, EyeIcon as EyeIcon24, PencilSquareIcon, DocumentTextIcon, TrashIcon, FolderOpenIcon, XMarkIcon, CheckIcon } from '@heroicons/vue/24/outline';
+import { ArrowPathIcon, CalendarIcon, PlayIcon, StopIcon, EyeIcon as EyeIcon24, PencilSquareIcon, DocumentTextIcon, TrashIcon, FolderOpenIcon, XMarkIcon, CheckIcon } from '@heroicons/vue/24/outline';
 import { EyeIcon, EyeSlashIcon } from '@heroicons/vue/20/solid';
 import { CircleStackIcon } from '@heroicons/vue/24/outline';
 import { useRouter } from 'vue-router';
@@ -301,6 +314,8 @@ const router = useRouter();
 const emit = defineEmits<{
   (event: 'backUpTaskSelected', tasks: BackUpTask[]): void;
   (event: 'run'): void;
+  (event: 'stop'): void;
+  (event: 'stopped', uuids: string[]): void;
   (event: 'view'): void;
   (event: 'edit'): void;
   (event: 'viewLog'): void;
@@ -486,7 +501,7 @@ const eventRunningUuids = ref<string[]>([]);
 // Track last known event status per UUID
 const lastEventStatus = ref<Record<string, string>>({});
 
-function taskStatus(task: BackUpTask): 'running' | 'failed' | 'online' | 'offline' | 'idle' | 'disabled' {
+function taskStatus(task: BackUpTask): 'running' | 'failed' | 'cancelled' | 'online' | 'offline' | 'idle' | 'disabled' {
   if (task.disabled) return 'disabled';
   // Check if currently running (from props OR event log detection)
   if (props.runningTaskIds.includes(task.uuid) || eventRunningUuids.value.includes(task.uuid)) {
@@ -495,6 +510,7 @@ function taskStatus(task: BackUpTask): 'running' | 'failed' | 'online' | 'offlin
   // Check last event log status
   const evStatus = lastEventStatus.value[task.uuid];
   if (evStatus === 'failure') return 'failed';
+  if (evStatus === 'cancelled') return 'cancelled';
   // Check SMB connectivity status
   if (task.status === 'online') return 'online';
   if (task.status?.startsWith('offline') || task.status === 'missing_folder') return 'offline';
@@ -505,6 +521,7 @@ function taskStatusLabel(task: BackUpTask): string {
   switch (taskStatus(task)) {
     case 'running': return 'Running';
     case 'failed': return 'Failed';
+    case 'cancelled': return 'Cancelled';
     case 'online': return 'Online';
     case 'offline': return 'Offline';
     case 'disabled': return 'Disabled';
@@ -516,6 +533,7 @@ function taskStatusClass(task: BackUpTask): string {
   switch (taskStatus(task)) {
     case 'running': return 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300';
     case 'failed': return 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300';
+    case 'cancelled': return 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300';
     case 'online': return 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300';
     case 'offline': return 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300';
     case 'disabled': return 'bg-neutral-100 text-neutral-400 dark:bg-neutral-800 dark:text-neutral-500';
@@ -527,6 +545,7 @@ function taskStatusDotClass(task: BackUpTask): string {
   switch (taskStatus(task)) {
     case 'running': return 'bg-blue-500 animate-pulse';
     case 'failed': return 'bg-red-500';
+    case 'cancelled': return 'bg-amber-500';
     case 'online': return 'bg-green-500';
     case 'offline': return 'bg-yellow-500';
     case 'disabled': return 'bg-neutral-400';
@@ -654,6 +673,46 @@ function runSelectedNow() {
   selectedBackUps.value.forEach(task => {
     IPCRouter.getInstance().send('backend', 'action', JSON.stringify({ type: 'runBackUpTaskNow', task }));
   });
+}
+
+/** Selected tasks that are actually mid-run, which is what the toolbar button switches on. */
+const selectedRunning = computed(() =>
+  selectedBackUps.value.filter(t => taskStatus(t) === 'running')
+);
+
+/**
+ * Stop one or more running backups. Files already copied stay put — rsync and robocopy both
+ * pick up where they left off on the next run — so the only thing lost is the rest of
+ * this pass.
+ */
+async function stopTasks(tasks: BackUpTask[]) {
+  const running = tasks.filter(t => taskStatus(t) === 'running');
+  if (running.length === 0) return;
+
+  const confirmed = await unwrap(confirm({
+    header: `Stop running backup${running.length > 1 ? 's' : ''}?`,
+    body: `${running.length > 1 ? `${running.length} backups are` : `"${taskDisplayName(running[0])}" is`} still copying files. Stopping now keeps whatever has already been copied; the next run picks up where this one left off.`,
+    dangerous: true,
+    confirmButtonText: 'Stop Run',
+    cancelButtonText: 'Keep Running',
+  }));
+  if (!confirmed) return;
+
+  const cleanTasks = running.map(t => ({ ...t }));
+  IPCRouter.getInstance().send('backend', 'action', JSON.stringify(cleanTasks.length === 1
+    ? { type: 'cancelBackUpTaskNow', task: cleanTasks[0] }
+    : { type: 'cancelMultipleBackUpTasks', tasks: cleanTasks }
+  ));
+
+  emit('stopped', running.map(t => t.uuid));
+
+  // The status refresh arrives with the backend's cancelled event, so poll harder briefly
+  // rather than waiting out the 15s tick.
+  shortPollingUntil = Date.now() + 30000;
+}
+
+function stopSelectedNow() {
+  return stopTasks(selectedBackUps.value);
 }
 
 function toggleTaskDisabled(task: BackUpTask) {
@@ -833,7 +892,7 @@ function getTaskName(uuid: string): string | undefined {
 }
 
 // expose to parent
-defineExpose({ deleteSelectedTasks, editSelectedSchedules, runSelectedNow, getTaskName, fetchBackupTasks });
+defineExpose({ deleteSelectedTasks, editSelectedSchedules, runSelectedNow, stopSelectedNow, getTaskName, fetchBackupTasks });
 </script>
 
 <style scoped>

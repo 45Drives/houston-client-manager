@@ -1,4 +1,4 @@
-import { BackUpManager, BackupProgressCallback } from "./types";
+import { BackUpManager, BackupProgressCallback, CancelResult } from "./types";
 import { BackUpTask, TaskSchedule } from "@45drives/houston-common-lib";
 import * as fs from "fs";
 import { execSync, spawn } from "child_process";
@@ -20,13 +20,14 @@ import {
   MAC_STATE_DIR,
   MAC_TASK_DIR,
 } from './macDaemon';
+import { cancelUnixRun, trackRun, untrackRun } from './runRegistry';
 
 /**
  * Bump on any change to getShellScriptContent(). Scripts already on disk are rewritten
  * when their stamp falls behind, so a script fix reaches tasks created before it shipped.
  * The Windows ACTION_BAT_VERSION exists for the same reason.
  */
-const TASK_SCRIPT_VERSION = 6;
+const TASK_SCRIPT_VERSION = 7;
 
 const LEGACY_SCRIPT_DIR = "/Library/Application Support/Houston/scripts";
 
@@ -313,9 +314,12 @@ export class BackUpManagerMac implements BackUpManager {
     }
 
     return new Promise((resolve, reject) => {
+      // Detached so the script leads its own process group and a stop reaches rsync too.
       const child = spawn('/bin/bash', [scriptPath], {
         env: process.env,
+        detached: true,
       });
+      trackRun(task.uuid, child);
 
       // The lock records the process that actually holds the mount.
       if (child.pid) acquireTaskLock(task.uuid, child.pid);
@@ -359,6 +363,7 @@ export class BackUpManagerMac implements BackUpManager {
 
       child.on('error', (err) => {
         releaseTaskLock(task.uuid);
+        untrackRun(task.uuid);
         reject({
           message: `Failed to spawn backup task process: ${err.message}`,
           stdout,
@@ -366,6 +371,21 @@ export class BackUpManagerMac implements BackUpManager {
         });
       });
     });
+  }
+
+  /**
+   * Stop a run the app started or one the daemon started on schedule.
+   *
+   * The daemon runs task scripts as the signed-in user via the shim, so the script process
+   * is killable from here without elevation. The pid recorded in the lock belongs to the
+   * root daemon itself and must be left alone; the daemon reaps the shim and drops the lock
+   * once the script exits, and a lock left behind by an app-side kill is released here.
+   */
+  async cancelNow(task: BackUpTask): Promise<CancelResult> {
+    const holder = taskLockHolder(task.uuid);
+    const result = await cancelUnixRun(task.uuid);
+    if (holder?.holder !== 'daemon') releaseTaskLock(task.uuid);
+    return result;
   }
 
   /** Remove one task. No administrator prompt, and no credential teardown. */
@@ -379,8 +399,12 @@ export class BackUpManagerMac implements BackUpManager {
 
   private removeTaskFiles(uuid: string): void {
     try { fs.unlinkSync(this.scriptPathFor(uuid)); } catch { /* already gone */ }
-    for (const suffix of ['lastrun', 'laststatus']) {
+    for (const suffix of ['lastrun', 'laststatus', 'progress', 'progress.summary', 'progress.tmp']) {
       try { fs.unlinkSync(path.join(MAC_STATE_DIR, `${uuid}.${suffix}`)); } catch { /* already gone */ }
+    }
+    // The Log Viewer looks logs up by uuid, so a deleted task's log is unreachable dead weight.
+    for (const name of [`Houston_Backup_Task_${uuid}.log`, `backup_task_${uuid}.log`]) {
+      try { fs.unlinkSync(path.join(this.logDir, name)); } catch { /* already gone */ }
     }
     releaseTaskLock(uuid);
   }
@@ -629,6 +653,7 @@ fi
 
 WE_MOUNTED=false
 BACKUP_ENDED=false
+CANCELLED=false
 
 # Progress is published to a file rather than stdout alone, because a run started by the
 # daemon has no pipe back to the app. Either way the app reads the same source.
@@ -649,7 +674,11 @@ write_backup_end() {
 }
 
 cleanup() {
-  write_backup_end failure
+  if [ "$CANCELLED" = "true" ]; then
+    write_backup_end cancelled
+  else
+    write_backup_end failure
+  fi
   rm -f "$PROGRESS_FILE" "\${PROGRESS_FILE}.tmp" "$SUMMARY_FILE" 2>/dev/null || true
   # Unmount only what this run mounted. The mount point itself is never removed: an
   # unprivileged run cannot recreate one it does not own, and an empty directory is free.
@@ -662,8 +691,8 @@ cleanup() {
 trap cleanup EXIT
 # bash skips the EXIT trap when it dies on a signal, so convert the signal into an exit and
 # let the trap unmount. Otherwise cancelling a backup strands the share mounted.
-trap 'exit 143' TERM
-trap 'exit 130' INT
+trap 'CANCELLED=true; exit 143' TERM
+trap 'CANCELLED=true; exit 130' INT
 
 echo "===== [$(date -u '+%Y-%m-%dT%H:%M:%SZ')] [INFO] Backup task started: $UUID ====="
 
@@ -779,9 +808,9 @@ if printf '%s\\n' "$RSYNC_HELP" | grep -q -- '--info='; then
   RSYNC_ARGS+=(--info=progress2 --no-inc-recursive)
   HAVE_PROGRESS2=true
 else
-  # Apple's rsync 2.6.9 only reports per-file percentages, which cannot be turned into an
-  # overall figure. The app shows an indeterminate bar when percent stays null.
-  RSYNC_ARGS+=(--progress)
+  # Apple's rsync 2.6.9 has no --info=, and its --progress implies --verbose, which lists
+  # every file walked. --stats reports what moved in a dozen lines instead of thousands.
+  RSYNC_ARGS+=(--stats)
 fi
 echo "[INFO] Using rsync at $RSYNC_BIN"
 set_progress "" "Transferring files..."
@@ -807,7 +836,11 @@ run_rsync() {
           printf '%s\\n' "$line"
         fi
         # rsync's own tally, kept so the run can be summarised after the pipeline ends.
-        case "$line" in *xfr#*) printf '%s' "$line" > "$SUMMARY_FILE" 2>/dev/null || true ;; esac
+        # Apple's rsync emits no \\r at all, so its whole --stats block arrives as one record.
+        case "$line" in
+          *xfr#*) printf '%s' "$line" > "$SUMMARY_FILE" 2>/dev/null || true ;;
+          *"files transferred:"*) printf '%s\\n' "$line" > "$SUMMARY_FILE" 2>/dev/null || true ;;
+        esac
       done
   return "\${PIPESTATUS[0]}"
 }
@@ -824,8 +857,16 @@ summarise_transfer() {
   local summary xfr checked
   summary="$(cat "$SUMMARY_FILE" 2>/dev/null || true)"
   [ -n "$summary" ] || return 0
-  xfr="$(printf '%s' "$summary" | sed -n 's/.*xfr#\\([0-9][0-9]*\\).*/\\1/p')"
-  checked="$(printf '%s' "$summary" | sed -n 's|.*to-chk=[0-9]*/\\([0-9][0-9]*\\).*|\\1|p')"
+  case "$summary" in
+    *xfr#*)
+      xfr="$(printf '%s' "$summary" | sed -n 's/.*xfr#\\([0-9][0-9]*\\).*/\\1/p')"
+      checked="$(printf '%s' "$summary" | sed -n 's|.*to-chk=[0-9]*/\\([0-9][0-9]*\\).*|\\1|p')"
+      ;;
+    *)
+      xfr="$(printf '%s\\n' "$summary" | sed -n 's/^Number of .*files transferred: *\\([0-9][0-9]*\\).*/\\1/p')"
+      checked="$(printf '%s\\n' "$summary" | sed -n 's/^Number of files: *\\([0-9][0-9]*\\).*/\\1/p')"
+      ;;
+  esac
   if [ "\${xfr:-0}" = "0" ]; then
     echo "[INFO] No files needed copying; destination already matches source (\${checked:-0} checked)"
   else

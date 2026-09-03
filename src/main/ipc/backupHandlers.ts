@@ -14,7 +14,8 @@ import { app } from 'electron';
 import { execFileSync } from 'child_process';
 import type { IPCHandlerContext } from './types';
 import { getCredentialManager } from '../credentialManager';
-import { startBackupProgressWatcher } from '../backup/progressWatcher';
+import { startBackupProgressWatcher, clearTaskProgress } from '../backup/progressWatcher';
+import { isSafeUuid } from '../backup/runRegistry';
 import { removeBackupConfig, syncBackupConfig, getClientId } from '../backup/broadcasterApi';
 
 /** Resolve SMB password: use provided password, or look it up from the credential vault */
@@ -65,6 +66,59 @@ function errMsg(err: unknown): string {
   if (err instanceof Error) return err.message;
   if (typeof err === 'object' && err !== null && 'message' in err) return String((err as { message: unknown }).message);
   return String(err);
+}
+
+/* Runs the user stopped. A cancelled run fails by definition, so its rejection has to be
+ * told apart from a backup that broke on its own before anything is reported. */
+const cancelledUuids = new Set<string>();
+
+function eventLogPath(): string {
+  return path.join(app.getPath('userData'), 'logs', '45drives_backup_events.json');
+}
+
+/**
+ * Guarantee the run is closed out in the event log.
+ *
+ * The task script writes its own backup_end from a signal trap, but scripts written by an
+ * older app version have no trap, and killing one leaves a backup_start with no partner —
+ * which the UI reads as "still running" until the 12 hour staleness cutoff. Give the script
+ * a moment to do it properly, then do it here if it did not.
+ */
+async function ensureCancelledEndEvent(task: BackUpTask): Promise<void> {
+  await new Promise(r => setTimeout(r, 2500));
+
+  const logFile = eventLogPath();
+  let open = false;
+  try {
+    const lines = fs.readFileSync(logFile, 'utf8').split(/\r?\n/).filter(l => l.trim());
+    for (const line of lines) {
+      try {
+        const ev = JSON.parse(line);
+        if (ev.uuid !== task.uuid) continue;
+        if (ev.event === 'backup_start') open = true;
+        else if (ev.event === 'backup_end') open = false;
+      } catch { /* skip invalid JSON */ }
+    }
+  } catch {
+    return; // no log yet means no dangling start
+  }
+  if (!open) return;
+
+  const record = {
+    event: 'backup_end',
+    timestamp: new Date().toISOString(),
+    uuid: task.uuid,
+    host: task.host,
+    share: task.share,
+    source: task.source,
+    target: task.target,
+    status: 'cancelled',
+    smb_user: task.smb_user,
+  };
+  try {
+    fs.mkdirSync(path.dirname(logFile), { recursive: true });
+    fs.appendFileSync(logFile, `${JSON.stringify(record)}\n`);
+  } catch { /* the UI falls back to the staleness cutoff */ }
 }
 
 export async function handleBackupMessage(message: any, ctx: IPCHandlerContext): Promise<boolean> {
@@ -397,11 +451,12 @@ export async function handleBackupMessage(message: any, ctx: IPCHandlerContext):
           });
         };
         onProgress(null, 'Starting backup...');
+        cancelledUuids.delete(task.uuid);
 
         const result = await backupManager.runNow(task, onProgress);
 
         // Signal completion
-        onProgress(100, 'Complete');
+        if (!cancelledUuids.has(task.uuid)) onProgress(100, 'Complete');
 
         // Check stdout/stderr for actual failure indicators even if exit code was "non-fatal"
         const output = `${result.stdout}\n${result.stderr}`;
@@ -422,8 +477,14 @@ export async function handleBackupMessage(message: any, ctx: IPCHandlerContext):
             /mount error|ERROR|failed/i.test(l)
           ).map(l => l.trim()).filter(Boolean);
           const detail = errorLines.join('; ') || 'Check task log for details';
-          ctx.jsonLogger.error({ event: 'runBackUpTaskNow_error', taskUuid: task.uuid, error: detail });
-          ctx.notify(`Backup task "${task.description}" failed: ${detail}`);
+          if (cancelledUuids.has(task.uuid)) {
+            ctx.jsonLogger.info({ event: 'runBackUpTaskNow_cancelled', taskUuid: task.uuid });
+          } else {
+            ctx.jsonLogger.error({ event: 'runBackUpTaskNow_error', taskUuid: task.uuid, error: detail });
+            ctx.notify(`Backup task "${task.description}" failed: ${detail}`);
+          }
+        } else if (cancelledUuids.has(task.uuid)) {
+          ctx.jsonLogger.info({ event: 'runBackUpTaskNow_cancelled', taskUuid: task.uuid });
         } else {
           ctx.jsonLogger.info({ event: 'runBackUpTaskNow_success', taskUuid: task.uuid, stderr: result.stderr || null });
           ctx.notify(`Backup task "${task.description}" completed successfully.`);
@@ -457,8 +518,70 @@ export async function handleBackupMessage(message: any, ctx: IPCHandlerContext):
       } catch (err: unknown) {
         console.error('runNow failed:', err);
         const msg = (err instanceof Error ? err.message : '') || (typeof err === 'object' && err !== null && 'stderr' in err ? String((err as Record<string, unknown>).stderr) : '') || JSON.stringify(err);
-        ctx.jsonLogger.error({ event: 'runBackUpTaskNow_error', taskUuid: task.uuid, error: msg });
-        ctx.notify(`Backup task "${task.description}" failed to run: ${msg}`);
+        if (cancelledUuids.has(task.uuid)) {
+          // The run died because the user stopped it; cancelBackUpTaskNow already reported it.
+          ctx.jsonLogger.info({ event: 'runBackUpTaskNow_cancelled', taskUuid: task.uuid });
+        } else {
+          ctx.jsonLogger.error({ event: 'runBackUpTaskNow_error', taskUuid: task.uuid, error: msg });
+          ctx.notify(`Backup task "${task.description}" failed to run: ${msg}`);
+        }
+      }
+      return true;
+    }
+
+    case 'cancelBackUpTaskNow':
+    case 'cancelMultipleBackUpTasks': {
+      const backupManager = ctx.getBackUpManager();
+      const requested: BackUpTask[] = message.tasks ?? (message.task ? [message.task] : []);
+
+      if (!backupManager?.cancelNow) {
+        ctx.notify('Error: Stopping a running backup is not supported for this OS');
+        return true;
+      }
+
+      let knownTasks: BackUpTask[] = [];
+      try { knownTasks = await backupManager.queryTasks(); } catch { /* fall back to the request */ }
+
+      const stopped: BackUpTask[] = [];
+      for (const requestedTask of requested) {
+        const uuid = requestedTask?.uuid;
+        if (!isSafeUuid(uuid)) continue;
+
+        // Prefer the on-disk task: the renderer copy is only ever used to name the task.
+        const task = knownTasks.find(t => t.uuid === uuid) ?? requestedTask;
+        const label = task.name || task.description || uuid;
+
+        cancelledUuids.add(uuid);
+        router.send('renderer', 'backupProgress', { taskUuid: uuid, percent: null, message: 'Stopping…' });
+
+        try {
+          const result = await backupManager.cancelNow(task);
+          ctx.jsonLogger.info({ event: 'cancelBackUpTaskNow', taskUuid: uuid, ...result });
+          await ensureCancelledEndEvent(task);
+          clearTaskProgress(uuid);
+          ctx.notify(
+            result.cancelled
+              ? `Backup task "${label}" cancelled.`
+              : `Backup task "${label}" was not running.`
+          );
+          stopped.push(task);
+        } catch (err: unknown) {
+          ctx.jsonLogger.error({ event: 'cancelBackUpTaskNow_error', taskUuid: uuid, error: errMsg(err) });
+          ctx.notify(`Could not stop backup task "${label}": ${errMsg(err)}`);
+        } finally {
+          // Long enough for the in-flight runNow rejection to land, short enough that a
+          // later genuine failure is still reported.
+          setTimeout(() => cancelledUuids.delete(uuid), 60_000);
+        }
+      }
+
+      // The renderer re-reads the event log whenever statuses change, which is what clears
+      // the Running badge for scheduled runs.
+      for (const task of stopped) {
+        try { task.status = await checkBackupTaskStatus(task); } catch { /* status is cosmetic here */ }
+      }
+      if (stopped.length > 0) {
+        router.send('renderer', 'action', JSON.stringify({ type: 'backUpStatusesUpdated', tasks: stopped }));
       }
       return true;
     }

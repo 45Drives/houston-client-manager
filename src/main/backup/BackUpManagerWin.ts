@@ -1,5 +1,5 @@
 import { jsonLogger } from '../main';
-import { BackUpManager, BackupProgressCallback } from "./types";
+import { BackUpManager, BackupProgressCallback, CancelResult } from "./types";
 import { BackUpTask, TaskSchedule } from "@45drives/houston-common-lib";
 import { formatDateForTask, getAppPath, getMountSmbScript, getSmbTargetFromSmbTarget } from "../utils";
 import sudo from 'sudo-prompt';
@@ -35,6 +35,14 @@ const WIN_PASS_ENV = 'HOUSTON_WIN_ACCOUNT_PASSWORD';
 /* buildActionBat only runs when a task is scheduled, so fixes to the generated
  * script never reach tasks that already exist. Bump on every script change. */
 const ACTION_BAT_VERSION = 5;
+
+/* Task Scheduler reports a task it was told to stop as 0x41306 ("task terminated"). It is
+ * an error code, but not a backup failure, so it is mapped separately below. */
+const TASK_TERMINATED_RESULT = 267014;
+
+/* uuids stopped from the UI, so the poll loop in runNow can exit at once instead of
+ * waiting out its 3s tick and then reporting the stop as a failure. */
+const cancelledRuns = new Set<string>();
 
 interface TaskData {
   source?: string;
@@ -267,6 +275,7 @@ export class BackUpManagerWin implements BackUpManager {
 
   async runNow(task: BackUpTask, onProgress?: BackupProgressCallback): Promise<{ stdout: string; stderr: string }> {
     const taskName = `${TASK_ID}_${task.uuid}`;
+    cancelledRuns.delete(task.uuid);
     this.refreshActionBat(task);
     const logFile = path.join(logPath, `Houston_Backup_Task_${task.uuid}.log`);
     // robocopy writes to the self-capture file, not %LOG%, so progress lives here.
@@ -318,6 +327,7 @@ export class BackUpManagerWin implements BackUpManager {
 
     while (Date.now() - startTime < maxWaitMs) {
       await new Promise(r => setTimeout(r, pollIntervalMs));
+      if (cancelledRuns.has(task.uuid)) break;
 
       // Emit progress based on latest log content
       if (onProgress) {
@@ -394,11 +404,37 @@ export class BackUpManagerWin implements BackUpManager {
       lastResult = parseInt(resultRes.stdout.trim(), 10) || 0;
     } catch {}
 
-    if (lastResult >= 8) {
+    if (lastResult >= 8 && lastResult !== TASK_TERMINATED_RESULT && !cancelledRuns.has(task.uuid)) {
       return { stdout: logContent, stderr: `[ERROR] Task exited with code ${lastResult}` };
     }
 
+    cancelledRuns.delete(task.uuid);
     return { stdout: logContent, stderr: '' };
+  }
+
+  /**
+   * Stop a run, whether this app started it or Task Scheduler did. Stopping is allowed for
+   * the task's own principal, so it usually needs no elevation; the admin fallback mirrors
+   * the start path for tasks registered under a different principal.
+   */
+  async cancelNow(task: BackUpTask): Promise<CancelResult> {
+    const taskName = `${TASK_ID}_${task.uuid}`;
+    cancelledRuns.add(task.uuid);
+    const ps = `Stop-ScheduledTask -TaskName "${taskName}"`;
+
+    try {
+      const res = await this.runScript(ps, `stop_task_${task.uuid}_user`);
+      if (res.stderr && res.stderr.trim() !== "") throw new Error(res.stderr);
+      return { cancelled: true, method: 'scheduler' };
+    } catch {
+      try {
+        const adminRes = await this.runScriptAdmin(ps, `stop_task_${task.uuid}_admin`);
+        if (adminRes.stderr && adminRes.stderr.trim() !== "") throw new Error(adminRes.stderr);
+        return { cancelled: true, method: 'scheduler' };
+      } catch {
+        return { cancelled: false, method: 'none' };
+      }
+    }
   }
 
   /* S4U registration requires the desktop account to hold "Log on as a batch job".
@@ -959,6 +995,19 @@ if (-not $credInUse) {
     } catch (e) {
       console.warn(`unschedule: failed to remove BAT file: ${bat}`, e);
     }
+    this.removeTaskLogs(task.uuid);
+  }
+
+  /** The Log Viewer looks logs up by uuid, so a deleted task's log is unreachable dead weight. */
+  private removeTaskLogs(uuid: string): void {
+    const names = [
+      `Houston_Backup_Task_${uuid}.log`,
+      `Houston_Backup_Task_${uuid}.console.log`,
+      `backup_task_${uuid}.log`,
+    ];
+    for (const name of names) {
+      try { fs.unlinkSync(path.join(logPath, name)); } catch { /* already gone */ }
+    }
   }
 
 
@@ -1064,6 +1113,8 @@ if ($scanOk) {
         console.warn(`unscheduleSelectedTasks: failed to remove BAT file: ${bat}`, e);
       }
     }
+
+    for (const task of tasks) this.removeTaskLogs(task.uuid);
   }
 
 

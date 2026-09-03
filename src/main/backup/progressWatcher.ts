@@ -139,8 +139,21 @@ function prune(seen: Set<string>): void {
   }
 }
 
-export function startBackupProgressWatcher(emit: ProgressEmitter): void {
-  if (timer) return;
+/**
+ * Drop the progress files for a task. A script that exits through its own trap does this
+ * itself; a cancelled run started by an older script does not, and a stale file would keep
+ * the task showing progress forever.
+ */
+export function clearTaskProgress(uuid: string): void {
+  lastSent.delete(uuid);
+  const dir = progressDir();
+  if (!dir) return;
+  for (const suffix of ['.progress', '.progress.tmp', '.progress.summary']) {
+    try { fs.unlinkSync(path.join(dir, `${uuid}${suffix}`)); } catch { /* already gone */ }
+  }
+}
+
+export function startBackupProgressWatcher(emit: ProgressEmitter): void {  if (timer) return;
 
   const dir = progressDir();
   if (!dir && getOS() !== 'win') return;

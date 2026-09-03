@@ -108,6 +108,8 @@
                     :runningTaskIds="runningTaskIds"
                     @backUpTaskSelected="handleBackUpTaskSelected"
                     @run="runSelected"
+                    @stop="stopSelected"
+                    @stopped="handleTasksStopped"
                     @view="viewSelected"
                     @edit="editSelected"
                     @viewLog="viewSelectedLog"
@@ -544,6 +546,16 @@ async function runSelected() {
     } catch {
         stopRunningUi();
     }
+}
+
+function stopSelected() {
+    backUpListRef.value?.stopSelectedNow?.();
+}
+
+/** The backend confirms with a "cancelled" notification, but drop the bars right away so
+ * the panel does not sit at its last percentage while the kill lands. */
+function handleTasksStopped(uuids: string[]) {
+    for (const uuid of uuids) removeFinishedTask(uuid);
 }
 
 function editSelected() {

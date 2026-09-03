@@ -1,5 +1,5 @@
 import { jsonLogger } from '../main'; 
-import { BackUpManager, BackupProgressCallback } from "./types";
+import { BackUpManager, BackupProgressCallback, CancelResult } from "./types";
 import { BackUpTask, backupTaskTag, TaskSchedule } from "@45drives/houston-common-lib";
 import * as fs from "fs";
 import * as os from "os";
@@ -13,13 +13,14 @@ import { getCredentialManager } from '../credentialManager';
 import { ensureClientTools } from '../installDepsPopup';
 import { syncBackupConfig, getClientId, bashEventSnippet } from './broadcasterApi';
 import { LIN_STATE_DIR } from './progressWatcher';
+import { cancelUnixRun, trackRun, untrackRun } from './runRegistry';
 
 const SCRIPT_DIR = path.join(os.homedir(), ".local", "share", "houston-backups");
 
 const LOG_DIR = path.join(app.getPath('userData'), 'logs');
 
 // Bump whenever the generated script changes so existing tasks are rewritten on their next run.
-const TASK_SCRIPT_VERSION = 2;
+const TASK_SCRIPT_VERSION = 3;
 
 export class BackUpManagerLin implements BackUpManager {
   protected pkexec: string = "pkexec";
@@ -220,10 +221,9 @@ export class BackUpManagerLin implements BackUpManager {
       this.applyCleanedCrontab(filtered);
 
       const scriptPath = path.join(SCRIPT_DIR, `Houston_Backup_Task_${task.uuid}.sh`);
-      const logPath = path.join(LOG_DIR, `backup_task_${task.uuid}.log`);
 
       try { if (fs.existsSync(scriptPath)) fs.unlinkSync(scriptPath); } catch { }
-      try { if (fs.existsSync(logPath)) fs.unlinkSync(logPath); } catch { }
+      this.removeTaskLeftovers(task.uuid);
       resolve();
     });
   }
@@ -238,9 +238,22 @@ export class BackUpManagerLin implements BackUpManager {
 
     for (const task of tasks) {
       const scriptPath = path.join(SCRIPT_DIR, `Houston_Backup_Task_${task.uuid}.sh`);
-      const logPath = path.join(LOG_DIR, `backup_task_${task.uuid}.log`);
       try { if (fs.existsSync(scriptPath)) fs.unlinkSync(scriptPath); } catch { }
-      try { if (fs.existsSync(logPath)) fs.unlinkSync(logPath); } catch { }
+      this.removeTaskLeftovers(task.uuid);
+    }
+  }
+
+  /** The Log Viewer looks logs up by uuid, so a deleted task's log is unreachable dead weight. */
+  private removeTaskLeftovers(uuid: string): void {
+    const files = [
+      path.join(LOG_DIR, `Houston_Backup_Task_${uuid}.log`),
+      path.join(LOG_DIR, `backup_task_${uuid}.log`),
+      path.join(LIN_STATE_DIR, `${uuid}.progress`),
+      path.join(LIN_STATE_DIR, `${uuid}.progress.tmp`),
+      path.join(LIN_STATE_DIR, `${uuid}.progress.summary`),
+    ];
+    for (const file of files) {
+      try { fs.unlinkSync(file); } catch { /* already gone */ }
     }
   }
   
@@ -310,9 +323,13 @@ export class BackUpManagerLin implements BackUpManager {
     this.ensureProgressFlags(scriptPath);
 
     return new Promise((resolve, reject) => {
+      // Detached so the script leads its own process group: stopping the run has to signal
+      // rsync too, and rsync is a grandchild.
       const child = spawn('bash', [scriptPath], {
         env: process.env,
+        detached: true,
       });
+      trackRun(task.uuid, child);
 
       let stdout = '';
       let stderr = '';
@@ -356,6 +373,7 @@ export class BackUpManagerLin implements BackUpManager {
       });
 
       child.on('error', (err) => {
+        untrackRun(task.uuid);
         reject({
           message: `Failed to spawn backup task process: ${err.message}`,
           stdout,
@@ -363,6 +381,10 @@ export class BackUpManagerLin implements BackUpManager {
         });
       });
     });
+  }
+
+  cancelNow(task: BackUpTask): Promise<CancelResult> {
+    return cancelUnixRun(task.uuid);
   }
 
   /** Rewrite a script left behind by an older app version. The SMB user is the only field
@@ -572,9 +594,14 @@ write_backup_end() {
   fi
 }
 
+CANCELLED=false
 cleanup() {
   # Write backup_end if it wasn't written (script crashed/errored early)
-  write_backup_end "failure"
+  if [ "$CANCELLED" = "true" ]; then
+    write_backup_end "cancelled"
+  else
+    write_backup_end "failure"
+  fi
   rm -f "$PROGRESS_FILE" "\${PROGRESS_FILE}.tmp" "$SUMMARY_FILE" 2>/dev/null || true
   # Only attempt unmount if it's actually mounted
   if mountpoint -q "$MOUNT_DIR"; then
@@ -583,6 +610,11 @@ cleanup() {
   fi
 }
 trap cleanup EXIT
+# Stopping a backup from the app signals this process group. Converting the signal into a
+# normal exit lets the EXIT trap run, so the share is unmounted and the run is recorded as
+# cancelled rather than being left half-open.
+trap 'CANCELLED=true; exit 143' TERM
+trap 'CANCELLED=true; exit 130' INT
 
 echo "===== [$(date -Iseconds)] Starting backup task: '$DESC' ====="
 echo "[INFO] Source: $SOURCE"

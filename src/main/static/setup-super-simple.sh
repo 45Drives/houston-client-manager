@@ -136,21 +136,16 @@ case "$OS_LIKE" in
       apt update -y || true
       apt install -y ca-certificates gnupg curl wget
       wget -qO - https://repo.45drives.com/key/gpg.asc | gpg --pinentry-mode loopback --batch --yes --dearmor -o /usr/share/keyrings/45drives-archive-keyring.gpg
-      local url="https://repo.45drives.com/repofiles/${ID}/45drives-community-${codename}.list"
-      local tmp
-      tmp="$(mktemp)"
-      if ! curl -fsSL "$url" -o "$tmp"; then
-        rm -f "$tmp"
-        echo "[ERROR] Could not download $url" >&2
+      # 45Drives ships a .list helper for the enterprise repo only, so build the community one here.
+      local url="https://repo.45drives.com/community/${ID}"
+      if ! curl -fsI "${url}/dists/${codename}/Release" >/dev/null; then
+        echo "[ERROR] No 45Drives community repo published for ${ID} ${codename}." >&2
         return 1
       fi
-      if ! grep -qE '^(deb |deb-src |Types:)' "$tmp"; then
-        rm -f "$tmp"
-        echo "[ERROR] $url did not return a valid apt source list." >&2
-        return 1
-      fi
-      mv "$tmp" "/etc/apt/sources.list.d/45drives-community-${codename}.list"
-      chmod 644 "/etc/apt/sources.list.d/45drives-community-${codename}.list"
+      local list="/etc/apt/sources.list.d/45drives-community-${codename}.list"
+      printf 'deb [arch=amd64 signed-by=/usr/share/keyrings/45drives-archive-keyring.gpg] %s %s main\n' \
+        "$url" "$codename" > "$list"
+      chmod 644 "$list"
       apt update -y
     }
     KERNEL_DEVEL_PKGS=(dkms linux-headers-"$(uname -r)")

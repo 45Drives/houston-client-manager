@@ -14,6 +14,8 @@ export interface TaskProgress {
   name: string;
   percent: number | null;
   message: string;
+  /** Used to tell a live run apart from one that stopped reporting below 100%. */
+  updatedAt: number;
 }
 
 const isRunningNow = ref(false);
@@ -58,7 +60,7 @@ export function beginTasks(
   for (const t of tasks) {
     const name =
       t.name || t.description || t.source?.split("/").pop() || t.uuid.slice(0, 8);
-    taskProgressMap.value[t.uuid] = { name, percent: null, message: "Starting…" };
+    taskProgressMap.value[t.uuid] = { name, percent: null, message: "Starting…", updatedAt: Date.now() };
   }
 }
 
@@ -81,12 +83,18 @@ export function maybeClearFromNotification(message: string): void {
   );
 }
 
+/** A run whose progress has gone this long without changing is no longer reporting. */
+const PROGRESS_STALE_MS = 30_000;
+
 /** Reconcile against the backup_start-without-backup_end set reported by the backend. */
 export function syncRunningUuids(currentRunning: string[]): void {
+  const now = Date.now();
   for (const uuid of Object.keys(taskProgressMap.value)) {
-    // Only drop poll-detected entries; a Run Now task actively reporting a percent stays.
     const entry = taskProgressMap.value[uuid];
-    if (entry && entry.percent == null && !currentRunning.includes(uuid)) {
+    if (!entry || currentRunning.includes(uuid)) continue;
+    // A run that ends short of 100% — an incremental no-op stops at 0% — never triggers the
+    // completion path, so a percent alone cannot be taken as proof the task is still alive.
+    if (entry.percent == null || now - entry.updatedAt > PROGRESS_STALE_MS) {
       removeFinishedTask(uuid);
     }
   }
@@ -100,6 +108,7 @@ export function syncRunningUuids(currentRunning: string[]): void {
         name: nameFor(uuid),
         percent: null,
         message: "In progress…",
+        updatedAt: now,
       };
     }
   }
@@ -124,6 +133,7 @@ const progressHandler = (data: {
     name: nameFor(data.taskUuid, taskProgressMap.value[data.taskUuid]),
     percent: data.percent,
     message: data.message ?? "",
+    updatedAt: Date.now(),
   };
 
   if (data.percent === 100) {
