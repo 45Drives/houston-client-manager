@@ -34,7 +34,7 @@ const WIN_PASS_ENV = 'HOUSTON_WIN_ACCOUNT_PASSWORD';
 
 /* buildActionBat only runs when a task is scheduled, so fixes to the generated
  * script never reach tasks that already exist. Bump on every script change. */
-const ACTION_BAT_VERSION = 4;
+const ACTION_BAT_VERSION = 5;
 
 interface TaskData {
   source?: string;
@@ -884,6 +884,10 @@ if defined drive net use !drive!: /delete /y >> "%LOG%" 2>&1
 if !RC! GEQ 8 (
   echo [ERROR] robocopy returned !RC! >> "%LOG%" 2>&1
   set "ENDMSG=Backup failed rc=!RC!"
+) else if !RC! EQU 0 (
+  :: robocopy returns 0 for "nothing to do", which on its own reads like a failure.
+  echo [INFO] No files needed copying; destination already matches source >> "%LOG%" 2>&1
+  set "ENDMSG=Backup completed rc=!RC!"
 ) else (
   echo [INFO] robocopy completed with code !RC! >> "%LOG%" 2>&1
   set "ENDMSG=Backup completed rc=!RC!"

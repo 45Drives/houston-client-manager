@@ -19,7 +19,7 @@ const SCRIPT_DIR = path.join(os.homedir(), ".local", "share", "houston-backups")
 const LOG_DIR = path.join(app.getPath('userData'), 'logs');
 
 // Bump whenever the generated script changes so existing tasks are rewritten on their next run.
-const TASK_SCRIPT_VERSION = 1;
+const TASK_SCRIPT_VERSION = 2;
 
 export class BackUpManagerLin implements BackUpManager {
   protected pkexec: string = "pkexec";
@@ -534,6 +534,7 @@ BACKUP_NAME=${shellQuote(task.name || '')}
 DISABLED='${task.disabled ? 'true' : 'false'}'
 CLIENT_ID_FILE=${shellQuote(path.join(app.getPath("userData"), "client-id.txt"))}
 PROGRESS_FILE=${shellQuote(path.join(LIN_STATE_DIR, `${task.uuid}.progress`))}
+SUMMARY_FILE="\${PROGRESS_FILE}.summary"
 INSTALL_ID="$(cat "$CLIENT_ID_FILE" 2>/dev/null || true)"
 
 # Skip execution if task is disabled
@@ -574,7 +575,7 @@ write_backup_end() {
 cleanup() {
   # Write backup_end if it wasn't written (script crashed/errored early)
   write_backup_end "failure"
-  rm -f "$PROGRESS_FILE" "\${PROGRESS_FILE}.tmp" 2>/dev/null || true
+  rm -f "$PROGRESS_FILE" "\${PROGRESS_FILE}.tmp" "$SUMMARY_FILE" 2>/dev/null || true
   # Only attempt unmount if it's actually mounted
   if mountpoint -q "$MOUNT_DIR"; then
     echo "[CLEANUP] Unmounting $MOUNT_DIR"
@@ -639,8 +640,24 @@ run_rsync() {
         else
           printf '%s\\n' "$line"
         fi
+        # rsync's own tally, kept so the run can be summarised after the pipeline ends.
+        case "$line" in *xfr#*) printf '%s' "$line" > "$SUMMARY_FILE" 2>/dev/null || true ;; esac
       done
   return "\${PIPESTATUS[0]}"
+}
+
+# "0 0% 0.00kB/s (xfr#0, to-chk=0/8)" is a healthy no-op, but it reads like a failure.
+summarise_transfer() {
+  local summary xfr checked
+  summary="$(cat "$SUMMARY_FILE" 2>/dev/null || true)"
+  [ -n "$summary" ] || return 0
+  xfr="$(printf '%s' "$summary" | sed -n 's/.*xfr#\\([0-9][0-9]*\\).*/\\1/p')"
+  checked="$(printf '%s' "$summary" | sed -n 's|.*to-chk=[0-9]*/\\([0-9][0-9]*\\).*|\\1|p')"
+  if [ "\${xfr:-0}" = "0" ]; then
+    echo "[INFO] No files needed copying; destination already matches source (\${checked:-0} checked)"
+  else
+    echo "[INFO] Transferred \${xfr} file(s) of \${checked:-?} checked"
+  fi
 }
 
 # 'rsync ... || true' is an AND-OR list, not a pipeline, so PIPESTATUS reported the status
@@ -652,6 +669,7 @@ set -e
 
 case "$RSYNC_STATUS" in
   0)
+    summarise_transfer
     echo "[SUCCESS] rsync completed successfully"
     _BCAST_STATUS="success"
     _BCAST_ERROR=""

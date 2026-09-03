@@ -26,7 +26,7 @@ import {
  * when their stamp falls behind, so a script fix reaches tasks created before it shipped.
  * The Windows ACTION_BAT_VERSION exists for the same reason.
  */
-const TASK_SCRIPT_VERSION = 5;
+const TASK_SCRIPT_VERSION = 6;
 
 const LEGACY_SCRIPT_DIR = "/Library/Application Support/Houston/scripts";
 
@@ -611,6 +611,7 @@ DEST_DIR=${shellQuote(destDir)}
 CRED_FILE=${shellQuote(this.credFileFor(host, share, username))}
 CLIENT_ID_FILE=${shellQuote(path.join(app.getPath('userData'), 'client-id.txt'))}
 PROGRESS_FILE=${shellQuote(path.join(MAC_STATE_DIR, `${task.uuid}.progress`))}
+SUMMARY_FILE="\${PROGRESS_FILE}.summary"
 INSTALL_ID="$(cat "$CLIENT_ID_FILE" 2>/dev/null || true)"
 DISABLED='${task.disabled ? 'true' : 'false'}'
 
@@ -649,7 +650,7 @@ write_backup_end() {
 
 cleanup() {
   write_backup_end failure
-  rm -f "$PROGRESS_FILE" "\${PROGRESS_FILE}.tmp" 2>/dev/null || true
+  rm -f "$PROGRESS_FILE" "\${PROGRESS_FILE}.tmp" "$SUMMARY_FILE" 2>/dev/null || true
   # Unmount only what this run mounted. The mount point itself is never removed: an
   # unprivileged run cannot recreate one it does not own, and an empty directory is free.
   if [ "$WE_MOUNTED" = "true" ]; then
@@ -805,6 +806,8 @@ run_rsync() {
         else
           printf '%s\\n' "$line"
         fi
+        # rsync's own tally, kept so the run can be summarised after the pipeline ends.
+        case "$line" in *xfr#*) printf '%s' "$line" > "$SUMMARY_FILE" 2>/dev/null || true ;; esac
       done
   return "\${PIPESTATUS[0]}"
 }
@@ -816,8 +819,23 @@ run_rsync
 ST=$?
 set -e
 
+# "0 0% 0.00kB/s (xfr#0, to-chk=0/8)" is a healthy no-op, but it reads like a failure.
+summarise_transfer() {
+  local summary xfr checked
+  summary="$(cat "$SUMMARY_FILE" 2>/dev/null || true)"
+  [ -n "$summary" ] || return 0
+  xfr="$(printf '%s' "$summary" | sed -n 's/.*xfr#\\([0-9][0-9]*\\).*/\\1/p')"
+  checked="$(printf '%s' "$summary" | sed -n 's|.*to-chk=[0-9]*/\\([0-9][0-9]*\\).*|\\1|p')"
+  if [ "\${xfr:-0}" = "0" ]; then
+    echo "[INFO] No files needed copying; destination already matches source (\${checked:-0} checked)"
+  else
+    echo "[INFO] Transferred \${xfr} file(s) of \${checked:-?} checked"
+  fi
+}
+
 case "$ST" in
   0)
+    summarise_transfer
     echo "[SUCCESS] rsync completed successfully"
     _BCAST_STATUS="success"
     _BCAST_ERROR=""
