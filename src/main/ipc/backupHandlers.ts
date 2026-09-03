@@ -619,7 +619,9 @@ export async function handleBackupMessage(message: any, ctx: IPCHandlerContext):
       if (startedUuids.size > 0 && getOS() !== 'win') {
         for (const uuid of [...startedUuids.keys()]) {
           try {
-            execFileSync('pgrep', ['-f', `Houston_Backup_Task_${uuid}`], { stdio: 'ignore' });
+            // Linux names its scripts Houston_Backup_Task_<uuid>.sh, macOS
+            // houston-backup-task-<uuid>.sh; pgrep -f takes an extended regex.
+            execFileSync('pgrep', ['-f', `(Houston_Backup_Task_|houston-backup-task-)${uuid}`], { stdio: 'ignore' });
             // pgrep succeeded — process is running, keep it
           } catch {
             // pgrep failed (exit code 1) — no matching process, stale entry
