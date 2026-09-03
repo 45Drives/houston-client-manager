@@ -8,7 +8,7 @@
         <span class="text-xs text-gray-500 mr-1">{{ selectedBackUps.length }} selected</span>
 
         <button v-if="selectedRunning.length > 0"
-          class="btn btn-sm btn-secondary btn-with-icon h-fit text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20"
+          class="btn btn-sm btn-danger btn-with-icon h-fit"
           @click="$emit('stop')">
           <StopIcon class="w-4 h-4" />
           Stop Run
@@ -127,10 +127,10 @@
                 <span class="w-1.5 h-1.5 rounded-full" :class="taskStatusDotClass(task)" />
                 {{ taskStatusLabel(task) }}
                 <button v-if="taskStatus(task) === 'running'"
-                  class="-mr-1 ml-0.5 rounded-full p-0.5 hover:bg-blue-200/70 dark:hover:bg-blue-800/50"
+                  class="-mr-1 ml-0.5 rounded-full p-0.5 text-danger hover:bg-blue-200/70 dark:hover:bg-blue-800/50"
                   :aria-label="`Stop backup ${taskDisplayName(task)}`" title="Stop this run"
                   @click.stop="stopTasks([task])">
-                  <StopIcon class="w-3 h-3" />
+                  <StopIcon class="w-4 h-4" />
                 </button>
               </span>
             </td>
