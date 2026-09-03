@@ -50,6 +50,7 @@ const INVOKE_CHANNELS = new Set([
   'servers:remove',
   'servers:set-favorite',
   'servers:touch',
+  'servers:get-smb-creds',
   'get-client-ident',
   'session:clear-origin',
   'oauth:open',

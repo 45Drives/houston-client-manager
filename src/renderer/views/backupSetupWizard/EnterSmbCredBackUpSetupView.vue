@@ -151,8 +151,8 @@ onMounted(async () => {
         backUpSetupConfig.username = result.username;
         backUpSetupConfig.password = result.password;
       }
-    } catch {
-      // Couldn't auto-fill, user will enter manually
+    } catch (e) {
+      console.warn('SMB credential auto-fill failed:', e);
     } finally {
       autoFilling.value = false;
     }
