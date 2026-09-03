@@ -77,32 +77,38 @@ function eventLogPath(): string {
 }
 
 /**
- * Guarantee the run is closed out in the event log.
+ * Have the last word on how a cancelled run is recorded.
  *
- * The task script writes its own backup_end from a signal trap, but scripts written by an
- * older app version have no trap, and killing one leaves a backup_start with no partner —
- * which the UI reads as "still running" until the 12 hour staleness cutoff. Give the script
- * a moment to do it properly, then do it here if it did not.
+ * The task script writes its own backup_end from a signal trap, but there are several ways
+ * that ends up wrong: a script written by an older app version records the kill as a plain
+ * failure, a script hard-killed during a hung unmount records nothing at all, and either way
+ * the UI would show Failed or a run stuck on Running. The app asked for the stop, so it
+ * decides: whatever this run's terminal record says, append a cancelled one if it does not
+ * already say so.
  */
 async function ensureCancelledEndEvent(task: BackUpTask): Promise<void> {
   await new Promise(r => setTimeout(r, 2500));
 
   const logFile = eventLogPath();
-  let open = false;
+  // Append order, not timestamps: the scripts only record whole seconds.
+  let started = false;
+  let endStatus: string | null = null;
   try {
     const lines = fs.readFileSync(logFile, 'utf8').split(/\r?\n/).filter(l => l.trim());
     for (const line of lines) {
       try {
         const ev = JSON.parse(line);
         if (ev.uuid !== task.uuid) continue;
-        if (ev.event === 'backup_start') open = true;
-        else if (ev.event === 'backup_end') open = false;
+        if (ev.event === 'backup_start') { started = true; endStatus = null; }
+        else if (ev.event === 'backup_end' && started) endStatus = String(ev.status ?? '');
       } catch { /* skip invalid JSON */ }
     }
   } catch {
-    return; // no log yet means no dangling start
+    return; // no log yet means nothing to correct
   }
-  if (!open) return;
+
+  if (!started) return;            // this run never registered a start
+  if (endStatus === 'cancelled') return;  // the script already got it right
 
   const record = {
     event: 'backup_end',
@@ -516,12 +522,13 @@ export async function handleBackupMessage(message: any, ctx: IPCHandlerContext):
         // Also send again after a short delay as a safety net
         setTimeout(sendStatusAndEvents, 3000);
       } catch (err: unknown) {
-        console.error('runNow failed:', err);
         const msg = (err instanceof Error ? err.message : '') || (typeof err === 'object' && err !== null && 'stderr' in err ? String((err as Record<string, unknown>).stderr) : '') || JSON.stringify(err);
         if (cancelledUuids.has(task.uuid)) {
           // The run died because the user stopped it; cancelBackUpTaskNow already reported it.
+          console.debug('runNow ended by cancel:', task.uuid);
           ctx.jsonLogger.info({ event: 'runBackUpTaskNow_cancelled', taskUuid: task.uuid });
         } else {
+          console.error('runNow failed:', err);
           ctx.jsonLogger.error({ event: 'runBackUpTaskNow_error', taskUuid: task.uuid, error: msg });
           ctx.notify(`Backup task "${task.description}" failed to run: ${msg}`);
         }
