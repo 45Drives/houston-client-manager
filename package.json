@@ -32,9 +32,9 @@
     "release:gen-yml": "node scripts/release/generate-update-yml.mjs",
     "release:publish-from-builds": "bash scripts/release/publish-from-builds.sh",
     "release:orchestrate": "bash scripts/release/orchestrate-release.sh",
-    "mac:dir:arm64": "yarn build:common && node scripts/build.js && CSC_IDENTITY_AUTO_DISCOVERY=false SKIP_AFTER_SIGN=1 electron-builder --mac --arm64 --dir",
-    "mac:dir:x64": "yarn build:common && node scripts/build.js && CSC_IDENTITY_AUTO_DISCOVERY=false SKIP_AFTER_SIGN=1 electron-builder --mac --x64 --dir",
-    "mac:dir:universal": "yarn build:common && node scripts/build.js && CSC_IDENTITY_AUTO_DISCOVERY=false SKIP_AFTER_SIGN=1 electron-builder --mac --universal --dir",
+    "mac:dir:arm64": "yarn build:common && yarn build:mac:shim && node scripts/build.js && CSC_IDENTITY_AUTO_DISCOVERY=false SKIP_AFTER_SIGN=1 electron-builder --mac --arm64 --dir",
+    "mac:dir:x64": "yarn build:common && yarn build:mac:shim && node scripts/build.js && CSC_IDENTITY_AUTO_DISCOVERY=false SKIP_AFTER_SIGN=1 electron-builder --mac --x64 --dir",
+    "mac:dir:universal": "yarn build:common && yarn build:mac:shim && node scripts/build.js && CSC_IDENTITY_AUTO_DISCOVERY=false SKIP_AFTER_SIGN=1 electron-builder --mac --universal --dir",
     "test": "vitest run",
     "test:int": "vitest run --exclude '**/node_modules/**' '**/*.int.test.ts'"
   },

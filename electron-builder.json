@@ -68,6 +68,7 @@
             "rpm",
             "pacman"
         ],
+        "category": "Utility",
         "vendor": "45Drives",
         "maintainer": "Matt Pyne <mpyne@45drives.com>",
         "icon": "linux"
@@ -115,7 +116,19 @@
             "from": "node_modules/@45drives",
             "to": "node_modules/@45drives",
             "filter": [
-                "**/*"
+                "**/*",
+                "!**/*.map",
+                "!**/*.blend",
+                "!houston-common-ui/lib/**",
+                "!houston-common-ui/node_modules/**",
+                "!houston-common-ui/scripts/**",
+                "!houston-common-ui/typings/**",
+                "!houston-common-lib/lib/**",
+                "!houston-common-lib/node_modules/**",
+                "!houston-common-lib/examples/**",
+                "!houston-common-lib/scripts/**",
+                "!houston-common-lib/tests/**",
+                "!houston-common-lib/typings/**"
             ]
         },
         {
@@ -145,6 +158,8 @@
         "!dist",
         "!scripts",
         "!houston-common",
+        "!.electron-dev-userdata",
+        "!.electron-dev-userdata/**",
         "!**/*.test.js",
         "!**/*.test.ts",
         "!**/*.md",
