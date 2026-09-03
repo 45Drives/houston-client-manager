@@ -56,6 +56,14 @@ case "$OS_LIKE" in
         echo "[WARN] firewalld not found; skipping Cockpit/mDNS/Houston firewall configuration."
       fi
     }
+    # A repofile saved from a 404/redirect body makes dnf reject every later command.
+    sanitize_45d_repo() {
+      local f=/etc/yum.repos.d/45drives-community.repo
+      if [[ -f "$f" ]] && ! grep -q '^\[' "$f"; then
+        echo "[WARN] Removing malformed 45Drives repo file: $f"
+        rm -f "$f"
+      fi
+    }
     setup_45d_repo() {
       if [[ -f "/etc/yum.repos.d/45drives.repo" ]]; then
         echo "45Drives repo found. Archiving..."
@@ -63,7 +71,21 @@ case "$OS_LIKE" in
         mv /etc/yum.repos.d/45drives.repo "/opt/45drives/archives/repos/45drives-$(date +%Y-%m-%d).repo"
         echo "The obsolete repos have been archived to '/opt/45drives/archives/repos'. Setting up the new repo..."
       fi
-      curl -sSL https://repo.45drives.com/repofiles/rocky/45drives-community.repo -o /etc/yum.repos.d/45drives-community.repo
+      local url=https://repo.45drives.com/repofiles/rocky/45drives-community.repo
+      local tmp
+      tmp="$(mktemp)"
+      if ! curl -fsSL "$url" -o "$tmp"; then
+        rm -f "$tmp"
+        echo "[ERROR] Could not download $url" >&2
+        return 1
+      fi
+      if ! grep -q '^\[' "$tmp"; then
+        rm -f "$tmp"
+        echo "[ERROR] $url did not return a valid yum repo file." >&2
+        return 1
+      fi
+      mv "$tmp" /etc/yum.repos.d/45drives-community.repo
+      chmod 644 /etc/yum.repos.d/45drives-community.repo
       dnf clean all
     }
     KERNEL_DEVEL_PKGS=(dkms kernel-devel-"$(uname -r)" kernel-headers-"$(uname -r)")
@@ -94,15 +116,44 @@ case "$OS_LIKE" in
         echo "[WARN] ufw not found; skipping Cockpit/mDNS/Houston firewall configuration."
       fi
     }
+    # A .list saved from a 404/redirect body makes apt reject every later command.
+    sanitize_45d_repo() {
+      local f
+      for f in /etc/apt/sources.list.d/45drives-community*.list; do
+        [[ -e "$f" ]] || continue
+        if ! grep -qE '^(deb |deb-src |Types:)' "$f"; then
+          echo "[WARN] Removing malformed 45Drives repo file: $f"
+          rm -f "$f"
+        fi
+      done
+    }
     setup_45d_repo() {
-      apt update -y
-      apt install -y ca-certificates gnupg
+      local codename="${VERSION_CODENAME:-}"
+      if [[ -z "$codename" ]]; then
+        echo "[ERROR] Could not determine the APT distro codename from /etc/os-release." >&2
+        return 1
+      fi
+      apt update -y || true
+      apt install -y ca-certificates gnupg curl wget
       wget -qO - https://repo.45drives.com/key/gpg.asc | gpg --pinentry-mode loopback --batch --yes --dearmor -o /usr/share/keyrings/45drives-archive-keyring.gpg
-      curl -sSL "https://repo.45drives.com/repofiles/${ID}/45drives-community-${VERSION_CODENAME}.list" \
-        -o "/etc/apt/sources.list.d/45drives-community-${VERSION_CODENAME}.list"
+      local url="https://repo.45drives.com/repofiles/${ID}/45drives-community-${codename}.list"
+      local tmp
+      tmp="$(mktemp)"
+      if ! curl -fsSL "$url" -o "$tmp"; then
+        rm -f "$tmp"
+        echo "[ERROR] Could not download $url" >&2
+        return 1
+      fi
+      if ! grep -qE '^(deb |deb-src |Types:)' "$tmp"; then
+        rm -f "$tmp"
+        echo "[ERROR] $url did not return a valid apt source list." >&2
+        return 1
+      fi
+      mv "$tmp" "/etc/apt/sources.list.d/45drives-community-${codename}.list"
+      chmod 644 "/etc/apt/sources.list.d/45drives-community-${codename}.list"
       apt update -y
     }
-    KERNEL_DEVEL_PKGS=(dkms linux-headers linux-headers-"$(uname -r)")
+    KERNEL_DEVEL_PKGS=(dkms linux-headers-"$(uname -r)")
     REQUIRED_PACKAGES=(cockpit samba python3 python3-pip python3-pyudev)
     OUR_REQUIRED_PACKAGES=(houston-broadcaster cockpit-super-simple-setup zfs-dkms zfsutils cockpit-zfs cockpit-scheduler wireshield)
     REQUIRED_SERVICES=(cockpit.socket smbd nmbd zfs-import-cache zfs-import-scan zfs-mount zfs-zed)
@@ -115,6 +166,14 @@ case "$OS_LIKE" in
 esac
 
 set -u
+
+# Must run before any install: a broken repofile left by an earlier run makes
+# every apt/dnf command fail, including the ones below.
+sanitize_45d_repo
+if ! setup_45d_repo; then
+  echo "[ERROR] Failed to set up 45Drives repo!" >&2
+  exit 1
+fi
 
 # install required packages
 install_pkg "${KERNEL_DEVEL_PKGS[@]}"
@@ -175,15 +234,8 @@ else
   echo "[WARN]  Node.js v18 symlink may not have taken effect globally"
 fi
 
-# set up 45Drives repo
-if setup_45d_repo; then
-  install_pkg "${OUR_REQUIRED_PACKAGES[@]}"
-  install_pkg python3-pyudev || pip3 install pyudev
-else
-  echo "Failed to set up 45Drives repo!" >&2
-  # ... TODO: build zfs and install cockpit-super-simple-setup manually ?
-  exit 1
-fi
+install_pkg "${OUR_REQUIRED_PACKAGES[@]}"
+install_pkg python3-pyudev || pip3 install pyudev
 
 # zfs setup
 if [[ ! -f /etc/modules-load.d/zfs.conf ]]; then

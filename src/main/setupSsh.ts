@@ -357,14 +357,18 @@ if ! has_cmd smbd && ! has_cmd samba; then
   add_base samba
 fi
 
-# 45Drives community repo
+# 45Drives community repo. A repofile saved from a 404/redirect body is worse
+# than none at all, so only a parseable one counts as configured.
 case "$OS_LIKE" in
   *rhel*|*fedora*|*centos*)
-    if [ -f /etc/yum.repos.d/45drives-community.repo ]; then repo=yes; fi
+    if [ -f /etc/yum.repos.d/45drives-community.repo ] &&
+       grep -q '^\\[' /etc/yum.repos.d/45drives-community.repo; then
+      repo=yes
+    fi
     ;;
   *debian*|*ubuntu*)
     for f in /etc/apt/sources.list.d/45drives-community*.list; do
-      if [ -f "$f" ]; then repo=yes; fi
+      if [ -f "$f" ] && grep -qE '^(deb |deb-src |Types:)' "$f"; then repo=yes; fi
     done
     ;;
 esac
@@ -519,13 +523,29 @@ OS_LIKE="$ID_LIKE $ID"
 
 case "$OS_LIKE" in
   *rhel*|*fedora*|*centos*)
+    if [ -f /etc/yum.repos.d/45drives-community.repo ] && ! grep -q '^\\[' /etc/yum.repos.d/45drives-community.repo; then
+      echo "[WARN] Removing malformed 45Drives repo file."
+      rm -f /etc/yum.repos.d/45drives-community.repo
+    fi
     if [ ! -f /etc/yum.repos.d/45drives-community.repo ]; then
       echo "[INFO] Setting up 45Drives community repo..."
       if [ -f /etc/yum.repos.d/45drives.repo ]; then
         mkdir -p /opt/45drives/archives/repos
         mv /etc/yum.repos.d/45drives.repo "/opt/45drives/archives/repos/45drives-$(date +%Y-%m-%d).repo"
       fi
-      curl -sSL https://repo.45drives.com/repofiles/rocky/45drives-community.repo -o /etc/yum.repos.d/45drives-community.repo
+      tmp="$(mktemp)"
+      if ! curl -fsSL https://repo.45drives.com/repofiles/rocky/45drives-community.repo -o "$tmp"; then
+        rm -f "$tmp"
+        echo "[ERROR] Could not download the 45Drives repo file."
+        exit 1
+      fi
+      if ! grep -q '^\\[' "$tmp"; then
+        rm -f "$tmp"
+        echo "[ERROR] The 45Drives repo URL did not return a valid yum repo file."
+        exit 1
+      fi
+      mv "$tmp" /etc/yum.repos.d/45drives-community.repo
+      chmod 644 /etc/yum.repos.d/45drives-community.repo
       dnf clean all
     else
       echo "[INFO] 45Drives community repo already configured."
@@ -534,13 +554,34 @@ case "$OS_LIKE" in
     dnf install -y ${pkgList}
     ;;
   *debian*|*ubuntu*)
+    for f in /etc/apt/sources.list.d/45drives-community*.list; do
+      if [ -f "$f" ] && ! grep -qE '^(deb |deb-src |Types:)' "$f"; then
+        echo "[WARN] Removing malformed 45Drives repo file: $f"
+        rm -f "$f"
+      fi
+    done
     if ! ls /etc/apt/sources.list.d/45drives-community*.list >/dev/null 2>&1; then
       echo "[INFO] Setting up 45Drives community repo..."
-      apt-get update -y
+      if [ -z "$VERSION_CODENAME" ]; then
+        echo "[ERROR] Could not determine the APT distro codename from /etc/os-release."
+        exit 1
+      fi
+      apt-get update -y || true
       apt-get install -y ca-certificates gnupg curl wget
       wget -qO - https://repo.45drives.com/key/gpg.asc | gpg --pinentry-mode loopback --batch --yes --dearmor -o /usr/share/keyrings/45drives-archive-keyring.gpg
-      curl -sSL "https://repo.45drives.com/repofiles/$ID/45drives-community-$VERSION_CODENAME.list" \\
-        -o "/etc/apt/sources.list.d/45drives-community-$VERSION_CODENAME.list"
+      tmp="$(mktemp)"
+      if ! curl -fsSL "https://repo.45drives.com/repofiles/$ID/45drives-community-$VERSION_CODENAME.list" -o "$tmp"; then
+        rm -f "$tmp"
+        echo "[ERROR] Could not download the 45Drives repo file for $ID $VERSION_CODENAME."
+        exit 1
+      fi
+      if ! grep -qE '^(deb |deb-src |Types:)' "$tmp"; then
+        rm -f "$tmp"
+        echo "[ERROR] The 45Drives repo URL did not return a valid apt source list."
+        exit 1
+      fi
+      mv "$tmp" "/etc/apt/sources.list.d/45drives-community-$VERSION_CODENAME.list"
+      chmod 644 "/etc/apt/sources.list.d/45drives-community-$VERSION_CODENAME.list"
     else
       echo "[INFO] 45Drives community repo already configured."
     fi
