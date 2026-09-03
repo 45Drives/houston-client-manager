@@ -73,10 +73,39 @@
         "icon": "linux"
     },
     "deb": {
-        "afterInstall": "assets/linux/after-install.tpl"
+        "afterInstall": "assets/linux/after-install.tpl",
+        "depends": [
+            "libgtk-3-0",
+            "libnotify4",
+            "libnss3",
+            "libxss1",
+            "libxtst6",
+            "xdg-utils",
+            "libatspi2.0-0",
+            "libuuid1",
+            "libsecret-1-0",
+            "smbclient",
+            "cifs-utils",
+            "rsync",
+            "cron"
+        ]
     },
     "rpm": {
-        "afterInstall": "assets/linux/after-install.tpl"
+        "afterInstall": "assets/linux/after-install.tpl",
+        "depends": [
+            "gtk3",
+            "libnotify",
+            "nss",
+            "libXScrnSaver",
+            "(libXtst or libXtst6)",
+            "xdg-utils",
+            "at-spi2-core",
+            "(libuuid or libuuid1)",
+            "samba-client",
+            "cifs-utils",
+            "rsync",
+            "cronie"
+        ]
     },
     "pacman": {
         "afterInstall": "assets/linux/after-install.tpl"

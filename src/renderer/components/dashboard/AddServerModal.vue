@@ -129,16 +129,18 @@ Use Add Existing for a server someone else set up, one you configured directly i
                                 placeholder="backupuser" />
                             <p class="text-[11px] text-gray-400 mt-0.5">Leave blank if same as admin</p>
                         </div>
-                        <div class="relative">
+                        <div>
                             <label class="text-xs font-medium text-gray-500 mb-1 block">SMB Password</label>
-                            <input v-model="smbPass" :type="showSmbPassword ? 'text' : 'password'"
-                                class="w-full p-2 pr-10 input-textlike rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                placeholder="Leave blank if same" />
-                            <button type="button" @click="showSmbPassword = !showSmbPassword"
-                                class="absolute right-3 bottom-2 text-muted">
-                                <EyeIcon v-if="!showSmbPassword" class="w-4 h-4" />
-                                <EyeSlashIcon v-if="showSmbPassword" class="w-4 h-4" />
-                            </button>
+                            <div class="relative">
+                                <input v-model="smbPass" :type="showSmbPassword ? 'text' : 'password'"
+                                    class="w-full p-2 pr-10 input-textlike rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    placeholder="Leave blank if same" />
+                                <button type="button" @click="showSmbPassword = !showSmbPassword"
+                                    class="absolute right-3 top-1/2 -translate-y-1/2 text-muted">
+                                    <EyeIcon v-if="!showSmbPassword" class="w-4 h-4" />
+                                    <EyeSlashIcon v-if="showSmbPassword" class="w-4 h-4" />
+                                </button>
+                            </div>
                         </div>
                     </div>
                     <div>
@@ -276,9 +278,13 @@ const canSubmit = computed(() => {
     return !!password.value
 })
 
-// Show discovered servers not already saved
+// Show discovered servers not already saved. Discovery re-emits its whole list on
+// every mDNS response, so sort by label to keep the chips from swapping places.
 const discoveredUnregistered = computed(() => {
-    return discoveryState.servers.filter(s => s.status === 'complete' || s.setupComplete)
+    return discoveryState.servers
+        .filter(s => s.status === 'complete' || s.setupComplete)
+        .slice()
+        .sort((a, b) => (a.name || a.ip).localeCompare(b.name || b.ip))
 })
 
 function selectDiscovered(srv: Server) {

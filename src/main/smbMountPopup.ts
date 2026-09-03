@@ -1,6 +1,6 @@
 import { BrowserWindow, dialog } from 'electron';
 import os from 'os';
-import installDepPopup from './installDepsPopup';
+import { ensureClientTools } from './installDepsPopup';
 import { exec, execFile } from 'child_process';
 import { getAsset, extractJsonFromOutput } from './utils';
 import { assertSafeHost, assertSafeShare, assertSafeUsername } from './security';
@@ -84,9 +84,11 @@ async function mountSambaClientWin(
 }
 
 
-function mountSambaClientScriptLin(smb_host: string, smb_share: string, smb_user: string, smb_pass: string, script: string, mainWindow: BrowserWindow): Promise<string> {
+async function mountSambaClientScriptLin(smb_host: string, smb_share: string, smb_user: string, smb_pass: string, script: string, mainWindow: BrowserWindow): Promise<string> {
+  const tools = await ensureClientTools(['mount.cifs']);
+  if (!tools.ok) throw new Error(tools.message);
+
   return new Promise((resolve, reject) => {
-    // installDepPopup();
     console.debug("[DEBUG - mountSMBLin] script path being used:", script);
     execFile('bash', [script, smb_host, smb_share, smb_user, smb_pass],
       (error, stdout, stderr) => {
@@ -100,7 +102,7 @@ function mountSambaClientScriptLin(smb_host: string, smb_share: string, smb_user
   });
 }
 
-function mountSambaClientScriptMac(
+async function mountSambaClientScriptMac(
   smb_host: string,
   smb_share: string,
   smb_user: string,
@@ -108,8 +110,8 @@ function mountSambaClientScriptMac(
   mainWindow: BrowserWindow,
   uiMode: "popup" | "silent" = "silent"): Promise<string> {
 
+
   return new Promise((resolve, reject) => {
-    // installDepPopup();
     console.debug("[DEBUG - mountSMBMac] script path being used:", script);
     execFile('bash', [script, smb_host, smb_share, smb_user, uiMode],
       { timeout: 45_000, killSignal: "SIGKILL", maxBuffer: 10 * 1024 * 1024 },

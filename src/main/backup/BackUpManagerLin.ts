@@ -10,6 +10,7 @@ import { checkBackupTaskStatus } from './CheckSmbStatus';
 import path, { join } from "path";
 import { app } from 'electron';
 import { getCredentialManager } from '../credentialManager';
+import { ensureClientTools } from '../installDepsPopup';
 import { syncBackupConfig, getClientId, bashEventSnippet } from './broadcasterApi';
 
 const SCRIPT_DIR = path.join(os.homedir(), ".local", "share", "houston-backups");
@@ -115,7 +116,10 @@ export class BackUpManagerLin implements BackUpManager {
   }
 
 
-  schedule(task: BackUpTask, username: string, password: string): Promise<{ stdout: string, stderr: string }> {
+  async schedule(task: BackUpTask, username: string, password: string): Promise<{ stdout: string, stderr: string }> {
+    const tools = await ensureClientTools(['rsync', 'crontab']);
+    if (!tools.ok) throw new Error(tools.message);
+
     return new Promise((resolve, reject) => {
       if (!fs.existsSync(SCRIPT_DIR)) fs.mkdirSync(SCRIPT_DIR, { recursive: true });
       if (!fs.existsSync(LOG_DIR)) fs.mkdirSync(LOG_DIR, { recursive: true });

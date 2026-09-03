@@ -80,6 +80,7 @@ import { promises as dnsPromises } from 'dns';
 import http from 'http';
 import { Server } from './types';
 import mountSmbPopup from './smbMountPopup';
+import { ensureClientTools } from './installDepsPopup';
 import { IPCRouter } from '../../houston-common/houston-common-lib/lib/electronIPC/IPCRouter';
 import { getOS, getAssetSync } from './utils';
 import {
@@ -970,9 +971,11 @@ function createWindow() {
             Object.assign(existing, {
               name: displayName,
               lastSeen: server.lastSeen,
-              // Preserve status/setupComplete when HTTP check was skipped (discovery disabled)
-              status: (!discoveryEnabled && existing.status !== 'unknown') ? existing.status : server.status,
-              setupComplete: (!discoveryEnabled && existing.setupComplete !== undefined) ? existing.setupComplete : server.setupComplete,
+              // An mDNS packet carries no live status, so falling back to 'unknown' here
+              // makes already-known servers blink out of status-filtered lists until the
+              // HTTP probe finishes. Hold the last verdict; refineFromSetupStatus updates it.
+              status: existing.status !== 'unknown' ? existing.status : server.status,
+              setupComplete: existing.setupComplete || server.setupComplete,
               serverName: server.serverName,
               shareName: server.shareName,
               setupTime: server.setupTime,
@@ -1605,11 +1608,19 @@ app.whenReady().then(() => {
           { timeout: 20000, env: { ...process.env, PASSWD: password } },
           (err: any, stdout: string, stderr: string) => {
             const output = `${stdout}\n${stderr}`;
-            if (/NT_STATUS_LOGON_FAILURE|NT_STATUS_ACCESS_DENIED/i.test(output)) {
+            if (err?.code === 'ENOENT') {
+              resolve({
+                valid: false,
+                reason: 'unknown',
+                error: platform === 'mac'
+                  ? 'smbclient is not installed on this Mac, so the share credentials cannot be verified. Install it with "brew install samba" and try again.'
+                  : 'smbclient is not installed on this computer, so the share credentials cannot be verified. Install the "smbclient" package (e.g. sudo apt install smbclient) and try again.',
+              });
+            } else if (/NT_STATUS_LOGON_FAILURE|NT_STATUS_ACCESS_DENIED/i.test(output)) {
               resolve({ valid: false, error: 'Invalid username or password', reason: 'auth' });
             } else if (err && !/Disk\|/i.test(stdout)) {
               // smbclient can exit non-zero while still listing shares
-              resolve({ valid: false, error: output.trim() || 'Unable to connect to server', reason: classify(output) });
+              resolve({ valid: false, error: output.trim() || `smbclient failed without output (code ${err.code ?? 'unknown'})`, reason: classify(output) });
             } else {
               resolve({ valid: true });
             }
@@ -1668,6 +1679,15 @@ app.whenReady().then(() => {
       knownRecord: record ? { hostname: record.hostname || null, ip: record.ip || null } : null,
       candidates,
     });
+
+    // smbclient does the actual check on Linux/macOS, so offer to install it before failing.
+    if (platform !== 'win') {
+      const tools = await ensureClientTools(['smbclient']);
+      if (!tools.ok) {
+        jsonLogger.warn({ event: 'smb:validate', host: safeHost, share: safeShare, result: 'missing-tools' });
+        return { valid: false, error: tools.message, reason: 'unknown' };
+      }
+    }
 
     let lastFailure: Failure = { valid: false, error: 'Unable to connect to server', reason: 'unknown' };
     let failedCandidate = safeHost;
