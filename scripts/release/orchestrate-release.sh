@@ -8,6 +8,7 @@ ENV_FILE="${ORCH_ENV_FILE:-$DEFAULT_ENV_FILE}"
 CLI_GH_TAG_MESSAGE=""
 CLI_GH_NOTES=""
 CLI_GH_TITLE=""
+CLI_RELEASE_ONLY=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -43,6 +44,10 @@ while [[ $# -gt 0 ]]; do
       CLI_GH_TITLE="$2"
       shift 2
       ;;
+    --release-only|-R)
+      CLI_RELEASE_ONLY=1
+      shift
+      ;;
     --help|-h)
       cat <<'USAGE'
 Usage: bash scripts/release/orchestrate-release.sh [--env-file ENV_FILE] [--git-tag-message MESSAGE] [--release-notes NOTES] [--release-title TITLE]
@@ -53,6 +58,9 @@ Options:
   -m, --git-tag-message   Override GH_TAG_MESSAGE for this run only.
   -n, --release-notes     Override GH_NOTES for this run only.
   -t, --release-title     Override GH_TITLE for this run only.
+  -R, --release-only      Skip every build/sign/fetch step and only run the
+                          GitHub release steps against the already-staged
+                          artifacts in the staging dir (same as RELEASE_ONLY=1).
   -h, --help              Show this help.
 USAGE
       exit 0
@@ -81,6 +89,7 @@ fi
 
 # Preserve runtime env overrides so they win over values in ENV_FILE.
 RUNTIME_OVERRIDE_KEYS=(
+  RELEASE_ONLY
   RUN_LINUX_BUILD
   RUN_MAC_BUILD
   RUN_WINDOWS_BUILD
@@ -113,6 +122,9 @@ if [[ -n "$CLI_GH_NOTES" ]]; then
 fi
 if [[ -n "$CLI_GH_TITLE" ]]; then
   RUNTIME_OVERRIDES["GH_TITLE"]="$CLI_GH_TITLE"
+fi
+if [[ -n "$CLI_RELEASE_ONLY" ]]; then
+  RUNTIME_OVERRIDES["RELEASE_ONLY"]="1"
 fi
 
 set -a
@@ -883,6 +895,36 @@ run_mac_build() {
 }
 
 # ---------------------------------------------------------------------------
+# Release-only mode: publish what previous runs already staged, build nothing
+# ---------------------------------------------------------------------------
+RELEASE_ONLY="${RELEASE_ONLY:-0}"
+if truthy "$RELEASE_ONLY"; then
+  echo "== Release-only: no build, sign, or fetch steps will run =="
+
+  if truthy "${RUN_LINUX_BUILD:-0}" || truthy "${RUN_MAC_BUILD:-0}" || truthy "${RUN_WINDOWS_BUILD:-0}"; then
+    echo "RELEASE_ONLY=1 overrides RUN_LINUX_BUILD/RUN_MAC_BUILD/RUN_WINDOWS_BUILD; all builds disabled."
+  fi
+  RUN_LINUX_BUILD=0
+  RUN_MAC_BUILD=0
+  RUN_WINDOWS_BUILD=0
+
+  if ! truthy "${GH_CREATE_DRAFT:-0}" && ! truthy "${GH_UPLOAD_RELEASE:-0}" && ! truthy "${GH_PUBLISH_RELEASE:-0}"; then
+    echo "RELEASE_ONLY=1 needs at least one of GH_CREATE_DRAFT, GH_UPLOAD_RELEASE, GH_PUBLISH_RELEASE." >&2
+    exit 1
+  fi
+
+  mapfile -t release_only_assets < <(find "$STAGING_DIR" -maxdepth 4 -type f \
+    \( -name '*.exe' -o -name '*.zip' -o -name '*.dmg' -o -name '*.deb' -o -name '*.rpm' -o -name '*.pacman' -o -name '*.AppImage' \) | sort)
+  if [[ "${#release_only_assets[@]}" -eq 0 ]]; then
+    echo "No staged artifacts found under ${STAGING_DIR}." >&2
+    echo "Release-only mode publishes what an earlier run left there; rebuild or restage first." >&2
+    exit 1
+  fi
+  echo "Staged artifacts (${#release_only_assets[@]}):"
+  printf '  %s\n' "${release_only_assets[@]#"${STAGING_DIR}"/}"
+fi
+
+# ---------------------------------------------------------------------------
 # Execute builds (parallel by default, set PARALLEL_BUILDS=0 to disable)
 # ---------------------------------------------------------------------------
 PARALLEL_BUILDS="${PARALLEL_BUILDS:-1}"
@@ -898,7 +940,9 @@ _run_prefixed() {
   return "$rc"
 }
 
-if truthy "$PARALLEL_BUILDS"; then
+if truthy "$RELEASE_ONLY"; then
+  echo "Skipping platform builds (RELEASE_ONLY=1)."
+elif truthy "$PARALLEL_BUILDS"; then
   _build_pids=()
   _build_names=()
 
