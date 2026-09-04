@@ -156,9 +156,21 @@ fi
 echo "Preparing keychain for non-interactive codesign..."
 echo "  SIGN_KEYCHAIN=$SIGN_KEYCHAIN"
 
-/usr/bin/security unlock-keychain -p "$SIGN_KEYCHAIN_PASSWORD" "$SIGN_KEYCHAIN" >/dev/null 2>&1 || true
-/usr/bin/security set-key-partition-list -S apple-tool:,apple:,codesign: -s \
-  -k "$SIGN_KEYCHAIN_PASSWORD" "$SIGN_KEYCHAIN" >/dev/null 2>&1 || true
+if ! /usr/bin/security unlock-keychain -p "$SIGN_KEYCHAIN_PASSWORD" "$SIGN_KEYCHAIN" 2>&1; then
+  echo "WARNING: unlock-keychain failed for $SIGN_KEYCHAIN" >&2
+fi
+
+# Newly imported keys default to prompting for confirmation, which fails over SSH.
+prepare_keychain_keys() {
+  if ! /usr/bin/security set-key-partition-list -S apple-tool:,apple:,codesign: -s \
+    -k "$SIGN_KEYCHAIN_PASSWORD" "$SIGN_KEYCHAIN" >/dev/null 2>&1; then
+    echo "WARNING: set-key-partition-list failed on $SIGN_KEYCHAIN." >&2
+    echo "         Signing keys imported since the last run will prompt and fail." >&2
+    return 1
+  fi
+  return 0
+}
+prepare_keychain_keys || true
 
 # Make sure the keychain is in the user search list (don’t wipe the list)
 CURRENT_KCS="$(/usr/bin/security list-keychains -d user 2>/dev/null | /usr/bin/sed -E 's/^[[:space:]]*"//; s/"[[:space:]]*$//')"
@@ -299,10 +311,16 @@ if [[ -n "$INSTALLER_IDENTITY" ]]; then
     --package "$PKG_COMPONENT" \
     "$PKG_UNSIGNED"
 
-  /usr/bin/productsign \
-    --sign "$INSTALLER_IDENTITY" \
-    --keychain "$SIGN_KEYCHAIN" \
-    "$PKG_UNSIGNED" "$PKG_PATH"
+  if ! /usr/bin/productsign --sign "$INSTALLER_IDENTITY" "$PKG_UNSIGNED" "$PKG_PATH"; then
+    echo "" >&2
+    echo "productsign failed. If the error mentions CSSMERR_CSP_NO_USER_INTERACTION, the" >&2
+    echo "installer private key has a restrictive ACL. productsign uses the legacy CDSA" >&2
+    echo "path and ignores set-key-partition-list, so the only fixes are:" >&2
+    echo "  - Keychain Access > the private key > Get Info > Access Control >" >&2
+    echo "    'Allow all applications to access this item' (requires a GUI session), or" >&2
+    echo "  - re-import with a permissive ACL: security import installer.p12 -k <keychain> -A" >&2
+    exit 1
+  fi
 
   /usr/sbin/pkgutil --check-signature "$PKG_PATH"
   /bin/rm -rf "$PKG_WORK"
@@ -342,28 +360,20 @@ if [[ "$BUILD_PKG" -eq 1 ]]; then
 fi
 
 echo "Waiting for notarizations to complete..."
-/usr/bin/xcrun notarytool wait "$ZIP_ID" --keychain-profile "$NOTARY_PROFILE"
-ZIP_NOTARY_RC=$?
-/usr/bin/xcrun notarytool wait "$DMG_ID" --keychain-profile "$NOTARY_PROFILE"
-DMG_NOTARY_RC=$?
-
-if [[ $ZIP_NOTARY_RC -ne 0 ]]; then
-  echo "ZIP notarization failed (id: $ZIP_ID):" >&2
-  /usr/bin/xcrun notarytool log "$ZIP_ID" --keychain-profile "$NOTARY_PROFILE" 2>&1 || true
-  exit 1
-fi
-if [[ $DMG_NOTARY_RC -ne 0 ]]; then
-  echo "DMG notarization failed (id: $DMG_ID):" >&2
-  /usr/bin/xcrun notarytool log "$DMG_ID" --keychain-profile "$NOTARY_PROFILE" 2>&1 || true
-  exit 1
-fi
-
-if [[ -n "$PKG_ID" ]]; then
-  if ! /usr/bin/xcrun notarytool wait "$PKG_ID" --keychain-profile "$NOTARY_PROFILE"; then
-    echo "PKG notarization failed (id: $PKG_ID):" >&2
-    /usr/bin/xcrun notarytool log "$PKG_ID" --keychain-profile "$NOTARY_PROFILE" 2>&1 || true
+notary_wait() {
+  local label="$1"
+  local id="$2"
+  if ! /usr/bin/xcrun notarytool wait "$id" --keychain-profile "$NOTARY_PROFILE"; then
+    echo "${label} notarization failed (id: ${id}):" >&2
+    /usr/bin/xcrun notarytool log "$id" --keychain-profile "$NOTARY_PROFILE" 2>&1 || true
     exit 1
   fi
+}
+
+notary_wait ZIP "$ZIP_ID"
+notary_wait DMG "$DMG_ID"
+if [[ -n "$PKG_ID" ]]; then
+  notary_wait PKG "$PKG_ID"
 fi
 
 echo "Stapling DMG..."
