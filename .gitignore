@@ -20,6 +20,7 @@ yarn.lock
 !scripts/release/.env.release.example
 
 scripts/test-pkg.sh
+scripts/release/RELEASE*
 .yarn/install-state.gz
 .DS_Store
 .claude/CLAUDE.md
