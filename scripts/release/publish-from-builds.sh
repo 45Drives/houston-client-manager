@@ -96,6 +96,8 @@ if [[ "${#MAC_DMGS[@]}" -eq 0 ]]; then
   mapfile -t MAC_DMGS < <(find "$RELEASE_DIR" -maxdepth 1 -type f -name "*mac*.dmg" | sort)
 fi
 mapfile -t MAC_BLOCKMAPS < <(find "$RELEASE_DIR" -maxdepth 1 -type f \( -name "*.dmg.blockmap" -o -name "*.zip.blockmap" \) | sort)
+# .pkg is intentionally not collected here: electron-updater cannot consume it,
+# so it must stay out of latest-mac.yml and is uploaded as a plain asset below.
 
 mapfile -t LINUX_DEBS < <(find "$RELEASE_DIR" -maxdepth 1 -type f -name "*${VERSION}*linux*.deb" | sort)
 if [[ "${#LINUX_DEBS[@]}" -eq 0 ]]; then
@@ -197,7 +199,7 @@ if truthy "$GH_UPLOAD_RELEASE"; then
     RELEASE_ASSETS+=("${_win_assets[@]}")
   fi
   if truthy "$PUBLISH_MAC"; then
-    mapfile -t _mac_assets < <(find "$RELEASE_DIR" -maxdepth 1 -type f \( -name "*.zip" -o -name "*.zip.blockmap" -o -name "*.dmg" -o -name "*.dmg.blockmap" -o -name "latest-mac.yml" \) | sort)
+    mapfile -t _mac_assets < <(find "$RELEASE_DIR" -maxdepth 1 -type f \( -name "*.zip" -o -name "*.zip.blockmap" -o -name "*.dmg" -o -name "*.dmg.blockmap" -o -name "*.pkg" -o -name "latest-mac.yml" \) | sort)
     RELEASE_ASSETS+=("${_mac_assets[@]}")
   fi
   if truthy "$PUBLISH_LINUX"; then

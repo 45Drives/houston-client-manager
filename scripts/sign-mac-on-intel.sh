@@ -28,6 +28,10 @@ fi
 : "${SIGN_KEYCHAIN:=$HOME/Library/Keychains/login.keychain-db}"
 : "${SIGN_KEYCHAIN_PASSWORD:?SIGN_KEYCHAIN_PASSWORD is required for non-interactive signing}"
 
+# "Developer ID Installer: ..." identity. Leave unset to skip .pkg entirely.
+: "${INSTALLER_IDENTITY:=}"
+: "${PKG_SCRIPTS_DIR:=${SIGN_INBOX}/assets/mac/pkg-scripts}"
+
 NODE_BIN=""
 if command -v node >/dev/null 2>&1; then
   NODE_BIN="$(command -v node)"
@@ -98,6 +102,7 @@ OUT_DIR="${SIGN_OUTPUT_DIR}/${BUNDLE_TAG}"
 
 ZIP_PATH="${OUT_DIR}/${APP_PRODUCT_FILENAME}-${VERSION}-mac.zip"
 DMG_PATH="${OUT_DIR}/${APP_PRODUCT_FILENAME}-${VERSION}-mac.dmg"
+PKG_PATH="${OUT_DIR}/${APP_PRODUCT_FILENAME}-${VERSION}-mac.pkg"
 
 echo "Signing bundle tag: $BUNDLE_TAG"
 echo "App: $APP_BUNDLE"
@@ -155,6 +160,19 @@ if ! /usr/bin/security find-identity -v -p codesigning 2>/dev/null | /usr/bin/gr
   echo "ERROR: Could not locate identity in global keychain view: $CODESIGN_IDENTITY" >&2
   /usr/bin/security find-identity -v -p codesigning 2>/dev/null || true
   exit 1
+fi
+
+# Installer identities never show under -p codesigning, so check the basic policy.
+if [[ -n "$INSTALLER_IDENTITY" ]]; then
+  if ! /usr/bin/security find-identity -v 2>/dev/null | /usr/bin/grep -F "$INSTALLER_IDENTITY" >/dev/null; then
+    echo "ERROR: Could not locate installer identity: $INSTALLER_IDENTITY" >&2
+    /usr/bin/security find-identity -v 2>/dev/null || true
+    exit 1
+  fi
+  if [[ ! -d "$PKG_SCRIPTS_DIR" ]]; then
+    echo "ERROR: PKG_SCRIPTS_DIR not found: $PKG_SCRIPTS_DIR" >&2
+    exit 1
+  fi
 fi
 
 echo "Sanitizing app bundle..."
@@ -232,6 +250,55 @@ DMG_STAGE_DIR="${OUT_DIR}/.dmg-stage"
 /usr/bin/hdiutil create -volname "$APP_PRODUCT_FILENAME" -srcfolder "$DMG_STAGE_DIR" -ov -format UDZO "$DMG_PATH"
 /bin/rm -rf "$DMG_STAGE_DIR"
 
+BUILD_PKG=0
+if [[ -n "$INSTALLER_IDENTITY" ]]; then
+  BUILD_PKG=1
+  echo "Packaging PKG (installer with LaunchDaemon postinstall)..."
+  APP_BUNDLE_ID="$(/usr/bin/defaults read "${APP_BUNDLE}/Contents/Info.plist" CFBundleIdentifier)"
+  PKG_WORK="${OUT_DIR}/.pkg-work"
+  PKG_ROOT="${PKG_WORK}/root"
+  PKG_SCRIPTS_STAGE="${PKG_WORK}/scripts"
+  PKG_COMPONENT_PLIST="${PKG_WORK}/component.plist"
+  PKG_COMPONENT="${PKG_WORK}/component.pkg"
+  PKG_UNSIGNED="${PKG_WORK}/unsigned.pkg"
+
+  /bin/rm -rf "$PKG_WORK"
+  /bin/mkdir -p "$PKG_ROOT" "$PKG_SCRIPTS_STAGE"
+  /usr/bin/rsync -a "$APP_BUNDLE" "$PKG_ROOT/"
+  /usr/bin/rsync -a "${PKG_SCRIPTS_DIR}/" "$PKG_SCRIPTS_STAGE/"
+  /bin/chmod -R u+rwx,go+rx "$PKG_SCRIPTS_STAGE"
+
+  # Pin the payload to /Applications; without this the installer will overwrite
+  # any older copy Spotlight happens to find elsewhere on disk.
+  /usr/bin/pkgbuild --analyze --root "$PKG_ROOT" "$PKG_COMPONENT_PLIST"
+  /usr/libexec/PlistBuddy -c "Set :0:BundleIsRelocatable false" "$PKG_COMPONENT_PLIST"
+
+  /usr/bin/pkgbuild \
+    --root "$PKG_ROOT" \
+    --component-plist "$PKG_COMPONENT_PLIST" \
+    --scripts "$PKG_SCRIPTS_STAGE" \
+    --identifier "$APP_BUNDLE_ID" \
+    --version "$VERSION" \
+    --install-location /Applications \
+    "$PKG_COMPONENT"
+
+  /usr/bin/productbuild \
+    --identifier "${APP_BUNDLE_ID}.installer" \
+    --version "$VERSION" \
+    --package "$PKG_COMPONENT" \
+    "$PKG_UNSIGNED"
+
+  /usr/bin/productsign \
+    --sign "$INSTALLER_IDENTITY" \
+    --keychain "$SIGN_KEYCHAIN" \
+    "$PKG_UNSIGNED" "$PKG_PATH"
+
+  /usr/sbin/pkgutil --check-signature "$PKG_PATH"
+  /bin/rm -rf "$PKG_WORK"
+else
+  echo "INSTALLER_IDENTITY not set; skipping PKG build."
+fi
+
 echo "Submitting ZIP + DMG for notarization (parallel)..."
 ZIP_SUBMISSION="$(/usr/bin/xcrun notarytool submit "$ZIP_PATH" --keychain-profile "$NOTARY_PROFILE" 2>&1)"
 ZIP_ID="$(printf '%s\n' "$ZIP_SUBMISSION" | /usr/bin/sed -n 's/^[[:space:]]*id:[[:space:]]*//p' | head -n1)"
@@ -251,7 +318,19 @@ if [[ -z "$DMG_ID" ]]; then
 fi
 echo "  DMG submission id: $DMG_ID"
 
-echo "Waiting for both notarizations to complete..."
+PKG_ID=""
+if [[ "$BUILD_PKG" -eq 1 ]]; then
+  PKG_SUBMISSION="$(/usr/bin/xcrun notarytool submit "$PKG_PATH" --keychain-profile "$NOTARY_PROFILE" 2>&1)"
+  PKG_ID="$(printf '%s\n' "$PKG_SUBMISSION" | /usr/bin/sed -n 's/^[[:space:]]*id:[[:space:]]*//p' | head -n1)"
+  if [[ -z "$PKG_ID" ]]; then
+    echo "Failed to submit PKG for notarization:" >&2
+    printf '%s\n' "$PKG_SUBMISSION" >&2
+    exit 1
+  fi
+  echo "  PKG submission id: $PKG_ID"
+fi
+
+echo "Waiting for notarizations to complete..."
 /usr/bin/xcrun notarytool wait "$ZIP_ID" --keychain-profile "$NOTARY_PROFILE"
 ZIP_NOTARY_RC=$?
 /usr/bin/xcrun notarytool wait "$DMG_ID" --keychain-profile "$NOTARY_PROFILE"
@@ -268,13 +347,29 @@ if [[ $DMG_NOTARY_RC -ne 0 ]]; then
   exit 1
 fi
 
+if [[ -n "$PKG_ID" ]]; then
+  if ! /usr/bin/xcrun notarytool wait "$PKG_ID" --keychain-profile "$NOTARY_PROFILE"; then
+    echo "PKG notarization failed (id: $PKG_ID):" >&2
+    /usr/bin/xcrun notarytool log "$PKG_ID" --keychain-profile "$NOTARY_PROFILE" 2>&1 || true
+    exit 1
+  fi
+fi
+
 echo "Stapling DMG..."
 /usr/bin/xcrun stapler staple "$DMG_PATH"
 
 echo "Stapling ZIP (app bundle)..."
 /usr/bin/xcrun stapler staple "$ZIP_PATH" 2>/dev/null || true
 
+if [[ "$BUILD_PKG" -eq 1 ]]; then
+  echo "Stapling PKG..."
+  /usr/bin/xcrun stapler staple "$PKG_PATH"
+fi
+
 echo "Artifacts complete:"
 /bin/ls -la "$OUT_DIR"
 echo "ZIP: $ZIP_PATH"
 echo "DMG: $DMG_PATH"
+if [[ "$BUILD_PKG" -eq 1 ]]; then
+  echo "PKG: $PKG_PATH"
+fi

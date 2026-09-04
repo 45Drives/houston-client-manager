@@ -765,6 +765,7 @@ run_mac_build() {
         "$RELEASE_BUILDS_DIR/"*-mac.zip.blockmap
         "$RELEASE_BUILDS_DIR/"*-mac.dmg
         "$RELEASE_BUILDS_DIR/"*-mac.dmg.blockmap
+        "$RELEASE_BUILDS_DIR/"*-mac.pkg
       )
       if [[ "${#stale_release_mac[@]}" -gt 0 ]]; then
         rm -f -- "${stale_release_mac[@]}"
@@ -801,7 +802,7 @@ run_mac_build() {
 
     if truthy "$MAC_FETCH_PRE_CLEAN"; then
       ssh_run "$MAC_FETCH_HOST" "$MAC_FETCH_USER" "${MAC_FETCH_PASSWORD:-}" "$MAC_FETCH_PORT" \
-        "mkdir -p '${MAC_FETCH_DIR_CLEAN}' && find '${MAC_FETCH_DIR_CLEAN}' -maxdepth 1 -type f \\( -name '*-mac*.zip' -o -name '*-mac*.dmg' -o -name '*-mac*.blockmap' \\) -delete"
+        "mkdir -p '${MAC_FETCH_DIR_CLEAN}' && find '${MAC_FETCH_DIR_CLEAN}' -maxdepth 1 -type f \\( -name '*-mac*.zip' -o -name '*-mac*.dmg' -o -name '*-mac*.pkg' -o -name '*-mac*.blockmap' \\) -delete"
     fi
 
     ssh_run "$MAC_ARM_HOST" "$MAC_ARM_USER" "${MAC_ARM_PASSWORD:-}" "$MAC_ARM_PORT" "$MAC_REMOTE_CMD_EFFECTIVE"
@@ -814,6 +815,7 @@ run_mac_build() {
     shopt -s nullglob
     mac_kind_zips=("$MAC_KIND_DIR/"*.zip)
     mac_kind_dmgs=("$MAC_KIND_DIR/"*.dmg)
+    mac_kind_pkgs=("$MAC_KIND_DIR/"*.pkg)
     mac_kind_blockmaps=("$MAC_KIND_DIR/"*.zip.blockmap "$MAC_KIND_DIR/"*.dmg.blockmap)
     shopt -u nullglob
 
@@ -822,7 +824,7 @@ run_mac_build() {
       exit 1
     fi
 
-    for f in "${mac_kind_zips[@]}" "${mac_kind_dmgs[@]}" "${mac_kind_blockmaps[@]}"; do
+    for f in "${mac_kind_zips[@]}" "${mac_kind_dmgs[@]}" "${mac_kind_pkgs[@]}" "${mac_kind_blockmaps[@]}"; do
       [[ -f "$f" ]] || continue
       f_dir="$(dirname "$f")"
       f_base="$(basename "$f")"
@@ -837,7 +839,7 @@ run_mac_build() {
     done
 
     shopt -s nullglob
-    mac_kind_outputs=("$MAC_KIND_DIR/"*.zip "$MAC_KIND_DIR/"*.dmg "$MAC_KIND_DIR/"*.zip.blockmap "$MAC_KIND_DIR/"*.dmg.blockmap)
+    mac_kind_outputs=("$MAC_KIND_DIR/"*.zip "$MAC_KIND_DIR/"*.dmg "$MAC_KIND_DIR/"*.pkg "$MAC_KIND_DIR/"*.zip.blockmap "$MAC_KIND_DIR/"*.dmg.blockmap)
     shopt -u nullglob
     if [[ "${#mac_kind_outputs[@]}" -gt 0 ]]; then
       copy_to_release_builds "${mac_kind_outputs[@]}"
@@ -914,7 +916,7 @@ if truthy "$RELEASE_ONLY"; then
   fi
 
   mapfile -t release_only_assets < <(find "$STAGING_DIR" -maxdepth 4 -type f \
-    \( -name '*.exe' -o -name '*.zip' -o -name '*.dmg' -o -name '*.deb' -o -name '*.rpm' -o -name '*.pacman' -o -name '*.AppImage' \) | sort)
+    \( -name '*.exe' -o -name '*.zip' -o -name '*.dmg' -o -name '*.pkg' -o -name '*.deb' -o -name '*.rpm' -o -name '*.pacman' -o -name '*.AppImage' \) | sort)
   if [[ "${#release_only_assets[@]}" -eq 0 ]]; then
     echo "No staged artifacts found under ${STAGING_DIR}." >&2
     echo "Release-only mode publishes what an earlier run left there; rebuild or restage first." >&2
@@ -1084,7 +1086,7 @@ if truthy "${GH_UPLOAD_RELEASE:-0}" || truthy "${GH_PUBLISH_RELEASE:-0}" || trut
 
   if truthy "${GH_UPLOAD_RELEASE:-0}"; then
     mapfile -t assets < <(find "$STAGING_DIR" -maxdepth 4 -type f \
-      \( -name '*.yml' -o -name '*.exe' -o -name '*.blockmap' -o -name '*.zip' -o -name '*.dmg' -o -name '*.deb' -o -name '*.rpm' -o -name '*.pacman' -o -name '*.AppImage' \) | sort)
+      \( -name '*.yml' -o -name '*.exe' -o -name '*.blockmap' -o -name '*.zip' -o -name '*.dmg' -o -name '*.pkg' -o -name '*.deb' -o -name '*.rpm' -o -name '*.pacman' -o -name '*.AppImage' \) | sort)
     if [[ "${#assets[@]}" -eq 0 ]]; then
       echo "No assets found to upload from $STAGING_DIR" >&2
       exit 1
