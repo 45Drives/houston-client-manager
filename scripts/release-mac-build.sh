@@ -198,8 +198,9 @@ SIGN_GIT_PULL_CMD_ESCAPED="$(printf '%q' "$SIGN_GIT_PULL_WRAPPED")"
 "${SSH[@]}" "${SIGN_USER}@${SIGN_HOST}" "bash -lc $SIGN_GIT_PULL_CMD_ESCAPED"
 
 echo "Trigger signing/notarization on Intel..."
+SIGN_CMD="BUILD_MAC_PKG=$(printf '%q' "${BUILD_MAC_PKG:-1}") \"${SIGN_INBOX}/scripts/sign-mac-on-intel.sh\" \"$BUNDLE_TAG\""
 "${SSH[@]}" "${SIGN_USER}@${SIGN_HOST}" \
-  "bash -lc '\"${SIGN_INBOX}/scripts/sign-mac-on-intel.sh\" \"$BUNDLE_TAG\"'"
+  "bash -lc $(printf '%q' "$SIGN_CMD")"
 
 INTEL_OUT_DIR="${SIGN_OUTPUT_DIR%/}/${BUNDLE_TAG}"
 SYNC_SIGNED_BACK_TO_ARM="${SYNC_SIGNED_BACK_TO_ARM:-1}"

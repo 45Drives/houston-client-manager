@@ -96,6 +96,7 @@ RUNTIME_OVERRIDE_KEYS=(
   WIN_PHASE
   MAC_BUILD_KIND
   MAC_PHASE
+  BUILD_MAC_PKG
   RELEASE_VERSION
   RELEASE_TAG
   RELEASE_STAGING_DIR
@@ -699,6 +700,8 @@ run_mac_build() {
       exit 1
       ;;
   esac
+  # The Intel signer still needs INSTALLER_IDENTITY in its .env.release; this only gates it.
+  BUILD_MAC_PKG="${BUILD_MAC_PKG:-1}"
   MAC_RELEASE_ENV_LOCAL="${MAC_RELEASE_ENV_LOCAL:-}"
   MAC_RELEASE_ENV_REMOTE="${MAC_RELEASE_ENV_REMOTE:-${MAC_ARM_REPO_DIR}/scripts/.env.release}"
   MAC_ARM_GIT_PULL_CMD="${MAC_ARM_GIT_PULL_CMD:-cd '${MAC_ARM_REPO_DIR}' && git pull --ff-only && git submodule update --init --recursive && git -C houston-common checkout main && git -C houston-common pull --ff-only}"
@@ -789,7 +792,7 @@ run_mac_build() {
     fi
     if [[ -z "$MAC_REMOTE_CMD_EFFECTIVE" ]]; then
       MAC_REMOTE_SCRIPT="${MAC_REMOTE_SCRIPT:-scripts/release-mac-build.sh}"
-      MAC_REMOTE_CMD_EFFECTIVE="cd '${MAC_ARM_REPO_DIR}' && ${MAC_SKIP_BUILD_FLAG} MAC_BUILD_KIND_OVERRIDE='${MAC_KIND}' BUNDLE_TAG_OVERRIDE='${BUNDLE_TAG}'"
+      MAC_REMOTE_CMD_EFFECTIVE="cd '${MAC_ARM_REPO_DIR}' && ${MAC_SKIP_BUILD_FLAG} BUILD_MAC_PKG='${BUILD_MAC_PKG}' MAC_BUILD_KIND_OVERRIDE='${MAC_KIND}' BUNDLE_TAG_OVERRIDE='${BUNDLE_TAG}'"
       if [[ -n "$MAC_RELEASE_ENV_LOCAL" ]]; then
         MAC_REMOTE_CMD_EFFECTIVE="${MAC_REMOTE_CMD_EFFECTIVE} ENV_FILE='${MAC_RELEASE_ENV_REMOTE}'"
       fi
@@ -797,7 +800,7 @@ run_mac_build() {
     else
       MAC_REMOTE_CMD_EFFECTIVE="${MAC_REMOTE_CMD_EFFECTIVE//__BUNDLE_TAG__/${BUNDLE_TAG}}"
       MAC_REMOTE_CMD_EFFECTIVE="${MAC_REMOTE_CMD_EFFECTIVE//__ENV_FILE__/${MAC_RELEASE_ENV_REMOTE}}"
-      MAC_REMOTE_CMD_EFFECTIVE="export MAC_BUILD_KIND_OVERRIDE='${MAC_KIND}'; export ${MAC_SKIP_BUILD_FLAG:-MAC_SKIP_BUILD=0}; ${MAC_REMOTE_CMD_EFFECTIVE}"
+      MAC_REMOTE_CMD_EFFECTIVE="export MAC_BUILD_KIND_OVERRIDE='${MAC_KIND}'; export BUILD_MAC_PKG='${BUILD_MAC_PKG}'; export ${MAC_SKIP_BUILD_FLAG:-MAC_SKIP_BUILD=0}; ${MAC_REMOTE_CMD_EFFECTIVE}"
     fi
 
     if truthy "$MAC_FETCH_PRE_CLEAN"; then

@@ -6,6 +6,9 @@ BUNDLE_TAG="${1:?bundle tag required}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ENV_FILE="$SCRIPT_DIR/.env.release"
 
+# Captured before the env file is sourced so the orchestrator's value wins over it.
+BUILD_MAC_PKG_RUNTIME="${BUILD_MAC_PKG:-}"
+
 # --- Load env (export everything) ---
 if [[ -f "$ENV_FILE" ]]; then
   # Normalize CRLF -> LF
@@ -31,6 +34,14 @@ fi
 # "Developer ID Installer: ..." identity. Leave unset to skip .pkg entirely.
 : "${INSTALLER_IDENTITY:=}"
 : "${PKG_SCRIPTS_DIR:=${SIGN_INBOX}/assets/mac/pkg-scripts}"
+: "${BUILD_MAC_PKG:=1}"
+if [[ -n "$BUILD_MAC_PKG_RUNTIME" ]]; then
+  BUILD_MAC_PKG="$BUILD_MAC_PKG_RUNTIME"
+fi
+case "$BUILD_MAC_PKG" in
+  1|true|TRUE|yes|YES) ;;
+  *) INSTALLER_IDENTITY="" ;;
+esac
 
 NODE_BIN=""
 if command -v node >/dev/null 2>&1; then
@@ -296,7 +307,7 @@ if [[ -n "$INSTALLER_IDENTITY" ]]; then
   /usr/sbin/pkgutil --check-signature "$PKG_PATH"
   /bin/rm -rf "$PKG_WORK"
 else
-  echo "INSTALLER_IDENTITY not set; skipping PKG build."
+  echo "Skipping PKG build (BUILD_MAC_PKG=${BUILD_MAC_PKG}, INSTALLER_IDENTITY ${INSTALLER_IDENTITY:+set}${INSTALLER_IDENTITY:-unset})."
 fi
 
 echo "Submitting ZIP + DMG for notarization (parallel)..."
