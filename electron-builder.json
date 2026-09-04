@@ -29,6 +29,7 @@
         "hardenedRuntime": true,
         "entitlements": "entitlements.mac.plist",
         "entitlementsInherit": "entitlements.mac.inherit.plist",
+        "x64ArchFiles": "**/static/mac/houston-backupd",
         "extendInfo": {
             "NSLocalNetworkUsageDescription": "45Drives Storage Wizard finds and configures 45Drives servers on your local network.",
             "NSDesktopFolderUsageDescription": "45Drives Storage Wizard needs access to your Desktop to back it up.",
