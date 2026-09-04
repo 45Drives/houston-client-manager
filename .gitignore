@@ -17,7 +17,7 @@ yarn.lock
 .env
 .env*
 !scripts/release/.env.orchestrator.example
-!scripts/release/.env.release.example
+!scripts/.env.release.example
 
 scripts/test-pkg.sh
 scripts/release/RELEASE*
