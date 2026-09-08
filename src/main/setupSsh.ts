@@ -393,9 +393,11 @@ if [ "$repo" = yes ] && [ -n "$installed_pkgs" ]; then
     *rhel*|*fedora*|*centos*)
       upgrades=""
       rc=0
+      # --refresh: without it the candidate version comes from a possibly stale cache.
       if has_cmd dnf; then
-        upgrades="$(dnf -q check-update $installed_pkgs 2>/dev/null)" || rc=$?
+        upgrades="$(dnf -q --refresh check-update $installed_pkgs 2>/dev/null)" || rc=$?
       elif has_cmd yum; then
+        yum -q clean expire-cache >/dev/null 2>&1 || true
         upgrades="$(yum -q check-update $installed_pkgs 2>/dev/null)" || rc=$?
       fi
       if [ "$rc" = 100 ]; then
@@ -551,7 +553,9 @@ case "$OS_LIKE" in
       echo "[INFO] 45Drives community repo already configured."
     fi
     echo "[INFO] Installing: ${pkgList}"
-    dnf install -y ${pkgList}
+    # --refresh: an already-configured repo otherwise resolves against cached metadata,
+    # so a newly published build looks like "nothing to do".
+    dnf install -y --refresh ${pkgList}
     ;;
   *debian*|*ubuntu*)
     for f in /etc/apt/sources.list.d/45drives-community*.list; do

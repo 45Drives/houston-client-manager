@@ -34,7 +34,8 @@ case "$OS_LIKE" in
   *rhel*)
     install_pkg() {
       echo "[INFO] Installing: $*"
-      dnf install -y "$@"
+      # --refresh: an already-configured repo otherwise resolves against cached metadata.
+      dnf install -y --refresh "$@"
     }
     query_pkg() {
       local pkg=$1
