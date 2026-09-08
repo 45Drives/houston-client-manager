@@ -166,31 +166,24 @@ async function probeServerDisks(srv: ProbeServer): Promise<BulkDiskInfo> {
     // Map: device name → vdev alias (e.g. "sdc" → "1-1")
     let devToAlias: Record<string, string> = {};
     if (hasVdevConf) {
-      // Parse aliases from vdev_id.conf: "alias 1-1 /dev/disk/by-path/..."
-      const aliasParseResult = await ssh.execCommand(
-        "grep '^alias ' /etc/vdev_id.conf | awk '{print $2, $3}'"
+      // Resolved remotely, one "<alias> <device>" line per entry, so an empty bay or a
+      // stale by-path link drops out instead of shifting every other alias by one row.
+      // `readlink -f` still prints a path for a dangling link, hence the `-b` test.
+      const aliasResolveResult = await ssh.execCommand(
+        `grep '^alias[[:space:]]' /etc/vdev_id.conf | awk '{print $2, $3}' | while read -r a p; do t=$(readlink -f "$p" 2>/dev/null); if [ -b "$t" ]; then echo "$a $t"; fi; done`
       );
-      const aliasLines = aliasParseResult.code === 0 ? aliasParseResult.stdout.trim().split('\n').filter(Boolean) : [];
-
-      // Resolve all by-path symlinks to actual device names in one command
-      const resolveCmd = vdevFullPaths.map(p => `readlink -f "${p}" 2>/dev/null`).join('; ');
-      const resolveResult = await ssh.execCommand(resolveCmd);
-      if (resolveResult.code === 0) {
-        const resolvedLines = resolveResult.stdout.trim().split('\n');
-        for (let i = 0; i < resolvedLines.length && i < aliasLines.length; i++) {
-          const devPath = resolvedLines[i]!.trim();
-          const aliasParts = aliasLines[i]!.trim().split(/\s+/);
-          const aliasName = aliasParts[0]; // e.g. "1-1"
-          if (devPath.startsWith('/dev/') && aliasName) {
-            const devName = devPath.replace('/dev/', '');
-            aliasedDevNames.add(devName);
-            devToAlias[devName] = aliasName;
-          }
-        }
+      const aliasLines = aliasResolveResult.stdout.trim().split('\n').filter(Boolean);
+      for (const line of aliasLines) {
+        const [aliasName, devPath] = line.trim().split(/\s+/);
+        if (!aliasName || !devPath?.startsWith('/dev/')) continue;
+        const devName = devPath.slice('/dev/'.length);
+        aliasedDevNames.add(devName);
+        devToAlias[devName] = aliasName;
       }
     }
 
-    // A vdev_id.conf whose by-path links resolve to nothing would otherwise filter out every drive
+    // A vdev_id.conf whose by-path links no longer resolve (re-imaged box, moved HBA,
+    // empty bays) would otherwise filter out every drive and report "no disks".
     const useAliasFilter = hasVdevConf && aliasedDevNames.size > 0;
     if (hasVdevConf && !useAliasFilter) {
       console.warn(`[BulkSetup] ${srv.host}: vdev_id.conf present but no aliases resolved — falling back to lsblk`);
