@@ -39,6 +39,9 @@ if [[ -n "${MAC_BUILD_KIND_OVERRIDE:-}" ]]; then
   export MAC_BUILD_KIND
 fi
 
+MAC_BUILD_KIND="${MAC_BUILD_KIND:-universal}"
+export MAC_BUILD_KIND
+
 cd "$ROOT_DIR"
 
 # Ensure node exists in non-interactive SSH shells (nvm/homebrew/common paths)
@@ -99,7 +102,7 @@ echo "BUNDLE_TAG=$BUNDLE_TAG"
 
 if ! truthy "${MAC_SKIP_BUILD:-0}"; then
   echo "Building macOS (${MAC_BUILD_KIND}) unsigned..."
-  rm -rf dist/mac-universal dist/mac-arm64 dist/mac-x64 dist/sign-stage || true
+  rm -rf dist/mac dist/mac-universal dist/mac-arm64 dist/mac-x64 dist/sign-stage || true
 else
   echo "MAC_SKIP_BUILD=1; skipping build, using existing app bundle for (${MAC_BUILD_KIND})."
 fi

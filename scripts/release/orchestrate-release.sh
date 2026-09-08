@@ -763,12 +763,19 @@ run_mac_build() {
       rm -rf -- "${stale_staging_mac[@]}"
     fi
     if [[ "$RELEASE_BUILDS_DIR" != "$STAGING_DIR" ]]; then
+      # Artifacts leave the signer as *-mac.zip and are renamed to *-mac-<kind>.zip,
+      # so these globs must cover both the bare and the arch-suffixed names.
       stale_release_mac=(
         "$RELEASE_BUILDS_DIR/"*-mac.zip
         "$RELEASE_BUILDS_DIR/"*-mac.zip.blockmap
         "$RELEASE_BUILDS_DIR/"*-mac.dmg
         "$RELEASE_BUILDS_DIR/"*-mac.dmg.blockmap
         "$RELEASE_BUILDS_DIR/"*-mac.pkg
+        "$RELEASE_BUILDS_DIR/"*-mac-*.zip
+        "$RELEASE_BUILDS_DIR/"*-mac-*.zip.blockmap
+        "$RELEASE_BUILDS_DIR/"*-mac-*.dmg
+        "$RELEASE_BUILDS_DIR/"*-mac-*.dmg.blockmap
+        "$RELEASE_BUILDS_DIR/"*-mac-*.pkg
       )
       if [[ "${#stale_release_mac[@]}" -gt 0 ]]; then
         rm -f -- "${stale_release_mac[@]}"
