@@ -198,7 +198,24 @@ SIGN_GIT_SSH_COMMAND="${SIGN_GIT_SSH_COMMAND:-ssh -o BatchMode=yes -o ConnectTim
 echo "Updating signing host repo..."
 SIGN_GIT_PULL_WRAPPED="export GIT_TERMINAL_PROMPT=0 GIT_ASKPASS= GIT_SSH_COMMAND=$(printf '%q' "$SIGN_GIT_SSH_COMMAND"); ${SIGN_GIT_PULL_CMD}"
 SIGN_GIT_PULL_CMD_ESCAPED="$(printf '%q' "$SIGN_GIT_PULL_WRAPPED")"
-"${SSH[@]}" "${SIGN_USER}@${SIGN_HOST}" "bash -lc $SIGN_GIT_PULL_CMD_ESCAPED"
+# GitHub fetches (especially the houston-common submodule) intermittently time out mid-transfer.
+SIGN_GIT_MAX_RETRIES="${SIGN_GIT_MAX_RETRIES:-3}"
+SIGN_GIT_RETRY_DELAY="${SIGN_GIT_RETRY_DELAY:-10}"
+_sign_git_ok=0
+for _attempt in $(seq 1 "$SIGN_GIT_MAX_RETRIES"); do
+  if "${SSH[@]}" "${SIGN_USER}@${SIGN_HOST}" "bash -lc $SIGN_GIT_PULL_CMD_ESCAPED"; then
+    _sign_git_ok=1
+    break
+  fi
+  if [[ "$_attempt" -lt "$SIGN_GIT_MAX_RETRIES" ]]; then
+    echo "Signing host git pull failed (attempt ${_attempt}/${SIGN_GIT_MAX_RETRIES}). Retrying in ${SIGN_GIT_RETRY_DELAY}s..." >&2
+    sleep "$SIGN_GIT_RETRY_DELAY"
+  fi
+done
+if [[ "$_sign_git_ok" -ne 1 ]]; then
+  echo "Signing host git pull failed after ${SIGN_GIT_MAX_RETRIES} attempts." >&2
+  exit 1
+fi
 
 echo "Trigger signing/notarization on Intel..."
 SIGN_CMD="BUILD_MAC_PKG=$(printf '%q' "${BUILD_MAC_PKG:-1}") \"${SIGN_INBOX}/scripts/sign-mac-on-intel.sh\" \"$BUNDLE_TAG\""

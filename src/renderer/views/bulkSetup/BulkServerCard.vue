@@ -127,7 +127,7 @@
             <span class="inline-block w-3 h-3 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
             Connecting &amp; detecting disks...
           </span>
-          <span v-else-if="server.validated === true && server.diskInfo">✓ Connected &amp; Probed</span>
+          <span v-else-if="server.validated === true && server.diskInfo?.availableDisks?.length">✓ Connected &amp; Probed</span>
           <span v-else>Connect &amp; Probe Disks</span>
         </button>
       </div>
@@ -141,6 +141,16 @@
       <!-- Validation error -->
       <div v-if="server.validationError" class="text-xs text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 px-3 py-2 rounded">
         {{ server.validationError }}
+      </div>
+
+      <!-- Probe error / no usable disks -->
+      <div v-if="!server.validationError && server.probeError"
+        class="text-xs text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 px-3 py-2 rounded space-y-1">
+        <div><strong>Cannot deploy to this server:</strong> {{ server.probeError }}</div>
+        <div v-if="server.diskInfo?.excludedDisks?.length" class="text-red-500 dark:text-red-300">
+          Withheld drives:
+          <span v-for="d in server.diskInfo.excludedDisks" :key="d.name" class="font-mono">{{ d.name }} ({{ d.reason }});</span>
+        </div>
       </div>
 
       <!-- Setup Mode toggle -->
@@ -390,6 +400,9 @@ The server refuses to touch any drive backing the running OS regardless of this 
         <!-- Right: Detected Disks -->
         <div class="text-xs">
           <div class="font-medium text-muted mb-1">Detected Disks:</div>
+          <div v-if="!server.diskInfo.availableDisks.length" class="text-red-600 dark:text-red-400">
+            None — no usable drives were found on this server.
+          </div>
           <div class="flex flex-wrap gap-1.5">
             <span v-for="(disk, di) in server.diskInfo.availableDisks" :key="disk.name"
               class="px-2 py-0.5 rounded font-mono"
@@ -543,6 +556,7 @@ const statusDotClass = computed(() => {
   if (status === 'failed') return 'bg-red-500';
   if (status === 'bootstrapping' || status === 'configuring') return 'bg-blue-500 animate-pulse';
   if (props.server.validated === false) return 'bg-red-400';
+  if (props.server.probeError) return 'bg-amber-400';
   if (props.server.validated === true) return 'bg-green-400';
   return 'bg-neutral-300 dark:bg-neutral-600';
 });

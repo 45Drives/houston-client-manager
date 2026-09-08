@@ -127,14 +127,29 @@ Parallel mode sets every server up at once. Anything that fails can be retried o
         + Add Server
       </button>
 
+      <!-- Deploy blocked banner -->
+      <div v-if="deployBlockReasons.length"
+        class="rounded-lg border border-red-300 dark:border-red-700 bg-red-50 dark:bg-red-900/20 px-4 py-3">
+        <div class="flex items-start justify-between gap-3">
+          <div class="space-y-1">
+            <p class="text-sm font-semibold text-red-700 dark:text-red-300">Deploy blocked</p>
+            <ul class="text-xs text-red-600 dark:text-red-400 space-y-0.5">
+              <li v-for="reason in deployBlockReasons" :key="reason">• {{ reason }}</li>
+            </ul>
+          </div>
+          <button @click="deployBlockReasons = []" class="text-red-500 hover:text-red-700 text-sm leading-none">✕</button>
+        </div>
+      </div>
+
       <!-- Action bar -->
       <div v-if="servers.length > 0"
         class="sticky bottom-0 bg-white/80 dark:bg-neutral-900/80 backdrop-blur-sm border-t border-neutral-200 dark:border-neutral-700 -mx-6 px-6 py-4 flex items-center justify-between"
-        data-tour="bulk-actions">
-        <div class="flex items-center gap-3 text-sm">
+        data-tour="bulk-actions">        <div class="flex items-center gap-3 text-sm">
           <span class="text-default font-medium">{{ totalServers }} server{{ totalServers > 1 ? 's' : '' }}</span>
           <span v-if="!isRunning && !isComplete && !allProbed" class="text-amber-600 dark:text-amber-400 text-xs">
-            (probe all servers before deploying)
+            {{ serversWithoutDisks > 0
+              ? `(${serversWithoutDisks} server${serversWithoutDisks > 1 ? 's have' : ' has'} no usable disks)`
+              : '(probe all servers before deploying)' }}
           </span>
           <span v-if="completedServers > 0" class="text-green-600 dark:text-green-400 font-medium">✓ {{ completedServers }} done</span>
           <span v-if="failedServers > 0" class="text-red-600 dark:text-red-400 font-medium">✗ {{ failedServers }} failed</span>
@@ -291,7 +306,13 @@ const probingServers = ref(new Set<string>());
 const isProbingAll = ref(false);
 
 const allProbed = computed(() =>
-  servers.value.length > 0 && servers.value.every(s => s.validated === true && s.diskInfo)
+  servers.value.length > 0 && servers.value.every(s => s.validated === true && !!s.diskInfo?.availableDisks?.length)
+);
+
+const deployBlockReasons = ref<string[]>([]);
+
+const serversWithoutDisks = computed(() =>
+  servers.value.filter(s => s.validated === true && !s.diskInfo?.availableDisks?.length).length
 );
 
 const globalDefaults = ref({
@@ -412,6 +433,7 @@ function onApplyDefaults() {
 }
 
 async function onConnectAndProbe(serverId: string) {
+  deployBlockReasons.value = [];
   probingServers.value.add(serverId);
   try {
     await connectAndProbe(serverId);
@@ -421,10 +443,11 @@ async function onConnectAndProbe(serverId: string) {
 }
 
 async function onProbeAll() {
+  deployBlockReasons.value = [];
   isProbingAll.value = true;
   try {
     for (const srv of servers.value) {
-      if (!srv.validated || !srv.diskInfo) {
+      if (!srv.validated || !srv.diskInfo?.availableDisks?.length) {
         probingServers.value.add(srv.id);
         try {
           await connectAndProbe(srv.id);
@@ -439,18 +462,26 @@ async function onProbeAll() {
 }
 
 async function onDeploy() {
+  deployBlockReasons.value = [];
   // Apply global defaults to any servers missing creds
   onApplyDefaults();
   // Run preflight checks (validate fields, SSH, probe disks)
-  const ok = await preflightCheck();
-  if (!ok) return; // errors are shown inline on each card
+  const { ok, reasons } = await preflightCheck();
+  if (!ok) {
+    deployBlockReasons.value = reasons.length ? reasons : ['Preflight checks failed. Review each server card for details.'];
+    return;
+  }
   // Show confirmation modal
   showConfirmModal.value = true;
 }
 
 async function onConfirmDeploy() {
   showConfirmModal.value = false;
-  await deploy({ parallel: parallel.value, maxConcurrency: 3 });
+  try {
+    await deploy({ parallel: parallel.value, maxConcurrency: 3 });
+  } catch (err: any) {
+    deployBlockReasons.value = [err?.message || 'Deploy failed to start.'];
+  }
 }
 
 function onCancel() {

@@ -19,9 +19,36 @@ export type BulkServerState = BulkServerEntry & {
   validated?: boolean;
   validationError?: string;
   fieldErrors?: FieldErrors;
+  /** Probe failed, or succeeded but returned no usable disks */
+  probeError?: string;
   /** Running checklist of steps completed/in-progress */
   steps: BulkSetupStep[];
 };
+
+/** Human-readable label for a server in error messages */
+function serverLabel(srv: BulkServerState): string {
+  return srv.serverName || srv.host || 'unnamed server';
+}
+
+/** Set probeError based on a probe result, so an empty disk list never looks like success */
+function applyProbeOutcome(srv: BulkServerState, error?: string) {
+  if (error) {
+    srv.probeError = error;
+    return;
+  }
+  if (!srv.diskInfo) {
+    srv.probeError = 'Probe returned no disk information';
+    return;
+  }
+  if (!srv.diskInfo.availableDisks?.length) {
+    const excluded = srv.diskInfo.excludedDisks || [];
+    srv.probeError = excluded.length
+      ? `No usable disks found — every detected drive was withheld (${excluded.map(d => `${d.name}: ${d.reason}`).join('; ')})`
+      : 'No usable disks detected on this server';
+    return;
+  }
+  srv.probeError = undefined;
+}
 
 // Singleton state (shared across components)
 const servers = ref<BulkServerState[]>([]);
@@ -318,6 +345,7 @@ export function useBulkSetup() {
         srv.chassisSize = r.chassisSize;
         srv.existingGroups = r.existingGroups;
         srv.existingUsers = r.existingUsers;
+        applyProbeOutcome(srv, r.error);
       }
     }
   }
@@ -333,6 +361,7 @@ export function useBulkSetup() {
 
     srv.validated = undefined;
     srv.validationError = undefined;
+    srv.probeError = undefined;
 
     // Validate SSH
     const validateResults: Array<{ host: string; reachable: boolean; isAdmin?: boolean; error?: string }> =
@@ -378,26 +407,31 @@ export function useBulkSetup() {
       srv.existingGroups = pr.existingGroups;
       srv.existingUsers = pr.existingUsers;
     }
+    applyProbeOutcome(srv, pr?.error);
 
     // Auto-disable splitPools if not enough disks
     if (srv.splitPools && srv.diskInfo && srv.diskInfo.availableDisks.length <= 4) {
       srv.splitPools = false;
     }
 
-    return true;
+    return !srv.probeError;
   }
 
   // ── Deploy ─────────────────────────────────────────────────────────────
 
   /**
    * Run preflight checks (field validation, SSH validation, disk probe)
-   * without starting the actual deploy. Returns true if all checks pass.
+   * without starting the actual deploy. Returns the blocking reasons so the
+   * caller can tell the user why deploy did not start.
    */
-  async function preflightCheck(): Promise<boolean> {
+  async function preflightCheck(): Promise<{ ok: boolean; reasons: string[] }> {
     // Validate all form fields first (hostname, password strength, etc.)
     const fieldsValid = validateFields();
     if (!fieldsValid) {
-      return false;
+      const reasons = servers.value
+        .filter(s => s.fieldErrors && Object.keys(s.fieldErrors).length > 0)
+        .map(s => `${serverLabel(s)}: ${Object.values(s.fieldErrors!).join('; ')}`);
+      return { ok: false, reasons };
     }
 
     // Auto-validate SSH connectivity if not already validated
@@ -409,7 +443,10 @@ export function useBulkSetup() {
     // Check for validation failures
     const validationFailed = servers.value.filter(s => s.validationError);
     if (validationFailed.length > 0) {
-      return false;
+      return {
+        ok: false,
+        reasons: validationFailed.map(s => `${serverLabel(s)}: ${s.validationError}`),
+      };
     }
 
     // Auto-probe any servers missing disk info
@@ -421,7 +458,10 @@ export function useBulkSetup() {
     // All servers must have disk info
     const missingDisks = servers.value.filter(s => !s.diskInfo || !s.diskInfo.availableDisks?.length);
     if (missingDisks.length > 0) {
-      return false;
+      return {
+        ok: false,
+        reasons: missingDisks.map(s => `${serverLabel(s)}: ${s.probeError || 'No usable disks detected'}`),
+      };
     }
 
     // Auto-disable splitPools if server doesn't have enough disks
@@ -431,7 +471,7 @@ export function useBulkSetup() {
       }
     }
 
-    return true;
+    return { ok: true, reasons: [] };
   }
 
   async function deploy(options?: BulkSetupOptions) {

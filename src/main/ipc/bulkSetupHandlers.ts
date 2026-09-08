@@ -190,6 +190,12 @@ async function probeServerDisks(srv: ProbeServer): Promise<BulkDiskInfo> {
       }
     }
 
+    // A vdev_id.conf whose by-path links resolve to nothing would otherwise filter out every drive
+    const useAliasFilter = hasVdevConf && aliasedDevNames.size > 0;
+    if (hasVdevConf && !useAliasFilter) {
+      console.warn(`[BulkSetup] ${srv.host}: vdev_id.conf present but no aliases resolved — falling back to lsblk`);
+    }
+
     // Applied to both strategies: vdev_id.conf alone never proves a slot is unused.
     const systemDiskResult = await ssh.execCommand(SYSTEM_DISK_PROBE_CMD);
     const systemDisks = new Map<string, string>();
@@ -204,42 +210,46 @@ async function probeServerDisks(srv: ProbeServer): Promise<BulkDiskInfo> {
 
     let availableDisks: BulkDisk[] = [];
     const excludedDisks: BulkExcludedDisk[] = [];
-    if (lsblkResult.code === 0) {
-      try {
-        const parsed = JSON.parse(lsblkResult.stdout);
-        const blockdevices = parsed.blockdevices || [];
+    if (lsblkResult.code !== 0) {
+      throw new Error(`Could not list block devices (lsblk exited ${lsblkResult.code}): ${lsblkResult.stderr?.trim() || 'no output'}`);
+    }
 
-        // Candidates are slot-aliased drives on 45Drives hardware, everything else otherwise
-        const candidates = blockdevices.filter(
-          (d: any) => d.type === 'disk' && (!hasVdevConf || aliasedDevNames.has(d.name))
-        );
+    let parsedBlockDevices: any[];
+    try {
+      parsedBlockDevices = JSON.parse(lsblkResult.stdout).blockdevices || [];
+    } catch (e: any) {
+      throw new Error(`Could not parse block device list from this server: ${e?.message || 'invalid lsblk output'}`);
+    }
 
-        for (const d of candidates) {
-          const systemReason = systemDisks.get(d.name);
-          if (systemReason) {
-            excludedDisks.push({ name: d.name, reason: systemReason });
-            continue;
-          }
-          availableDisks.push({
-            name: d.name,
-            size: d.size,
-            type: diskType(d),
-            model: d.model?.trim() || undefined,
-            serial: d.serial?.trim() || undefined,
-            alias: hasVdevConf ? devToAlias[d.name] || undefined : undefined,
-            ...describeDiskContents(d),
-          });
-        }
+    // Candidates are slot-aliased drives on 45Drives hardware, everything else otherwise
+    const candidates = parsedBlockDevices.filter(
+      (d: any) => d.type === 'disk' && (!useAliasFilter || aliasedDevNames.has(d.name))
+    );
 
-        if (hasVdevConf) {
-          // Sort by alias numerically (e.g. 1-1, 1-2, 1-3, 1-4, 2-1, 2-2, 2-3)
-          availableDisks.sort((a, b) => {
-            const pa = (a.alias || '').split('-').map(Number);
-            const pb = (b.alias || '').split('-').map(Number);
-            return (pa[0]! - pb[0]!) || (pa[1]! - pb[1]!);
-          });
-        }
-      } catch { /* ignore parse errors */ }
+    for (const d of candidates) {
+      const systemReason = systemDisks.get(d.name);
+      if (systemReason) {
+        excludedDisks.push({ name: d.name, reason: systemReason });
+        continue;
+      }
+      availableDisks.push({
+        name: d.name,
+        size: d.size,
+        type: diskType(d),
+        model: d.model?.trim() || undefined,
+        serial: d.serial?.trim() || undefined,
+        alias: useAliasFilter ? devToAlias[d.name] || undefined : undefined,
+        ...describeDiskContents(d),
+      });
+    }
+
+    if (useAliasFilter) {
+      // Sort by alias numerically (e.g. 1-1, 1-2, 1-3, 1-4, 2-1, 2-2, 2-3)
+      availableDisks.sort((a, b) => {
+        const pa = (a.alias || '').split('-').map(Number);
+        const pb = (b.alias || '').split('-').map(Number);
+        return (pa[0]! - pb[0]!) || (pa[1]! - pb[1]!);
+      });
     }
 
     if (excludedDisks.length > 0) {
