@@ -332,7 +332,9 @@ async function applyRemoteChanges(
           //    avahi service file, so it must restart or discovery stays stale.
           await sudoCmd(ssh, 'systemctl restart systemd-hostnamed 2>/dev/null || true');
           await sudoCmd(ssh, 'systemctl restart avahi-daemon 2>/dev/null || true');
-          const rb = await sudoCmd(ssh, 'systemctl restart houston-broadcaster.service');
+          // --no-block: the unit is ordered After=bootstrap-houston-broadcaster.service,
+          // whose first-run job can take minutes and would stall this SSH command.
+          const rb = await sudoCmd(ssh, 'systemctl restart --no-block houston-broadcaster.service');
           if (rb.code !== 0 && rb.code !== null) {
             console.warn(`[serverManage] houston-broadcaster restart failed: ${rb.stdout || rb.stderr}`);
           }
