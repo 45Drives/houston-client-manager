@@ -25,9 +25,11 @@ const config = defineConfig({
     emptyOutDir: true,
     rollupOptions: {
       external: ['vitest'], // Ensure vitest is not bundled
-      assetFileNames: 'assets/[name][extname]', // Keeps original asset names
-      entryFileNames: 'assets/[name].js',
-      chunkFileNames: 'assets/[name].js',
+      output: {
+        assetFileNames: 'assets/[name][extname]', // Keeps original asset names
+        entryFileNames: 'assets/[name].js',
+        chunkFileNames: 'assets/[name].js',
+      },
     },
   },
   plugins: [vuePlugin({
