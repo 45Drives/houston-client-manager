@@ -124,6 +124,8 @@ export interface RestoreHistoryEntry {
   sourceType: 'cloud' | 's2s' | 'snapshot';
   fileCount: number | string;
   success: boolean;
+  /** The user stopped this restore; it did not fail on its own. */
+  cancelled?: boolean;
   error?: string;
 }
 

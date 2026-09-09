@@ -302,6 +302,7 @@ import { EyeIcon, EyeSlashIcon } from '@heroicons/vue/20/solid';
 import { CircleStackIcon } from '@heroicons/vue/24/outline';
 import { useRouter } from 'vue-router';
 import { useOnboarding } from '../../composables/useOnboarding';
+import { clearUnreachableTasks } from '../../composables/useBackupProgress';
 import { useTourManager, type TourStep } from '../../composables/useTourManager';
 
 const props = defineProps<{
@@ -501,19 +502,35 @@ const eventRunningUuids = ref<string[]>([]);
 // Track last known event status per UUID
 const lastEventStatus = ref<Record<string, string>>({});
 
+function isUnreachable(task: BackUpTask): boolean {
+  return !!task.status && (task.status.startsWith('offline') || task.status === 'missing_folder');
+}
+
+/** Statuses just changed — clear the running state of anything we can no longer reach. */
+function reconcileRunningWithReachability(): void {
+  const unreachable = backUpTasks.value.filter(isUnreachable).map(t => t.uuid);
+  if (unreachable.length === 0) return;
+  eventRunningUuids.value = eventRunningUuids.value.filter(id => !unreachable.includes(id));
+  clearUnreachableTasks(unreachable);
+}
+
 function taskStatus(task: BackUpTask): 'running' | 'failed' | 'cancelled' | 'online' | 'offline' | 'idle' | 'disabled' {
   if (task.disabled) return 'disabled';
+  // A share we cannot reach cannot be the destination of a live transfer. Progress simply
+  // stops arriving when a server drops off the network, so the running flag outlives the
+  // run itself unless connectivity overrides it.
+  const unreachable = isUnreachable(task);
   // Check if currently running (from props OR event log detection)
-  if (props.runningTaskIds.includes(task.uuid) || eventRunningUuids.value.includes(task.uuid)) {
+  if (!unreachable && (props.runningTaskIds.includes(task.uuid) || eventRunningUuids.value.includes(task.uuid))) {
     return 'running';
   }
   // Check last event log status
   const evStatus = lastEventStatus.value[task.uuid];
+  if (unreachable) return 'offline';
   if (evStatus === 'failure') return 'failed';
   if (evStatus === 'cancelled') return 'cancelled';
   // Check SMB connectivity status
   if (task.status === 'online') return 'online';
-  if (task.status?.startsWith('offline') || task.status === 'missing_folder') return 'offline';
   return 'idle';
 }
 
@@ -784,6 +801,7 @@ onMounted(() => {
           const i = backUpTasks.value.findIndex(t => t.uuid === updated.uuid);
           if (i !== -1) backUpTasks.value[i].status = updated.status;
         });
+        reconcileRunningWithReachability();
         // Also refresh events to pick up any new Last Run timestamps
         fetchBackupEvents();
       } else if (msg.type === 'sendBackupEvents') {
@@ -805,6 +823,7 @@ onMounted(() => {
         // Track running tasks from event log (backup_start without backup_end)
         if (Array.isArray(msg.runningUuids)) {
           eventRunningUuids.value = msg.runningUuids;
+          reconcileRunningWithReachability();
 
           // Auto-clear event-log-restored running UUIDs after 30s if no real
           // progress arrives (process likely crashed/was interrupted).

@@ -51,6 +51,21 @@ export function removeFinishedTask(uuid: string): void {
   }
 }
 
+/**
+ * Drop runs whose destination is no longer reachable.
+ *
+ * The backend simply stops sending progress when a server drops off the network, so
+ * without this the last frame it managed to send ("Running — 6%") stays on screen
+ * indefinitely and the task looks alive long after the connection died.
+ */
+export function clearUnreachableTasks(uuids: string[]): void {
+  for (const uuid of uuids) {
+    if (taskProgressMap.value[uuid] || runningTaskIds.value.includes(uuid)) {
+      removeFinishedTask(uuid);
+    }
+  }
+}
+
 export function beginTasks(
   tasks: { uuid: string; name?: string; description?: string; source?: string }[]
 ): void {
@@ -162,6 +177,7 @@ export function useBackupProgress() {
     removeFinishedTask,
     maybeClearFromNotification,
     syncRunningUuids,
+    clearUnreachableTasks,
     setTaskNameResolver,
   };
 }

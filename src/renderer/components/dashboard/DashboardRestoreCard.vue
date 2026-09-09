@@ -7,8 +7,11 @@
             <div class="mt-0.5 p-1.5 rounded-lg"
                 :class="lastRestore.success
                     ? 'bg-green-50 dark:bg-green-900/20'
-                    : 'bg-red-50 dark:bg-red-900/20'">
+                    : lastRestore.cancelled
+                        ? 'bg-amber-50 dark:bg-amber-900/20'
+                        : 'bg-red-50 dark:bg-red-900/20'">
                 <ArrowDownTrayIcon v-if="lastRestore.success" class="w-5 h-5 text-green-500" />
+                <NoSymbolIcon v-else-if="lastRestore.cancelled" class="w-5 h-5 text-amber-500" />
                 <XCircleIcon v-else class="w-5 h-5 text-red-500" />
             </div>
             <div class="flex-1 min-w-0 space-y-1">
@@ -23,15 +26,18 @@
                     <span>→ {{ lastRestore.target }}</span>
                 </div>
                 <div class="text-xs text-gray-400">{{ lastRestore.timeAgo }}</div>
-                <div v-if="lastRestore.error" class="text-xs text-red-500 truncate" :title="lastRestore.error">
+                <div v-if="lastRestore.error" class="text-xs truncate"
+                    :class="lastRestore.cancelled ? 'text-amber-500' : 'text-red-500'" :title="lastRestore.error">
                     {{ lastRestore.error }}
                 </div>
             </div>
             <span class="text-xs font-medium px-2 py-0.5 rounded-full shrink-0"
                 :class="lastRestore.success
                     ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
-                    : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'">
-                {{ lastRestore.success ? 'Success' : 'Failed' }}
+                    : lastRestore.cancelled
+                        ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
+                        : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'">
+                {{ lastRestore.success ? 'Success' : lastRestore.cancelled ? 'Cancelled' : 'Failed' }}
             </span>
         </div>
     </DashboardCard>
@@ -39,7 +45,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import { ArrowDownTrayIcon, XCircleIcon } from '@heroicons/vue/24/outline'
+import { ArrowDownTrayIcon, XCircleIcon, NoSymbolIcon } from '@heroicons/vue/24/outline'
 import { useSettings, type RestoreHistoryEntry } from '../../composables/useSettings'
 import DashboardCard from './DashboardCard.vue'
 
@@ -49,6 +55,7 @@ interface DisplayRestore {
     fileCount: number | string
     target: string
     success: boolean
+    cancelled?: boolean
     error?: string
     timeAgo: string
 }
@@ -79,6 +86,7 @@ onMounted(async () => {
             fileCount: r.fileCount,
             target: r.target,
             success: r.success,
+            cancelled: r.cancelled,
             error: r.error,
             timeAgo: formatTimeAgo(r.timestamp),
         }

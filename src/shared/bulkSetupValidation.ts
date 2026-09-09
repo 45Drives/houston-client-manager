@@ -65,9 +65,15 @@ export function validatePasswordMatch(pass: string, confirm: string): string | u
   return undefined;
 }
 
+/** Share / dataset name: letters, numbers, dashes and underscores only */
+const SHARE_NAME_REGEX = /^[A-Za-z0-9_-]+$/;
+
 export function validateShareName(value: string): string | undefined {
   if (!value) return 'Share name is required';
-  if (/[/\\:*?"<>|]/.test(value)) return 'Share name contains invalid characters';
+  if (/\s/.test(value)) return 'Share name cannot contain spaces';
+  if (!SHARE_NAME_REGEX.test(value)) {
+    return 'Only letters, numbers, dashes, and underscores allowed';
+  }
   return undefined;
 }
 

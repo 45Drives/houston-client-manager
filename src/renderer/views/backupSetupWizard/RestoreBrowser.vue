@@ -226,13 +226,15 @@
                     </div>
 
                     <!-- Progress card (during restore) -->
-                    <div v-if="restore.restoring.value || restore.progress.phase === 'complete'"
+                    <div v-if="restore.restoring.value || restore.progress.phase === 'complete' || restore.progress.phase === 'cancelled'"
                         class="p-3 rounded-lg border border-default bg-accent shrink-0">
                         <h3 class="text-sm font-medium mb-2">
-                            {{ restore.progress.phase === 'complete' ? 'Restore Complete' : 'Restoring…' }}
+                            {{ restore.progress.phase === 'complete' ? 'Restore Complete'
+                                : restore.progress.phase === 'cancelled' ? 'Restore Cancelled'
+                                : cancelRequested ? 'Cancelling…' : 'Restoring…' }}
                         </h3>
 
-                        <div v-if="restore.progress.phase !== 'complete' && restore.progress.phase !== 'error'">
+                        <div v-if="restore.progress.phase !== 'complete' && restore.progress.phase !== 'cancelled' && restore.progress.phase !== 'error'">
                             <!-- Progress bar -->
                             <div class="w-full bg-accent rounded-full h-2 mb-2">
                                 <div class="bg-primary h-2 rounded-full transition-all"
@@ -244,13 +246,21 @@
                             <div v-if="restore.progress.currentFile" class="text-xs text-muted truncate mt-1">
                                 {{ restore.progress.currentFile }}
                             </div>
-                            <button class="btn btn-sm btn-secondary h-fit text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20 mt-2" @click="restore.cancelRestore()">
-                                Cancel
+                            <button class="btn btn-sm btn-secondary h-fit text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20 mt-2 disabled:opacity-50"
+                                :disabled="cancelRequested" @click="onCancelRestore">
+                                {{ cancelRequested ? 'Cancelling…' : 'Cancel' }}
                             </button>
                         </div>
 
                         <div v-else-if="restore.progress.phase === 'complete'" class="text-sm text-success">
                             ✓ {{ restore.progress.message || 'Files restored successfully.' }}
+                        </div>
+
+                        <div v-else-if="restore.progress.phase === 'cancelled'" class="text-sm text-amber-600 dark:text-amber-400">
+                            ⊘ {{ restore.progress.message || 'Restore cancelled.' }}
+                            <p class="text-xs text-muted mt-1">
+                                Files copied before you stopped it are still at the destination.
+                            </p>
                         </div>
 
                         <div v-else-if="restore.progress.phase === 'error'" class="text-sm text-danger">
@@ -599,10 +609,18 @@ async function onRestoreClick() {
         }
     }
 
+    cancelRequested.value = false;
     await restore.startRestore({
         destPath: effectiveDest,
         target: restoreTarget.value,
     });
+}
+
+const cancelRequested = ref(false);
+
+async function onCancelRestore() {
+    cancelRequested.value = true;
+    await restore.cancelRestore();
 }
 
 // ── Computed ─────────────────────────────────────────────────────────────

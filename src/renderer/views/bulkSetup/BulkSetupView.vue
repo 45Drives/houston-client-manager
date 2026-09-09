@@ -141,14 +141,33 @@ Parallel mode sets every server up at once. Anything that fails can be retried o
         </div>
       </div>
 
+      <!-- Servers skipped by the current deploy -->
+      <div v-if="deploySkipWarnings.length"
+        class="rounded-lg border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20 px-4 py-3">
+        <div class="flex items-start justify-between gap-3">
+          <div class="space-y-1">
+            <p class="text-sm font-semibold text-amber-700 dark:text-amber-300">
+              Skipping {{ deploySkipWarnings.length }} server{{ deploySkipWarnings.length > 1 ? 's' : '' }} — the rest will still deploy
+            </p>
+            <ul class="text-xs text-amber-700 dark:text-amber-400 space-y-0.5">
+              <li v-for="reason in deploySkipWarnings" :key="reason">• {{ reason }}</li>
+            </ul>
+            <p class="text-xs text-amber-600 dark:text-amber-400/80">
+              Fix the problem on those cards and use Retry Failed when the batch finishes.
+            </p>
+          </div>
+          <button @click="deploySkipWarnings = []" class="text-amber-500 hover:text-amber-700 text-sm leading-none">✕</button>
+        </div>
+      </div>
+
       <!-- Action bar -->
       <div v-if="servers.length > 0"
         class="sticky bottom-0 bg-white/80 dark:bg-neutral-900/80 backdrop-blur-sm border-t border-neutral-200 dark:border-neutral-700 -mx-6 px-6 py-4 flex items-center justify-between"
         data-tour="bulk-actions">        <div class="flex items-center gap-3 text-sm">
           <span class="text-default font-medium">{{ totalServers }} server{{ totalServers > 1 ? 's' : '' }}</span>
           <span v-if="!isRunning && !isComplete && !allProbed" class="text-amber-600 dark:text-amber-400 text-xs">
-            {{ serversWithoutDisks > 0
-              ? `(${serversWithoutDisks} server${serversWithoutDisks > 1 ? 's have' : ' has'} no usable disks)`
+            {{ deployableCount > 0
+              ? `(${skippedCount} not ready — will be skipped)`
               : '(probe all servers before deploying)' }}
           </span>
           <span v-if="completedServers > 0" class="text-green-600 dark:text-green-400 font-medium">✓ {{ completedServers }} done</span>
@@ -177,9 +196,9 @@ Parallel mode sets every server up at once. Anything that fails can be retried o
             <span v-else>Connect &amp; Probe All</span>
           </button>
 
-          <button v-if="!isRunning && !isComplete" @click="onDeploy" :disabled="servers.length === 0 || !allProbed"
+          <button v-if="!isRunning && !isComplete" @click="onDeploy" :disabled="servers.length === 0"
             class="btn btn-primary h-fit px-6 py-2 text-sm font-semibold">
-            Deploy All
+            {{ deployableCount > 0 && skippedCount > 0 ? `Deploy ${deployableCount} of ${totalServers}` : 'Deploy All' }}
           </button>
 
           <button v-if="isRunning" @click="onCancel"
@@ -249,7 +268,7 @@ Parallel mode sets every server up at once. Anything that fails can be retried o
     <!-- Deploy confirmation modal -->
     <BulkDeployConfirmModal
       v-if="showConfirmModal"
-      :servers="servers"
+      :servers="confirmServers"
       @confirm="onConfirmDeploy"
       @cancel="showConfirmModal = false"
     />
@@ -286,6 +305,9 @@ const {
   totalServers,
   completedServers,
   failedServers,
+  readyServers,
+  notReadyServers,
+  blockingReason,
   addServer,
   removeServer,
   applyGlobalDefaults,
@@ -309,11 +331,13 @@ const allProbed = computed(() =>
   servers.value.length > 0 && servers.value.every(s => s.validated === true && !!s.diskInfo?.availableDisks?.length)
 );
 
-const deployBlockReasons = ref<string[]>([]);
+/** Servers queued for the next deploy, and the ones that will be skipped. */
+const deployableCount = computed(() => readyServers.value.length);
+const skippedCount = computed(() => notReadyServers.value.length);
+const deploySkipWarnings = ref<string[]>([]);
+const confirmServers = ref<typeof servers.value>([]);
 
-const serversWithoutDisks = computed(() =>
-  servers.value.filter(s => s.validated === true && !s.diskInfo?.availableDisks?.length).length
-);
+const deployBlockReasons = ref<string[]>([]);
 
 const globalDefaults = ref({
   username: 'root',
@@ -372,7 +396,7 @@ const bulkTourSteps: TourStep[] = [
   },
   {
     target: '[data-tour="bulk-probe"]',
-    message: 'Connect & Probe verifies SSH access and reads the drives on that server before anything is changed.\n\nEvery row has to probe successfully before deployment is allowed — that is what stops a bad password or an unreachable host from failing halfway through a batch.',
+    message: 'Connect & Probe verifies SSH access and reads the drives on that server before anything is changed.\n\nA row that fails to probe is skipped rather than blocking the batch — the servers that did probe cleanly still deploy, and the failed ones can be fixed and retried on their own.',
   },
   {
     target: '[data-tour="bulk-mode"]',
@@ -384,7 +408,7 @@ const bulkTourSteps: TourStep[] = [
   },
   {
     target: '[data-tour="bulk-actions"]',
-    message: 'When every row is probed, Deploy All runs the batch and shows a confirmation summary first.\n\nParallel mode sets all servers up at once, which is much faster on a large batch; turn it off to go one at a time if you want to watch each server. Progress, failures, and per-server timings appear here as it runs, and anything that fails can be retried on its own.',
+    message: 'When your rows are probed, Deploy runs the batch and shows a confirmation summary first.\n\nParallel mode sets all servers up at once, which is much faster on a large batch; turn it off to go one at a time if you want to watch each server. Progress, failures, and per-server timings appear here as it runs, and anything that fails can be retried on its own.',
     placement: 'top',
   },
 ];
@@ -417,10 +441,17 @@ function formatDuration(ms: number): string {
   return `${mins}m ${remSecs}s`;
 }
 
-function onRetryFailed() {
+async function onRetryFailed() {
+  deployBlockReasons.value = [];
+  deploySkipWarnings.value = [];
   const failed = servers.value.filter(s => s.result && !s.result.success);
   for (const srv of failed) {
-    retryServer(srv.host);
+    // Re-check anything that never got past preflight before retrying it
+    if (blockingReason(srv)) {
+      await connectAndProbe(srv.id);
+      if (blockingReason(srv)) continue;
+    }
+    await retryServer(srv.host);
   }
 }
 
@@ -463,22 +494,26 @@ async function onProbeAll() {
 
 async function onDeploy() {
   deployBlockReasons.value = [];
+  deploySkipWarnings.value = [];
   // Apply global defaults to any servers missing creds
   onApplyDefaults();
   // Run preflight checks (validate fields, SSH, probe disks)
-  const { ok, reasons } = await preflightCheck();
+  const { ok, reasons, readyIds } = await preflightCheck();
   if (!ok) {
     deployBlockReasons.value = reasons.length ? reasons : ['Preflight checks failed. Review each server card for details.'];
     return;
   }
-  // Show confirmation modal
+  // Servers that failed preflight are skipped, not blocking
+  deploySkipWarnings.value = reasons;
+  confirmServers.value = servers.value.filter(s => readyIds.includes(s.id));
   showConfirmModal.value = true;
 }
 
 async function onConfirmDeploy() {
   showConfirmModal.value = false;
+  const ids = confirmServers.value.map(s => s.id);
   try {
-    await deploy({ parallel: parallel.value, maxConcurrency: 3 });
+    await deploy({ parallel: parallel.value, maxConcurrency: 3 }, ids);
   } catch (err: any) {
     deployBlockReasons.value = [err?.message || 'Deploy failed to start.'];
   }

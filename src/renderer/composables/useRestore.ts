@@ -29,7 +29,7 @@ export interface ServerFileEntry {
 
 export interface RestoreProgress {
   operationId: string;
-  phase: 'listing' | 'downloading' | 'staging' | 'copying' | 'complete' | 'error';
+  phase: 'listing' | 'downloading' | 'staging' | 'copying' | 'complete' | 'cancelled' | 'error';
   currentFile?: string;
   filesProcessed?: number;
   filesTotal?: number;
@@ -123,6 +123,9 @@ export function useRestore(serverIp: () => string, username: () => string) {
   // ── Progress listener ──────────────────────────────────────────────────
 
   const progressHandler = (data: RestoreProgress) => {
+    // Once the user has cancelled, a late 'complete' from an in-flight chunk must
+    // not repaint the panel as a success.
+    if (progress.phase === 'cancelled' && data.phase !== 'error') return;
     Object.assign(progress, data);
   };
 
@@ -305,6 +308,9 @@ export function useRestore(serverIp: () => string, username: () => string) {
   }) {
     restoring.value = true;
     error.value = null;
+    progress.phase = 'listing';
+    progress.message = undefined;
+    progress.currentFile = undefined;
 
     // Build source identifier
     const source = sourceType.value === 'cloud'
@@ -347,7 +353,10 @@ export function useRestore(serverIp: () => string, username: () => string) {
         s2sTask,
         selectedFiles: selected,
       });
-      if (!result.success) {
+      if (result.cancelled) {
+        progress.phase = 'cancelled';
+        progress.message = 'Restore cancelled';
+      } else if (!result.success) {
         error.value = result.error ?? 'Restore failed';
       }
       return result;
@@ -367,8 +376,12 @@ export function useRestore(serverIp: () => string, username: () => string) {
         username: username(),
         operationId: progress.operationId,
       });
+      progress.phase = 'cancelled';
+      progress.message = 'Restore cancelled';
+      progress.currentFile = undefined;
     } catch (e: any) {
       console.error('Failed to cancel restore:', e);
+      error.value = e?.message ?? 'Failed to cancel restore';
     }
   }
 

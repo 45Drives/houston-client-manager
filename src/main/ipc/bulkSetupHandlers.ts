@@ -4,7 +4,7 @@ import { NodeSSH } from 'node-ssh';
 import fs from 'fs';
 import path from 'path';
 import type { Logger } from 'winston';
-import { checkSSH, setupSshKey, runBootstrapScript, checkRemoteDeps, ensureHoustonPackages, buildSshConnectOptions } from '../setupSsh';
+import { checkSSH, setupSshKey, runBootstrapScript, checkRemoteDeps, ensureHoustonPackages, buildSshConnectOptions, connectWithFallback } from '../setupSsh';
 import type { SshAuth } from '../setupSsh';
 import { getCredentialManager } from '../credentialManager';
 import { assertSafeHost, assertSafeUsername } from '../security';
@@ -1044,17 +1044,19 @@ export function registerBulkSetupHandlers(ctx: BulkSetupContext) {
           continue;
         }
 
-        // Quick credential check
-        const ssh = new NodeSSH();
+        // Quick credential check. The fallback chain matters here: a server the app has
+        // already keyed still deploys fine even if the typed password is stale, so a raw
+        // password-only attempt would fail a server that is actually usable.
+        let ssh: NodeSSH | null = null;
         try {
-          await ssh.connect(buildSshConnectOptions(host, buildProbeAuth(srv)));
+          ssh = await connectWithFallback(host, buildProbeAuth(srv));
           const uidResult = await ssh.execCommand('id -u');
           const isAdmin = uidResult.stdout.trim() === '0';
           results.push({ host, reachable: true, isAdmin });
         } catch (e: any) {
           results.push({ host, reachable: true, error: e?.message || 'Auth failed' });
         } finally {
-          ssh.dispose();
+          ssh?.dispose();
         }
       } catch (e: any) {
         results.push({ host: srv.host, reachable: false, error: e?.message });

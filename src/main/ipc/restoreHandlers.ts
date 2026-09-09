@@ -232,9 +232,11 @@ export function registerRestoreHandlers(ctx: IPCHandlerContext) {
         );
       }
 
-      const logLevel = result?.success ? 'info' : 'error';
+      // A restore the user stopped is not a failure — log and record it as its own outcome.
+      const cancelled = !!result?.cancelled;
+      const logLevel = result?.success ? 'info' : cancelled ? 'warn' : 'error';
       ctx.jsonLogger[logLevel]({
-        event: result?.success ? 'restore:complete' : 'restore:failed',
+        event: result?.success ? 'restore:complete' : cancelled ? 'restore:cancelled' : 'restore:failed',
         operationId,
         serverIp: opts.serverIp,
         source: opts.source,
@@ -242,6 +244,7 @@ export function registerRestoreHandlers(ctx: IPCHandlerContext) {
         destPath: opts.destPath,
         target: opts.target,
         success: result?.success,
+        cancelled,
         error: result?.error,
       });
 
@@ -257,6 +260,7 @@ export function registerRestoreHandlers(ctx: IPCHandlerContext) {
           sourceType,
           fileCount: opts.selectedFiles?.length ?? 'all',
           success: !!result?.success,
+          cancelled,
           error: result?.error,
         };
         const settings = loadSettings();

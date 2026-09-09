@@ -87,6 +87,8 @@ export interface RestoreRequest {
 
 export interface RestoreResult {
   success: boolean;
+  /** The user stopped this restore; it did not fail on its own. */
+  cancelled?: boolean;
   filesRestored?: number;
   bytesTransferred?: number;
   error?: string;
@@ -148,7 +150,7 @@ export interface SnapshotRestoreResult {
 
 export type RestoreProgressCallback = (progress: {
   operationId: string;
-  phase: 'listing' | 'downloading' | 'staging' | 'copying' | 'complete' | 'error';
+  phase: 'listing' | 'downloading' | 'staging' | 'copying' | 'complete' | 'cancelled' | 'error';
   currentFile?: string;
   filesProcessed?: number;
   filesTotal?: number;
@@ -157,6 +159,36 @@ export type RestoreProgressCallback = (progress: {
   message?: string;
   error?: string;
 }) => void;
+
+// ── Cancellation ─────────────────────────────────────────────────────────────
+
+/**
+ * Operation IDs the user stopped. Killing rsync/rclone makes the remote command
+ * exit on a signal, which `execCommand` reports as a null exit code — otherwise
+ * indistinguishable from a clean run, so a cancelled restore would be announced
+ * as "Restore Complete".
+ */
+const cancelledOperations = new Set<string>();
+
+/** Terminal event for a transfer that finished on its own. */
+function settleRestore(opId: string, onProgress?: RestoreProgressCallback): RestoreResult {
+  if (cancelledOperations.delete(opId)) {
+    onProgress?.({ operationId: opId, phase: 'cancelled', message: 'Restore cancelled' });
+    return { success: false, cancelled: true, error: 'Restore cancelled by user' };
+  }
+  onProgress?.({ operationId: opId, phase: 'complete', message: 'Restore complete' });
+  return { success: true };
+}
+
+/** Terminal event for a transfer that errored, which cancellation also looks like. */
+function settleRestoreError(opId: string, error: string, onProgress?: RestoreProgressCallback): RestoreResult {
+  if (cancelledOperations.delete(opId)) {
+    onProgress?.({ operationId: opId, phase: 'cancelled', message: 'Restore cancelled' });
+    return { success: false, cancelled: true, error: 'Restore cancelled by user' };
+  }
+  onProgress?.({ operationId: opId, phase: 'error', error });
+  return { success: false, error };
+}
 
 // ── SSH helper ───────────────────────────────────────────────────────────────
 
@@ -807,16 +839,13 @@ export async function restoreToServer(
 
     if (result.code !== 0 && result.code !== null) {
       const error = (result.stderr || result.stdout || '').trim();
-      onProgress?.({ operationId: opId, phase: 'error', error });
-      return { success: false, error };
+      return settleRestoreError(opId, error, onProgress);
     }
 
-    onProgress?.({ operationId: opId, phase: 'complete', message: 'Restore complete' });
-    return { success: true };
+    return settleRestore(opId, onProgress);
   } catch (err: unknown) {
     const error = err instanceof Error ? err.message : String(err);
-    onProgress?.({ operationId: opId, phase: 'error', error });
-    return { success: false, error };
+    return settleRestoreError(opId, error, onProgress);
   } finally {
     ssh.dispose();
   }
@@ -871,8 +900,7 @@ export async function restoreToClient(
 
     if (stageResult.code !== 0 && stageResult.code !== null) {
       const error = (stageResult.stderr || stageResult.stdout || '').trim();
-      onProgress?.({ operationId: opId, phase: 'error', error });
-      return { success: false, error };
+      return settleRestoreError(opId, error, onProgress);
     }
 
     // Stage 2: Pull from server to client
@@ -880,12 +908,10 @@ export async function restoreToClient(
     const dlResult = await downloadFromServer(serverIp, username, stagingDir, localDestPath, opId, onProgress);
     if (!dlResult.success) return dlResult;
 
-    onProgress?.({ operationId: opId, phase: 'complete', message: 'Restore complete' });
-    return { success: true };
+    return settleRestore(opId, onProgress);
   } catch (err: unknown) {
     const error = err instanceof Error ? err.message : String(err);
-    onProgress?.({ operationId: opId, phase: 'error', error });
-    return { success: false, error };
+    return settleRestoreError(opId, error, onProgress);
   } finally {
     // Cleanup staging dir
     if (stagingDir) await ssh.execCommand(`rm -rf ${shellQuote(stagingDir)}`).catch(() => {});
@@ -936,16 +962,13 @@ export async function restoreFromS2S(
 
     if (result.code !== 0 && result.code !== null) {
       const error = (result.stderr || result.stdout || '').trim();
-      onProgress?.({ operationId: opId, phase: 'error', error });
-      return { success: false, error };
+      return settleRestoreError(opId, error, onProgress);
     }
 
-    onProgress?.({ operationId: opId, phase: 'complete', message: 'Restore complete' });
-    return { success: true };
+    return settleRestore(opId, onProgress);
   } catch (err: unknown) {
     const error = err instanceof Error ? err.message : String(err);
-    onProgress?.({ operationId: opId, phase: 'error', error });
-    return { success: false, error };
+    return settleRestoreError(opId, error, onProgress);
   } finally {
     ssh.dispose();
   }
@@ -992,8 +1015,7 @@ export async function restoreS2SToClient(
 
     if (stageResult.code !== 0 && stageResult.code !== null) {
       const error = (stageResult.stderr || stageResult.stdout || '').trim();
-      onProgress?.({ operationId: opId, phase: 'error', error });
-      return { success: false, error };
+      return settleRestoreError(opId, error, onProgress);
     }
 
     // Stage 2: Pull from server to client
@@ -1001,12 +1023,10 @@ export async function restoreS2SToClient(
     const dlResult = await downloadFromServer(serverIp, username, stagingDir, localDestPath, opId, onProgress);
     if (!dlResult.success) return dlResult;
 
-    onProgress?.({ operationId: opId, phase: 'complete', message: 'Restore complete' });
-    return { success: true };
+    return settleRestore(opId, onProgress);
   } catch (err: unknown) {
     const error = err instanceof Error ? err.message : String(err);
-    onProgress?.({ operationId: opId, phase: 'error', error });
-    return { success: false, error };
+    return settleRestoreError(opId, error, onProgress);
   } finally {
     // Cleanup staging dir
     if (stagingDir) await ssh.execCommand(`rm -rf ${shellQuote(stagingDir)}`).catch(() => {});
@@ -1626,6 +1646,7 @@ export async function cancelRestore(
   username: string,
   operationId: string,
 ): Promise<boolean> {
+  cancelledOperations.add(operationId);
   const ssh = await connectSSH(serverIp, username);
   try {
     // Kill any rclone/rsync processes that have the staging dir in their args

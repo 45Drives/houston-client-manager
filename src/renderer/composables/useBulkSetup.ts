@@ -50,6 +50,18 @@ function applyProbeOutcome(srv: BulkServerState, error?: string) {
   srv.probeError = undefined;
 }
 
+/** Why a server cannot be deployed right now, or undefined when it is ready. */
+function blockingReason(srv: BulkServerState): string | undefined {
+  if (srv.fieldErrors && Object.keys(srv.fieldErrors).length > 0) {
+    return Object.values(srv.fieldErrors).join('; ');
+  }
+  if (srv.validationError) return srv.validationError;
+  if (srv.validated !== true) return 'Not connected yet — run Connect & Probe Disks';
+  if (srv.probeError) return srv.probeError;
+  if (!srv.diskInfo?.availableDisks?.length) return 'No usable disks detected';
+  return undefined;
+}
+
 // Singleton state (shared across components)
 const servers = ref<BulkServerState[]>([]);
 const isRunning = ref(false);
@@ -421,18 +433,14 @@ export function useBulkSetup() {
 
   /**
    * Run preflight checks (field validation, SSH validation, disk probe)
-   * without starting the actual deploy. Returns the blocking reasons so the
-   * caller can tell the user why deploy did not start.
+   * without starting the actual deploy.
+   *
+   * A server that fails preflight no longer blocks the whole batch: `ok` is true
+   * as long as at least one server is deployable. `readyIds` lists those servers
+   * and `reasons` explains every server that will be skipped.
    */
-  async function preflightCheck(): Promise<{ ok: boolean; reasons: string[] }> {
-    // Validate all form fields first (hostname, password strength, etc.)
-    const fieldsValid = validateFields();
-    if (!fieldsValid) {
-      const reasons = servers.value
-        .filter(s => s.fieldErrors && Object.keys(s.fieldErrors).length > 0)
-        .map(s => `${serverLabel(s)}: ${Object.values(s.fieldErrors!).join('; ')}`);
-      return { ok: false, reasons };
-    }
+  async function preflightCheck(): Promise<{ ok: boolean; reasons: string[]; readyIds: string[] }> {
+    validateFields();
 
     // Auto-validate SSH connectivity if not already validated
     const needsValidation = servers.value.some(s => !s.validated);
@@ -440,28 +448,10 @@ export function useBulkSetup() {
       await validateAll();
     }
 
-    // Check for validation failures
-    const validationFailed = servers.value.filter(s => s.validationError);
-    if (validationFailed.length > 0) {
-      return {
-        ok: false,
-        reasons: validationFailed.map(s => `${serverLabel(s)}: ${s.validationError}`),
-      };
-    }
-
     // Auto-probe any servers missing disk info
-    const needsProbe = servers.value.some(s => !s.diskInfo);
+    const needsProbe = servers.value.some(s => s.validated === true && !s.diskInfo);
     if (needsProbe) {
       await probeAll();
-    }
-
-    // All servers must have disk info
-    const missingDisks = servers.value.filter(s => !s.diskInfo || !s.diskInfo.availableDisks?.length);
-    if (missingDisks.length > 0) {
-      return {
-        ok: false,
-        reasons: missingDisks.map(s => `${serverLabel(s)}: ${s.probeError || 'No usable disks detected'}`),
-      };
     }
 
     // Auto-disable splitPools if server doesn't have enough disks
@@ -471,17 +461,23 @@ export function useBulkSetup() {
       }
     }
 
-    return { ok: true, reasons: [] };
+    const ready: BulkServerState[] = [];
+    const reasons: string[] = [];
+    for (const srv of servers.value) {
+      const reason = blockingReason(srv);
+      if (reason) reasons.push(`${serverLabel(srv)}: ${reason}`);
+      else ready.push(srv);
+    }
+
+    return { ok: ready.length > 0, reasons, readyIds: ready.map(s => s.id) };
   }
 
-  async function deploy(options?: BulkSetupOptions) {
-    // Validate all form fields first (hostname, password strength, etc.)
-    const fieldsValid = validateFields();
-    if (!fieldsValid) {
-      const invalid = servers.value.filter(s => s.fieldErrors && Object.keys(s.fieldErrors).length > 0);
-      const names = invalid.map(s => s.serverName || s.host || 'unnamed').join(', ');
-      throw new Error(`Fix field errors before deploying: ${names}`);
-    }
+  /**
+   * Deploy the servers that are ready. Servers that fail preflight are recorded
+   * as failed with their reason and skipped, rather than blocking the batch.
+   */
+  async function deploy(options?: BulkSetupOptions, serverIds?: string[]) {
+    validateFields();
 
     // Auto-validate SSH connectivity if not already validated
     const needsValidation = servers.value.some(s => !s.validated);
@@ -489,38 +485,46 @@ export function useBulkSetup() {
       await validateAll();
     }
 
-    // Guard: check for validation failures
-    const validationFailed = servers.value.filter(s => s.validationError);
-    if (validationFailed.length > 0) {
-      const names = validationFailed.map(s => `${s.serverName || s.host}: ${s.validationError}`).join('; ');
-      throw new Error(`Cannot deploy — validation failed: ${names}`);
-    }
-
     // Auto-probe any servers missing disk info
-    const needsProbe = servers.value.some(s => !s.diskInfo);
+    const needsProbe = servers.value.some(s => s.validated === true && !s.diskInfo);
     if (needsProbe) {
       await probeAll();
     }
 
-    // Guard: all servers must have disk info before proceeding
-    const missingDisks = servers.value.filter(s => !s.diskInfo || !s.diskInfo.availableDisks?.length);
-    if (missingDisks.length > 0) {
-      const names = missingDisks.map(s => s.serverName || s.host).join(', ');
-      throw new Error(`Cannot deploy: no disks found on ${names}. Run Probe Disks first.`);
+    const selectable = serverIds
+      ? servers.value.filter(s => serverIds.includes(s.id))
+      : servers.value;
+
+    const ready = selectable.filter(s => !blockingReason(s));
+    const skipped = servers.value.filter(s => !ready.includes(s));
+
+    if (ready.length === 0) {
+      const names = servers.value
+        .map(s => `${serverLabel(s)}: ${blockingReason(s) ?? 'not ready'}`)
+        .join('; ');
+      throw new Error(`No servers are ready to deploy — ${names}`);
     }
 
     isRunning.value = true;
     startListening();
 
-    // Reset progress/results
-    for (const srv of servers.value) {
+    // Reset progress/results for the servers actually being deployed
+    for (const srv of ready) {
       srv.progress = { host: srv.host, status: 'queued', step: 0, totalSteps: 10, label: 'Queued...' };
       srv.result = undefined;
       srv.steps = [];
     }
 
+    // Record skipped servers as failed so they are counted, reported and retryable
+    for (const srv of skipped) {
+      const reason = blockingReason(srv) ?? 'Skipped';
+      srv.steps = [];
+      srv.progress = { host: srv.host, status: 'failed', step: 0, totalSteps: 10, label: 'Skipped', error: reason };
+      srv.result = { host: srv.host, success: false, error: reason };
+    }
+
     try {
-      const entries: BulkServerEntry[] = servers.value.map(s => ({
+      const entries: BulkServerEntry[] = ready.map(s => ({
         id: s.id,
         host: s.host,
         username: s.username,
@@ -627,6 +631,8 @@ export function useBulkSetup() {
   const completedServers = computed(() => servers.value.filter(s => s.result?.success).length);
   const failedServers = computed(() => servers.value.filter(s => s.result && !s.result.success).length);
   const isComplete = computed(() => !isRunning.value && servers.value.length > 0 && servers.value.every(s => s.result));
+  const readyServers = computed(() => servers.value.filter(s => !blockingReason(s)));
+  const notReadyServers = computed(() => servers.value.filter(s => !!blockingReason(s)));
 
   return {
     servers,
@@ -636,6 +642,9 @@ export function useBulkSetup() {
     totalServers,
     completedServers,
     failedServers,
+    readyServers,
+    notReadyServers,
+    blockingReason,
     addServer,
     removeServer,
     updateServer,
