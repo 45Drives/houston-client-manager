@@ -3,6 +3,19 @@
         <div v-if="!props.serverIp" class="py-5 text-center text-gray-400 text-sm">
             Select a server to view storage.
         </div>
+        <div v-else-if="props.backupOnly" class="py-5 px-2 text-center text-sm space-y-2">
+            <LockClosedIcon class="w-5 h-5 mx-auto text-gray-400" />
+            <p class="text-default font-medium">Storage details aren't available</p>
+            <p class="text-xs text-gray-400">
+                “{{ serverLabel }}” is connected for backups only, so this computer has no
+                administrator credential to read its datasets with. Backups still run normally.
+            </p>
+            <div class="flex items-center justify-center pt-1">
+                <button v-if="props.serverId" class="btn btn-secondary h-fit" type="button" @click="emit('manage')">
+                    Connection Details
+                </button>
+            </div>
+        </div>
         <div v-else-if="loading" class="py-5 text-center text-gray-400 text-sm">Loading…</div>
         <div v-else-if="failure" class="py-5 text-center text-sm space-y-2">
             <p class="text-default font-medium">Failed to connect to “{{ serverLabel }}”</p>
@@ -50,6 +63,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
+import { LockClosedIcon } from '@heroicons/vue/24/outline'
 import DashboardCard from './DashboardCard.vue'
 import { describeConnectionError, type ConnectivityFailure } from '../../../shared/connectionErrors'
 
@@ -72,6 +86,8 @@ const props = defineProps<{
     serverIp?: string
     serverName?: string
     serverId?: string
+    /** Connected for backups only — there is no admin credential to query storage with. */
+    backupOnly?: boolean
 }>()
 
 const emit = defineEmits<{ (e: 'manage'): void }>()
@@ -164,12 +180,20 @@ async function fetchDatasets(serverIp: string) {
 
 function retry() {
     const ip = props.serverIp
-    if (!ip) return
+    if (!ip || props.backupOnly) return
     currentFetchIp = ''
     fetchDatasets(ip)
 }
 
-watch(() => props.serverIp, (ip) => {
+watch([() => props.serverIp, () => props.backupOnly], ([ip, backupOnly]) => {
+    if (backupOnly) {
+        // Nothing to query, and the failed attempt would read as a broken server.
+        currentFetchIp = ''
+        datasets.value = []
+        failure.value = null
+        loading.value = false
+        return
+    }
     if (ip) fetchDatasets(ip)
 }, { immediate: true })
 </script>

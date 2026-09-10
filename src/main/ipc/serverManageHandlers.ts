@@ -9,9 +9,10 @@ import type { Logger } from 'winston';
 import { assertSafeHost, assertSafeUsername } from '../security';
 import { getAgentSocket, getKeyDir, ensureKeyPair } from '../crossPlatformSsh';
 import { loadSettings } from '../settingsStore';
-import { connectWithFallback, type SshAuth } from '../setupSsh';
+import { connectWithFallback, buildSshConnectOptions, type SshAuth } from '../setupSsh';
 import { getCredentialManager } from '../credentialManager';
 import { reportAuditEvent } from '../backup/broadcasterApi';
+import { isDestructiveAction } from '../../shared/destructiveActions';
 
 interface ServerManageContext {
   jsonLogger: Logger;
@@ -108,6 +109,26 @@ async function cmd(ssh: NodeSSH, command: string): Promise<string> {
   return result.stdout.trim();
 }
 
+/**
+ * Password-only connect for destructive work. Deliberately does NOT use
+ * connectWithFallback: that tries the SSH agent and the app-managed key first,
+ * which would let a wrong password through and make the gate meaningless.
+ */
+async function connectAsAdmin(host: string, username: string, adminPassword: string): Promise<NodeSSH> {
+  const ssh = new NodeSSH();
+  await ssh.connect(buildSshConnectOptions(host, { username, method: 'password', password: adminPassword }));
+  return ssh;
+}
+
+function adminAuthFailureMessage(host: string, username: string, err: any): string {
+  const raw = String(err?.message || err);
+  if (/All configured authentication methods failed/i.test(raw)) {
+    return `${host} rejected the password for ${username}. If password login is disabled for this account, `
+      + `run this change on the server directly.`;
+  }
+  return `Could not sign in to ${host} as ${username}: ${raw}`;
+}
+
 async function sudoCmd(ssh: NodeSSH, command: string): Promise<{ code: number | null; stdout: string; stderr: string }> {
   const result = await ssh.execCommand(`sudo ${command} 2>&1`);
   return { code: result.code, stdout: result.stdout.trim(), stderr: result.stderr.trim() };
@@ -115,6 +136,44 @@ async function sudoCmd(ssh: NodeSSH, command: string): Promise<{ code: number | 
 
 function shellQuote(s: string): string {
   return `'${s.replace(/'/g, "'\\''")}'`;
+}
+
+// ── Samba config location ──────────────────────────────────────────────────
+// Shares created by the setup wizard live in the Samba registry (`net conf`),
+// because smb.conf is patched with `include = registry`. testparm shows both
+// sources merged, so an edit has to target wherever the share actually is.
+
+const SAFE_SHARE_NAME = /^[A-Za-z0-9_ -]+$/;
+
+async function registryShares(ssh: NodeSSH): Promise<string[]> {
+  const r = await sudoCmd(ssh, 'net conf listshares');
+  if (r.code !== 0 && r.code !== null) return [];
+  return r.stdout.split('\n').map(l => l.trim()).filter(Boolean);
+}
+
+async function smbConfHasShare(ssh: NodeSSH, name: string): Promise<boolean> {
+  const out = await cmd(
+    ssh,
+    `grep -E ${shellQuote(`^[[:space:]]*\\[${name}\\][[:space:]]*$`)} /etc/samba/smb.conf 2>/dev/null || true`,
+  );
+  return out.trim() !== '';
+}
+
+/** True when Samba still resolves the share from any source. */
+async function shareIsLive(ssh: NodeSSH, name: string): Promise<boolean> {
+  const out = await cmd(ssh, `testparm -s 2>/dev/null | grep -Fx ${shellQuote(`[${name}]`)} || true`);
+  return out.trim() !== '';
+}
+
+/** Deletes a share block from smb.conf, keeping the section header that follows it. */
+async function deleteShareFromSmbConf(ssh: NodeSSH, name: string) {
+  const header = `/^[[:space:]]*\\[${name}\\][[:space:]]*$/`;
+  const script = `${header},/^[[:space:]]*\\[/{/^[[:space:]]*\\[/!d;};${header}d`;
+  return sudoCmd(ssh, `sed -i.bak ${shellQuote(script)} /etc/samba/smb.conf`);
+}
+
+async function reloadSamba(ssh: NodeSSH) {
+  await sudoCmd(ssh, 'systemctl reload smbd 2>/dev/null || systemctl reload smb 2>/dev/null || true');
 }
 
 // ── Probe functions ────────────────────────────────────────────────────────
@@ -760,27 +819,45 @@ async function executeManageAction(
         name: string; path: string; comment?: string; guestOk?: boolean; readOnly?: boolean; browseable?: boolean;
       };
       if (!shareName || !sharePath) return { success: false, error: 'Share name and path required' };
-      if (!/^[a-zA-Z0-9_ -]+$/.test(shareName)) return { success: false, error: 'Invalid share name' };
+      if (!SAFE_SHARE_NAME.test(shareName)) return { success: false, error: 'Invalid share name' };
 
-      // Build share config block
-      const lines = [
-        `[${shareName}]`,
-        `   path = ${sharePath}`,
-        `   comment = ${comment || shareName}`,
-        `   browseable = ${browseable !== false ? 'yes' : 'no'}`,
-        `   read only = ${readOnly === true ? 'yes' : 'no'}`,
-        `   guest ok = ${guestOk === true ? 'yes' : 'no'}`,
-        `   create mask = 0660`,
-        `   directory mask = 2770`,
-        `   force group = smbusers`,
-      ];
-      const confBlock = lines.join('\\n');
-      // Ensure path exists
       await sudoCmd(ssh, `mkdir -p ${shellQuote(sharePath)}`);
-      // Append to smb.conf
-      await sudoCmd(ssh, `echo -e '\\n${confBlock}' >> /etc/samba/smb.conf`);
-      // Reload samba
-      await sudoCmd(ssh, 'systemctl reload smbd 2>/dev/null || systemctl reload smb 2>/dev/null || true');
+
+      const settings: Record<string, string> = {
+        comment: comment || shareName,
+        browseable: browseable !== false ? 'yes' : 'no',
+        'read only': readOnly === true ? 'yes' : 'no',
+        'guest ok': guestOk === true ? 'yes' : 'no',
+        'create mask': '0660',
+        'directory mask': '2770',
+        'force group': 'smbusers',
+      };
+
+      // Match wherever the rest of this server's shares live, so removal and
+      // editing can find it later.
+      const useRegistry = (await registryShares(ssh)).length > 0
+        || (await cmd(ssh, 'grep -Eic "^[[:space:]]*(include|config backend)[[:space:]]*=[[:space:]]*registry" /etc/samba/smb.conf 2>/dev/null || echo 0')).trim() !== '0';
+
+      if (useRegistry) {
+        const add = await sudoCmd(ssh, `net conf addshare ${shellQuote(shareName)} ${shellQuote(sharePath)} writeable=${readOnly === true ? 'n' : 'y'} guest_ok=${guestOk === true ? 'y' : 'n'}`);
+        if (add.code !== 0 && add.code !== null) {
+          return { success: false, error: `Could not create share: ${add.stdout || add.stderr}` };
+        }
+        for (const [key, value] of Object.entries(settings)) {
+          await sudoCmd(ssh, `net conf setparm ${shellQuote(shareName)} ${shellQuote(key)} ${shellQuote(value)}`);
+        }
+      } else {
+        const block = [`[${shareName}]`, ...Object.entries(settings).map(([k, v]) => `   ${k} = ${v}`)].join('\n');
+        const append = await sudoCmd(ssh, `bash -c ${shellQuote(`printf '\\n%s\\n' ${shellQuote(block)} >> /etc/samba/smb.conf`)}`);
+        if (append.code !== 0 && append.code !== null) {
+          return { success: false, error: `Could not write to smb.conf: ${append.stdout || append.stderr}` };
+        }
+      }
+
+      await reloadSamba(ssh);
+      if (!(await shareIsLive(ssh, shareName))) {
+        return { success: false, error: `Share "${shareName}" was written but Samba did not pick it up. Check testparm on the server for a config error.` };
+      }
       return { success: true };
     }
 
@@ -789,26 +866,72 @@ async function executeManageAction(
         name: string; settings: Record<string, string>;
       };
       if (!shareName || !settings) return { success: false, error: 'Share name and settings required' };
+      if (!SAFE_SHARE_NAME.test(shareName)) return { success: false, error: 'Invalid share name' };
 
-      // Use sed to update individual settings within the share block
-      for (const [key, value] of Object.entries(settings)) {
-        // Try to replace existing setting first, add if not found
-        await sudoCmd(ssh,
-          `sed -i "/^\\[${shareName}\\]/,/^\\[/ { s|^\\(\\s*\\)${key}\\s*=.*|\\1${key} = ${value}|; }" /etc/samba/smb.conf`
-        );
+      const inRegistry = (await registryShares(ssh)).includes(shareName);
+      const inConf = await smbConfHasShare(ssh, shareName);
+      if (!inRegistry && !inConf) {
+        return { success: false, error: `Share "${shareName}" is not defined in smb.conf or the Samba registry, so it cannot be edited from here.` };
       }
-      await sudoCmd(ssh, 'systemctl reload smbd 2>/dev/null || systemctl reload smb 2>/dev/null || true');
+
+      const failures: string[] = [];
+      for (const [key, value] of Object.entries(settings)) {
+        if (inRegistry) {
+          const r = await sudoCmd(ssh, `net conf setparm ${shellQuote(shareName)} ${shellQuote(key)} ${shellQuote(value)}`);
+          if (r.code !== 0 && r.code !== null) failures.push(`${key}: ${r.stdout || r.stderr}`);
+          continue;
+        }
+        // smb.conf: replace inside the share block, or append if the key is absent.
+        const header = `/^[[:space:]]*\\[${shareName}\\][[:space:]]*$/`;
+        const replace = `${header},/^[[:space:]]*\\[/{s|^[[:space:]]*${key}[[:space:]]*=.*|   ${key} = ${value}|;}`;
+        const r = await sudoCmd(ssh, `sed -i ${shellQuote(replace)} /etc/samba/smb.conf`);
+        if (r.code !== 0 && r.code !== null) { failures.push(`${key}: ${r.stdout || r.stderr}`); continue; }
+        const present = await cmd(ssh, `sed -n ${shellQuote(`${header},/^[[:space:]]*\\[/p`)} /etc/samba/smb.conf | grep -E ${shellQuote(`^[[:space:]]*${key}[[:space:]]*=`)} || true`);
+        if (!present.trim()) {
+          await sudoCmd(ssh, `sed -i ${shellQuote(`${header}a\\   ${key} = ${value}`)} /etc/samba/smb.conf`);
+        }
+      }
+
+      await reloadSamba(ssh);
+      if (failures.length > 0) return { success: false, error: failures.join('; ') };
       return { success: true };
     }
 
     case 'samba:share-remove': {
       const { name: shareName } = params as { name: string };
       if (!shareName) return { success: false, error: 'Share name required' };
-      // Remove the entire share block from smb.conf
-      await sudoCmd(ssh,
-        `sed -i '/^\\[${shareName}\\]/,/^\\[/{/^\\[${shareName}\\]/d;/^\\[/!d;}' /etc/samba/smb.conf`
-      );
-      await sudoCmd(ssh, 'systemctl reload smbd 2>/dev/null || systemctl reload smb 2>/dev/null || true');
+      if (!SAFE_SHARE_NAME.test(shareName)) return { success: false, error: 'Invalid share name' };
+
+      const inRegistry = (await registryShares(ssh)).includes(shareName);
+      const inConf = await smbConfHasShare(ssh, shareName);
+      if (!inRegistry && !inConf) {
+        return {
+          success: false,
+          error: `Share "${shareName}" is not defined in smb.conf or the Samba registry. It is probably coming from an include file that this app does not manage.`,
+        };
+      }
+
+      // A share can be defined in both places; clear it from each.
+      if (inRegistry) {
+        const r = await sudoCmd(ssh, `net conf delshare ${shellQuote(shareName)}`);
+        if (r.code !== 0 && r.code !== null) {
+          return { success: false, error: `Could not remove share from the Samba registry: ${r.stdout || r.stderr}` };
+        }
+      }
+      if (inConf) {
+        const r = await deleteShareFromSmbConf(ssh, shareName);
+        if (r.code !== 0 && r.code !== null) {
+          return { success: false, error: `Could not edit smb.conf: ${r.stdout || r.stderr}` };
+        }
+      }
+
+      await reloadSamba(ssh);
+      if (await shareIsLive(ssh, shareName)) {
+        return {
+          success: false,
+          error: `Share "${shareName}" is still being served after removal. Another config source (an include file) is redefining it.`,
+        };
+      }
       return { success: true };
     }
 
@@ -817,13 +940,27 @@ async function executeManageAction(
       if (!settings) return { success: false, error: 'Settings required' };
       // Allowlist of safe global settings
       const allowed = ['workgroup', 'server string', 'log level', 'server role', 'map to guest', 'usershare allow guests'];
+      const failures: string[] = [];
+      const applied: string[] = [];
+
       for (const [key, value] of Object.entries(settings)) {
         if (!allowed.includes(key)) continue;
-        await sudoCmd(ssh,
-          `sed -i "/^\\[global\\]/,/^\\[/ { s|^\\(\\s*\\)${key}\\s*=.*|\\1${key} = ${value}|; }" /etc/samba/smb.conf`
-        );
+        const replace = `/^[[:space:]]*\\[global\\][[:space:]]*$/,/^[[:space:]]*\\[/{s|^[[:space:]]*${key}[[:space:]]*=.*|   ${key} = ${value}|;}`;
+        const r = await sudoCmd(ssh, `sed -i ${shellQuote(replace)} /etc/samba/smb.conf`);
+        if (r.code !== 0 && r.code !== null) { failures.push(`${key}: ${r.stdout || r.stderr}`); continue; }
+
+        // sed silently does nothing when the key is absent, so add it.
+        const present = await cmd(ssh, `sed -n ${shellQuote('/^[[:space:]]*\\[global\\][[:space:]]*$/,/^[[:space:]]*\\[/p')} /etc/samba/smb.conf | grep -E ${shellQuote(`^[[:space:]]*${key}[[:space:]]*=`)} || true`);
+        if (!present.trim()) {
+          const add = await sudoCmd(ssh, `sed -i ${shellQuote(`/^[[:space:]]*\\[global\\][[:space:]]*$/a\\   ${key} = ${value}`)} /etc/samba/smb.conf`);
+          if (add.code !== 0 && add.code !== null) { failures.push(`${key}: ${add.stdout || add.stderr}`); continue; }
+        }
+        applied.push(key);
       }
-      await sudoCmd(ssh, 'systemctl reload smbd 2>/dev/null || systemctl reload smb 2>/dev/null || true');
+
+      await reloadSamba(ssh);
+      if (failures.length > 0) return { success: false, error: failures.join('; ') };
+      if (applied.length === 0) return { success: false, error: 'No supported global settings were provided.' };
       return { success: true };
     }
 
@@ -893,9 +1030,9 @@ export function registerServerManageHandlers(ctx: ServerManageContext) {
 
   // Apply staged changes to a server
   ipcMain.handle('server:apply-changes', async (event, {
-    host, username, password, changes,
+    host, username, password, adminPassword, changes,
   }: {
-    host: string; username: string; password: string; changes: StagedChange[];
+    host: string; username: string; password: string; adminPassword?: string; changes: StagedChange[];
   }) => {
     const safeHost = assertSafeHost(host);
     jsonLogger.info({ event: 'server:apply-changes', host: safeHost, changeCount: changes.length });
@@ -905,9 +1042,28 @@ export function registerServerManageHandlers(ctx: ServerManageContext) {
       return { success: true, applied: [], failed: [], rebootRequired: false };
     }
 
+    // Remote staged changes rewrite system identity (hostname, /etc/hosts, service
+    // config), so they sit behind the same gate as the destructive actions.
+    if (!adminPassword) {
+      return {
+        success: false, applied: [], failed: [], rebootRequired: false,
+        code: 'admin_auth_required',
+        error: 'This action requires the server admin password.',
+      };
+    }
+
     let ssh: NodeSSH | undefined;
     try {
-      ssh = await connectSSH(safeHost, username, password);
+      try {
+        ssh = await connectAsAdmin(safeHost, username, adminPassword);
+      } catch (e: any) {
+        jsonLogger.warn({ event: 'server:apply-changes_gate_failed', host: safeHost, error: String(e) });
+        return {
+          success: false, applied: [], failed: [], rebootRequired: false,
+          code: 'admin_auth_failed',
+          error: adminAuthFailureMessage(safeHost, username, e),
+        };
+      }
       const result = await applyRemoteChanges(ssh, remoteChanges);
       jsonLogger.info({ event: 'server:apply-changes_done', host: safeHost, result });
       return result;
@@ -920,13 +1076,23 @@ export function registerServerManageHandlers(ctx: ServerManageContext) {
   });
 
   // Reboot a server
-  ipcMain.handle('server:reboot', async (event, { host, username, password }: { host: string; username: string; password: string }) => {
+  ipcMain.handle('server:reboot', async (event, { host, username, password, adminPassword }: { host: string; username: string; password: string; adminPassword?: string }) => {
     const safeHost = assertSafeHost(host);
     jsonLogger.info({ event: 'server:reboot', host: safeHost });
 
+    // A reboot interrupts every backup in flight, so it sits behind the same gate.
+    if (!adminPassword) {
+      return { success: false, code: 'admin_auth_required', error: 'This action requires the server admin password.' };
+    }
+
     let ssh: NodeSSH | undefined;
     try {
-      ssh = await connectSSH(safeHost, username, password);
+      try {
+        ssh = await connectAsAdmin(safeHost, username, adminPassword);
+      } catch (e: any) {
+        jsonLogger.warn({ event: 'server:reboot_gate_failed', host: safeHost, error: String(e) });
+        return { success: false, code: 'admin_auth_failed', error: adminAuthFailureMessage(safeHost, username, e) };
+      }
       // Fire-and-forget reboot — the SSH connection will drop
       ssh.execCommand('sleep 1 && sudo reboot &').catch(() => {});
       await new Promise(resolve => setTimeout(resolve, 2000));
@@ -941,13 +1107,23 @@ export function registerServerManageHandlers(ctx: ServerManageContext) {
 
   // ── Unified management action router ──────────────────────────────────
   ipcMain.handle('server:manage', async (event, {
-    host, username, password, action, params,
+    host, username, password, adminPassword, action, params,
   }: {
-    host: string; username: string; password: string;
+    host: string; username: string; password: string; adminPassword?: string;
     action: string; params: Record<string, any>;
   }) => {
     const safeHost = assertSafeHost(host);
     jsonLogger.info({ event: 'server:manage', host: safeHost, action });
+
+    const needsAdmin = isDestructiveAction(action);
+    if (needsAdmin && !adminPassword) {
+      jsonLogger.warn({ event: 'server:manage_gate_missing', host: safeHost, action });
+      return {
+        success: false,
+        code: 'admin_auth_required',
+        error: 'This action requires the server admin password.',
+      };
+    }
 
     // If no password provided, check credential store for SSH key
     let sshKeyPath: string | undefined;
@@ -962,7 +1138,26 @@ export function registerServerManageHandlers(ctx: ServerManageContext) {
 
     let ssh: NodeSSH | undefined;
     try {
-      ssh = await connectSSH(safeHost, username, password, sshKeyPath, sshPassphrase);
+      if (needsAdmin) {
+        try {
+          ssh = await connectAsAdmin(safeHost, username, adminPassword!);
+        } catch (e: any) {
+          jsonLogger.warn({ event: 'server:manage_gate_failed', host: safeHost, action, error: String(e) });
+          void reportAuditEvent(safeHost, username, password, {
+            action: AUDITED_ACTIONS[action] || action,
+            target: auditTarget(params),
+            outcome: 'failure',
+            detail: 'admin re-authentication rejected',
+          });
+          return {
+            success: false,
+            code: 'admin_auth_failed',
+            error: adminAuthFailureMessage(safeHost, username, e),
+          };
+        }
+      } else {
+        ssh = await connectSSH(safeHost, username, password, sshKeyPath, sshPassphrase);
+      }
       const result = await executeManageAction(ssh, action, params, jsonLogger);
       jsonLogger.info({ event: 'server:manage_done', host: safeHost, action, success: result.success });
 

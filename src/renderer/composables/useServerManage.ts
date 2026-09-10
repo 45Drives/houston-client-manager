@@ -6,8 +6,10 @@
 
 import { ref } from 'vue'
 import { Notification, pushNotification } from '@45drives/houston-common-ui'
+import { isDestructiveAction, describeDestructiveAction } from '../../shared/destructiveActions'
+import { cachedAdminPassword, rememberAdminPassword, forgetAdminPassword, promptAdminPassword } from './useAdminGate'
 
-type ActionResult = { success: boolean; error?: string; data?: any }
+type ActionResult = { success: boolean; error?: string; data?: any; code?: string }
 
 export function useServerManage(getHost: () => string, getUsername: () => string) {
   const busy = ref(false)
@@ -31,15 +33,51 @@ export function useServerManage(getHost: () => string, getUsername: () => string
         lastError.value = 'No stored credentials found. Please update the server password.'
         return { success: false, error: lastError.value }
       }
-      const result: ActionResult = await window.electron.ipcRenderer.invoke('server:manage', {
-        host: getHost(),
-        username: getUsername(),
-        password: creds.password,
-        action,
-        params,
-      })
-      if (!result.success) lastError.value = result.error || 'Unknown error'
-      return result
+
+      const host = getHost()
+      const username = getUsername()
+      const gated = isDestructiveAction(action)
+
+      let adminPassword: string | undefined
+      if (gated) {
+        adminPassword = cachedAdminPassword(host, username)
+          ?? await promptAdminPassword(host, username, describeDestructiveAction(action)) ?? undefined
+        if (!adminPassword) {
+          lastError.value = 'Cancelled — admin password required.'
+          return { success: false, error: lastError.value, code: 'admin_auth_cancelled' }
+        }
+      }
+
+      // Re-prompt on a rejected password rather than failing the whole action.
+      for (let attempt = 0; ; attempt++) {
+        const result: ActionResult = await window.electron.ipcRenderer.invoke('server:manage', {
+          host,
+          username,
+          password: creds.password,
+          adminPassword,
+          action,
+          params,
+        })
+
+        if (result.code === 'admin_auth_failed' && attempt < 2) {
+          forgetAdminPassword(host, username)
+          const retry = await promptAdminPassword(
+            host, username, describeDestructiveAction(action), result.error || 'Incorrect password.',
+          )
+          if (!retry) {
+            lastError.value = 'Cancelled — admin password required.'
+            return { success: false, error: lastError.value, code: 'admin_auth_cancelled' }
+          }
+          adminPassword = retry
+          continue
+        }
+
+        if (gated && adminPassword && result.code !== 'admin_auth_failed') {
+          rememberAdminPassword(host, username, adminPassword)
+        }
+        if (!result.success) lastError.value = result.error || 'Unknown error'
+        return result
+      }
     } catch (e: any) {
       lastError.value = e?.message || 'Failed to execute action'
       return { success: false, error: lastError.value }
@@ -182,7 +220,7 @@ export function useServerManage(getHost: () => string, getUsername: () => string
     const result = await run(action, params)
     if (result.success) {
       pushNotification(new Notification('Success', successMsg, 'success', 3000))
-    } else {
+    } else if (result.code !== 'admin_auth_cancelled') {
       pushNotification(new Notification('Error', result.error || 'Operation failed', 'error', 8000))
     }
     return result

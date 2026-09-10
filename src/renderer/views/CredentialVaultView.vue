@@ -111,6 +111,12 @@
                                         {{ cred.name || `${cred.username}@${cred.host}` }}
                                     </span>
                                     <span v-if="cred.shareName" class="text-xs text-gray-400">/{{ cred.shareName }}</span>
+                                    <span v-if="isBackupOnly(cred)"
+                                        class="inline-flex items-center gap-1 shrink-0 px-1.5 py-0.5 rounded text-[10px] font-medium bg-neutral-200 dark:bg-neutral-700 text-gray-600 dark:text-gray-300"
+                                        title="Added for backups only — no admin credential is stored on this computer">
+                                        <LockClosedIcon class="w-2.5 h-2.5" />
+                                        Backup only
+                                    </span>
                                 </div>
                                 <div class="text-xs text-gray-400 flex items-center gap-2 flex-wrap">
                                     <span>{{ cred.username }}</span>
@@ -293,11 +299,11 @@ import { ref, computed, inject, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import {
     ArrowLeftIcon, TrashIcon, PencilIcon, SignalIcon,
-    MagnifyingGlassIcon, ServerIcon, InformationCircleIcon,
+    MagnifyingGlassIcon, ServerIcon, InformationCircleIcon, LockClosedIcon,
 } from '@heroicons/vue/24/outline'
 import { EyeIcon, EyeSlashIcon } from '@heroicons/vue/20/solid'
 import { useHeader } from '../composables/useHeader'
-import { useServers, type StoredServer } from '../composables/useServers'
+import { useServers, isBackupOnly, type StoredServer } from '../composables/useServers'
 import { discoveryStateInjectionKey } from '../keys/injection-keys'
 import type { DiscoveryState } from '../types'
 

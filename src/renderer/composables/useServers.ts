@@ -37,6 +37,15 @@ export interface StoredServer {
   hasAdminCreds?: boolean
 }
 
+/**
+ * A server added for backups only — no admin credential is stored, so anything
+ * needing SSH will fail rather than being merely hidden.
+ * Undefined means "unknown" (discovered-only entries), which is not backup-only.
+ */
+export function isBackupOnly(server?: Pick<StoredServer, 'hasAdminCreds'> | null): boolean {
+  return server?.hasAdminCreds === false
+}
+
 // Module-level cache so multiple components share the same reactive state
 const _servers = ref<StoredServer[]>([])
 const _loaded = ref(false)

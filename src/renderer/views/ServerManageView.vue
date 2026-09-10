@@ -76,16 +76,51 @@ The page is read-only until you click Edit. In edit mode changes are collected i
                                 work normally, but its storage, users, and shares can only be changed by whoever
                                 administers it.
                             </p>
-                            <p class="text-xs text-gray-400">
-                                If you are the administrator, remove this connection and re-add it with
-                                <strong class="text-default">Add Existing Backup Server</strong>.
+                            <p v-if="!showUpgrade" class="text-xs text-gray-400">
+                                If you administer it, you can add those credentials now.
                             </p>
                         </div>
                     </div>
-                    <div class="flex justify-end">
+
+                    <div v-if="showUpgrade" class="space-y-3 pl-8">
+                        <div class="grid grid-cols-2 gap-3">
+                            <div>
+                                <label class="text-xs font-medium text-gray-500 mb-1 block">Admin username</label>
+                                <input v-model="upgradeForm.username" type="text" placeholder="root"
+                                    class="w-full px-2 py-1.5 text-sm rounded input-textlike bg-default" />
+                            </div>
+                            <div>
+                                <label class="text-xs font-medium text-gray-500 mb-1 block">Admin password</label>
+                                <input v-model="upgradeForm.password" type="password" placeholder="••••••••"
+                                    class="w-full px-2 py-1.5 text-sm rounded input-textlike bg-default"
+                                    @keyup.enter="grantAdminAccess" />
+                            </div>
+                        </div>
+                        <p v-if="upgradeError" class="text-xs text-red-500">{{ upgradeError }}</p>
+                        <p class="text-xs text-gray-400">
+                            Verified over SSH before it is saved, and stored in the same encrypted vault as your
+                            other connections.
+                        </p>
+                    </div>
+
+                    <div class="flex justify-end gap-2">
                         <button class="btn btn-sm btn-secondary h-fit" @click="router.push({ name: 'dashboard' })">
                             Back to Dashboard
                         </button>
+                        <button v-if="!showUpgrade" class="btn btn-sm btn-primary h-fit" @click="showUpgrade = true">
+                            Add Admin Credentials
+                        </button>
+                        <template v-else>
+                            <button class="btn btn-sm btn-secondary h-fit" :disabled="upgrading"
+                                @click="showUpgrade = false; upgradeError = ''">
+                                Cancel
+                            </button>
+                            <button class="btn btn-sm btn-primary h-fit"
+                                :disabled="upgrading || !upgradeForm.username.trim() || !upgradeForm.password"
+                                @click="grantAdminAccess">
+                                {{ upgrading ? 'Verifying…' : 'Verify & Save' }}
+                            </button>
+                        </template>
                     </div>
                 </div>
 
@@ -1053,6 +1088,7 @@ import {
 import { useHeader } from '../composables/useHeader'
 import { useServers, type StoredServer } from '../composables/useServers'
 import { useServerManage } from '../composables/useServerManage'
+import { cachedAdminPassword, rememberAdminPassword, forgetAdminPassword, forgetAllAdminPasswords, promptAdminPassword } from '../composables/useAdminGate'
 import { useWireShield, type WireShieldStatus } from '../composables/useWireShield'
 import { useOnboarding, type OnboardingFlag } from '../composables/useOnboarding'
 import { useTourManager, type TourStep } from '../composables/useTourManager'
@@ -1231,6 +1267,52 @@ const server = computed<StoredServer | undefined>(() =>
 // Management needs an admin credential we do not have for backup-only servers.
 const hasAdminAccess = computed(() => server.value?.hasAdminCreds !== false)
 
+const showUpgrade = ref(false)
+const upgrading = ref(false)
+const upgradeError = ref('')
+const upgradeForm = ref({ username: 'root', password: '' })
+
+/** Promote a backup-only connection to full management by storing an admin credential. */
+async function grantAdminAccess() {
+    const s = server.value
+    if (!s || upgrading.value) return
+    const username = upgradeForm.value.username.trim()
+    const password = upgradeForm.value.password
+    if (!username || !password) return
+
+    upgrading.value = true
+    upgradeError.value = ''
+    try {
+        const res = await window.electron.ipcRenderer.invoke('verify-ssh-credentials', {
+            host: s.host, username, password,
+        })
+        if (!res?.success) {
+            upgradeError.value = res?.error
+                || `Could not sign in to ${s.host} as "${username}". Check the username and password.`
+            return
+        }
+        if (res.isAdmin === false) {
+            upgradeError.value = `"${username}" signed in but is not an administrator on ${s.host}. Use root or an account in the wheel/sudo group.`
+            return
+        }
+        await updateServer(s.id, { username, password })
+        upgradeForm.value = { username: 'root', password: '' }
+        showUpgrade.value = false
+        pushNotification(new Notification(
+            'Admin Access Added',
+            `${s.name || s.host} can now be managed from this computer.`,
+            'success',
+            6000
+        ))
+        await probeServer()
+        loadVpnStatus()
+    } catch (e: any) {
+        upgradeError.value = e?.message || 'Failed to verify the credentials.'
+    } finally {
+        upgrading.value = false
+    }
+}
+
 const probing = ref(false)
 const probeError = ref('')
 const probe = ref<ServerProbeResult | null>(null)
@@ -1286,6 +1368,8 @@ const editing = ref(false)
 const applying = ref(false)
 const showRebootPrompt = ref(false)
 const rebooting = ref(false)
+/** Stop polling after this long so a server that never returns doesn't hang the view. */
+const REBOOT_WAIT_MS = 5 * 60 * 1000
 let rebootPollTimer: ReturnType<typeof setTimeout> | null = null
 const stagedChanges = ref<StagedChange[]>([])
 
@@ -1491,12 +1575,38 @@ async function applyChanges() {
                 oldValue: c.oldValue, newValue: c.newValue, type: c.type,
             }))
 
-            const result = await window.electron.ipcRenderer.invoke('server:apply-changes', {
-                host: s.host,
-                username: s.username,
-                password: cred.password,
-                changes: plainChanges,
-            })
+            const gateLabel = remoteChanges.map(c => c.label).join(', ')
+            let adminPassword = cachedAdminPassword(s.host, s.username)
+                ?? await promptAdminPassword(s.host, s.username, gateLabel)
+            if (!adminPassword) {
+                pushNotification(new Notification('Cancelled', 'Admin password required to change server configuration.', 'info'))
+                return
+            }
+
+            let result: any
+            for (let attempt = 0; ; attempt++) {
+                result = await window.electron.ipcRenderer.invoke('server:apply-changes', {
+                    host: s.host,
+                    username: s.username,
+                    password: cred.password,
+                    adminPassword,
+                    changes: plainChanges,
+                })
+                if (result.code !== 'admin_auth_failed' || attempt >= 2) break
+                forgetAdminPassword(s.host, s.username)
+                const retry = await promptAdminPassword(s.host, s.username, gateLabel, result.error || 'Incorrect password.')
+                if (!retry) {
+                    pushNotification(new Notification('Cancelled', 'Admin password required to change server configuration.', 'info'))
+                    return
+                }
+                adminPassword = retry
+            }
+
+            if (result.code === 'admin_auth_failed') {
+                pushNotification(new Notification('Error', result.error || 'Incorrect admin password.', 'error'))
+                return
+            }
+            rememberAdminPassword(s.host, s.username, adminPassword)
 
             if (result.applied.length > 0) {
                 pushNotification(new Notification(
@@ -1554,16 +1664,29 @@ async function rebootServer() {
     const s = server.value
     if (!s) return
 
+    // Usually free: applying a hostname change just opened the 5-minute window.
+    const adminPassword = cachedAdminPassword(s.host, s.username)
+        ?? await promptAdminPassword(s.host, s.username, `Reboot ${s.name || s.host}`)
+    if (!adminPassword) return
+
     showRebootPrompt.value = false
     rebooting.value = true
 
     try {
         const cred = await window.electron.ipcRenderer.invoke('cred:get-for', s.host)
-        await window.electron.ipcRenderer.invoke('server:reboot', {
+        const result = await window.electron.ipcRenderer.invoke('server:reboot', {
             host: s.host,
             username: s.username,
             password: cred?.password || '',
+            adminPassword,
         })
+        if (result?.code === 'admin_auth_failed') {
+            forgetAdminPassword(s.host, s.username)
+            rebooting.value = false
+            pushNotification(new Notification('Error', result.error || 'Incorrect admin password.', 'error'))
+            return
+        }
+        rememberAdminPassword(s.host, s.username, adminPassword)
     } catch {
         // Connection drop during reboot is expected
     }
@@ -1574,6 +1697,21 @@ async function rebootServer() {
 
 function pollForReboot() {
     if (rebootPollTimer) clearTimeout(rebootPollTimer)
+
+    const deadline = Date.now() + REBOOT_WAIT_MS
+
+    const giveUp = () => {
+        rebooting.value = false
+        probeError.value = `${server.value?.name || server.value?.host || 'The server'} has not come back online after `
+            + `${Math.round(REBOOT_WAIT_MS / 60000)} minutes. It may still be booting, or it may have stopped on a `
+            + `console prompt. Use Retry once you can reach it again.`
+        pushNotification(new Notification(
+            'Server Still Offline',
+            'The reboot is taking longer than expected. Checking has stopped — use Retry when it is back.',
+            'warning',
+            10000,
+        ))
+    }
 
     const tryProbe = async () => {
         const s = server.value
@@ -1603,6 +1741,7 @@ function pollForReboot() {
     }
 
     const scheduleRetry = () => {
+        if (Date.now() >= deadline) { giveUp(); return }
         rebootPollTimer = setTimeout(tryProbe, 5000)
     }
 
@@ -1990,6 +2129,7 @@ watch(activeTab, (tab) => {
 
 onBeforeUnmount(() => {
     if (rebootPollTimer) clearTimeout(rebootPollTimer)
+    forgetAllAdminPasswords()
 })
 
 watch(server, (s) => {

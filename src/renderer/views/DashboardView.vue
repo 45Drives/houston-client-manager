@@ -23,6 +23,12 @@
                     <span :class="selectedServer ? 'text-primary font-medium' : 'text-gray-500'">
                         {{ selectedServer ? `Viewing: ${selectedServer.name || selectedServer.host}` : 'Select a server to view details' }}
                     </span>
+                    <span v-if="isBackupOnly(selectedServer)"
+                        class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-medium bg-neutral-200 dark:bg-neutral-700 text-gray-600 dark:text-gray-300"
+                        title="Added for backups only — no admin credential is stored on this computer">
+                        <LockClosedIcon class="w-3 h-3" />
+                        Backup only
+                    </span>
                 </div>
                 <button class="btn btn-sm btn-secondary h-fit" data-tour="topology-toggle" @click="showTopology = !showTopology">
                     {{ showTopology ? 'Hide Topology' : 'Show Topology' }}
@@ -59,6 +65,7 @@
                     <div class="grid grid-cols-2 gap-5" data-tour="storage-health">
                         <DashboardStorageCard ref="storageCard" :serverIp="selectedServer?.host ?? ''"
                             :serverName="selectedServer?.name ?? ''" :serverId="selectedServer?.id ?? ''"
+                            :backupOnly="isBackupOnly(selectedServer)"
                             @manage="selectedServer && goManageServer(selectedServer)" />
                         <DashboardHealthCard :storagePercent="maxStoragePercent"
                             :savedHosts="serverCard?.savedHosts ?? []"
@@ -168,14 +175,14 @@ import { useRouter } from 'vue-router'
 import {
     ServerIcon, CircleStackIcon, DocumentTextIcon,
     WrenchScrewdriverIcon, ExclamationTriangleIcon,
-    ArrowDownTrayIcon, Cog6ToothIcon,
+    ArrowDownTrayIcon, Cog6ToothIcon, LockClosedIcon,
 } from '@heroicons/vue/24/outline'
 import { useHeader } from '../composables/useHeader'
 import { useLogModal } from '../composables/useLogModal'
 import { useSettingsModal } from '../composables/useSettingsModal'
 import { useOnboarding } from '../composables/useOnboarding'
 import { useTourManager, type TourStep } from '../composables/useTourManager'
-import { useServers, type StoredServer } from '../composables/useServers'
+import { useServers, isBackupOnly, type StoredServer } from '../composables/useServers'
 import { useBackupTasksFeed, type FeedTask } from '../composables/useBackupTasksFeed'
 
 import DashboardServerCard from '../components/dashboard/DashboardServerCard.vue'

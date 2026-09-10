@@ -42,6 +42,12 @@
                             </span>
                             <StarIcon v-if="server.favorite"
                                 class="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                            <span v-if="isBackupOnly(server)"
+                                class="inline-flex items-center gap-1 shrink-0 px-1.5 py-0.5 rounded text-[10px] font-medium bg-neutral-200 dark:bg-neutral-700 text-gray-600 dark:text-gray-300"
+                                title="Added for backups only — no admin credential is stored on this computer">
+                                <LockClosedIcon class="w-2.5 h-2.5" />
+                                Backup only
+                            </span>
                         </div>
                         <div class="text-xs text-gray-400 truncate">
                             {{ server.username }}@{{ server.host }}{{ server.shareName ? ` / ${server.shareName}` : '' }}
@@ -55,7 +61,7 @@
 
                     <button
                         class="shrink-0 p-1 rounded text-gray-400 opacity-0 group-hover:opacity-100 focus:opacity-100 hover:text-primary hover:bg-hover transition-opacity"
-                        title="Manage this server"
+                        :title="isBackupOnly(server) ? 'Connection details' : 'Manage this server'"
                         @click.stop="$emit('open-manage', server)">
                         <Cog6ToothIcon class="w-4 h-4" />
                     </button>
@@ -84,8 +90,8 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { StarIcon } from '@heroicons/vue/24/solid'
-import { ExclamationTriangleIcon, Cog6ToothIcon } from '@heroicons/vue/24/outline'
-import { useServers, type StoredServer } from '../../composables/useServers'
+import { ExclamationTriangleIcon, Cog6ToothIcon, LockClosedIcon } from '@heroicons/vue/24/outline'
+import { useServers, isBackupOnly, type StoredServer } from '../../composables/useServers'
 import AddServerModal from './AddServerModal.vue'
 import DashboardCard from './DashboardCard.vue'
 

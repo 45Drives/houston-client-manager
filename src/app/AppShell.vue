@@ -27,6 +27,7 @@
       <router-view />
     </main>
     <GlobalModalConfirm />
+    <AdminGateModal />
     <NotificationView />
     <UpdateNotification />
     <LogModal />
@@ -41,6 +42,7 @@ import { DynamicBrandingLogo, GlobalModalConfirm, NotificationView, reportError,
 import GlobalSetupWizardMenu from '../renderer/components/GlobalSetupWizardMenu.vue'
 import AppBreadcrumb from '../renderer/components/AppBreadcrumb.vue'
 import LogModal from '../renderer/components/LogModal.vue'
+import AdminGateModal from '../renderer/components/AdminGateModal.vue'
 import UpdateNotification from '../renderer/components/UpdateNotification.vue'
 import SettingsModal from '../renderer/views/backupSetupWizard/SettingsModal.vue'
 import GuidedTour from '../renderer/components/GuidedTour.vue'
