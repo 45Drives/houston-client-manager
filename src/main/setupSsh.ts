@@ -479,11 +479,13 @@ if [ "$repo" = yes ] && [ -n "$installed_pkgs" ]; then
       upgrades=""
       rc=0
       # --refresh: without it the candidate version comes from a possibly stale cache.
+      # Scoped to the 45Drives repos so an unrelated broken or slow repo cannot
+      # stall or fail the check. The glob is silently ignored when nothing matches.
       if has_cmd dnf; then
-        upgrades="$(dnf -q --refresh check-update $installed_pkgs 2>/dev/null)" || rc=$?
+        upgrades="$(dnf -q --refresh --disablerepo='*' --enablerepo='45drives*' check-update $installed_pkgs 2>/dev/null)" || rc=$?
       elif has_cmd yum; then
         yum -q clean expire-cache >/dev/null 2>&1 || true
-        upgrades="$(yum -q check-update $installed_pkgs 2>/dev/null)" || rc=$?
+        upgrades="$(yum -q --disablerepo='*' --enablerepo='45drives*' check-update $installed_pkgs 2>/dev/null)" || rc=$?
       fi
       if [ "$rc" = 100 ]; then
         for p in $installed_pkgs; do
@@ -494,10 +496,16 @@ if [ "$repo" = yes ] && [ -n "$installed_pkgs" ]; then
       fi
       ;;
     *debian*|*ubuntu*)
-      # Without this the candidate version comes from a possibly stale cache.
-      if [ -z "$(find /var/lib/apt/lists -maxdepth 1 -name '*_Packages*' -mtime -1 2>/dev/null)" ]; then
-        apt-get update -qq >/dev/null 2>&1 || true
-      fi
+      # Always refresh, but only the 45Drives lists: a full apt-get update is slow
+      # and dies on unrelated third-party repos, and any cache age cut-off hides
+      # a build published since the last system update.
+      for f in /etc/apt/sources.list.d/45drives-community*.list; do
+        [ -f "$f" ] || continue
+        apt-get update -qq \\
+          -o Dir::Etc::sourcelist="$f" \\
+          -o Dir::Etc::sourceparts="-" \\
+          -o APT::Get::List-Cleanup="0" >/dev/null 2>&1 || true
+      done
       for p in $installed_pkgs; do
         pol="$(apt-cache policy "$p" 2>/dev/null)" || pol=""
         inst="$(printf '%s\\n' "$pol" | awk '/Installed:/ { print $2; exit }')"

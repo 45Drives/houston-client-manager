@@ -1,7 +1,7 @@
 <template>
-  <CardContainer class="overflow-y-auto min-h-0 w-full ui-texture-surface ui-texture-surface--tech bg-transparent">
+  <CardContainer class="overflow-y-auto [scrollbar-gutter:stable] min-h-0 w-full ui-texture-surface ui-texture-surface--tech bg-transparent">
     <form @submit.prevent="proceedToNextStep" class="flex flex-col justify-center items-center h-full w-full">
-      <div class="grid gap-4 w-10/12 max-w-4xl">
+      <div class="grid gap-4 w-10/12 max-w-4xl min-w-0">
 
         <section class="text-center mb-2">
           <h2 class="text-xl font-semibold">Select a 45Drives Server to Setup</h2>
@@ -93,8 +93,8 @@
           </section>
         </div>
 
-        <!-- Status / Troubleshooting -->
-        <div v-if="statusMessage || isInstalling" class="mt-1 text-center">
+        <!-- Status / Troubleshooting. Height is reserved so messages appearing mid-install don't reflow the card. -->
+        <div class="mt-1 text-center min-w-0 min-h-[3.5rem] flex flex-col justify-center">
           <div v-if="isInstalling" class="flex items-center justify-center gap-2">
             <svg class="animate-spin h-5 w-5" viewBox="0 0 24 24" aria-hidden="true">
               <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none" opacity=".25" />
@@ -118,15 +118,16 @@
           </p>
         </div>
 
-        <!-- Live setup log -->
-        <div v-if="setupLogs.length" class="mt-2">
-          <button type="button" class="flex items-center gap-1 text-sm text-muted hover:text-default"
-            @click="toggleLogs">
-            <ChevronRightIcon class="w-4 h-4 transition-transform" :class="showLogs ? 'rotate-90' : ''" />
-            {{ showLogs ? 'Hide' : 'Show' }} detailed log ({{ setupLogs.length }} lines)
+        <!-- Live setup log. The toggle row keeps its slot and the box is a fixed height so
+             streaming lines never grow the layout. -->
+        <div class="mt-2 min-w-0 min-h-[1.5rem]">
+          <button v-if="setupLogs.length" type="button"
+            class="flex items-center gap-1 text-sm text-muted hover:text-default" @click="toggleLogs">
+            <ChevronRightIcon class="w-4 h-4 shrink-0 transition-transform" :class="showLogs ? 'rotate-90' : ''" />
+            <span class="tabular-nums">{{ showLogs ? 'Hide' : 'Show' }} detailed log ({{ setupLogs.length }} lines)</span>
           </button>
-          <div v-show="showLogs" ref="logBox"
-            class="mt-2 max-h-56 overflow-y-auto rounded-md bg-neutral-100 dark:bg-neutral-900 p-2 text-xs font-mono text-gray-600 dark:text-gray-400 space-y-0.5 text-left">
+          <div v-show="showLogs && setupLogs.length" ref="logBox"
+            class="mt-2 h-56 w-full min-w-0 overflow-y-auto overflow-x-hidden [overflow-anchor:none] [scrollbar-gutter:stable] rounded-md bg-neutral-100 dark:bg-neutral-900 p-2 text-xs font-mono text-gray-600 dark:text-gray-400 space-y-0.5 text-left">
             <div v-for="(log, i) in setupLogs" :key="i" class="whitespace-pre-wrap break-all">{{ log }}</div>
           </div>
         </div>

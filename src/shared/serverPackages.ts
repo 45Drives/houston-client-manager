@@ -20,10 +20,10 @@ export interface HoustonPackage {
 }
 
 export const HOUSTON_PACKAGES: readonly HoustonPackage[] = [
-  { name: 'houston-broadcaster', label: 'Houston Broadcaster', minVersion: '2.3.10-1' },
-  { name: 'cockpit-super-simple-setup', label: 'Super Simple Setup', minVersion: '1.2.5-1' },
-  { name: 'cockpit-scheduler', label: 'Task Scheduler', minVersion: '1.7.8-1' },
-  { name: 'wireshield', label: 'WireShield', minVersion: '0.1.8' },
+  { name: 'houston-broadcaster', label: 'Houston Broadcaster', minVersion: '2.4.0-2' },
+  { name: 'cockpit-super-simple-setup', label: 'Super Simple Setup', minVersion: '1.2.9-3' },
+  { name: 'cockpit-scheduler', label: 'Task Scheduler', minVersion: '1.8.1-3' },
+  { name: 'wireshield', label: 'WireShield', minVersion: '0.1.9' },
   { name: 'cockpit-zfs', label: 'ZFS Management' },
 ];
 
