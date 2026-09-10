@@ -126,7 +126,7 @@
                 :class="taskStatusClass(task)">
                 <span class="w-1.5 h-1.5 rounded-full" :class="taskStatusDotClass(task)" />
                 {{ taskStatusLabel(task) }}
-                <button v-if="taskStatus(task) === 'running'"
+                <button v-if="isStoppable(task)"
                   class="-mr-1 ml-0.5 rounded-full p-0.5 text-danger hover:bg-blue-200/70 dark:hover:bg-blue-800/50"
                   :aria-label="`Stop backup ${taskDisplayName(task)}`" title="Stop this run"
                   @click.stop="stopTasks([task])">
@@ -302,7 +302,7 @@ import { EyeIcon, EyeSlashIcon } from '@heroicons/vue/20/solid';
 import { CircleStackIcon } from '@heroicons/vue/24/outline';
 import { useRouter } from 'vue-router';
 import { useOnboarding } from '../../composables/useOnboarding';
-import { clearUnreachableTasks } from '../../composables/useBackupProgress';
+import { clearUnreachableTasks, hasLiveProgress } from '../../composables/useBackupProgress';
 import { useTourManager, type TourStep } from '../../composables/useTourManager';
 
 const props = defineProps<{
@@ -503,6 +503,9 @@ const eventRunningUuids = ref<string[]>([]);
 const lastEventStatus = ref<Record<string, string>>({});
 
 function isUnreachable(task: BackUpTask): boolean {
+  // A task mid-transfer is demonstrably reachable, so a probe that says otherwise lost the
+  // race with the run rather than found a real outage.
+  if (hasLiveProgress(task.uuid)) return false;
   return !!task.status && (task.status.startsWith('offline') || task.status === 'missing_folder');
 }
 
@@ -514,6 +517,20 @@ function reconcileRunningWithReachability(): void {
   clearUnreachableTasks(unreachable);
 }
 
+/** The app believes a run is in flight, from live progress or an unclosed backup_start. */
+function hasRunRecord(task: BackUpTask): boolean {
+  return props.runningTaskIds.includes(task.uuid) || eventRunningUuids.value.includes(task.uuid);
+}
+
+/**
+ * Whether Stop should be offered. Deliberately not `taskStatus() === 'running'`: the badge
+ * lets an unreachable destination mask the running state, and a run the app started is
+ * still killable — arguably more urgently — when its destination has gone quiet.
+ */
+function isStoppable(task: BackUpTask): boolean {
+  return !task.disabled && hasRunRecord(task);
+}
+
 function taskStatus(task: BackUpTask): 'running' | 'failed' | 'cancelled' | 'online' | 'offline' | 'idle' | 'disabled' {
   if (task.disabled) return 'disabled';
   // A share we cannot reach cannot be the destination of a live transfer. Progress simply
@@ -521,7 +538,7 @@ function taskStatus(task: BackUpTask): 'running' | 'failed' | 'cancelled' | 'onl
   // run itself unless connectivity overrides it.
   const unreachable = isUnreachable(task);
   // Check if currently running (from props OR event log detection)
-  if (!unreachable && (props.runningTaskIds.includes(task.uuid) || eventRunningUuids.value.includes(task.uuid))) {
+  if (!unreachable && hasRunRecord(task)) {
     return 'running';
   }
   // Check last event log status
@@ -694,7 +711,7 @@ function runSelectedNow() {
 
 /** Selected tasks that are actually mid-run, which is what the toolbar button switches on. */
 const selectedRunning = computed(() =>
-  selectedBackUps.value.filter(t => taskStatus(t) === 'running')
+  selectedBackUps.value.filter(isStoppable)
 );
 
 /**
@@ -703,7 +720,7 @@ const selectedRunning = computed(() =>
  * this pass.
  */
 async function stopTasks(tasks: BackUpTask[]) {
-  const running = tasks.filter(t => taskStatus(t) === 'running');
+  const running = tasks.filter(isStoppable);
   if (running.length === 0) return;
 
   const confirmed = await unwrap(confirm({

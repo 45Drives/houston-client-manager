@@ -79,11 +79,6 @@ export async function checkBackupTaskStatus(task: BackUpTask): Promise<BackUpTas
             );
         });
     } else {
-        if (os === 'mac' && !hasSmbClient()) {
-            console.warn("smbclient not found on macOS. Recommend: brew install samba");
-            return 'offline_connection_error';
-        }
-
         const scriptName = os === 'mac' ? 'check_smb_task_status_mac.sh' : 'check_smb_task_status.sh';
         const scriptAsset = await getAsset("static", scriptName);
         const escape = (arg: string) => `"${arg.replace(/(["\\$`])/g, '\\$1')}"`;
@@ -153,13 +148,4 @@ export async function checkBackupTaskStatus(task: BackUpTask): Promise<BackUpTas
 function isScheduledButNotRunYet(task: BackUpTask): boolean {
     const now = Date.now();
     return new Date(task.schedule.startDate).getTime() > now;
-}
-
-function hasSmbClient(): boolean {
-    try {
-        execSync('which smbclient', { stdio: 'ignore' });
-        return true;
-    } catch {
-        return false;
-    }
 }

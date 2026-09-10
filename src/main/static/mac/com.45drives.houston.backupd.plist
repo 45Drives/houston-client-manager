@@ -7,8 +7,8 @@
 	<key>ProgramArguments</key>
 	<array>
 		<!-- A compiled binary, not the shell script beside it: TCC keys Full Disk Access to the
-		     process image, and a shebang script's image is /bin/bash. See houston-backupd.c. -->
-		<string>/Library/Application Support/45Drives/Houston/bin/houston-backupd</string>
+		     process image, and a shebang script's image is /bin/bash. See StorageWizardBackup.c. -->
+		<string>/Library/Application Support/45Drives/Houston/bin/StorageWizardBackup</string>
 	</array>
 	<key>RunAtLoad</key>
 	<true/>
@@ -23,8 +23,8 @@
 	<key>AbandonProcessGroup</key>
 	<false/>
 	<key>StandardOutPath</key>
-	<string>/Library/Logs/45Drives/houston-backupd.out.log</string>
+	<string>/Library/Logs/45Drives/StorageWizardBackup.out.log</string>
 	<key>StandardErrorPath</key>
-	<string>/Library/Logs/45Drives/houston-backupd.err.log</string>
+	<string>/Library/Logs/45Drives/StorageWizardBackup.err.log</string>
 </dict>
 </plist>

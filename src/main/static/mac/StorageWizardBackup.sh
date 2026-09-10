@@ -1,10 +1,10 @@
 #!/bin/bash
 #
-# houston-backupd.sh — LaunchDaemon runner for 45Drives Storage Wizard backups.
+# StorageWizardBackup.sh — LaunchDaemon runner for 45Drives Storage Wizard backups.
 #
-# Installed to /Library/Application Support/45Drives/Houston/bin/houston-backupd.sh and
-# started by the compiled houston-backupd binary alongside it, which is what launchd runs.
-# That indirection exists so the job can hold Full Disk Access; see houston-backupd.c.
+# Installed to /Library/Application Support/45Drives/Houston/bin/StorageWizardBackup.sh and
+# started by the compiled StorageWizardBackup binary alongside it, which is what launchd runs.
+# That indirection exists so the job can hold Full Disk Access; see StorageWizardBackup.c.
 # Because it is a LaunchDaemon it runs at boot and keeps running with nobody signed in,
 # which is what makes logged-out backups possible on macOS. cron is not used.
 #
@@ -15,7 +15,7 @@
 #
 # DAEMON_VERSION must match MAC_DAEMON_VERSION in src/main/backup/macDaemon.ts. Bump both
 # on any change here, or installed copies will never be replaced.
-# DAEMON_VERSION = 4
+# DAEMON_VERSION = 5
 
 set -uo pipefail
 
@@ -26,10 +26,10 @@ TASKS_REL="${SUPPORT_REL}/backup-tasks"
 STATE_REL="${SUPPORT_REL}/state"
 
 DAEMON_ROOT="/Library/Application Support/45Drives/Houston"
-SHIM="${DAEMON_ROOT}/bin/houston-backupd"
+SHIM="${DAEMON_ROOT}/bin/StorageWizardBackup"
 
 LOG_DIR="/Library/Logs/45Drives"
-LOG_FILE="${LOG_DIR}/houston-backupd.log"
+LOG_FILE="${LOG_DIR}/StorageWizardBackup.log"
 MAX_LOG_BYTES=5242880
 
 mkdir -p "$LOG_DIR" 2>/dev/null || true

@@ -1,5 +1,10 @@
 /*
- * houston-backupd — LaunchDaemon entry point for 45Drives Storage Wizard backups.
+ * StorageWizardBackup — LaunchDaemon entry point for 45Drives Storage Wizard backups.
+ *
+ * The filename is what macOS shows in the Full Disk Access list and in the permission
+ * prompts the first backup triggers, so it has to read as the product, not as an internal
+ * daemon name. Renaming it is a breaking change for TCC: a grant is keyed to the path, so
+ * any rename must come with a MAC_DAEMON_VERSION bump and costs the user one re-grant.
  *
  * This exists as a compiled binary for one reason: TCC will not grant Full Disk Access to
  * a shell script. A shebang script's process image is /bin/bash, so the grant can only
@@ -8,7 +13,7 @@
  * which is what lets rsync read Desktop/Documents/Downloads and network volumes during a
  * backup with nobody signed in.
  *
- * All scheduling logic stays in houston-backupd.sh. This binary only supplies identity.
+ * All scheduling logic stays in StorageWizardBackup.sh. This binary only supplies identity.
  *
  * Neither mode accepts a program path from an untrusted caller: a binary holding Full
  * Disk Access that execs whatever it is handed is a privilege escalation. The daemon
@@ -21,7 +26,7 @@
  * process, so task scripts launched through it were attributed to rsync itself and denied.
  * Calling setuid(2) here keeps responsibility with this binary and the grant survives.
  *
- * Build with scripts/mac/build-shim.sh. Keep DAEMON_VERSION in houston-backupd.sh and
+ * Build with scripts/mac/build-shim.sh. Keep DAEMON_VERSION in StorageWizardBackup.sh and
  * MAC_DAEMON_VERSION in src/main/backup/macDaemon.ts in step with any change here.
  */
 
@@ -34,13 +39,13 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
-#define DAEMON_SCRIPT "/Library/Application Support/45Drives/Houston/bin/houston-backupd.sh"
+#define DAEMON_SCRIPT "/Library/Application Support/45Drives/Houston/bin/StorageWizardBackup.sh"
 
-/* Real local accounts start here; matches the filter in houston-backupd.sh. */
+/* Real local accounts start here; matches the filter in StorageWizardBackup.sh. */
 #define MIN_UID 500
 
 static int fail(const char *msg) {
-    fprintf(stderr, "houston-backupd: %s\n", msg);
+    fprintf(stderr, "StorageWizardBackup: %s\n", msg);
     return 1;
 }
 
@@ -94,6 +99,6 @@ static int run_as_user(const char *uid_arg, const char *script) {
 int main(int argc, char **argv) {
     if (argc == 1) return run_daemon_script();
     if (argc == 4 && strcmp(argv[1], "--as-user") == 0) return run_as_user(argv[2], argv[3]);
-    fprintf(stderr, "usage: houston-backupd [--as-user <uid> <script>]\n");
+    fprintf(stderr, "usage: StorageWizardBackup [--as-user <uid> <script>]\n");
     return 2;
 }

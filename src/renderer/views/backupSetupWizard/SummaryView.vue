@@ -20,6 +20,19 @@
         when you're signed out. You'll be asked for your admin password once.
       </p>
 
+      <div v-if="thisOs === 'mac'" class="p-2 text-sm bg-blue-500/30 rounded-md space-y-1">
+        <p>
+          <strong>macOS will ask for permission the first time this backup runs.</strong>
+          You'll see one or more prompts from <span class="font-mono">StorageWizardBackup</span> — the
+          background service that copies your files — asking to access folders such as Desktop,
+          Documents, Downloads or a connected drive.
+        </p>
+        <p>
+          Click <span class="font-semibold">Allow</span> on each one. macOS asks once per protected
+          folder, so you won't be prompted again for the same folders on later runs.
+        </p>
+      </div>
+
       <div v-if="thisOs === 'mac' && needsFullDiskAccess"
         class="p-2 text-sm bg-yellow-500/40 rounded-md space-y-2">
         <p>

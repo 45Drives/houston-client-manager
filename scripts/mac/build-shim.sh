@@ -2,8 +2,8 @@
 #
 # build-shim.sh — compile the LaunchDaemon entry-point binary.
 #
-# Produces src/main/static/mac/houston-backupd, a universal Mach-O that ships alongside
-# houston-backupd.sh and is what launchd actually executes. It is not committed: the
+# Produces src/main/static/mac/StorageWizardBackup, a universal Mach-O that ships alongside
+# StorageWizardBackup.sh and is what launchd actually executes. It is not committed: the
 # binary must be built (and signed) on the machine that packages the release.
 #
 # Set MAC_SHIM_IDENTITY to a "Developer ID Application: ..." identity for release builds.
@@ -15,8 +15,8 @@ set -euo pipefail
 
 cd "$(dirname "$0")/../.."
 
-SRC="src/main/static/mac/houston-backupd.c"
-OUT="src/main/static/mac/houston-backupd"
+SRC="src/main/static/mac/StorageWizardBackup.c"
+OUT="src/main/static/mac/StorageWizardBackup"
 
 if [ "$(uname -s)" != "Darwin" ]; then
   echo "build-shim.sh: not macOS, skipping"

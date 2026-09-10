@@ -7,7 +7,7 @@ builds
 src/main/static/easysetup-bundle.js
 
 # Compiled on the packaging Mac by scripts/mac/build-shim.sh
-src/main/static/mac/houston-backupd
+src/main/static/mac/StorageWizardBackup
 
 .yarn/
 yarn.lock

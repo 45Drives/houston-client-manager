@@ -9,7 +9,7 @@
 #
 # Idempotent. Safe to run repeatedly and safe to run when nothing has changed.
 #
-# Usage: install-daemon.sh --source <dir containing houston-backupd, houston-backupd.sh and the plist>
+# Usage: install-daemon.sh --source <dir containing StorageWizardBackup, StorageWizardBackup.sh and the plist>
 
 set -euo pipefail
 
@@ -34,13 +34,13 @@ fi
 
 LABEL="com.45drives.houston.backupd"
 ROOT="/Library/Application Support/45Drives/Houston"
-BIN="${ROOT}/bin/houston-backupd"
-RUNNER="${ROOT}/bin/houston-backupd.sh"
+BIN="${ROOT}/bin/StorageWizardBackup"
+RUNNER="${ROOT}/bin/StorageWizardBackup.sh"
 MARKER="${ROOT}/.daemon-version"
 PLIST="/Library/LaunchDaemons/${LABEL}.plist"
 
-SHIM_SRC="${SOURCE_DIR}/houston-backupd"
-RUNNER_SRC="${SOURCE_DIR}/houston-backupd.sh"
+SHIM_SRC="${SOURCE_DIR}/StorageWizardBackup"
+RUNNER_SRC="${SOURCE_DIR}/StorageWizardBackup.sh"
 PLIST_SRC="${SOURCE_DIR}/${LABEL}.plist"
 
 if [ "$(id -u)" -ne 0 ]; then
@@ -84,4 +84,8 @@ rm -f /private/etc/sudoers.d/houston-* 2>/dev/null || true
 rm -rf "/Library/Application Support/Houston/scripts"
 rmdir "/Library/Application Support/Houston" 2>/dev/null || true
 
-echo "houston-backupd v${VERSION} installed and loaded"
+# Drop the pre-rename executable. Leaving it behind would keep a stale Full Disk Access
+# entry in System Settings pointing at a binary nothing runs any more.
+rm -f "${ROOT}/bin/houston-backupd" "${ROOT}/bin/houston-backupd.sh" 2>/dev/null || true
+
+echo "StorageWizardBackup v${VERSION} installed and loaded"

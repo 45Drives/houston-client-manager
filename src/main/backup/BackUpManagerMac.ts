@@ -202,7 +202,7 @@ export class BackUpManagerMac implements BackUpManager {
     }
   }
 
-  /** Mirrors threshold_reached() in houston-backupd: has this period's trigger passed? */
+  /** Mirrors threshold_reached() in StorageWizardBackup.sh: has this period's trigger passed? */
   private static thresholdReached(schedule: TaskSchedule): boolean {
     const start = schedule.startDate instanceof Date
       ? schedule.startDate
@@ -225,7 +225,7 @@ export class BackUpManagerMac implements BackUpManager {
     }
   }
 
-  /** Mirrors period_key() in houston-backupd; the two must agree or every task re-fires. */
+  /** Mirrors period_key() in StorageWizardBackup.sh; the two must agree or every task re-fires. */
   private static periodKey(freq: TaskSchedule['repeatFrequency']): string {
     const d = new Date();
     const p = (n: number) => String(n).padStart(2, '0');

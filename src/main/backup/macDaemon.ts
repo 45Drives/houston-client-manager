@@ -13,13 +13,13 @@ import { shellQuote } from "../security";
  * and is guarded by a version marker.
  */
 
-/** Bump together with DAEMON_VERSION in src/main/static/mac/houston-backupd.sh. */
-export const MAC_DAEMON_VERSION = 4;
+/** Bump together with DAEMON_VERSION in src/main/static/mac/StorageWizardBackup.sh. */
+export const MAC_DAEMON_VERSION = 5;
 
 export const MAC_DAEMON_LABEL = "com.45drives.houston.backupd";
 
 const DAEMON_ROOT = "/Library/Application Support/45Drives/Houston";
-const DAEMON_BIN = `${DAEMON_ROOT}/bin/houston-backupd`;
+const DAEMON_BIN = `${DAEMON_ROOT}/bin/StorageWizardBackup`;
 const DAEMON_MARKER = `${DAEMON_ROOT}/.daemon-version`;
 const DAEMON_FDA_STATUS = `${DAEMON_ROOT}/fda-status`;
 const DAEMON_PLIST = `/Library/LaunchDaemons/${MAC_DAEMON_LABEL}.plist`;
@@ -182,8 +182,8 @@ function runInstaller(reason: string): { installed: boolean; reason: string } {
     // The shipped assets may live inside app.asar, which install(1) and friends cannot read.
     // Copying them out through fs works in dev and packaged alike.
     for (const name of [
-      "houston-backupd",
-      "houston-backupd.sh",
+      "StorageWizardBackup",
+      "StorageWizardBackup.sh",
       `${MAC_DAEMON_LABEL}.plist`,
       INSTALLER_NAME,
     ]) {

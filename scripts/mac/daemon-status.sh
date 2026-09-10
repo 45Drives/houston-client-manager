@@ -7,8 +7,8 @@ LABEL="com.45drives.houston.backupd"
 ROOT="/Library/Application Support/45Drives/Houston"
 
 echo "== files =="
-ls -l "${ROOT}/bin/houston-backupd" 2>/dev/null || echo "  shim NOT installed"
-ls -l "${ROOT}/bin/houston-backupd.sh" 2>/dev/null || echo "  runner NOT installed"
+ls -l "${ROOT}/bin/StorageWizardBackup" 2>/dev/null || echo "  shim NOT installed"
+ls -l "${ROOT}/bin/StorageWizardBackup.sh" 2>/dev/null || echo "  runner NOT installed"
 ls -l "/Library/LaunchDaemons/${LABEL}.plist" 2>/dev/null || echo "  plist NOT installed"
 printf '  version marker: %s\n' "$(cat "${ROOT}/.daemon-version" 2>/dev/null || echo none)"
 
@@ -35,4 +35,4 @@ ls -l "${HOME}/Library/Application Support/45Drives/Houston/backup-tasks" 2>/dev
 
 echo
 echo "== recent daemon log =="
-tail -n 25 /Library/Logs/45Drives/houston-backupd.log 2>/dev/null || echo "  no log yet"
+tail -n 25 /Library/Logs/45Drives/StorageWizardBackup.log 2>/dev/null || echo "  no log yet"

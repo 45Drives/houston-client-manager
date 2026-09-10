@@ -51,15 +51,29 @@ export function removeFinishedTask(uuid: string): void {
   }
 }
 
+/** A progress update newer than this proves the run is alive, whatever the status probe says. */
+const PROGRESS_LIVE_MS = 10_000;
+
+export function hasLiveProgress(uuid: string): boolean {
+  const entry = taskProgressMap.value[uuid];
+  return !!entry && Date.now() - entry.updatedAt < PROGRESS_LIVE_MS;
+}
+
 /**
  * Drop runs whose destination is no longer reachable.
  *
  * The backend simply stops sending progress when a server drops off the network, so
  * without this the last frame it managed to send ("Running — 6%") stays on screen
  * indefinitely and the task looks alive long after the connection died.
+ *
+ * A task still pushing progress is exempt: the reachability probe and the transfer race
+ * each other, and letting a stale "offline" verdict evict a live entry made the strip
+ * alternate between a real percentage and the indeterminate "In progress…" row that the
+ * next reconcile put back.
  */
 export function clearUnreachableTasks(uuids: string[]): void {
   for (const uuid of uuids) {
+    if (hasLiveProgress(uuid)) continue;
     if (taskProgressMap.value[uuid] || runningTaskIds.value.includes(uuid)) {
       removeFinishedTask(uuid);
     }
@@ -144,9 +158,16 @@ const progressHandler = (data: {
     isRunningNow.value = true;
   }
 
+  const existing = taskProgressMap.value[data.taskUuid];
+  // Two sources report a run the app started — the task script's progress file and the
+  // spawned process's stdout — and only some of their frames carry a percentage. Blanking
+  // the percent on a message-only frame is what dropped the bar back to the indeterminate
+  // animation between updates. beginTasks() clears it explicitly when a new run starts.
+  const percent = data.percent ?? existing?.percent ?? null;
+
   taskProgressMap.value[data.taskUuid] = {
-    name: nameFor(data.taskUuid, taskProgressMap.value[data.taskUuid]),
-    percent: data.percent,
+    name: nameFor(data.taskUuid, existing),
+    percent,
     message: data.message ?? "",
     updatedAt: Date.now(),
   };
