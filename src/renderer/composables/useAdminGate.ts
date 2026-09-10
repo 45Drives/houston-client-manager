@@ -9,7 +9,7 @@
  * app shell so any view can trigger it.
  */
 
-import { ref, readonly } from 'vue'
+import { ref, computed, readonly } from 'vue'
 
 /** How long a verified password stays usable, matching sudo's default. */
 const GRACE_MS = 5 * 60 * 1000
@@ -23,34 +23,91 @@ interface PendingPrompt {
 }
 
 const pending = ref<PendingPrompt | null>(null)
-const verified = new Map<string, { password: string; expiresAt: number }>()
+
+// Passwords are deliberately kept out of reactive state so they never surface in
+// devtools; only the expiry timestamps are reactive, for the countdown badge.
+const secrets = new Map<string, string>()
+const expiries = ref<Record<string, number>>({})
+
+const now = ref(Date.now())
+let ticker: ReturnType<typeof setInterval> | null = null
 
 function key(host: string, username: string) {
     return `${username}@${host}`
 }
 
+function prune() {
+    const t = Date.now()
+    for (const [k, expiresAt] of Object.entries(expiries.value)) {
+        if (t >= expiresAt) {
+            delete expiries.value[k]
+            secrets.delete(k)
+        }
+    }
+}
+
+function syncTicker() {
+    const anyActive = Object.keys(expiries.value).length > 0
+    if (anyActive && !ticker) {
+        ticker = setInterval(() => {
+            now.value = Date.now()
+            prune()
+            syncTicker()
+        }, 1000)
+    } else if (!anyActive && ticker) {
+        clearInterval(ticker)
+        ticker = null
+    }
+}
+
 /** Returns a still-valid password from the grace window, or null. */
 export function cachedAdminPassword(host: string, username: string): string | null {
-    const hit = verified.get(key(host, username))
-    if (!hit) return null
-    if (Date.now() >= hit.expiresAt) {
-        verified.delete(key(host, username))
+    const k = key(host, username)
+    const expiresAt = expiries.value[k]
+    if (!expiresAt || Date.now() >= expiresAt) {
+        if (expiresAt) { delete expiries.value[k]; secrets.delete(k); syncTicker() }
         return null
     }
-    return hit.password
+    return secrets.get(k) ?? null
 }
 
 export function rememberAdminPassword(host: string, username: string, password: string): void {
-    verified.set(key(host, username), { password, expiresAt: Date.now() + GRACE_MS })
+    const k = key(host, username)
+    secrets.set(k, password)
+    expiries.value[k] = Date.now() + GRACE_MS
+    now.value = Date.now()
+    syncTicker()
 }
 
 export function forgetAdminPassword(host: string, username: string): void {
-    verified.delete(key(host, username))
+    const k = key(host, username)
+    secrets.delete(k)
+    delete expiries.value[k]
+    syncTicker()
 }
 
 /** Clears every grace window. Called when leaving a management view. */
 export function forgetAllAdminPasswords(): void {
-    verified.clear()
+    secrets.clear()
+    expiries.value = {}
+    syncTicker()
+}
+
+/** Reactive view of one server's grace window, for the header badge. */
+export function useAdminSession(getHost: () => string, getUsername: () => string) {
+    const expiresAt = computed(() => expiries.value[key(getHost(), getUsername())] ?? 0)
+    const active = computed(() => expiresAt.value > now.value)
+    const remaining = computed(() => {
+        if (!active.value) return ''
+        const total = Math.ceil((expiresAt.value - now.value) / 1000)
+        return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`
+    })
+
+    return {
+        active,
+        remaining,
+        revoke: () => forgetAdminPassword(getHost(), getUsername()),
+    }
 }
 
 /** Resolves with the typed password, or null if the user cancelled. */

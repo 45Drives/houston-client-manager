@@ -32,6 +32,13 @@ The page is read-only until you click Edit. In edit mode changes are collected i
                         </div>
                     </div>
                     <div class="flex items-center gap-2 shrink-0" data-tour="sm-actions">
+                        <button v-if="adminUnlocked" type="button"
+                            class="btn btn-sm h-fit inline-flex items-center gap-1 whitespace-nowrap border border-amber-400/60 text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20"
+                            :title="`Destructive actions will run without asking again for ${adminUnlockedFor}. Click to lock now.`"
+                            @click="lockAdmin">
+                            <LockOpenIcon class="w-3.5 h-3.5" />
+                            Admin unlocked {{ adminUnlockedFor }}
+                        </button>
                         <button v-if="!editing && hasAdminAccess" class="btn btn-sm btn-secondary h-fit inline-flex items-center gap-1 whitespace-nowrap" @click="editing = true"
                             :disabled="probing">
                             <PencilIcon class="w-3.5 h-3.5" />
@@ -585,7 +592,7 @@ The page is read-only until you click Edit. In edit mode changes are collected i
                             <div class="flex items-center justify-between">
                                 <SectionDivider label="Shares" />
                                 <button v-if="editing" class="btn btn-sm btn-secondary h-fit inline-flex items-center gap-1 whitespace-nowrap text-xs"
-                                    @click="showAddShare = true">
+                                    @click="openAddShare()">
                                     <PlusIcon class="w-3 h-3" /> Add Share
                                 </button>
                             </div>
@@ -597,14 +604,19 @@ The page is read-only until you click Edit. In edit mode changes are collected i
                                             <span class="text-sm font-semibold text-default">[{{ share.name }}]</span>
                                             <span v-if="share.comment" class="text-xs text-gray-400">{{ share.comment }}</span>
                                         </div>
-                                        <button v-if="editing" class="text-xs text-red-400 hover:text-red-500"
-                                            @click="confirmRemoveShare(share.name)">Remove</button>
+                                        <div v-if="editing" class="flex items-center gap-3">
+                                            <button class="text-xs text-link" @click="openEditShare(share)">Edit</button>
+                                            <button class="text-xs text-red-400 hover:text-red-500"
+                                                @click="confirmRemoveShare(share.name)">Remove</button>
+                                        </div>
                                     </div>
                                     <div class="grid grid-cols-2 gap-2 text-xs">
                                         <div><span class="text-gray-400">Path:</span> <span class="text-default">{{ share.path }}</span></div>
                                         <div><span class="text-gray-400">Guest OK:</span> <span class="text-default">{{ share.guestOk ? 'Yes' : 'No' }}</span></div>
                                         <div><span class="text-gray-400">Read Only:</span> <span class="text-default">{{ share.readOnly ? 'Yes' : 'No' }}</span></div>
                                         <div><span class="text-gray-400">Browseable:</span> <span class="text-default">{{ share.browseable ? 'Yes' : 'No' }}</span></div>
+                                        <div><span class="text-gray-400">Inherit Permissions:</span> <span class="text-default">{{ share.inheritPermissions ? 'Yes' : 'No' }}</span></div>
+                                        <div><span class="text-gray-400">Access:</span> <span class="text-default">{{ share.validUsers || 'All Samba users' }}</span></div>
                                     </div>
                                 </div>
                             </div>
@@ -941,34 +953,94 @@ The page is read-only until you click Edit. In edit mode changes are collected i
                 </div>
             </div>
 
-            <!-- Add Samba Share -->
-            <div v-if="showAddShare" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40" @mousedown.self="showAddShare = false">
-                <div class="bg-white dark:bg-neutral-800 rounded-lg border border-neutral-200 dark:border-neutral-700 shadow-xl max-w-sm w-full mx-4 p-5 space-y-3">
-                    <h3 class="text-sm font-semibold text-default">Add Samba Share</h3>
+            <!-- Add / Edit Samba Share -->
+            <div v-if="showShareModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40" @mousedown.self="showShareModal = false">
+                <div class="bg-white dark:bg-neutral-800 rounded-lg border border-neutral-200 dark:border-neutral-700 shadow-xl max-w-md w-full mx-4 p-5 space-y-3 max-h-[85vh] overflow-y-auto">
+                    <h3 class="text-sm font-semibold text-default">
+                        {{ shareModalMode === 'edit' ? `Edit Share [${shareForm.name}]` : 'Add Samba Share' }}
+                    </h3>
                     <div>
                         <label class="text-xs font-medium text-gray-400 mb-1 block">Share Name</label>
-                        <input v-model="newShare.name" type="text" placeholder="media"
-                            class="w-full px-3 py-1.5 text-sm rounded-lg bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 text-default outline-none focus:border-blue-400" />
+                        <input v-model="shareForm.name" type="text" placeholder="media" :readonly="shareModalMode === 'edit'"
+                            :title="shareModalMode === 'edit' ? 'Remove and re-add the share to rename it.' : undefined"
+                            class="w-full px-3 py-1.5 text-sm rounded-lg bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 text-default outline-none focus:border-blue-400"
+                            :class="shareModalMode === 'edit' ? 'opacity-60 cursor-not-allowed' : ''" />
                     </div>
                     <div>
                         <label class="text-xs font-medium text-gray-400 mb-1 block">Path</label>
-                        <input v-model="newShare.path" type="text" placeholder="/tank/share/media"
+                        <input v-model="shareForm.path" type="text" placeholder="/tank/share/media"
+                            class="w-full px-3 py-1.5 text-sm rounded-lg bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 text-default outline-none focus:border-blue-400" />
+                        <p v-if="shareModalMode === 'add'" class="text-xs text-gray-400 mt-1">
+                            Created if it does not exist, owned by smbusers with mode 2770.
+                        </p>
+                    </div>
+                    <div>
+                        <label class="text-xs font-medium text-gray-400 mb-1 block">Description</label>
+                        <input v-model="shareForm.comment" type="text" :placeholder="shareForm.name || 'Shared folder'"
                             class="w-full px-3 py-1.5 text-sm rounded-lg bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 text-default outline-none focus:border-blue-400" />
                     </div>
-                    <div class="flex flex-wrap gap-4 text-xs">
+                    <div class="grid grid-cols-2 gap-2 text-xs text-default">
                         <label class="flex items-center gap-1.5 cursor-pointer">
-                            <input type="checkbox" v-model="newShare.browseable" class="rounded border-neutral-400" />
+                            <input type="checkbox" v-model="shareForm.guestOk" class="rounded border-neutral-400 dark:border-neutral-500" />
+                            Guest access
+                        </label>
+                        <label class="flex items-center gap-1.5 cursor-pointer">
+                            <input type="checkbox" v-model="shareForm.readOnly" class="rounded border-neutral-400 dark:border-neutral-500" />
+                            Read only
+                        </label>
+                        <label class="flex items-center gap-1.5 cursor-pointer">
+                            <input type="checkbox" v-model="shareForm.browseable" class="rounded border-neutral-400 dark:border-neutral-500" />
                             Browseable
                         </label>
                         <label class="flex items-center gap-1.5 cursor-pointer">
-                            <input type="checkbox" v-model="newShare.guestOk" class="rounded border-neutral-400" />
-                            Guest OK
+                            <input type="checkbox" v-model="shareForm.inheritPermissions" class="rounded border-neutral-400 dark:border-neutral-500" />
+                            Inherit permissions
                         </label>
                     </div>
+
+                    <div class="space-y-2">
+                        <label class="text-xs font-medium text-gray-400 block">Access</label>
+                        <label class="flex items-center gap-1.5 cursor-pointer text-xs text-default">
+                            <input type="checkbox" :checked="shareForm.accessMode === 'all'"
+                                @change="shareForm.accessMode = shareForm.accessMode === 'all' ? 'specific' : 'all'"
+                                class="rounded border-neutral-400 dark:border-neutral-500" />
+                            All Samba users (@smbusers)
+                        </label>
+                        <div v-if="shareForm.accessMode === 'specific'" class="space-y-2 pl-1">
+                            <div>
+                                <p class="text-xs font-medium text-gray-400 mb-1">Users</p>
+                                <div class="flex flex-wrap gap-1.5">
+                                    <label v-for="u in probe?.users || []" :key="u.username"
+                                        class="flex items-center gap-1.5 text-xs text-default bg-neutral-50 dark:bg-neutral-900 px-2 py-1 rounded border border-neutral-200 dark:border-neutral-700 cursor-pointer">
+                                        <input type="checkbox" :value="u.username" v-model="shareForm.users"
+                                            class="rounded border-neutral-400 dark:border-neutral-500" />
+                                        {{ u.username }}
+                                    </label>
+                                    <span v-if="!(probe?.users || []).length" class="text-xs text-gray-400">No users found.</span>
+                                </div>
+                            </div>
+                            <div>
+                                <p class="text-xs font-medium text-gray-400 mb-1">Groups</p>
+                                <div class="flex flex-wrap gap-1.5">
+                                    <label v-for="g in probe?.groups || []" :key="g.name"
+                                        class="flex items-center gap-1.5 text-xs text-default bg-neutral-50 dark:bg-neutral-900 px-2 py-1 rounded border border-neutral-200 dark:border-neutral-700 cursor-pointer">
+                                        <input type="checkbox" :value="g.name" v-model="shareForm.groups"
+                                            class="rounded border-neutral-400 dark:border-neutral-500" />
+                                        @{{ g.name }}
+                                    </label>
+                                    <span v-if="!(probe?.groups || []).length" class="text-xs text-gray-400">No groups found.</span>
+                                </div>
+                            </div>
+                            <p v-if="!shareForm.users.length && !shareForm.groups.length" class="text-xs text-yellow-600 dark:text-yellow-400">
+                                Select at least one user or group, or switch back to all Samba users.
+                            </p>
+                        </div>
+                    </div>
+
                     <div class="flex justify-end gap-2 pt-1">
-                        <button class="btn btn-sm btn-secondary h-fit" @click="showAddShare = false">Cancel</button>
-                        <button class="btn btn-sm btn-primary h-fit" :disabled="!newShare.name || !newShare.path || mgmt.busy.value"
-                            @click="doAddShare">Add Share</button>
+                        <button class="btn btn-sm btn-secondary h-fit" @click="showShareModal = false">Cancel</button>
+                        <button class="btn btn-sm btn-primary h-fit" :disabled="!shareFormValid || mgmt.busy.value"
+                            @click="doSaveShare">{{ shareModalMode === 'edit' ? 'Save Changes' : 'Add Share' }}</button>
                     </div>
                 </div>
             </div>
@@ -989,8 +1061,13 @@ The page is read-only until you click Edit. In edit mode changes are collected i
                     </div>
                     <div>
                         <label class="text-xs font-medium text-gray-400 mb-1 block">Log Level</label>
-                        <input v-model="sambaGlobalEdit['log level']" type="text" placeholder="1"
-                            class="w-full px-3 py-1.5 text-sm rounded-lg bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 text-default outline-none focus:border-blue-400" />
+                        <select v-model="sambaGlobalEdit['log level']"
+                            class="w-full px-3 py-1.5 text-sm rounded-lg bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 text-default outline-none focus:border-blue-400">
+                            <option value="0">0 (None)</option>
+                            <option value="1">1 (Minimal)</option>
+                            <option value="2">2 (Normal)</option>
+                            <option value="3">3 (Debug)</option>
+                        </select>
                     </div>
                     <div class="flex justify-end gap-2 pt-1">
                         <button class="btn btn-sm btn-secondary h-fit" @click="showEditSambaGlobal = false">Cancel</button>
@@ -1083,12 +1160,12 @@ import {
     ArrowLeftIcon, ArrowPathIcon, PencilIcon, ServerIcon,
     ExclamationTriangleIcon, XMarkIcon, PlusIcon,
     GlobeAltIcon, CircleStackIcon, UsersIcon, ShareIcon, CpuChipIcon,
-    LinkIcon, LockClosedIcon,
+    LinkIcon, LockClosedIcon, LockOpenIcon,
 } from '@heroicons/vue/24/outline'
 import { useHeader } from '../composables/useHeader'
 import { useServers, type StoredServer } from '../composables/useServers'
 import { useServerManage } from '../composables/useServerManage'
-import { cachedAdminPassword, rememberAdminPassword, forgetAdminPassword, forgetAllAdminPasswords, promptAdminPassword } from '../composables/useAdminGate'
+import { cachedAdminPassword, rememberAdminPassword, forgetAdminPassword, forgetAllAdminPasswords, promptAdminPassword, useAdminSession } from '../composables/useAdminGate'
 import { useWireShield, type WireShieldStatus } from '../composables/useWireShield'
 import { useOnboarding, type OnboardingFlag } from '../composables/useOnboarding'
 import { useTourManager, type TourStep } from '../composables/useTourManager'
@@ -1266,6 +1343,12 @@ const server = computed<StoredServer | undefined>(() =>
 
 // Management needs an admin credential we do not have for backup-only servers.
 const hasAdminAccess = computed(() => server.value?.hasAdminCreds !== false)
+
+const {
+    active: adminUnlocked,
+    remaining: adminUnlockedFor,
+    revoke: lockAdmin,
+} = useAdminSession(() => server.value?.host || '', () => server.value?.username || '')
 
 const showUpgrade = ref(false)
 const upgrading = ref(false)
@@ -1796,10 +1879,27 @@ function toggleNewUserGroup(group: string) {
 }
 
 // Samba state
-const showAddShare = ref(false)
+const showShareModal = ref(false)
+const shareModalMode = ref<'add' | 'edit'>('add')
 const showEditSambaGlobal = ref(false)
 const showSetSambaPasswordFor = ref<string | null>(null)
-const newShare = reactive({ name: '', path: '', browseable: true, guestOk: false })
+const shareForm = reactive({
+    name: '',
+    path: '',
+    comment: '',
+    browseable: true,
+    readOnly: false,
+    guestOk: false,
+    inheritPermissions: true,
+    accessMode: 'all' as 'all' | 'specific',
+    users: [] as string[],
+    groups: [] as string[],
+})
+const shareFormValid = computed(() => {
+    if (!shareForm.name.trim() || !shareForm.path.trim()) return false
+    if (shareForm.accessMode === 'specific' && !shareForm.users.length && !shareForm.groups.length) return false
+    return true
+})
 const sambaGlobalEdit = reactive<Record<string, string>>({})
 
 // Confirm dialog
@@ -2044,17 +2144,95 @@ function openEditSambaGlobal() {
     if (probe.value) {
         sambaGlobalEdit['workgroup'] = probe.value.samba.global['workgroup'] || 'WORKGROUP'
         sambaGlobalEdit['server string'] = probe.value.samba.global['server string'] || ''
-        sambaGlobalEdit['log level'] = probe.value.samba.global['log level'] || '1'
+        // testparm can report "1 auth:3"; the select only offers the base level.
+        const level = (probe.value.samba.global['log level'] || '1').match(/^\d/)?.[0] ?? '1'
+        sambaGlobalEdit['log level'] = ['0', '1', '2', '3'].includes(level) ? level : '1'
     }
     showEditSambaGlobal.value = true
 }
 
-async function doAddShare() {
-    const r = await mgmt.runWithNotify('samba:share-add', {
-        name: newShare.name.trim(), path: newShare.path.trim(),
-        browseable: newShare.browseable, guestOk: newShare.guestOk,
-    }, `Share "[${newShare.name}]" created.`)
-    if (r.success) { showAddShare.value = false; newShare.name = ''; newShare.path = ''; probeServer() }
+function resetShareForm() {
+    shareForm.name = ''
+    shareForm.path = ''
+    shareForm.comment = ''
+    shareForm.browseable = true
+    shareForm.readOnly = false
+    shareForm.guestOk = false
+    shareForm.inheritPermissions = true
+    shareForm.accessMode = 'all'
+    shareForm.users = []
+    shareForm.groups = []
+}
+
+function openAddShare(name = '') {
+    resetShareForm()
+    shareForm.name = name
+    shareModalMode.value = 'add'
+    showShareModal.value = true
+}
+
+type ProbedShare = NonNullable<typeof probe.value>['samba']['shares'][number]
+
+function openEditShare(share: ProbedShare) {
+    resetShareForm()
+    shareForm.name = share.name
+    shareForm.path = share.path
+    shareForm.comment = share.comment
+    shareForm.browseable = share.browseable
+    shareForm.readOnly = share.readOnly
+    shareForm.guestOk = share.guestOk
+    shareForm.inheritPermissions = share.inheritPermissions
+
+    const tokens = (share.validUsers || '').split(/[\s,]+/).filter(Boolean)
+    // "@smbusers" alone is the everyone default written by setup, not a restriction.
+    if (!tokens.length || (tokens.length === 1 && tokens[0] === '@smbusers')) {
+        shareForm.accessMode = 'all'
+    } else {
+        shareForm.accessMode = 'specific'
+        shareForm.users = tokens.filter(t => !t.startsWith('@'))
+        shareForm.groups = tokens.filter(t => t.startsWith('@')).map(t => t.slice(1))
+    }
+
+    shareModalMode.value = 'edit'
+    showShareModal.value = true
+}
+
+function shareFormValidUsers(): string {
+    if (shareForm.accessMode === 'all') return '@smbusers'
+    return [...shareForm.users, ...shareForm.groups.map(g => `@${g}`)].join(' ')
+}
+
+async function doSaveShare() {
+    const name = shareForm.name.trim()
+    const r = shareModalMode.value === 'edit'
+        ? await mgmt.runWithNotify('samba:share-edit', {
+            name,
+            settings: {
+                path: shareForm.path.trim(),
+                comment: shareForm.comment.trim() || name,
+                browseable: shareForm.browseable ? 'yes' : 'no',
+                'read only': shareForm.readOnly ? 'yes' : 'no',
+                'guest ok': shareForm.guestOk ? 'yes' : 'no',
+                'inherit permissions': shareForm.inheritPermissions ? 'yes' : 'no',
+                'valid users': shareFormValidUsers(),
+            },
+        }, `Share "[${name}]" updated.`)
+        : await mgmt.runWithNotify('samba:share-add', {
+            name,
+            path: shareForm.path.trim(),
+            comment: shareForm.comment.trim() || undefined,
+            browseable: shareForm.browseable,
+            readOnly: shareForm.readOnly,
+            guestOk: shareForm.guestOk,
+            inheritPermissions: shareForm.inheritPermissions,
+            validUsers: shareFormValidUsers(),
+        }, `Share "[${name}]" created.`)
+
+    if (r.success) {
+        showShareModal.value = false
+        resetShareForm()
+        probeServer()
+    }
 }
 
 function confirmRemoveShare(name: string) {
@@ -2098,8 +2276,7 @@ onMounted(() => {
     const wanted = route.query.createShare
     if (typeof wanted === 'string' && wanted) {
         activeTab.value = 'samba'
-        newShare.name = wanted
-        showAddShare.value = true
+        openAddShare(wanted)
         router.replace({ query: { ...route.query, createShare: undefined } })
     }
 })

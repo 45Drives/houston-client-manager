@@ -79,6 +79,9 @@ export interface ServerProbeResult {
       guestOk: boolean;
       readOnly: boolean;
       browseable: boolean;
+      inheritPermissions: boolean;
+      /** Raw `valid users` line. Empty means every Samba user. */
+      validUsers: string;
     }>;
   };
   services: Array<{ name: string; active: boolean }>;
@@ -144,6 +147,22 @@ function shellQuote(s: string): string {
 // sources merged, so an edit has to target wherever the share actually is.
 
 const SAFE_SHARE_NAME = /^[A-Za-z0-9_ -]+$/;
+const SAFE_PRINCIPAL = /^@?[A-Za-z_][A-Za-z0-9_.-]*\$?$/;
+
+/**
+ * Collapses a user/group selection into a `valid users` line.
+ * Returns '' for "everyone", or null when a token is not a plain user or @group.
+ */
+function normalizeValidUsers(input: string | string[] | undefined): string | null {
+  if (input === undefined || input === null) return '';
+  const tokens = (Array.isArray(input) ? input : String(input).split(/[\s,]+/)).filter(Boolean);
+  if (tokens.length === 0) return '';
+  if (!tokens.every(t => SAFE_PRINCIPAL.test(t))) return null;
+  return tokens.join(' ');
+}
+
+/** smb.conf edits go through sed; these characters would break the expression. */
+const SED_UNSAFE = /[\\|\n\r]/;
 
 async function registryShares(ssh: NodeSSH): Promise<string[]> {
   const r = await sudoCmd(ssh, 'net conf listshares');
@@ -281,20 +300,27 @@ async function probeSamba(ssh: NodeSSH) {
   const confRaw = await cmd(ssh, 'testparm -s 2>/dev/null || cat /etc/samba/smb.conf 2>/dev/null');
 
   const global: Record<string, string> = {};
-  const shares: Array<{ name: string; path: string; comment: string; guestOk: boolean; readOnly: boolean; browseable: boolean }> = [];
+  const shares: ServerProbeResult['samba']['shares'] = [];
 
   let currentSection = '';
   let currentShare: Record<string, string> = {};
 
   function flushShare() {
     if (currentSection && currentSection !== 'global') {
+      // testparm reports the inverse `writeable`/`writable` keys instead of `read only`.
+      const writeable = currentShare['writeable'] ?? currentShare['writable'] ?? currentShare['write ok'];
+      const readOnly = writeable !== undefined
+        ? writeable.toLowerCase() !== 'yes'
+        : (currentShare['read only'] || 'yes').toLowerCase() === 'yes';
       shares.push({
         name: currentSection,
-        path: currentShare['path'] || '',
+        path: currentShare['path'] || currentShare['directory'] || '',
         comment: currentShare['comment'] || '',
         guestOk: (currentShare['guest ok'] || 'no').toLowerCase() === 'yes',
-        readOnly: (currentShare['read only'] || 'yes').toLowerCase() === 'yes',
+        readOnly,
         browseable: (currentShare['browseable'] || currentShare['browsable'] || 'yes').toLowerCase() === 'yes',
+        inheritPermissions: (currentShare['inherit permissions'] || 'no').toLowerCase() === 'yes',
+        validUsers: currentShare['valid users'] || '',
       });
     }
   }
@@ -815,19 +841,34 @@ async function executeManageAction(
     }
 
     case 'samba:share-add': {
-      const { name: shareName, path: sharePath, comment, guestOk, readOnly, browseable } = params as {
-        name: string; path: string; comment?: string; guestOk?: boolean; readOnly?: boolean; browseable?: boolean;
+      const { name: shareName, path: sharePath, comment, guestOk, readOnly, browseable, inheritPermissions, validUsers } = params as {
+        name: string; path: string; comment?: string; guestOk?: boolean; readOnly?: boolean;
+        browseable?: boolean; inheritPermissions?: boolean; validUsers?: string;
       };
       if (!shareName || !sharePath) return { success: false, error: 'Share name and path required' };
       if (!SAFE_SHARE_NAME.test(shareName)) return { success: false, error: 'Invalid share name' };
 
+      const validUsersLine = normalizeValidUsers(validUsers);
+      if (validUsersLine === null) {
+        return { success: false, error: 'Valid users must be usernames or @groups (letters, digits, _ . -)' };
+      }
+
+      // Only take ownership of a directory this action creates.
+      const dirExisted = (await cmd(ssh, `test -d ${shellQuote(sharePath)} && echo yes || echo no`)).trim() === 'yes';
       await sudoCmd(ssh, `mkdir -p ${shellQuote(sharePath)}`);
+      if (!dirExisted) {
+        await sudoCmd(ssh, `chgrp smbusers ${shellQuote(sharePath)} 2>/dev/null || true`);
+        await sudoCmd(ssh, `chmod 2770 ${shellQuote(sharePath)} 2>/dev/null || true`);
+      }
 
       const settings: Record<string, string> = {
         comment: comment || shareName,
         browseable: browseable !== false ? 'yes' : 'no',
         'read only': readOnly === true ? 'yes' : 'no',
         'guest ok': guestOk === true ? 'yes' : 'no',
+        'inherit permissions': inheritPermissions !== false ? 'yes' : 'no',
+        'inherit acls': 'yes',
+        'valid users': validUsersLine || '@smbusers',
         'create mask': '0660',
         'directory mask': '2770',
         'force group': 'smbusers',
@@ -872,6 +913,9 @@ async function executeManageAction(
       const inConf = await smbConfHasShare(ssh, shareName);
       if (!inRegistry && !inConf) {
         return { success: false, error: `Share "${shareName}" is not defined in smb.conf or the Samba registry, so it cannot be edited from here.` };
+      }
+      if (!inRegistry && Object.entries(settings).some(([k, v]) => SED_UNSAFE.test(k) || SED_UNSAFE.test(v))) {
+        return { success: false, error: 'Setting keys and values cannot contain backslashes, pipes, or newlines.' };
       }
 
       const failures: string[] = [];
