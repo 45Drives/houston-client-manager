@@ -25,11 +25,20 @@ Use Add Existing for a server someone else set up, one you configured directly i
                     </button>
                     <button
                         class="w-full flex items-center gap-3 p-4 rounded-lg border border-neutral-200 dark:border-neutral-700 hover:bg-hover transition-colors text-left"
-                        @click="step = 'form'">
+                        @click="accessMode = 'admin'; step = 'form'">
                         <ServerStackIcon class="w-6 h-6 text-primary shrink-0" />
                         <div>
                             <div class="text-sm font-medium text-default">Add Existing Backup Server</div>
                             <div class="text-xs text-gray-400">Connect to a server that's already set up</div>
+                        </div>
+                    </button>
+                    <button
+                        class="w-full flex items-center gap-3 p-4 rounded-lg border border-neutral-200 dark:border-neutral-700 hover:bg-hover transition-colors text-left"
+                        @click="accessMode = 'backup'; step = 'form'">
+                        <LockClosedIcon class="w-6 h-6 text-primary shrink-0" />
+                        <div>
+                            <div class="text-sm font-medium text-default">Connect for Backup Only</div>
+                            <div class="text-xs text-gray-400">Use a share someone gave you — no admin access needed</div>
                         </div>
                     </button>
                 </div>
@@ -40,8 +49,14 @@ Use Add Existing for a server someone else set up, one you configured directly i
 
             <!-- Step 2: Add existing server form -->
             <template v-else-if="step === 'form'">
-                <h2 class="text-lg font-semibold text-default mb-1">Add Existing Backup Server</h2>
-                <p class="text-xs text-gray-400 mb-4">Enter the connection details for your backup server and its share.</p>
+                <h2 class="text-lg font-semibold text-default mb-1">
+                    {{ accessMode === 'backup' ? 'Connect for Backup Only' : 'Add Existing Backup Server' }}
+                </h2>
+                <p class="text-xs text-gray-400 mb-4">
+                    {{ accessMode === 'backup'
+                        ? 'Enter the share details you were given. No admin password is stored, so this server cannot be managed or reconfigured from this computer.'
+                        : 'Enter the connection details for your backup server and its share.' }}
+                </p>
 
                 <!-- Discovered servers hint -->
                 <div v-if="discoveredUnregistered.length > 0" class="mb-4" data-tour="add-server-discovered">
@@ -63,7 +78,7 @@ Use Add Existing for a server someone else set up, one you configured directly i
                             class="w-full p-2 input-textlike rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                             placeholder="e.g. 192.168.2.100 or myserver.local" />
                     </div>
-                    <div class="grid grid-cols-2 gap-2">
+                    <div v-if="accessMode === 'admin'" class="grid grid-cols-2 gap-2">
                         <div>
                             <label class="text-xs font-medium text-gray-500 mb-1 block">Admin Username</label>
                             <input v-model="username" type="text"
@@ -84,7 +99,7 @@ Use Add Existing for a server someone else set up, one you configured directly i
                     </div>
 
                     <!-- Advanced: SSH Key Auth -->
-                    <details class="text-xs">
+                    <details v-if="accessMode === 'admin'" class="text-xs">
                         <summary class="cursor-pointer text-muted hover:text-default select-none font-medium">Advanced: Use SSH Key</summary>
                         <div class="mt-2 space-y-2 pl-2 border-l-2 border-neutral-200 dark:border-neutral-700">
                             <label class="flex items-center gap-2 cursor-pointer">
@@ -127,14 +142,14 @@ Use Add Existing for a server someone else set up, one you configured directly i
                             <input v-model="smbUser" type="text"
                                 class="w-full p-2 input-textlike rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                                 placeholder="backupuser" />
-                            <p class="text-[11px] text-gray-400 mt-0.5">Leave blank if same as admin</p>
+                            <p v-if="accessMode === 'admin'" class="text-[11px] text-gray-400 mt-0.5">Leave blank if same as admin</p>
                         </div>
                         <div>
                             <label class="text-xs font-medium text-gray-500 mb-1 block">SMB Password</label>
                             <div class="relative">
                                 <input v-model="smbPass" :type="showSmbPassword ? 'text' : 'password'"
                                     class="w-full p-2 pr-10 input-textlike rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                    placeholder="Leave blank if same" />
+                                    :placeholder="accessMode === 'admin' ? 'Leave blank if same' : 'Enter password'" />
                                 <button type="button" @click="showSmbPassword = !showSmbPassword"
                                     class="absolute right-3 top-1/2 -translate-y-1/2 text-muted">
                                     <EyeIcon v-if="!showSmbPassword" class="w-4 h-4" />
@@ -156,8 +171,7 @@ Use Add Existing for a server someone else set up, one you configured directly i
                 </div>
 
                 <div class="flex justify-between mt-5" data-tour="add-server-submit">
-                    <button class="btn btn-sm btn-outline-shadow h-fit" @click="step = 'choose'; error = ''">Back</button>
-                    <div class="flex gap-2">
+                    <button class="btn btn-sm btn-outline-shadow h-fit" @click="step = 'choose'; error = ''">Back</button>                    <div class="flex gap-2">
                         <button class="btn btn-sm btn-outline-shadow h-fit" @click="close">Cancel</button>
                         <button class="btn btn-sm btn-primary h-fit" :disabled="!canSubmit || testing"
                             @click="submit">
@@ -176,7 +190,14 @@ Use Add Existing for a server someone else set up, one you configured directly i
 
             <!-- Step 3: Configuring server -->
             <template v-else-if="step === 'configuring'">
-                <h2 class="text-lg font-semibold text-default mb-1">Configuring Server</h2>
+                <div class="flex items-start justify-between gap-2 mb-1">
+                    <h2 class="text-lg font-semibold text-default">Configuring Server</h2>
+                    <button v-if="error" type="button" aria-label="Close"
+                        class="-mt-1 -mr-1 p-1 rounded-md text-gray-400 hover:text-default hover:bg-neutral-100 dark:hover:bg-neutral-700 shrink-0"
+                        @click="close">
+                        <XMarkIcon class="w-4 h-4" />
+                    </button>
+                </div>
                 <p class="text-xs text-gray-400 mb-4">
                     Installing required software and registering the server. This may take a few minutes.
                 </p>
@@ -185,37 +206,67 @@ Use Add Existing for a server someone else set up, one you configured directly i
                     <!-- Progress steps -->
                     <div v-for="(ps, i) in progressSteps" :key="i"
                         class="flex items-start gap-2 text-xs"
-                        :class="ps.status === 'error' ? 'text-red-500' : ps.status === 'done' ? 'text-green-600 dark:text-green-400' : 'text-default'">
+                        :class="ps.status === 'error' ? 'text-red-500' : ps.status === 'warning' ? 'text-amber-600 dark:text-amber-400' : ps.status === 'done' ? 'text-green-600 dark:text-green-400' : 'text-default'">
                         <span class="shrink-0 mt-0.5">
                             <svg v-if="ps.status === 'active'" class="animate-spin w-3.5 h-3.5" viewBox="0 0 24 24" fill="none">
                                 <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
                                 <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
                             </svg>
                             <CheckCircleIcon v-else-if="ps.status === 'done'" class="w-3.5 h-3.5" />
-                            <ExclamationCircleIcon v-else-if="ps.status === 'error'" class="w-3.5 h-3.5" />
+                            <ExclamationCircleIcon v-else-if="ps.status === 'error' || ps.status === 'warning'" class="w-3.5 h-3.5" />
                             <span v-else class="inline-block w-3.5 h-3.5 rounded-full border border-current opacity-40" />
                         </span>
-                        <span>{{ ps.label }}</span>
+                        <span class="min-w-0">
+                            {{ ps.label }}
+                            <span v-if="ps.status === 'active' && currentActivity"
+                                class="block text-[11px] text-gray-400 truncate" :title="currentActivity">
+                                {{ currentActivity }}
+                            </span>
+                        </span>
                     </div>
                 </div>
 
                 <!-- Log output (collapsed by default) -->
-                <details v-if="setupLogs.length > 0" class="mb-4">
-                    <summary class="text-xs text-gray-400 cursor-pointer hover:text-default">
-                        Show detailed log ({{ setupLogs.length }} lines)
-                    </summary>
-                    <div class="mt-2 max-h-32 overflow-y-auto rounded-md bg-neutral-100 dark:bg-neutral-900 p-2 text-[11px] font-mono text-gray-600 dark:text-gray-400 space-y-0.5">
-                        <div v-for="(log, i) in setupLogs" :key="i">{{ log }}</div>
+                <div v-if="setupLogs.length > 0" class="mb-4">
+                    <button type="button" class="flex items-center gap-1 text-xs text-gray-400 hover:text-default"
+                        @click="toggleLogs">
+                        <ChevronRightIcon class="w-3 h-3 transition-transform" :class="showLogs ? 'rotate-90' : ''" />
+                        {{ showLogs ? 'Hide' : 'Show' }} detailed log ({{ setupLogs.length }} lines)
+                    </button>
+                    <div v-show="showLogs" ref="logBox"
+                        class="mt-2 max-h-48 overflow-y-auto rounded-md bg-neutral-100 dark:bg-neutral-900 p-2 text-[11px] font-mono text-gray-600 dark:text-gray-400 space-y-0.5">
+                        <div v-for="(log, i) in setupLogs" :key="i" class="whitespace-pre-wrap break-all">{{ log }}</div>
                     </div>
-                </details>
+                </div>
 
                 <div v-if="error" class="mt-3 text-xs text-red-500 bg-red-50 dark:bg-red-900/20 p-2 rounded-md">
                     {{ error }}
                 </div>
 
                 <div class="flex justify-end mt-4 gap-2">
-                    <button v-if="error" class="btn btn-sm btn-outline-shadow h-fit" @click="close">Close</button>
+                    <button v-if="error" class="btn btn-sm btn-outline-shadow h-fit" @click="backToForm">Back</button>
                     <button v-if="error" class="btn btn-sm btn-primary h-fit" @click="retrySetup">Retry</button>
+                </div>
+            </template>
+
+            <!-- Step 4: Server saved, but the share does not exist yet -->
+            <template v-else-if="step === 'share-missing'">
+                <h2 class="text-lg font-semibold text-default mb-1">Server Added — Share Not Found</h2>
+                <p class="text-xs text-gray-400 mb-4">
+                    <strong class="text-default">{{ nickname || host }}</strong> is saved and ready to manage, but it has
+                    no Samba share named <strong class="text-default">{{ shareName }}</strong> yet. You need a share
+                    before you can back up to this server.
+                </p>
+
+                <div class="flex items-start gap-2 px-3 py-2.5 rounded-lg bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800/30 text-xs text-amber-700 dark:text-amber-300 mb-4">
+                    <ExclamationCircleIcon class="w-4 h-4 shrink-0 mt-0.5" />
+                    <span>Create the share now and we'll take you to this server's management page, or skip and add
+                        one later from Manage Server.</span>
+                </div>
+
+                <div class="flex justify-end gap-2">
+                    <button class="btn btn-sm btn-outline-shadow h-fit" @click="close">Skip for Now</button>
+                    <button class="btn btn-sm btn-primary h-fit" @click="goCreateShare">Create the Share Now</button>
                 </div>
             </template>
         </div>
@@ -223,9 +274,10 @@ Use Add Existing for a server someone else set up, one you configured directly i
 </template>
 
 <script setup lang="ts">
-import { ref, computed, inject } from 'vue'
-import { EyeIcon, EyeSlashIcon } from '@heroicons/vue/20/solid'
-import { WrenchScrewdriverIcon, ServerStackIcon, CheckCircleIcon, ExclamationCircleIcon } from '@heroicons/vue/24/outline'
+import { ref, computed, inject, nextTick, onBeforeUnmount } from 'vue'
+import { useRouter } from 'vue-router'
+import { EyeIcon, EyeSlashIcon, ChevronRightIcon } from '@heroicons/vue/20/solid'
+import { WrenchScrewdriverIcon, ServerStackIcon, CheckCircleIcon, ExclamationCircleIcon, LockClosedIcon, XMarkIcon } from '@heroicons/vue/24/outline'
 import { Modal } from '@45drives/houston-common-ui'
 import { CommanderToolTip } from '../commander'
 import { discoveryStateInjectionKey } from '../../keys/injection-keys'
@@ -239,11 +291,16 @@ const emit = defineEmits<{
     'added': []
 }>()
 
+const router = useRouter()
 const discoveryState = inject<DiscoveryState>(discoveryStateInjectionKey)!
 const { addServer, refresh } = useServers()
 
 const show = ref(false)
-const step = ref<'choose' | 'form' | 'configuring'>('choose')
+const step = ref<'choose' | 'form' | 'configuring' | 'share-missing'>('choose')
+const savedServerId = ref('')
+// 'backup' stores share credentials only — no admin password, so this install
+// genuinely cannot manage or reconfigure the server.
+const accessMode = ref<'admin' | 'backup'>('admin')
 const host = ref('')
 const username = ref('root')
 const password = ref('')
@@ -267,13 +324,48 @@ async function browseSshKey() {
 // Configuring step state
 interface ProgressStep {
     label: string
-    status: 'pending' | 'active' | 'done' | 'error'
+    status: 'pending' | 'active' | 'done' | 'error' | 'warning'
 }
 const progressSteps = ref<ProgressStep[]>([])
 const setupLogs = ref<string[]>([])
+const currentActivity = ref('')
+const showLogs = ref(false)
+const logBox = ref<HTMLElement | null>(null)
+
+type SetupProgress = { host: string; step: string; label: string; line: string }
+
+function scrollLogsToBottom() {
+    nextTick(() => { if (logBox.value) logBox.value.scrollTop = logBox.value.scrollHeight })
+}
+
+function toggleLogs() {
+    showLogs.value = !showLogs.value
+    if (showLogs.value) scrollLogsToBottom()
+}
+
+function handleSetupProgress(_e: unknown, p: SetupProgress) {
+    if (!p || p.host !== host.value.trim()) return
+    currentActivity.value = p.label
+    setupLogs.value.push(p.line)
+    if (setupLogs.value.length > 1000) setupLogs.value.splice(0, setupLogs.value.length - 1000)
+    if (showLogs.value) scrollLogsToBottom()
+}
+
+function listenForProgress() {
+    window.electron?.ipcRenderer.removeAllListeners('setup-progress')
+    window.electron?.ipcRenderer.on('setup-progress', handleSetupProgress)
+}
+
+function stopListeningForProgress() {
+    window.electron?.ipcRenderer.removeListener('setup-progress', handleSetupProgress)
+}
+
+onBeforeUnmount(stopListeningForProgress)
 
 const canSubmit = computed(() => {
-    if (!host.value.trim() || !username.value.trim() || !shareName.value.trim()) return false
+    if (!host.value.trim() || !shareName.value.trim()) return false
+    if (accessMode.value === 'backup') return !!smbUser.value.trim() && !!smbPass.value
+    if (!username.value.trim()) return false
     if (authMethod.value === 'key') return !!sshKeyPath.value
     return !!password.value
 })
@@ -303,6 +395,12 @@ async function submit() {
     testing.value = true
 
     try {
+        if (accessMode.value === 'backup') {
+            testing.value = false
+            await runBackupOnlySetup()
+            return
+        }
+
         // Test SSH connection
         const result = await window.electron.ipcRenderer.invoke('verify-ssh-credentials', {
             host: host.value.trim(),
@@ -332,6 +430,8 @@ async function runServerSetup() {
     step.value = 'configuring'
     error.value = ''
     setupLogs.value = []
+    currentActivity.value = ''
+    listenForProgress()
     progressSteps.value = [
         { label: 'Checking & installing server dependencies…', status: 'active' },
         { label: 'Waiting for server API to become available…', status: 'pending' },
@@ -359,12 +459,14 @@ async function runServerSetup() {
             sshPassphrase: sshPassphrase.value || undefined,
         })
 
+        // Streaming may be unavailable (e.g. renderer reload mid-run); fall back to the batch copy.
+        if (!setupLogs.value.length && installResult?.logs) setupLogs.value = installResult.logs
         if (!installResult?.success) {
             setStepStatus(0, 'error')
             error.value = installResult?.error || 'Failed to install server dependencies.'
+            showLogs.value = true
             return
         }
-        if (installResult.logs) setupLogs.value = installResult.logs
         setStepStatus(0, 'done')
 
         // Step 2: Wait for broadcaster API to become available
@@ -393,6 +495,7 @@ async function runServerSetup() {
 
         // Step 4: Validate SMB credentials
         setStepStatus(3, 'active')
+        let shareMissing = false
         if (share) {
             const smbResult = await window.electron.ipcRenderer.invoke('backup:validate-smb-credentials', {
                 host: h,
@@ -401,17 +504,24 @@ async function runServerSetup() {
                 password: resolvedSmbPass,
             })
             if (!smbResult?.valid) {
-                setStepStatus(3, 'error')
-                error.value = smbResult?.error || `Could not authenticate to share "${share}". Check the SMB username and password.`
-                return
+                // A missing share is recoverable — save the server and offer to create it.
+                if (smbResult?.reason === 'share') {
+                    shareMissing = true
+                    progressSteps.value[3].label = `Share "${share}" does not exist on this server yet`
+                    setStepStatus(3, 'warning')
+                } else {
+                    setStepStatus(3, 'error')
+                    error.value = smbResult?.error || `Could not authenticate to share "${share}". Check the SMB username and password.`
+                    return
+                }
             }
         }
-        setStepStatus(3, 'done')
+        if (!shareMissing) setStepStatus(3, 'done')
 
         // Step 5: Save unified server entry and inject into discovery
         setStepStatus(4, 'active')
 
-        await addServer({
+        const saved = await addServer({
             host: h,
             shareName: share,
             username: u,
@@ -431,7 +541,13 @@ async function runServerSetup() {
         })
 
         setStepStatus(4, 'done')
+        savedServerId.value = saved?.id ?? ''
         emit('added')
+
+        if (shareMissing) {
+            step.value = 'share-missing'
+            return
+        }
 
         // Auto-close after brief success display
         setTimeout(() => close(), 1200)
@@ -440,11 +556,100 @@ async function runServerSetup() {
         // Mark current active step as error
         const activeIdx = progressSteps.value.findIndex(s => s.status === 'active')
         if (activeIdx >= 0) setStepStatus(activeIdx, 'error')
+        if (setupLogs.value.length) showLogs.value = true
+    } finally {
+        stopListeningForProgress()
+        currentActivity.value = ''
     }
 }
 
 function retrySetup() {
-    runServerSetup()
+    if (accessMode.value === 'backup') runBackupOnlySetup()
+    else runServerSetup()
+}
+
+function backToForm() {
+    error.value = ''
+    progressSteps.value = []
+    setupLogs.value = []
+    step.value = 'form'
+}
+
+/**
+ * Backup-only path: validate the share and save it. No SSH, no bootstrap, no
+ * app registration — none of which we could do without an admin credential.
+ */
+async function runBackupOnlySetup() {
+    step.value = 'configuring'
+    error.value = ''
+    setupLogs.value = []
+    progressSteps.value = [
+        { label: 'Validating Samba share credentials…', status: 'active' },
+        { label: 'Saving credentials & finalizing…', status: 'pending' },
+    ]
+
+    const h = host.value.trim()
+    const share = shareName.value.trim()
+    const name = nickname.value.trim() || h
+    const user = smbUser.value.trim()
+
+    try {
+        let shareMissing = false
+        const smbResult = await window.electron.ipcRenderer.invoke('backup:validate-smb-credentials', {
+            host: h,
+            share,
+            username: user,
+            password: smbPass.value,
+        })
+        if (!smbResult?.valid) {
+            if (smbResult?.reason === 'share') {
+                shareMissing = true
+                progressSteps.value[0].label = `Share "${share}" does not exist on this server`
+                setStepStatus(0, 'warning')
+            } else {
+                setStepStatus(0, 'error')
+                error.value = smbResult?.error || `Could not connect to share "${share}". Check the share name, username, and password.`
+                return
+            }
+        } else {
+            setStepStatus(0, 'done')
+        }
+
+        setStepStatus(1, 'active')
+        const saved = await addServer({
+            host: h,
+            shareName: share,
+            username: user,
+            password: '',
+            name,
+            favorite: false,
+            smbUser: user,
+            smbPass: smbPass.value,
+        })
+
+        setStepStatus(1, 'done')
+        savedServerId.value = saved?.id ?? ''
+        emit('added')
+
+        if (shareMissing) {
+            // No admin access here, so there is nothing this user can do to fix it.
+            setStepStatus(0, 'error')
+            error.value = `The share "${share}" was not found on ${h}. Ask whoever administers this server to create it, then try again.`
+            return
+        }
+
+        setTimeout(() => close(), 1200)
+    } catch (e: any) {
+        error.value = e?.message || 'An unexpected error occurred.'
+        const activeIdx = progressSteps.value.findIndex(s => s.status === 'active')
+        if (activeIdx >= 0) setStepStatus(activeIdx, 'error')
+    }
+}
+
+function goCreateShare() {
+    const id = savedServerId.value
+    close()
+    if (id) router.push({ name: 'server-manage', params: { id }, query: { createShare: shareName.value.trim() } })
 }
 
 function open() {
@@ -465,6 +670,8 @@ function open() {
     testing.value = false
     progressSteps.value = []
     setupLogs.value = []
+    savedServerId.value = ''
+    accessMode.value = 'admin'
     show.value = true
     maybeStartTour('choose')
 }
@@ -487,6 +694,8 @@ function openForServer(srv: { ip: string; name?: string; shareName?: string }) {
     testing.value = false
     progressSteps.value = []
     setupLogs.value = []
+    savedServerId.value = ''
+    accessMode.value = 'admin'
     show.value = true
     maybeStartTour('form')
 }

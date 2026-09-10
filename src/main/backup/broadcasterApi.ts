@@ -33,7 +33,9 @@ async function getToken(host: string, username: string, password: string): Promi
     const res = await fetch(`${baseUrl(host)}/api/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, password }),
+      // Binds this install's ID into the token so the server can scope our
+      // backup configs to us rather than trusting the request body.
+      body: JSON.stringify({ username, password, clientId: getClientId() }),
       signal: controller.signal,
     });
     clearTimeout(timer);
@@ -109,6 +111,50 @@ export async function removeBackupConfig(
     const res = await fetch(`${baseUrl(host)}/api/storage-wizard/backup-configs/${encodeURIComponent(uuid)}`, {
       method: 'DELETE',
       headers: { 'Authorization': `Bearer ${token}` },
+      signal: controller.signal,
+    });
+    clearTimeout(timer);
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+export interface AuditEntry {
+  action: string;
+  target?: string;
+  outcome: 'success' | 'failure';
+  detail?: string;
+  /** 'ssh' for actions the client performed directly, 'api' for server-executed */
+  source?: 'ssh' | 'api';
+}
+
+/**
+ * Record a privileged management action on the server (best-effort).
+ *
+ * Self-reported, so it is a forensic trail rather than an enforcement point —
+ * a modified client could omit it. It becomes authoritative once management
+ * operations run through the broadcaster API instead of SSH.
+ */
+export async function reportAuditEvent(
+  host: string,
+  username: string,
+  password: string,
+  entry: AuditEntry
+): Promise<boolean> {
+  try {
+    const token = await getToken(host, username, password);
+    if (!token) return false;
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), API_TIMEOUT_MS);
+    const res = await fetch(`${baseUrl(host)}/api/storage-wizard/audit`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+      body: JSON.stringify({ source: 'ssh', ...entry }),
       signal: controller.signal,
     });
     clearTimeout(timer);

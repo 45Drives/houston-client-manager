@@ -10,6 +10,91 @@ import { logEvent, errMsg } from './logging';
 import { describeConnectionError, failureLine } from '../shared/connectionErrors';
 import { HOUSTON_PACKAGE_NAMES, isBelowMinimum } from '../shared/serverPackages';
 
+// ── Long-running remote command watchdog ─────────────────────────────────────
+
+/** No output for this long means the remote command is wedged (package manager
+ *  lock, a prompt we can't answer, or a silently dropped TCP session). */
+const REMOTE_IDLE_TIMEOUT_MS = 6 * 60_000;
+/** Absolute ceiling, even if the remote keeps printing progress. */
+const REMOTE_MAX_RUNTIME_MS = 60 * 60_000;
+/** Detect a half-open connection instead of blocking forever on a dead socket. */
+export const SSH_KEEPALIVE = { keepaliveInterval: 15_000, keepaliveCountMax: 12 };
+
+type ExecOptions = NonNullable<Parameters<NodeSSH['execCommand']>[1]>;
+
+/**
+ * `ssh.execCommand` never settles if the remote process hangs, which leaves the
+ * setup UI spinning indefinitely. Abort on an output stall or a hard runtime cap
+ * so the caller gets a real, actionable error.
+ */
+async function execWithWatchdog(
+  ssh: NodeSSH,
+  command: string,
+  options: ExecOptions,
+  ctx: { host: string; what: string; onNotice?: (line: string) => void },
+) {
+  let settled = false;
+  let idleTimer: NodeJS.Timeout | undefined;
+  let hardTimer: NodeJS.Timeout | undefined;
+  let rejectWatchdog: (err: Error) => void = () => { };
+
+  const clearTimers = () => {
+    if (idleTimer) clearTimeout(idleTimer);
+    if (hardTimer) clearTimeout(hardTimer);
+  };
+
+  const abort = (reason: string) => {
+    if (settled) return;
+    settled = true;
+    clearTimers();
+    ctx.onNotice?.(`[ERROR] ${reason}`);
+    logEvent('ssh:exec.timeout', { host: ctx.host, what: ctx.what, reason }, 'error');
+    try { ssh.dispose(); } catch { /* socket is already gone */ }
+    rejectWatchdog(new Error(reason));
+  };
+
+  const armIdle = () => {
+    if (settled) return;
+    if (idleTimer) clearTimeout(idleTimer);
+    idleTimer = setTimeout(
+      () => abort(
+        `${ctx.what} on ${ctx.host} stopped responding — no output for ` +
+        `${Math.round(REMOTE_IDLE_TIMEOUT_MS / 60_000)} minutes. This usually means the ` +
+        `server's package manager is locked by another update, is waiting on a prompt, ` +
+        `or lost its connection. Check for a running apt/dnf process on the server and try again.`,
+      ),
+      REMOTE_IDLE_TIMEOUT_MS,
+    );
+  };
+
+  const watchdog = new Promise<never>((_, reject) => { rejectWatchdog = reject; });
+
+  hardTimer = setTimeout(
+    () => abort(
+      `${ctx.what} on ${ctx.host} exceeded ${Math.round(REMOTE_MAX_RUNTIME_MS / 60_000)} minutes and was cancelled.`,
+    ),
+    REMOTE_MAX_RUNTIME_MS,
+  );
+  armIdle();
+
+  const wrapped: ExecOptions = {
+    ...options,
+    onStdout(chunk) { armIdle(); options.onStdout?.(chunk); },
+    onStderr(chunk) { armIdle(); options.onStderr?.(chunk); },
+  };
+
+  try {
+    const execPromise = ssh.execCommand(command, wrapped);
+    // The losing side of the race would otherwise surface as an unhandled rejection.
+    execPromise.catch(() => { /* reported through the race below or by the watchdog */ });
+    const result = await Promise.race([execPromise, watchdog]);
+    settled = true;
+    return result;
+  } finally {
+    clearTimers();
+  }
+}
+
 // ── Shared SSH auth types ────────────────────────────────────────────────────
 
 export type SshAuthMethod = 'password' | 'key';
@@ -513,6 +598,7 @@ export async function ensureHoustonPackages(
     username,
     privateKey: fs.readFileSync(privateKeyPath, "utf8"),
     readyTimeout: loadSettings().sshTimeoutMs,
+    ...SSH_KEEPALIVE,
   });
 
   logEvent('ssh:ensure-houston-packages', { host, username, packages });
@@ -520,8 +606,21 @@ export async function ensureHoustonPackages(
   const pkgList = packages.join(' ');
   const script = `
 set -eo pipefail
+export DEBIAN_FRONTEND=noninteractive
+avail_mb="$(df -Pm / | awk 'NR==2 {print $4}')"
+if [ -n "$avail_mb" ] && [ "$avail_mb" -lt 1024 ]; then
+  echo "[ERROR] Only \${avail_mb}MB free on / — at least 1024MB is required to install the 45Drives packages."
+  exit 1
+fi
 if [ -r /etc/os-release ]; then . /etc/os-release; else echo "[ERROR] /etc/os-release not found"; exit 1; fi
 OS_LIKE="$ID_LIKE $ID"
+
+# A held package-manager lock is the usual cause of a setup that appears frozen.
+for lock in /var/lib/dpkg/lock-frontend /var/run/dnf.pid /var/run/yum.pid; do
+  if [ -e "$lock" ] && command -v fuser >/dev/null 2>&1 && fuser "$lock" >/dev/null 2>&1; then
+    echo "[WARN] Another package manager is running (holding $lock) — waiting for it to finish."
+  fi
+done
 
 case "$OS_LIKE" in
   *rhel*|*fedora*|*centos*)
@@ -571,7 +670,7 @@ case "$OS_LIKE" in
         exit 1
       fi
       apt-get update -y || true
-      apt-get install -y ca-certificates gnupg curl wget
+      apt-get install -y -o DPkg::Lock::Timeout=600 ca-certificates gnupg curl wget
       wget -qO - https://repo.45drives.com/key/gpg.asc | gpg --pinentry-mode loopback --batch --yes --dearmor -o /usr/share/keyrings/45drives-archive-keyring.gpg
       # 45Drives ships a .list helper for the enterprise repo only, so build the community one here.
       repo_url="https://repo.45drives.com/community/$ID"
@@ -588,7 +687,7 @@ case "$OS_LIKE" in
     fi
     apt-get update -y
     echo "[INFO] Installing: ${pkgList}"
-    apt-get install -y ${pkgList}
+    apt-get install -y -o DPkg::Lock::Timeout=600 ${pkgList}
     ;;
   *)
     echo "[ERROR] Unsupported OS: ID=$ID ID_LIKE=$ID_LIKE"
@@ -603,7 +702,8 @@ echo "[INFO] 45Drives packages installed."
   const scriptRemotePath = "/tmp/ensure-houston-packages.sh";
   await ssh.execCommand(`cat > ${scriptRemotePath}`, { stdin: script });
 
-  const result = await ssh.execCommand(
+  const result = await execWithWatchdog(
+    ssh,
     `sudo -S -p '' bash -c 'tr -d "\\r" < "${scriptRemotePath}" | bash'`,
     {
       cwd: "/tmp",
@@ -621,6 +721,7 @@ echo "[INFO] 45Drives packages installed."
         onLine?.(text, "stderr");
       },
     },
+    { host, what: 'Package installation', onNotice: (l) => onLine?.(l, "stderr") },
   );
 
   await ssh.execCommand(`rm -f ${scriptRemotePath}`);
@@ -658,13 +759,15 @@ export async function runBootstrapScript(
     username,
     privateKey: fs.readFileSync(privateKeyPath, "utf8"),
     readyTimeout: loadSettings().sshTimeoutMs,
+    ...SSH_KEEPALIVE,
   });
 
   await ssh.putFile(scriptLocalPath, scriptRemotePath);
 
   let rebootRequired = false;
 
-  const result = await ssh.execCommand(
+  const result = await execWithWatchdog(
+    ssh,
     `sudo -S -p '' bash -c 'tr -d "\\r" < "${scriptRemotePath}" | bash'`,
     {
       cwd: "/tmp",
@@ -695,6 +798,7 @@ export async function runBootstrapScript(
         onLine?.(text, "stderr");
       },
     },
+    { host, what: 'Server setup', onNotice: (l) => onLine?.(l, "stderr") },
   );
 
   ssh.dispose();
@@ -702,7 +806,8 @@ export async function runBootstrapScript(
   if (typeof result.code === "number" && result.code !== 0) {
     logEvent('ssh:bootstrap.error', { host, username, exitCode: result.code }, 'error');
     throw new Error(
-      `Bootstrap script exited with code ${result.code} (host ${host}).`
+      `Bootstrap script exited with code ${result.code} (host ${host}). ` +
+      `Full output is on the server at /var/log/45drives/bootstrap-super-simple-*.log.`
     );
   }
 

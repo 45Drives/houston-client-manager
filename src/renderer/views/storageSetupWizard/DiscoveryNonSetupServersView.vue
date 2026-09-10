@@ -102,6 +102,9 @@
             </svg>
             <span class="text-base">{{ statusMessage }}</span>
           </div>
+          <p v-if="isInstalling && currentActivity" class="mt-1 text-sm text-muted truncate" :title="currentActivity">
+            {{ currentActivity }}
+          </p>
           <p v-else-if="statusMessage" class="text-base">
             {{ statusMessage }}
             <br />
@@ -113,6 +116,19 @@
         4.) Check if the server has internet access. ping google.ca
         `" />
           </p>
+        </div>
+
+        <!-- Live setup log -->
+        <div v-if="setupLogs.length" class="mt-2">
+          <button type="button" class="flex items-center gap-1 text-sm text-muted hover:text-default"
+            @click="toggleLogs">
+            <ChevronRightIcon class="w-4 h-4 transition-transform" :class="showLogs ? 'rotate-90' : ''" />
+            {{ showLogs ? 'Hide' : 'Show' }} detailed log ({{ setupLogs.length }} lines)
+          </button>
+          <div v-show="showLogs" ref="logBox"
+            class="mt-2 max-h-56 overflow-y-auto rounded-md bg-neutral-100 dark:bg-neutral-900 p-2 text-xs font-mono text-gray-600 dark:text-gray-400 space-y-0.5 text-left">
+            <div v-for="(log, i) in setupLogs" :key="i" class="whitespace-pre-wrap break-all">{{ log }}</div>
+          </div>
         </div>
 
       </div>
@@ -144,9 +160,9 @@
 import { CardContainer, reportError } from '@45drives/houston-common-ui'
 import { useWizardSteps, useEnterToAdvance } from '@45drives/houston-common-ui';
 import { IPCRouter } from '@45drives/houston-common-lib';
-import { EyeIcon, EyeSlashIcon } from "@heroicons/vue/20/solid";
+import { EyeIcon, EyeSlashIcon, ChevronRightIcon } from "@heroicons/vue/20/solid";
 import { Server, DiscoveryState } from '../../types';
-import { computed, inject, onBeforeUnmount, onMounted, ref, watch, Ref } from 'vue';
+import { computed, inject, onBeforeUnmount, onMounted, ref, watch, nextTick, Ref } from 'vue';
 import { useRouter } from 'vue-router'
 import { CommanderToolTip } from '../../components/commander';
 import { useHeader } from '../../composables/useHeader'
@@ -166,6 +182,40 @@ const showPassword = ref(false);
 const togglePassword = () => { showPassword.value = !showPassword.value; };
 const statusMessage = ref('');
 const isInstalling = ref(false);
+const setupLogs = ref<string[]>([]);
+const currentActivity = ref('');
+const showLogs = ref(false);
+const logBox = ref<HTMLElement | null>(null);
+
+type SetupProgress = { host: string; step: string; label: string; line: string };
+
+function scrollLogsToBottom() {
+  nextTick(() => { if (logBox.value) logBox.value.scrollTop = logBox.value.scrollHeight });
+}
+
+function toggleLogs() {
+  showLogs.value = !showLogs.value;
+  if (showLogs.value) scrollLogsToBottom();
+}
+
+function handleSetupProgress(_e: unknown, p: SetupProgress) {
+  if (!p || p.host !== effectiveIp.value) return;
+  currentActivity.value = p.label;
+  setupLogs.value.push(p.line);
+  if (setupLogs.value.length > 1000) setupLogs.value.splice(0, setupLogs.value.length - 1000);
+  if (showLogs.value) scrollLogsToBottom();
+}
+
+function listenForProgress() {
+  window.electron?.ipcRenderer.removeAllListeners('setup-progress');
+  window.electron?.ipcRenderer.on('setup-progress', handleSetupProgress);
+}
+
+function stopListeningForProgress() {
+  window.electron?.ipcRenderer.removeListener('setup-progress', handleSetupProgress);
+}
+
+onBeforeUnmount(stopListeningForProgress);
 
 const { completeCurrentStep, unCompleteCurrentStep, prevStep, reset } = useWizardSteps("setup");
 
@@ -257,6 +307,9 @@ const installModule = async (
   pass: string
 ): Promise<InstallResult> => {
   isInstalling.value = true;
+  setupLogs.value = [];
+  currentActivity.value = '';
+  listenForProgress();
   statusMessage.value = "Connecting to server, uploading SSH key and installing packages… This may take several minutes.";
 
   try {
@@ -271,6 +324,7 @@ const installModule = async (
     console.debug("installModule result:", result);
     if (!result.success) {
       statusMessage.value = '';
+      if (setupLogs.value.length) showLogs.value = true;
       reportError(new Error(friendlySshError(result.error)));
     } else if (result.reboot) {
       statusMessage.value = "Setup installed. Server will reboot to finish enabling ZFS…";
@@ -282,11 +336,14 @@ const installModule = async (
   } catch (err: unknown) {
     console.error("installModule failed:", err);
     statusMessage.value = '';
+    if (setupLogs.value.length) showLogs.value = true;
     const raw = err instanceof Error ? err.message : String(err);
     reportError(new Error(friendlySshError(raw)));
     return { success: false, error: raw };
   } finally {
     isInstalling.value = false;
+    currentActivity.value = '';
+    stopListeningForProgress();
   }
 };
 

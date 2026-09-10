@@ -335,19 +335,27 @@ const remoteView = ref<'backups' | 'restore' | 'snapshots'>('backups');
 const restoreConnected = ref(false);
 const restoreUsername = ref('');
 
-// Compat: showRestoreView used in disconnect logic
-const showRestoreView = computed(() => remoteView.value !== 'backups');
+async function disconnect() {
+    const ip = selectedIp.value || currentServer?.value?.ip || '';
+    // Grab the webview before the state reset unmounts it, and start the Cockpit
+    // teardown now — it hides itself synchronously so its login page can't flash in.
+    const cockpit = cockpitRef.value;
+    const teardown = cockpit
+        ? cockpit.logoutFromCurrentServer()
+        : ip
+            // Restore/Snapshot view was open, so the webview is already unmounted —
+            // drop the Cockpit session directly instead.
+            ? window.electron?.ipcRenderer.invoke('session:clear-origin', `https://${ip}:9090`)
+            : undefined;
 
-function disconnect() {
-    if (showRestoreView.value) {
-        remoteView.value = 'backups';
-    } else {
-        cockpitRef.value?.logoutFromCurrentServer();
-    }
+    // All in one tick so the webview is never re-mounted mid-teardown.
     restoreConnected.value = false;
     restoreUsername.value = '';
+    remoteView.value = 'backups';
     if (currentServer) currentServer.value = null;
     selectedIp.value = '';
+
+    try { await teardown; } catch { /* teardown is best-effort */ }
 }
 
 const handleBackUpTaskSelected = (tasks: BackUpTask[]) => {
@@ -471,7 +479,7 @@ async function forgetActive() {
     await window.electron?.ipcRenderer.invoke('servers:remove', activeCredId.value);
     activeCredId.value = null;
     await loadSavedServers();
-    cockpitRef.value?.logoutFromCurrentServer();
+    await disconnect();
 }
 
 async function maybeAutoConnect(forceModalIfNoSaved = false) {

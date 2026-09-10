@@ -32,15 +32,15 @@ The page is read-only until you click Edit. In edit mode changes are collected i
                         </div>
                     </div>
                     <div class="flex items-center gap-2 shrink-0" data-tour="sm-actions">
-                        <button v-if="!editing" class="btn btn-sm btn-secondary h-fit inline-flex items-center gap-1 whitespace-nowrap" @click="editing = true"
+                        <button v-if="!editing && hasAdminAccess" class="btn btn-sm btn-secondary h-fit inline-flex items-center gap-1 whitespace-nowrap" @click="editing = true"
                             :disabled="probing">
                             <PencilIcon class="w-3.5 h-3.5" />
                             Edit
                         </button>
-                        <button v-if="editing" class="btn btn-sm btn-secondary h-fit inline-flex items-center gap-1 whitespace-nowrap" @click="cancelEditing">
+                        <button v-if="editing && hasAdminAccess" class="btn btn-sm btn-secondary h-fit inline-flex items-center gap-1 whitespace-nowrap" @click="cancelEditing">
                             Cancel
                         </button>
-                        <button class="btn btn-sm btn-secondary h-fit inline-flex items-center gap-1 whitespace-nowrap" @click="probeServer" :disabled="probing">
+                        <button v-if="hasAdminAccess" class="btn btn-sm btn-secondary h-fit inline-flex items-center gap-1 whitespace-nowrap" @click="probeServer" :disabled="probing">
                             <ArrowPathIcon class="w-3.5 h-3.5" :class="{ 'animate-spin': probing }" />
                             Refresh
                         </button>
@@ -48,7 +48,7 @@ The page is read-only until you click Edit. In edit mode changes are collected i
                 </div>
 
                 <!-- Tab navigation -->
-                <div class="flex items-center gap-0 border-b border-neutral-200 dark:border-neutral-700"
+                <div v-if="hasAdminAccess" class="flex items-center gap-0 border-b border-neutral-200 dark:border-neutral-700"
                     data-tour="sm-tabs"
                     :class="{ 'opacity-40 pointer-events-none': rebooting }">
                     <button v-for="tab in tabs" :key="tab.id" :data-tour="'sm-tab-' + tab.id"
@@ -62,8 +62,35 @@ The page is read-only until you click Edit. In edit mode changes are collected i
                     </button>
                 </div>
 
+                <!-- Backup-only connection: no admin credential is stored for this server -->
+                <div v-if="!hasAdminAccess"
+                    class="rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 p-6 space-y-3">
+                    <div class="flex items-start gap-3">
+                        <LockClosedIcon class="w-5 h-5 text-gray-400 shrink-0 mt-0.5" />
+                        <div class="space-y-2 min-w-0">
+                            <p class="text-sm font-medium text-default">You don't have admin access to this server</p>
+                            <p class="text-xs text-gray-400">
+                                This server was added for backups only, so no administrator password is stored on
+                                this computer. Backups to
+                                <strong class="text-default">{{ server?.shareName || 'its share' }}</strong>
+                                work normally, but its storage, users, and shares can only be changed by whoever
+                                administers it.
+                            </p>
+                            <p class="text-xs text-gray-400">
+                                If you are the administrator, remove this connection and re-add it with
+                                <strong class="text-default">Add Existing Backup Server</strong>.
+                            </p>
+                        </div>
+                    </div>
+                    <div class="flex justify-end">
+                        <button class="btn btn-sm btn-secondary h-fit" @click="router.push({ name: 'dashboard' })">
+                            Back to Dashboard
+                        </button>
+                    </div>
+                </div>
+
                 <!-- Rebooting state -->
-                <div v-if="rebooting" class="py-16 text-center text-gray-400 text-sm space-y-3">
+                <div v-else-if="rebooting" class="py-16 text-center text-gray-400 text-sm space-y-3">
                     <ArrowPathIcon class="w-8 h-8 animate-spin mx-auto text-amber-500" />
                     <p class="text-sm font-medium text-amber-500">Server is rebooting…</p>
                     <p class="text-xs text-gray-400">Waiting for {{ server?.name || server?.host }} to come back online</p>
@@ -1021,7 +1048,7 @@ import {
     ArrowLeftIcon, ArrowPathIcon, PencilIcon, ServerIcon,
     ExclamationTriangleIcon, XMarkIcon, PlusIcon,
     GlobeAltIcon, CircleStackIcon, UsersIcon, ShareIcon, CpuChipIcon,
-    LinkIcon,
+    LinkIcon, LockClosedIcon,
 } from '@heroicons/vue/24/outline'
 import { useHeader } from '../composables/useHeader'
 import { useServers, type StoredServer } from '../composables/useServers'
@@ -1200,6 +1227,9 @@ const tabTours: Record<Exclude<TabId, 'connection'>, { id: string; steps: TourSt
 const server = computed<StoredServer | undefined>(() =>
     savedServers.value.find(s => s.id === route.params.id)
 )
+
+// Management needs an admin credential we do not have for backup-only servers.
+const hasAdminAccess = computed(() => server.value?.hasAdminCreds !== false)
 
 const probing = ref(false)
 const probeError = ref('')
@@ -1920,9 +1950,18 @@ async function doSetSambaPassword() {
 // ── Lifecycle ──────────────────────────────────────────────────────────────
 
 onMounted(() => {
-    if (server.value) {
+    if (server.value && hasAdminAccess.value) {
         probeServer()
         loadVpnStatus()
+    }
+
+    // Deep link from Add Server when the requested share turned out not to exist.
+    const wanted = route.query.createShare
+    if (typeof wanted === 'string' && wanted) {
+        activeTab.value = 'samba'
+        newShare.name = wanted
+        showAddShare.value = true
+        router.replace({ query: { ...route.query, createShare: undefined } })
     }
 })
 

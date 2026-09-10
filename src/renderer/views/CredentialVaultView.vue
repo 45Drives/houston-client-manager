@@ -149,8 +149,9 @@
                 <div class="text-blue-700 dark:text-blue-300 space-y-1">
                     <p><strong>"Stale"</strong> means the saved login hasn't been used in over 30 days.
                         It gets updated whenever a backup runs or you connect to that server.</p>
-                    <p><strong>"Orphaned"</strong> means we couldn't find this server on your network.
-                        It may be turned off, renamed, or no longer connected.</p>
+                    <p><strong>"Orphaned"</strong> means we couldn't find this server on your network,
+                        it didn't answer a connection test, and it hasn't been used in the last 7 days.
+                        It may be turned off, renamed, on a different network, or no longer connected.</p>
                 </div>
             </div>
         </div>
@@ -342,6 +343,7 @@ const statusFilters = [
 const allCreds = computed(() => allServersList.value)
 
 const THIRTY_DAYS = 30 * 24 * 60 * 60 * 1000
+const SEVEN_DAYS = 7 * 24 * 60 * 60 * 1000
 
 const hostCount = computed(() => new Set(allCreds.value.map(c => c.host)).size)
 
@@ -349,7 +351,18 @@ function credStatus(cred: CredEntry): 'active' | 'stale' | 'orphaned' | 'hostnam
     const isDiscovered = discoveryState.servers.some(s =>
         s.ip === cred.host || s.name === cred.host || (cred.ip && s.ip === cred.ip)
     )
-    if (!isDiscovered && discoveryState.servers.length > 0) return 'orphaned'
+
+    // Discovery (mDNS + subnet sweep) only sees the local subnet, so absence from it is weak
+    // evidence. Only report orphaned when nothing else proves the server is still there.
+    const reachable = hostReachability.value[cred.host]
+    const recentlyUsed = cred.lastUsedAt !== undefined && Date.now() - cred.lastUsedAt < SEVEN_DAYS
+    if (
+        !isDiscovered &&
+        !discoveryState.loading &&
+        discoveryState.servers.length > 0 &&
+        reachable !== true &&
+        !recentlyUsed
+    ) return 'orphaned'
 
     // Check if stored hostname no longer matches the discovered server's current name
     const storedHostname = (cred as any).hostname as string | undefined
@@ -437,11 +450,24 @@ async function loadCredentials() {
     loading.value = true
     try {
         await refreshServers()
+        void testAllHosts()
     } catch (e) {
         console.error('Failed to load credentials:', e)
     } finally {
         loading.value = false
     }
+}
+
+async function testAllHosts() {
+    const hosts = [...new Set(allCreds.value.map(c => c.host))]
+    await Promise.all(hosts.map(async host => {
+        try {
+            const result = await window.electron.ipcRenderer.invoke('credentials:test-connection', { host })
+            hostReachability.value[host] = result.reachable
+        } catch {
+            hostReachability.value[host] = false
+        }
+    }))
 }
 
 async function testHost(group: HostGroup) {

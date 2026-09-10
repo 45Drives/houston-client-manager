@@ -49,7 +49,7 @@
             <input v-model="windowsPassword" v-enter-next :type="showWindowsPassword ? 'text' : 'password'"
               id="winpassword"
               class="bg-default p-2 input-textlike rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="Optional — avoids an administrator prompt" />
+              placeholder="Password you use to sign in to this PC" />
             <button type="button" @click="showWindowsPassword = !showWindowsPassword"
               class="absolute right-3 top-1/2 transform -translate-y-1/2 text-default">
               <EyeIcon v-if="!showWindowsPassword" class="w-5 h-5" />
@@ -57,9 +57,8 @@
             </button>
           </div>
           <p v-if="isWindows" class="text-xs text-default -mt-2">
-            The password you use to sign in to this computer. Windows stores it itself so backups can
-            run while you are signed out; this app never saves it. Leave blank to be prompted for
-            administrator approval instead.
+            The password you use to sign in to this computer. Windows needs it so backups keep running
+            while you are signed out. Windows stores it itself — this app never saves it.
           </p>
           <button type="submit" class="hidden">Submit</button>
         </form>
@@ -171,7 +170,13 @@ onMounted(async () => {
 });
 
 // Check if the "Open" button should be disabled
-const isButtonDisabled = computed(() => !backUpSetupConfig?.username || !backUpSetupConfig?.password || openingBackup.value || isValidating.value);
+const isButtonDisabled = computed(() =>
+  !backUpSetupConfig?.username
+  || !backUpSetupConfig?.password
+  || (isWindows.value && !windowsPassword.value)
+  || openingBackup.value
+  || isValidating.value
+);
 
 // Method to handle the "Open" button action
 const proceedToNextStep = async (): Promise<boolean> => {
@@ -209,6 +214,22 @@ const proceedToNextStep = async (): Promise<boolean> => {
       validationError.value = err?.message || 'Failed to validate credentials.';
       isValidating.value = false;
       return false;
+    }
+
+    if (isWindows.value) {
+      try {
+        const winResult = await window.electron.ipcRenderer.invoke('backup:validate-windows-password', {
+          password: windowsPassword.value,
+        });
+        if (!winResult?.valid) {
+          validationError.value = winResult?.error || 'That Windows password was not accepted.';
+          isValidating.value = false;
+          return false;
+        }
+      } catch (e) {
+        // A failed check must not block setup; registration reports a bad password too.
+        console.warn('Windows password check failed:', e);
+      }
     }
 
     isValidating.value = false;

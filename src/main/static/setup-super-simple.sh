@@ -1,13 +1,16 @@
 #!/usr/bin/env bash
 # setup-super-simple.sh
 # --------------------------------------------------------------------
-# Installs: 45Drives repo, Cockpit(+modules), Samba, ZFS, houston-broadcaster,
-#           cockpit-super-simple-setup, cockpit-zfs, cockpit-scheduler, wireshield
+# Configures the 45Drives repo and installs the top-level 45Drives packages.
+# Everything else (cockpit, samba, zfs, houston-broadcaster, cockpit-scheduler,
+# node, avahi, ...) is pulled in by those packages' own dependencies.
 # --------------------------------------------------------------------
 
 set -eo pipefail
 
 # ----- stdout/stderr go to both console and log, line-buffered -----
+# tee dies silently and takes the script's output with it if the dir is missing.
+mkdir -p /var/log/45drives
 LOG=/var/log/45drives/bootstrap-super-simple-$(date +%F_%H%M).log
 exec > >(stdbuf -oL -eL tee -a "$LOG") 2>&1
 
@@ -37,9 +40,11 @@ case "$OS_LIKE" in
       # --refresh: an already-configured repo otherwise resolves against cached metadata.
       dnf install -y --refresh "$@"
     }
-    query_pkg() {
-      local pkg=$1
-      rpm -qa | grep "^$pkg" &>/dev/null
+    # ZFS builds through DKMS, which needs headers for the running kernel. Best
+    # effort: an exact-version kernel-devel is often missing from the repo.
+    install_kernel_devel() {
+      dnf install -y dkms "kernel-devel-$(uname -r)" "kernel-headers-$(uname -r)" \
+        || echo "[WARN] Could not install dkms/kernel headers for $(uname -r); ZFS may need a reboot onto a matching kernel."
     }
     open_firewall_ports() {
       if command -v firewall-cmd >/dev/null 2>&1; then
@@ -89,20 +94,38 @@ case "$OS_LIKE" in
       chmod 644 /etc/yum.repos.d/45drives-community.repo
       dnf clean all
     }
-    KERNEL_DEVEL_PKGS=(dkms kernel-devel-"$(uname -r)" kernel-headers-"$(uname -r)")
-    REQUIRED_PACKAGES=(cockpit samba python3 python3-pip python3-pyudev)
-    OUR_REQUIRED_PACKAGES=(houston-broadcaster cockpit-super-simple-setup zfs cockpit-zfs cockpit-scheduler wireshield)
-    REQUIRED_SERVICES=(cockpit.socket smb nmb zfs-import-cache zfs-import-scan zfs-mount zfs-zed)
+    # dkms ships in EPEL on RHEL-likes, and some of its deps come from CRB/PowerTools.
+    ensure_extra_repos() {
+      local major="${VERSION_ID:-8}"
+      major="${major%%.*}"
+      dnf -y install dnf-plugins-core || true
+      if ! rpm -q epel-release >/dev/null 2>&1; then
+        echo "[INFO] Enabling EPEL..."
+        dnf -y install epel-release \
+          || dnf -y install "https://dl.fedoraproject.org/pub/epel/epel-release-latest-${major}.noarch.rpm" \
+          || echo "[WARN] Could not enable EPEL; dkms may be unavailable."
+      else
+        echo "[INFO] EPEL already enabled."
+      fi
+      dnf -y config-manager --set-enabled crb 2>/dev/null \
+        || dnf -y config-manager --set-enabled powertools 2>/dev/null \
+        || true
+    }
+    OUR_REQUIRED_PACKAGES=(cockpit-super-simple-setup cockpit-zfs wireshield)
+    REQUIRED_SERVICES=(cockpit.socket smb nmb)
     ;;
 
   *debian*|*ubuntu*)
+    export DEBIAN_FRONTEND=noninteractive
     install_pkg() {
       echo "[INFO] Installing: $*"
-      apt install -y "$@"
+      # DPkg::Lock::Timeout: unattended-upgrades routinely holds the lock on a
+      # fresh install, which otherwise looks like a frozen setup.
+      apt install -y -o DPkg::Lock::Timeout=600 "$@"
     }
-    query_pkg() {
-      local pkg=$1
-      dpkg -s "$pkg" >/dev/null 2>&1
+    install_kernel_devel() {
+      apt install -y -o DPkg::Lock::Timeout=600 dkms "linux-headers-$(uname -r)" \
+        || echo "[WARN] Could not install dkms/linux-headers for $(uname -r); ZFS may need a reboot onto a matching kernel."
     }
     open_firewall_ports() {
       if command -v ufw >/dev/null 2>&1; then
@@ -149,10 +172,9 @@ case "$OS_LIKE" in
       chmod 644 "$list"
       apt update -y
     }
-    KERNEL_DEVEL_PKGS=(dkms linux-headers-"$(uname -r)")
-    REQUIRED_PACKAGES=(cockpit samba python3 python3-pip python3-pyudev)
-    OUR_REQUIRED_PACKAGES=(houston-broadcaster cockpit-super-simple-setup zfs-dkms zfsutils cockpit-zfs cockpit-scheduler wireshield)
-    REQUIRED_SERVICES=(cockpit.socket smbd nmbd zfs-import-cache zfs-import-scan zfs-mount zfs-zed)
+    ensure_extra_repos() { :; }
+    OUR_REQUIRED_PACKAGES=(cockpit-super-simple-setup cockpit-zfs wireshield)
+    REQUIRED_SERVICES=(cockpit.socket smbd nmbd)
     ;;
 
   *)
@@ -163,85 +185,47 @@ esac
 
 set -u
 
+# A held package-manager lock is the usual cause of a setup that appears frozen.
+for lock in /var/lib/dpkg/lock-frontend /var/run/dnf.pid /var/run/yum.pid; do
+  if [[ -e "$lock" ]] && command -v fuser >/dev/null 2>&1 && fuser "$lock" >/dev/null 2>&1; then
+    echo "[WARN] Another package manager is running (holding $lock) — waiting for it to finish."
+  fi
+done
+
+# dnf/apt only discover this after downloading everything, so check up front.
+REQUIRED_FREE_MB=2048
+avail_mb="$(df -Pm / | awk 'NR==2 {print $4}')"
+if [[ -n "$avail_mb" && "$avail_mb" -lt "$REQUIRED_FREE_MB" ]]; then
+  echo "[ERROR] Only ${avail_mb}MB free on / — at least ${REQUIRED_FREE_MB}MB is required to install the 45Drives packages."
+  echo "[ERROR] Free up space on / and run setup again."
+  exit 1
+fi
+
 # Must run before any install: a broken repofile left by an earlier run makes
 # every apt/dnf command fail, including the ones below.
 sanitize_45d_repo
+ensure_extra_repos
 if ! setup_45d_repo; then
   echo "[ERROR] Failed to set up 45Drives repo!" >&2
   exit 1
 fi
 
-# install required packages
-install_pkg "${KERNEL_DEVEL_PKGS[@]}"
-install_pkg "${REQUIRED_PACKAGES[@]}"
+install_kernel_devel
 
-
-# ---------------------- Ensure Node.js v18 ----------------------
-echo "[INFO] Checking for Node.js installation..."
-if command -v node >/dev/null 2>&1; then
-  NODE_VERSION=$(node -v | sed 's/v//')
-  echo "[INFO] Node.js version detected: $NODE_VERSION"
-else
-  echo "[INFO] Node.js not found."
-  NODE_VERSION=""
-fi
-
-if [[ "$NODE_VERSION" =~ ^18\. ]]; then
-  echo "[INFO]  Node.js v18 is already installed."
-else
-  echo "[INFO] Installing Node.js v18 via NVM..."
-
-  export NVM_DIR="$HOME/.nvm"
-  if [[ ! -s "$NVM_DIR/nvm.sh" ]]; then
-    echo "[INFO] Installing NVM from git..."
-    if ! command -v git >/dev/null 2>&1; then
-      echo "[INFO] git not found; installing..."
-      install_pkg git
-    fi
-    rm -rf "$NVM_DIR"
-    git clone --depth 1 --branch v0.39.7 https://github.com/nvm-sh/nvm.git "$NVM_DIR"
-  fi
-
-  # Load NVM
-  export NVM_DIR="$HOME/.nvm"
-  source "$NVM_DIR/nvm.sh"
-
-  # Install Node.js v18
-  nvm install 18
-  nvm alias default 18
-
-  echo "[INFO]  Node.js v18 installed and set as default via NVM."
-fi
-
-# Symlink Node.js binary globally (optional, for systemd services)
-for node_dir in "$HOME/.nvm/versions/node"/v18*/bin; do
-  if [[ -x "$node_dir/node" ]]; then
-    echo "[INFO] Found Node.js v18 in: $node_dir"
-    ln -sf "$node_dir/node" /usr/local/bin/node
-    ln -sf "$node_dir/npm" /usr/local/bin/npm
-    echo "[INFO] Symlinked Node.js v18 binaries to /usr/local/bin"
-    break
-  fi
-done
-
-if node -v | grep -q '^v18'; then
-  echo "[INFO]  Node.js v18 is now the active system version"
-else
-  echo "[WARN]  Node.js v18 symlink may not have taken effect globally"
-fi
-
+# Everything else arrives as a dependency of these three.
 install_pkg "${OUR_REQUIRED_PACKAGES[@]}"
-install_pkg python3-pyudev || pip3 install pyudev
 
 # zfs setup
 if [[ ! -f /etc/modules-load.d/zfs.conf ]]; then
   echo "zfs" > /etc/modules-load.d/zfs.conf
 fi
-modprobe zfs
+modprobe zfs || echo "[WARN] Could not load the ZFS module; a reboot may be required."
 
 open_firewall_ports
 
-systemctl enable --now "${REQUIRED_SERVICES[@]}"
+for svc in "${REQUIRED_SERVICES[@]}"; do
+  systemctl enable --now "$svc" || echo "[WARN] Could not enable $svc."
+done
 
 # restarting cockpit socket required to load newly installed modules
 systemctl restart cockpit.socket

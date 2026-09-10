@@ -44,6 +44,12 @@ const TASK_TERMINATED_RESULT = 267014;
  * waiting out its 3s tick and then reporting the stop as a failure. */
 const cancelledRuns = new Set<string>();
 
+/* How the scheduled task authenticates. Both survive sign-out: `password` has Task
+ * Scheduler grant the batch-logon right itself, `s4u` needs the account to hold it
+ * already. Interactive-token logon is deliberately not an option — it would stop the
+ * backup as soon as the user signed out. */
+type LogonMode = 'password' | 's4u';
+
 interface TaskData {
   source?: string;
   target?: string;
@@ -437,40 +443,6 @@ export class BackUpManagerWin implements BackUpManager {
     }
   }
 
-  /* S4U registration requires the desktop account to hold "Log on as a batch job".
-   * Administrators hold it by default; standard users usually do not. Granting the
-   * right directly is far narrower than the previous Backup Operators membership,
-   * and it is the only operation in this class that genuinely needs elevation. */
-  private grantBatchLogonRightScript(): string {
-    return `
-$ErrorActionPreference = 'Stop'
-$account = "${DESKTOP_USER}"
-$sid = (New-Object System.Security.Principal.NTAccount($account)).Translate([System.Security.Principal.SecurityIdentifier]).Value
-
-$cfg = Join-Path $env:TEMP 'houston_secpol.cfg'
-$db  = Join-Path $env:TEMP 'houston_secpol.sdb'
-secedit /export /areas USER_RIGHTS /cfg $cfg | Out-Null
-
-$content = Get-Content $cfg
-$existing = ($content | Select-String '^SeBatchLogonRight').Line
-
-if ($existing -and $existing -like "*$sid*") {
-    Write-Output "HOUSTON_RIGHT_ALREADY_PRESENT"
-} else {
-    if ($existing) {
-        $updated = "$existing,*$sid"
-        $content = $content -replace '^SeBatchLogonRight\\s*=.*', $updated
-    } else {
-        $content += "SeBatchLogonRight = *$sid"
-    }
-    $content | Set-Content $cfg -Encoding Unicode
-    secedit /configure /db $db /cfg $cfg /areas USER_RIGHTS /quiet
-    Write-Output "HOUSTON_RIGHT_GRANTED"
-}
-Remove-Item $cfg, $db -ErrorAction SilentlyContinue
-`;
-  }
-
   /* Returns the uuids that are NOT present in Task Scheduler. PowerShell exits 0
    * on non-terminating errors, so registration success is never assumed. */
   private async findUnregisteredTasks(uuids: string[]): Promise<string[]> {
@@ -488,32 +460,6 @@ foreach ($n in @(${names})) {
       console.error('[BackUpManagerWin] verify_schedule failed', describeFailure(e));
       return uuids;
     }
-  }
-
-  /* Returns a short status for the failure diagnostic. The marker means "we already
-   * spent the user's one UAC prompt", not "the right is definitely present" \u2014 so the
-   * caller reports it rather than treating a skip as success. */
-  private async ensureBatchLogonRight(): Promise<string> {
-    const marker = path.join(HOUSTON_USER_DIR, '.batch-logon-granted');
-    if (fs.existsSync(marker)) return 'skipped, marker already present';
-    const { stdout } = await this.runScriptAdmin(this.grantBatchLogonRightScript(), 'grant_batch_logon');
-    try { fs.writeFileSync(marker, `${DESKTOP_USER}\n${new Date().toISOString()}\n`); } catch { /* retry next time */ }
-    return stdout.trim().replace(/\s+/g, ' ') || 'no output';
-  }
-
-  /* Some policies deny S4U registration to an unelevated caller outright (HRESULT
-   * 0x80070005), which the batch-logon right alone does not resolve. Grant and register
-   * in one elevated pass so the fallback costs a single prompt rather than two. */
-  private elevatedFallbackScript(registrationScript: string): string {
-    return `
-try {
-${this.grantBatchLogonRightScript()}
-} catch {
-  Write-Output "GRANTFAIL: $($_.Exception.Message)"
-}
-
-${registrationScript}
-`;
   }
 
   async scheduleAllTasks(
@@ -553,8 +499,10 @@ ${registrationScript}
       batPaths.push(batPath);
     });
 
-    /* ── Phase 2: Task registration (no elevation in the common case) ── */
-    const buildRegistrationScript = (usePassword: boolean): string => {
+    /* ── Phase 2: Task registration (never elevated) ─────────────────── */
+    const buildRegistrationScript = (mode: LogonMode): string => {
+    const usePassword = mode === 'password';
+    const comLogonType = usePassword ? '$TASK_LOGON_PASSWORD' : '$TASK_LOGON_S4U';
     const psLines: string[] = [
       `$ErrorActionPreference = 'Stop'`,
     ];
@@ -587,7 +535,7 @@ ${registrationScript}
           # 3.) Principal: desktop user, at the user's own privilege level
           $principal = $task.Principal
           $principal.UserId = "${DESKTOP_USER}"
-          $principal.LogonType = ${usePassword ? '$TASK_LOGON_PASSWORD' : '$TASK_LOGON_S4U'}
+          $principal.LogonType = ${comLogonType}
           $principal.RunLevel = $TASK_RUNLEVEL_LUA
 
           # 4.) Task metadata
@@ -616,7 +564,7 @@ ${registrationScript}
             $TASK_CREATE_OR_UPDATE,
             "${DESKTOP_USER}",
             ${usePassword ? `$env:${WIN_PASS_ENV}` : '$null'},
-            ${usePassword ? '$TASK_LOGON_PASSWORD' : '$TASK_LOGON_S4U'}
+            ${comLogonType}
           )
           `);
       } else {
@@ -652,13 +600,11 @@ ${body.join('\n')}
     const uuids = tasks.map(t => t.uuid);
     const diagnostics: string[] = [];
 
-    const attemptRegistration = async (label: string, script: string, elevated = false, env?: Record<string, string>): Promise<void> => {
+    const attemptRegistration = async (label: string, script: string, env?: Record<string, string>): Promise<void> => {
       try {
-        const { stdout, stderr } = elevated
-          ? await this.runScriptAdmin(script, label)
-          : await this.runScript(script, label, env);
+        const { stdout, stderr } = await this.runScript(script, label, env);
         stdout.split(/\r?\n/)
-          .filter(l => l.startsWith('TASKFAIL:') || l.startsWith('GRANTFAIL:'))
+          .filter(l => l.startsWith('TASKFAIL:'))
           .forEach(l => diagnostics.push(`[${label}] ${l.trim()}`));
         if (stderr.trim()) diagnostics.push(`[${label}] ${stderr.trim().replace(/\s+/g, ' ').slice(0, 1500)}`);
       } catch (e) {
@@ -668,51 +614,34 @@ ${body.join('\n')}
 
     let missing = uuids;
 
-    /* Preferred path: stored-password logon. A standard user may register this for
-     * themselves unelevated, unlike S4U, so it costs no UAC prompt at all. The secret
-     * travels by environment variable so it never lands in the temp .ps1. */
+    /* Preferred path: stored-password logon. Task Scheduler grants the account the
+     * batch-logon right itself when a password is supplied, so this registers without
+     * a UAC prompt *and* still runs while the user is signed out. The secret travels
+     * by environment variable so it never lands in the temp .ps1. */
     if (this.windowsAccountPassword) {
       await attemptRegistration(
         'bulk_schedule_password',
-        buildRegistrationScript(true),
-        false,
+        buildRegistrationScript('password'),
         { [WIN_PASS_ENV]: this.windowsAccountPassword }
       );
       missing = await this.findUnregisteredTasks(uuids);
     }
 
-    const s4uScript = buildRegistrationScript(false);
-
+    /* S4U also survives sign-out, but only for accounts that already hold the
+     * batch-logon right (administrators and domain accounts, typically). */
     if (missing.length > 0) {
-      await attemptRegistration('bulk_schedule', s4uScript);
+      await attemptRegistration('bulk_schedule', buildRegistrationScript('s4u'));
       missing = await this.findUnregisteredTasks(uuids);
     }
 
     if (missing.length > 0) {
-      /* Often just a missing batch-logon right, which is cheap to grant and lets every
-       * later task register unelevated. */
-      try {
-        diagnostics.push(`[grant_batch_logon] ${await this.ensureBatchLogonRight()}`);
-        await attemptRegistration('bulk_schedule_retry', s4uScript);
-        missing = await this.findUnregisteredTasks(uuids);
-      } catch (e) {
-        diagnostics.push(`[grant_batch_logon] ${describeFailure(e)}`);
-      }
-    }
-
-    if (missing.length > 0) {
-      /* Degrade rather than fail: a working backup behind one UAC prompt beats a
-       * setup that completes with nothing scheduled. */
-      await attemptRegistration('bulk_schedule_elevated', this.elevatedFallbackScript(s4uScript), true);
-      missing = await this.findUnregisteredTasks(uuids);
-    }
-
-    if (missing.length > 0) {
-      const denied = diagnostics.some(d => /access is denied|0x80070005/i.test(d));
-      const hint = denied
-        ? ` Registration was denied for ${DESKTOP_USER}. Creating a task that runs while logged out requires ` +
-          `administrator approval on this machine; the elevated retry was cancelled or also denied.`
-        : '';
+      /* Deliberately no interactive-logon fallback: it would register, but the backup
+       * would silently stop running once the user signed out. */
+      const hint = this.windowsAccountPassword
+        ? ` Windows rejected the sign-in password for ${DESKTOP_USER}. Re-enter it on the credentials ` +
+          `step; if the account has no password, set one so backups can run while you are signed out.`
+        : ` Enter your Windows sign-in password on the credentials step. Windows needs it to run ` +
+          `backups while you are signed out.`;
       const detail = diagnostics.length ? ` Details: ${diagnostics.join(' ;; ')}` : ' No PowerShell diagnostic was produced.';
       console.error('[BackUpManagerWin] registration failed', { missing, diagnostics });
       throw new Error(
@@ -1147,6 +1076,30 @@ $taskTrigger = New-ScheduledTaskTrigger -At $startTime -Daily -DaysInterval 7
 
   async updateSchedule(task: BackUpTask, username: string, password: string): Promise<void> {
     const taskName = `${TASK_ID}_${task.uuid}`;
+    const triggerScript = this.scheduleToTaskTrigger(task.schedule);
+
+    /* Re-registering would throw away the credential Windows stores to run this backup
+     * while the user is signed out, and we no longer have their sign-in password to
+     * supply again. Editing the trigger in place keeps the existing principal intact.
+     * Monthly schedules have no PowerShell trigger, so they still go the long way. */
+    if (triggerScript) {
+      try {
+        const [smbHostRaw, smbSharePath] = task.target.split(':');
+        task.host = assertSafeHost(smbHostRaw);
+        task.share = assertSafeShare(smbSharePath.split('/')[0]);
+        // The action always runs this .bat, so rewriting it applies the edited paths.
+        fs.writeFileSync(this.scriptPath(task.uuid), this.buildActionBat(task, username));
+
+        await this.runScript(`
+$ErrorActionPreference = 'Stop'
+${triggerScript}
+Set-ScheduledTask -TaskName "${taskName}" -Trigger $taskTrigger -ErrorAction Stop | Out-Null
+`, `update_trigger_${task.uuid}`);
+        return;
+      } catch (e) {
+        console.warn(`updateSchedule: in-place update failed for ${taskName}, re-registering`, e);
+      }
+    }
 
     const deleteScript = `
 $ErrorActionPreference = 'Stop'

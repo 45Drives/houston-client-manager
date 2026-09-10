@@ -11,9 +11,34 @@ import { getAgentSocket, getKeyDir, ensureKeyPair } from '../crossPlatformSsh';
 import { loadSettings } from '../settingsStore';
 import { connectWithFallback, type SshAuth } from '../setupSsh';
 import { getCredentialManager } from '../credentialManager';
+import { reportAuditEvent } from '../backup/broadcasterApi';
 
 interface ServerManageContext {
   jsonLogger: Logger;
+}
+
+// Actions worth a permanent trail. Kept in sync with AUDIT_ACTIONS on the server;
+// anything not listed here is a read or a reversible tweak.
+const AUDITED_ACTIONS: Record<string, string> = {
+  'zfs:dataset-destroy': 'zfs:dataset-destroy',
+  'zfs:snapshot-destroy': 'zfs:snapshot-destroy',
+  'zfs:snapshot-rollback': 'zfs:snapshot-rollback',
+  'zfs:pool-create': 'zfs:pool-create',
+  'zfs:dataset-create': 'zfs:dataset-create',
+  'user:add': 'user:create',
+  'user:delete': 'user:delete',
+  'user:set-password': 'user:password-set',
+  'group:add': 'group:create',
+  'group:delete': 'group:delete',
+  'samba:share-add': 'samba:share-add',
+  'samba:share-remove': 'samba:share-remove',
+  'samba:global-edit': 'samba:global-set',
+  'samba:set-user-password': 'samba:password-set',
+};
+
+function auditTarget(params: Record<string, any>): string | undefined {
+  const v = params?.name ?? params?.username ?? params?.snapshot ?? params?.pool ?? params?.share;
+  return typeof v === 'string' ? v : undefined;
 }
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -940,9 +965,28 @@ export function registerServerManageHandlers(ctx: ServerManageContext) {
       ssh = await connectSSH(safeHost, username, password, sshKeyPath, sshPassphrase);
       const result = await executeManageAction(ssh, action, params, jsonLogger);
       jsonLogger.info({ event: 'server:manage_done', host: safeHost, action, success: result.success });
+
+      const auditAction = AUDITED_ACTIONS[action];
+      if (auditAction) {
+        void reportAuditEvent(safeHost, username, password, {
+          action: auditAction,
+          target: auditTarget(params),
+          outcome: result.success ? 'success' : 'failure',
+          detail: result.success ? undefined : String(result.error || '').slice(0, 2000),
+        });
+      }
+
       return result;
     } catch (e: any) {
       jsonLogger.error({ event: 'server:manage_error', host: safeHost, action, error: String(e) });
+      if (AUDITED_ACTIONS[action]) {
+        void reportAuditEvent(safeHost, username, password, {
+          action: AUDITED_ACTIONS[action],
+          target: auditTarget(params),
+          outcome: 'failure',
+          detail: String(e?.message || e).slice(0, 2000),
+        });
+      }
       return { success: false, error: e?.message || String(e) };
     } finally {
       ssh?.dispose();

@@ -21,6 +21,7 @@ const INVOKE_CHANNELS = new Set([
   'mac:fdaStatus',
   'mac:openFdaSettings',
   'backup:validate-smb-credentials',
+  'backup:validate-windows-password',
   'scan-network-fallback',
   'discovery:setEnabled',
   'is-dev',

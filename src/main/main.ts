@@ -447,6 +447,19 @@ function createWindow() {
     mainWindow?.webContents.send('store-manual-creds', creds);
   });
 
+  // Streams remote-setup output to the UI live and mirrors it into the client log.
+  const emitSetupProgress = (
+    host: string,
+    p: { step: string; label: string },
+    logs: string[],
+  ) => {
+    const line = p.step === 'bootstrap-log' ? p.label : `[${p.step}] ${p.label}`;
+    logs.push(line);
+    if (logs.length > 1000) logs.splice(0, logs.length - 1000);
+    jsonLogger.info({ event: 'server-setup:progress', host, step: p.step, message: p.label });
+    mainWindow?.webContents.send('setup-progress', { host, step: p.step, label: p.label, line });
+  };
+
   ipcMain.handle('verify-ssh-credentials', async (event, { host, username, password, authMethod, sshKeyPath, sshPassphrase }) => {
     assertMainWindowSender(event);
     const auth = authMethod === 'key'
@@ -465,11 +478,15 @@ function createWindow() {
       password,
     });
 
+    const logs: string[] = [];
     try {
-      const res = await installServerDepsRemotely({ host, username, password, authMethod, sshKeyPath, sshPassphrase });
+      const res = await installServerDepsRemotely({
+        host, username, password, authMethod, sshKeyPath, sshPassphrase,
+        onProgress: (p) => emitSetupProgress(host, p, logs),
+      });
       console.debug(" install-cockpit-module →", res);
       jsonLogger.info({ event: 'install-cockpit-module_success', host });
-      return res;
+      return { ...res, logs };
     } catch (err) {
       jsonLogger.error({ event: 'install-cockpit-module_error', host, error: String(err) });
       console.error(" install-cockpit-module error:", err);
@@ -491,9 +508,7 @@ function createWindow() {
         authMethod: authMethod as any,
         sshKeyPath,
         sshPassphrase,
-        onProgress: (p) => {
-          if (p.step === 'bootstrap-log') logs.push(p.label);
-        },
+        onProgress: (p) => emitSetupProgress(host, p, logs),
       });
       if (!res.success) {
         return { success: false, error: res.error, logs };
@@ -537,7 +552,7 @@ function createWindow() {
       const loginRes = await fetch(`http://${safeHost}:9095/api/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password }),
+        body: JSON.stringify({ username, password, clientId: installId }),
         signal: AbortSignal.timeout(10000),
       });
       if (!loginRes.ok) {
@@ -1726,6 +1741,48 @@ app.whenReady().then(() => {
       error: lastFailure.error,
     });
     return lastFailure;
+  });
+
+  /* Task Scheduler only grants the batch-logon right (and therefore only runs backups
+   * while the user is signed out) when it is given a working sign-in password, and it
+   * reports a bad one as an opaque registration failure. Check it up front instead. */
+  ipcMain.handle('backup:validate-windows-password', async (event, { password }: { password: string }) => {
+    assertMainWindowSender(event);
+    if (getOS() !== 'win') return { valid: true };
+
+    const { execFile: execFileCb } = require('child_process');
+    const ps = [
+      '$ErrorActionPreference = "Stop"',
+      'try {',
+      '  Add-Type -AssemblyName System.DirectoryServices.AccountManagement',
+      '  $ctx = New-Object System.DirectoryServices.AccountManagement.PrincipalContext([System.DirectoryServices.AccountManagement.ContextType]::Machine)',
+      '  if ($ctx.ValidateCredentials($env:USERNAME, $env:HCM_WIN_PASS)) { Write-Output "OK" } else { Write-Output "BAD" }',
+      '} catch {',
+      '  Write-Output "UNKNOWN"',
+      '}',
+    ].join('\n');
+    const encoded = Buffer.from(ps, 'utf16le').toString('base64');
+
+    return new Promise((resolve) => {
+      execFileCb(
+        'powershell',
+        ['-NoProfile', '-NonInteractive', '-EncodedCommand', encoded],
+        { timeout: 15000, windowsHide: true, env: { ...process.env, HCM_WIN_PASS: password } },
+        (err: any, stdout: string) => {
+          const lines = (stdout || '').split(/\r?\n/).map(l => l.trim());
+          if (lines.includes('BAD')) {
+            jsonLogger.info({ event: 'windows-password:validate', result: 'bad' });
+            resolve({ valid: false, error: 'That Windows password was not accepted. Check it and try again.' });
+            return;
+          }
+          /* Microsoft/Entra accounts cannot be checked this way — don't block the user
+           * on a check that never had a chance of succeeding. */
+          const undetermined = lines.includes('UNKNOWN') || !lines.includes('OK');
+          jsonLogger.info({ event: 'windows-password:validate', result: undetermined ? 'undetermined' : 'ok', exitCode: err?.code ?? 0 });
+          resolve({ valid: true, undetermined });
+        }
+      );
+    });
   });
 
   ipcMain.handle('credentials:retrieve', (event, { host, share, username }: { host: string; share: string; username?: string }) => {

@@ -4,7 +4,7 @@
             @mouseenter="toggleCommander" />
 
         <teleport to="body">
-            <div v-if="showCommander" class="absolute"
+            <div v-if="showCommander" class="absolute z-[1500]"
                 :style="{ top: commanderPosition.top, left: commanderPosition.left }">
                 <CommanderPopup :message="message" :visible="showCommander" @close="showCommander = false"
                     :position="commanderPosition" :arrowOffset="commanderPosition.arrowOffset"

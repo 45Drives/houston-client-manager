@@ -1,17 +1,18 @@
 <template>
     <div class="w-full relative flex flex-col items-center justify-center" :class="wrapperClass">
-        <webview v-if="currentServer?.ip && ready" v-show="!loadingWebview && !connectionIssue" id="cockpitWebview"
+        <webview v-if="currentServer?.ip && ready" v-show="!loadingWebview && !connectionIssue && !disconnected"
+            id="cockpitWebview"
             :src="currentUrl" partition="persist:authSession"
             webpreferences="contextIsolation=true, nodeIntegration=false, enableRemoteModule=false" ref="webview"
             allowpopups :class="['w-full', heightClass]" @did-finish-load="onWebViewLoaded" />
 
-        <div v-if="loadingWebview && !connectionIssue"
+        <div v-if="loadingWebview && !connectionIssue && !disconnected"
             class="absolute inset-0 bg-default flex flex-col items-center justify-center w-full text-center rounded-lg">
             <p class="text-2xl text-center">Give us a few while we login…</p>
             <div class="spinner" />
         </div>
 
-        <div v-else-if="connectionIssue"
+        <div v-else-if="connectionIssue && !disconnected"
             class="absolute inset-0 bg-default flex flex-col items-center justify-center w-full text-center rounded-lg px-6">
             <div class="max-w-md space-y-3">
                 <div v-if="!reconnectGaveUp" class="spinner mx-auto" />
@@ -31,7 +32,7 @@
             </div>
         </div>
 
-        <div v-if="!currentServer?.ip && !loadingWebview && !connectionIssue"
+        <div v-if="disconnected || (!currentServer?.ip && !loadingWebview && !connectionIssue)"
             class="flex items-center justify-center text-muted w-full" :class="heightClass">
             Select a server to load Cockpit.
         </div>
@@ -460,8 +461,9 @@ window.electron?.ipcRenderer.on('store-manual-creds', (_e, creds: { ip: string; 
 
 // When currentServer changes, check the shared credential store
 watch(() => currentServer.value?.ip, (ip) => {
+    if (!ip) return
     disconnected.value = false;
-    if (!ip || manualCreds.value?.ip === ip) return
+    if (manualCreds.value?.ip === ip) return
     const stored = getCredentials(ip)
     if (stored) {
         manualCreds.value = { ip, username: stored.username, password: stored.password }
@@ -487,27 +489,37 @@ watch(manualCreds, async (creds) => {
 
 async function logoutFromCurrentServer() {
     const ip = currentServer.value?.ip;
-    if (!ip || !webview.value) return;
+    const wv = webview.value;
+
+    // Flip the guards before awaiting anything so the Cockpit page is hidden
+    // immediately and no late-arriving credentials can trigger a re-login.
+    disconnected.value = true;
+    manualCreds.value = null;
+    loadingWebview.value = false;
+    clearRetryTimers();
+    connectionIssue.value = null;
+
+    if (!ip || !wv) return;
 
     const origin = `https://${ip}:9090`;
 
     // 1. Tell Cockpit to log out (drops its server-side session + cookies)
     try {
-        await webview.value.executeJavaScript(`
+        await wv.executeJavaScript(`
             fetch('/cockpit/logout', { method: 'POST', credentials: 'same-origin' })
                 .catch(function() {})
         `)
     } catch (e) {
-        console.error('Cockpit logout request error:', e)
+        console.debug('Cockpit logout request skipped:', e)
     }
 
     // 2. Clear in-page storage
     try {
-        await webview.value.executeJavaScript(`
+        await wv.executeJavaScript(`
             try { sessionStorage.clear(); localStorage.clear(); } catch(e) {}
         `)
     } catch (e) {
-        console.error('Storage clear error:', e)
+        console.debug('Storage clear skipped:', e)
     }
 
     // 3. Clear the partition's cookies/storage for this origin via main process
@@ -517,11 +529,14 @@ async function logoutFromCurrentServer() {
         console.error('session:clear-origin error:', e)
     }
 
-    // 4. Drop in-memory creds and suppress auto-login
-    disconnected.value = true;
-    manualCreds.value = null;
-    loadingWebview.value = true;
-    webview.value.reload();
+    // 4. Park the view on a blank page. Reloading Cockpit here would render its
+    //    login form, which must never be shown to the user.
+    try {
+        navigationFailed = false
+        wv.loadURL('about:blank')?.catch?.(() => { })
+    } catch {
+        // The element can be torn down by the parent before this runs.
+    }
 }
 
 defineExpose({ logoutFromCurrentServer });

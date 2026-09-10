@@ -8,6 +8,9 @@ import { getHoustonPackage, houstonPackageLabel } from "../shared/serverPackages
 
 type ProgressFn = (p: { step: string; label: string }) => void;
 
+// dnf/apt only report this after downloading everything, so it otherwise surfaces as a bare exit code.
+const DISK_FULL_RE = /No space left on device|more space needed on|needs \d+\s*[KMG]B on the/i;
+
 /** e.g. "Task Scheduler 1.7.5 (needs 1.7.7)". */
 function describeBelowMinimum(check: RemoteDepCheck): string {
     return check.houstonBelowMinimum
@@ -70,7 +73,12 @@ export async function installServerDepsRemotely({
         passphrase: sshPassphrase,
     };
 
+    const recent: string[] = [];
     const send = (step: string, label: string) => {
+        if (step === "bootstrap-log") {
+            recent.push(label);
+            if (recent.length > 200) recent.shift();
+        }
         onProgress?.({ step, label });
         console.debug("installServerDepsRemotely.onProgress:", step, label);
     };
@@ -123,9 +131,16 @@ export async function installServerDepsRemotely({
 
         // probe for missing deps
         send("probe", "Checking for required dependencies (Cockpit, ZFS, Samba, 45Drives packages)…");
+        let result: RemoteDepCheck | null = null;
         try {
-            const result = await checkRemoteDeps(safeHost, safeUser, privateKeyPath);
+            result = await checkRemoteDeps(safeHost, safeUser, privateKeyPath);
+        } catch (e: any) {
+            // if the check fails, be conservative and run bootstrap
+            console.warn("Dependency preflight check failed; running bootstrap anyway:", e?.message || e);
+            send("bootstrap", "Could not verify dependencies; running bootstrap setup anyway…");
+        }
 
+        if (result) {
             if (
                 result.missing.length === 0 &&
                 result.houstonOutdated.length === 0 &&
@@ -141,7 +156,8 @@ export async function installServerDepsRemotely({
 
             if (result.baseMissing.length === 0) {
                 // Base OS is fine — only 45Drives packages need installing or updating,
-                // so skip the heavy bootstrap.
+                // so skip the heavy bootstrap. A failure here is a real install failure,
+                // so it must propagate instead of falling through to a duplicate bootstrap run.
                 const toInstall = [...new Set([
                     ...result.houstonMissing,
                     ...result.houstonOutdated,
@@ -159,11 +175,9 @@ export async function installServerDepsRemotely({
                     privateKeyPath,
                     password,
                     toInstall,
-                    (line, stream) => {
+                    (line) => {
                         if (!line || line === password) return;
-                        if (stream === "stderr" || /^\[(INFO|WARN|ERROR)/.test(line)) {
-                            send("bootstrap-log", line);
-                        }
+                        send("bootstrap-log", line);
                     },
                 );
                 await warnIfStillBelowMinimum(safeHost, safeUser, privateKeyPath, send);
@@ -172,10 +186,6 @@ export async function installServerDepsRemotely({
             }
 
             send("bootstrap", `Missing dependencies detected: ${result.missing.join(", ")}. Running bootstrap setup…`);
-        } catch (e: any) {
-            // if the check fails, be conservative and run bootstrap
-            console.warn("Dependency preflight check failed; running bootstrap anyway:", e?.message || e);
-            send("bootstrap", "Could not verify dependencies; running bootstrap setup anyway…");
         }
 
         send("bootstrap", "Running setup script on the server… this may take several minutes.");
@@ -185,22 +195,15 @@ export async function installServerDepsRemotely({
             safeUser,
             privateKeyPath,
             password,
-            (line, stream) => {
+            (line) => {
                 if (!line) return;
 
                 // extra safety on the UI side too
                 if (line === password) return;
 
-                if (stream === "stderr") {
-                    // always show stderr – this is where shell errors like "unbound variable" go
-                    send("bootstrap-log", line);
-                    return;
-                }
-
-                // stdout: keep your "tagged" lines, plus errors
-                if (/^\[(INFO|WARN|ERROR|BOOTSTRAP)/.test(line)) {
-                    send("bootstrap-log", line);
-                }
+                // The remote script pipes stderr into stdout, so package-manager
+                // errors arrive untagged; forward everything or they are lost.
+                send("bootstrap-log", line);
             },
         );
 
@@ -221,11 +224,9 @@ export async function installServerDepsRemotely({
                     privateKeyPath,
                     password,
                     toInstall,
-                    (line, stream) => {
+                    (line) => {
                         if (!line || line === password) return;
-                        if (stream === "stderr" || /^\[(INFO|WARN|ERROR)/.test(line)) {
-                            send("bootstrap-log", line);
-                        }
+                        send("bootstrap-log", line);
                     },
                 );
                 await warnIfStillBelowMinimum(safeHost, safeUser, privateKeyPath, send);
@@ -237,7 +238,10 @@ export async function installServerDepsRemotely({
 
         return { success: true, reboot: rebootRequired };
     } catch (err: any) {
-        const msg = err?.message || String(err);
+        let msg = err?.message || String(err);
+        if (recent.some((l) => DISK_FULL_RE.test(l))) {
+            msg = `${safeHost} ran out of disk space while installing. Free up space on / (about 2 GB is needed) and try again.`;
+        }
         send("error", `Installation failed: ${msg}`);
         console.error("SSH failure:", err?.message);
         return { success: false, error: msg };

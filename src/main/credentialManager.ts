@@ -691,6 +691,7 @@ export class CredentialManager {
     hostname?: string; ip?: string;
     smbUser?: string;
     source?: ServerSource; setupComplete?: boolean;
+    hasAdminCreds?: boolean;
   }[] {
     return Object.values(this.vault.servers).map(s => ({
       id: s.id,
@@ -707,6 +708,9 @@ export class CredentialManager {
       smbUser: s.smbUser,
       source: s.source,
       setupComplete: s.setupComplete,
+      // Management is possible only when we actually hold an admin credential.
+      // The capability is the credential, not a UI flag.
+      hasAdminCreds: !!(s.loginUser && (s.loginPass || s.sshKeyPath)),
     }));
   }
 

@@ -33,6 +33,8 @@ export interface StoredServer {
   setupComplete?: boolean
   /** True when server comes from discovery only (not explicitly saved by user) */
   discovered?: boolean
+  /** True when this install holds admin/SSH credentials for the server */
+  hasAdminCreds?: boolean
 }
 
 // Module-level cache so multiple components share the same reactive state
