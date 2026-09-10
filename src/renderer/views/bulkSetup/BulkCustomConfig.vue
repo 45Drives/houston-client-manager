@@ -568,7 +568,7 @@ const config = reactive<BulkEasySetupConfig>({
 const serverConfig = reactive<BulkServerConfig>({
   adminUser: '',
   adminPass: '',
-  disableRootSSH: true,
+  disableRootSSH: false,
   useNTP: true,
   setTimezone: false,
   timezone: '',
