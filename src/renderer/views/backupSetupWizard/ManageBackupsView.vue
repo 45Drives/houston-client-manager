@@ -244,7 +244,7 @@ const managerTourSteps: TourStep[] = [
     },
     {
         target: '[data-tour="run-now"]',
-        message: 'Run a backup immediately.\n\nThese action buttons appear when you select one or more tasks from the list. Click Run Now to trigger a backup right away instead of waiting for the schedule.',
+        message: 'Run a backup immediately.\n\nThese action buttons appear when you select one or more tasks from the list. Click Run Now to trigger a backup right away instead of waiting for the schedule.\n\nWhile a task is copying, Run Now becomes Stop Run. Stopping keeps whatever has already been copied and the next run picks up where it left off, so the task is recorded as cancelled rather than failed.',
     },
     {
         target: '[data-tour="view-restore"]',

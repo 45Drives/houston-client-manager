@@ -246,7 +246,7 @@ const dashboardTourSteps: TourStep[] = [
     },
     {
         target: '[data-tour="servers-card"]',
-        message: 'Your saved servers appear here.\n\nClick any server to select it — the dashboard will load its storage data and highlight it as the active server. Favorites are pinned at the top.\n\nAlready-configured servers found on your network can be added straight from here, and the Manage button opens full Server Management for viewing or editing that server\'s configuration.',
+        message: 'Your saved servers appear here.\n\nClick any server to select it — the dashboard will load its storage data and highlight it as the active server. Favorites are pinned at the top.\n\nAdd covers all three ways in: set up brand-new hardware, register a server that is already configured, or connect to a share for backups only. A server marked Backup only has no admin password stored here, so its backups run but its storage and shares cannot be managed from this app.\n\nThe Manage button opens full Server Management for viewing or editing that server\'s configuration.',
     },
     {
         target: '[data-tour="storage-health"]',

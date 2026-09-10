@@ -1209,7 +1209,7 @@ const serverManageTourSteps: TourStep[] = [
     },
     {
         target: '[data-tour="sm-actions"]',
-        message: 'The view is read-only until you click Edit.\n\nIn edit mode your changes are collected into a Staged Changes panel instead of being applied one at a time — review them, then save them all together. Refresh re-reads the live configuration from the server.',
+        message: 'The view is read-only until you click Edit.\n\nIn edit mode your changes are collected into a Staged Changes panel instead of being applied one at a time — review them, then save them all together. Refresh re-reads the live configuration from the server.\n\nAnything that removes or overwrites what is already on the server — destroying a dataset, deleting a user, changing a share — asks for your admin password first. Once confirmed it stays unlocked for five minutes, shown by an amber Admin unlocked badge here that you can click to lock again straight away.',
     },
     {
         target: '[data-tour="sm-tab-connection"]',

@@ -316,7 +316,7 @@ async function handleCheckForUpdates() {
 const settingsTourSteps: TourStep[] = [
     {
         target: '[data-tour="settings-nav"]',
-        message: 'Settings is grouped into four areas: your saved servers, how the client looks and behaves, how it connects to servers, and advanced maintenance options.',
+        message: 'Settings is grouped into five panels: your saved servers, how the client looks and behaves, how it connects to servers, app updates, and advanced maintenance options.',
         onEnter: () => { activeSection.value = 'servers'; },
     },
     {
@@ -333,6 +333,11 @@ const settingsTourSteps: TourStep[] = [
         target: '[data-tour="settings-content"]',
         message: 'Connection tunes how the client reaches your servers: SSH timeout, faster ciphers for slow links, and how often the network is scanned for new servers.\n\nIf servers are slow to appear or connections time out on a busy network, this is the place to adjust it.',
         onEnter: () => { activeSection.value = 'connection'; },
+    },
+    {
+        target: '[data-tour="settings-content"]',
+        message: 'Updates shows the version you are on and lets you drive the updater yourself instead of waiting for the automatic check.\n\nCheck for Updates looks for a newer release, Download Update fetches it, and the install button restarts the app into the new version. Show Details reopens the release notes for a pending update.',
+        onEnter: () => { activeSection.value = 'updates'; },
     },
     {
         target: '[data-tour="settings-content"]',

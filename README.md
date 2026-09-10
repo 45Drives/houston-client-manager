@@ -17,10 +17,10 @@ The 45Drives Storage Wizard is a desktop application that connects your computer
 | **Cloud accounts** | Saved credentials for Dropbox, Google Drive, Google Cloud, Azure Blob, Backblaze B2, Amazon S3, Wasabi, Ceph, IDrive e2, and Storj. OAuth providers link with a browser sign-in. |
 | **Off-site backups** | Pair two servers over an encrypted WireGuard tunnel with a 6-character code, then point any backup task at the tunnel IP. |
 | **Restore** | Browse local backups, remote backup targets, cloud destinations, and ZFS snapshots, then restore to the server or download to this computer. |
-| **Snapshots** | Browse, roll back, and delete ZFS snapshots, including the automatic hourly/daily/weekly snapshots created by Split Pools. |
+| **Snapshots** | Browse, roll back, and delete ZFS snapshots, including the automatic hourly/daily/weekly snapshots that Super Simple Setup schedules on every new server. |
 | **Dashboard** | Saved servers, storage and system health, scheduled/failed task counts, recent activity, upcoming backups, and a live topology map of your backup network. |
 | **Credential vault** | Saved server logins stored securely on this device, with active/stale/orphaned tracking. |
-| **Automatic updates** | The app checks for a new release shortly after startup, downloads it in the background, and installs it on quit. |
+| **Automatic updates** | The app checks for a new release shortly after startup and prompts you to download and install it. Updates can also be driven by hand from Settings → System → Updates. |
 
 ---
 
@@ -81,7 +81,7 @@ Root privileges are requested only when required — creating an `fstab` entry f
 
 1. Rack, cable, and power on the server.
 2. Open the app and run the **Setup Wizard**. Pick your server from the discovery list — or enter its IP manually if mDNS is blocked on your network — and sign in as `root`. The app installs the server components over SSH.
-3. Choose **Simple** setup, name the server and its network folder, review the drive summary, and click **Complete Setup**. Enable **Split Pools** if you want an on-box replicated backup pool with automatic snapshots.
+3. Choose **Simple** setup, name the server and its network folder, review the drive summary, and click **Complete Setup**. Simple setup picks the redundancy level from the drives it finds and schedules hourly/daily/weekly snapshots plus a weekly scrub for you.
 4. Open the **Backup Manager**:
    - **Local Backups** — pick folders on this computer and a schedule. Runs from this computer, so it needs to be powered on.
    - **Remote Backups** — connect to the server and create server-side tasks (Rsync, ZFS replication, or cloud sync). Runs on the server, independently of this computer.

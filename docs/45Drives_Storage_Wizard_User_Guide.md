@@ -79,6 +79,8 @@ flowchart TD
    - [Applying the Configuration](#applying-the-configuration)
 7. [Bulk Server Setup](#7-bulk-server-setup)
 8. [Server Management](#8-server-management)
+   - [Destructive Changes and Admin Access](#destructive-changes-and-admin-access)
+   - [Servers Added for Backups Only](#servers-added-for-backups-only)
    - [The Tabs](#the-tabs)
    - [Staged Changes](#staged-changes)
    - [VPN Tunnels](#vpn-tunnels)
@@ -148,7 +150,7 @@ flowchart TD
 |---|---|
 | **OS** | Rocky Linux 8/9, Ubuntu 20.04/22.04, or Debian (Bookworm/Trixie) |
 | **Management UI** | Cockpit (installed automatically during setup) |
-| **Drives** | At least 2 drives for a mirror; 3+ for RAID-Z1, 4+ for RAID-Z2, 5+ for RAID-Z3. **6+ drives required to enable a split Storage/Backup pool** |
+| **Drives** | At least 1 drive. Simple setup picks the redundancy level for you — 2 drives are mirrored, 3–4 use RAID-Z1, and 5 or more use RAID-Z2. Custom setup also offers RAID-Z3 (5+ drives). |
 | **Network** | Connected to a router or switch on the same network as your computer for initial setup |
 | **Access** | An account with root or sudo privileges |
 
@@ -159,9 +161,11 @@ The Storage Wizard installs and configures these automatically when you connect 
 | Package | Purpose |
 |---|---|
 | **cockpit** / **cockpit-bridge** | The server's web management interface |
-| **45Drives Super Simple Setup** | The storage setup wizard |
-| **45Drives Task Scheduler** | Scheduled server-side backup tasks |
+| **Houston Broadcaster** | The server-side API the desktop app talks to |
+| **Super Simple Setup** | The storage setup wizard |
+| **Task Scheduler** | Scheduled server-side backup tasks |
 | **WireShield** | Encrypted server-to-server tunnels |
+| **ZFS Management** | The server's ZFS pool and dataset tools |
 | **zfsutils / zfs** | Storage pools and datasets |
 | **samba** | Windows/macOS network file shares |
 | **rsync** | File copy and sync backups |
@@ -244,14 +248,25 @@ If any tasks have failed, an alert banner appears: *"N backup tasks failed recen
 
 ### Saved Servers
 
-The **Saved Servers** card lists your saved servers, five at a time. Each row shows a reachability dot (green online, grey offline), the server's name, a gold star if it is a favourite, and `username@host` with the share name and when it was last used.
+The **Saved Servers** card lists your saved servers, five at a time. Each row shows a reachability dot (green online, grey offline), the server's name, a gold star if it is a favourite, and `username@host` with the share name and when it was last used. A grey **Backup only** badge marks servers that were added for backups alone — *"Added for backups only — no admin credential is stored on this computer"*.
 
 Two buttons sit in the card header:
 
 | Button | What it does |
 |---|---|
 | **Manage Connections** | Opens the credential vault (saved logins) |
-| **+ Add** | Adds a server manually by IP address |
+| **+ Add** | Opens the Add Server modal |
+
+**+ Add** offers three ways to bring a server into the app:
+
+| Option | Use it when |
+|---|---|
+| **Set Up New Server** | *"Configure storage, shares, and install server software"* — runs the full wizard against factory-fresh hardware |
+| **Add Existing Backup Server** | *"Connect to a server that's already set up"* — registers it with the app without touching its storage or shares |
+| **Connect for Backup Only** | *"Use a share someone gave you — no admin access needed"* — stores only the Samba share details, so backups run but the server cannot be managed from here |
+
+![Add Server — choosing how to add](images/add-server-choose.png)
+<!-- SCREENSHOT: The Add Server modal on its first step showing all three options stacked — Set Up New Server, Add Existing Backup Server, and Connect for Backup Only — each with its icon and subtitle. -->
 
 ![Saved Servers card](images/dashboard-saved-servers.png)
 <!-- SCREENSHOT: The Saved Servers card with two or three servers listed (status dot, name, favourite star, username@host subtitle), the Manage Connections and + Add buttons in the header, and one row hovered so its gear icon is visible. -->
@@ -266,7 +281,10 @@ The card works three ways:
 
 If any saved logins have gone unused for 30 days or more, an amber banner at the bottom of the card names them and points you at **Manage Connections**.
 
-Below Saved Servers, the **Storage** and **System Health** cards summarise capacity usage and overall server health for the selected server.
+Below Saved Servers, the **Storage** and **System Health** cards summarise capacity usage and overall server health for the selected server. For a **Backup only** server the Storage card instead reads *"Storage details aren't available"* — the app has no administrator credential to read its datasets with. Backups still run normally, and **Connection Details** opens what the app does know about it.
+
+![A server marked Backup only](images/dashboard-backup-only.png)
+<!-- SCREENSHOT: A Saved Servers row carrying the grey "Backup only" badge with its padlock icon, and beside or below it the Storage card in its "Storage details aren't available" state with the Connection Details button. -->
 
 ![Storage and System Health cards](images/dashboard-storage-health.png)
 <!-- SCREENSHOT: The two side-by-side cards showing pool capacity usage (bar or donut) and the system health summary for a connected server. -->
@@ -337,10 +355,10 @@ A **Light / Dark** toggle sits beside them. Your choice is remembered between se
 
 ### Settings
 
-The Settings modal is organised into four sections:
+The Settings modal is organised into five panels, grouped under **Servers**, **Client**, **Network**, and **System**:
 
 ![Settings modal](images/settings-modal.png)
-<!-- SCREENSHOT: The Settings modal open on the Servers > Saved section, with the left-hand nav showing all four groups (Servers, Client, Network, System) and their items. -->
+<!-- SCREENSHOT: The Settings modal open on the Servers > Saved section, with the left-hand nav showing all four groups (Servers, Client, Network, System) and their items, including System > Updates. -->
 
 **Servers → Saved**
 
@@ -380,6 +398,22 @@ Below these, a **Discovery Timing** group holds two more values:
 
 ![Settings — network and connection](images/settings-network-connection.png)
 <!-- SCREENSHOT: The Network > Connection panel showing the four setting rows with their toggles and inputs, plus the "Discovery Timing" heading below with the Scan interval and Inactivity timeout number fields. -->
+
+**System → Updates**
+
+Shows the **Current version** of the app alongside its update status, and lets you drive the updater by hand instead of waiting for the automatic check:
+
+| Button | When it appears |
+|---|---|
+| **Check for Updates** | Always. Reads **Checking…** while it works. |
+| **Download Update** | When a newer version is available |
+| **Install Now** (Linux) / **Restart & Install** (Windows, macOS) | Once the update has finished downloading |
+| **Show Details** | When an update is pending — reopens the update notification with its release notes |
+
+While a download runs, a progress bar and *"N% complete"* appear here. Release notes for an available version are shown above the buttons.
+
+![Settings — System > Updates](images/settings-updates.png)
+<!-- SCREENSHOT: The System > Updates panel showing the Current version row with its status line, the release-notes box for an available version, and the Check for Updates / Download Update / Show Details buttons. A second capture mid-download with the progress bar and "N% complete" would also be useful. -->
 
 **System → Advanced**
 
@@ -479,7 +513,7 @@ This screen has two halves.
 
 > **Note:** These credentials are used to securely connect to the server, install the required software, and automatically log you into the server's management interface. An account with admin or sudo-level privileges is required.
 
-Click **Next**. The button changes to **Installing…** while the app connects over SSH and installs the server components. Status messages appear as it works. If something goes wrong, a **Troubleshooting steps** section appears with a **?** icon you can hover for details.
+Click **Next**. The button changes to **Installing…** while the app connects over SSH and installs the server components. Status messages appear as it works, and **Show detailed log (N lines)** expands the raw output if you want to watch exactly what is happening — click it again to hide it. If something goes wrong, a **Troubleshooting steps** section appears with a **?** icon you can hover for details.
 
 ![Setup Wizard — installing server components](images/setup-06-installing.png)
 <!-- SCREENSHOT: The discovery step mid-install: the Next button showing "Installing…", a spinner and a progress status message. If possible, a second variant showing the "Troubleshooting steps" error state. -->
@@ -528,16 +562,24 @@ The Simple path is four steps: Credentials → Drives → Summary → Complete.
 | **User Name** | The admin user that will access your storage. Lowercase letters and numbers only, no spaces. Cannot be a reserved name (`root`, `admin`, `guest`, `daemon`, and similar) or an account that already exists. |
 | **Password** | Minimum 8 characters, and must include one uppercase letter, one number, and one special symbol (`!@#$%^` etc). |
 | **Confirm Password** | Must match exactly. |
-| **Use the same password for root account?** | Checked by default. When checked, the root password matches your storage password. Remote root login is disabled by default for security. |
-| **Root Password** / **Confirm Root Password** | Only shown when the checkbox above is unchecked. Same strength rules. |
-| **Network Folder Name** | The name of your shared folder (the "share"). Letters, numbers, dashes, and underscores only — no spaces. |
+| **Network Folder Name** | The name of your shared folder (the "share"). Letters, numbers, dashes, and underscores only — **no spaces**. |
+
+Two optional security controls sit below the fields. Both are **off** by default, so a stock setup leaves the server's existing root access exactly as it found it:
+
+| Checkbox | Default | What it does |
+|---|---|---|
+| **Change Root Password?** | Off | *"Leave this off to keep the root password exactly as it is today. Turn it on only if you want to set a new one now."* |
+| **Use the same password for root account?** | Off | Only shown when **Change Root Password?** is on. Sets the root password to the same value as your storage password. Untick it to get separate **Root Password** and **Confirm Root Password** fields with the same strength rules. |
+| **Disable Root SSH** | Off | *"Optional extra hardening. Blocks remote SSH logins as root, so anyone connecting must sign in as a regular user and then use sudo. Leave it off if your team or a support technician needs direct root SSH access."* |
+
+> **Important:** Leave **Disable Root SSH** off unless you are certain. The Storage Wizard, Bulk Setup, and 45Drives support all connect over SSH, and several of them expect to be able to sign in as root.
 
 A live **Folder Preview** shows exactly how the share will appear in Windows File Explorer — for example `\\myserver.local\data`.
 
 ![Simple Setup — Storage Server Set Up](images/sss-simple-01-server-setup.png)
-<!-- SCREENSHOT: The "Storage Server Set Up" step with all fields filled in: Server Name, User Name, Password and Confirm Password (masked, eye icons visible), the "Use the same password for root account?" checkbox ticked, Network Folder Name, and the Folder Preview graphic showing \\servername.local\foldername. -->
+<!-- SCREENSHOT: The "Storage Server Set Up" step with all fields filled in: Server Name, User Name, Password and Confirm Password (masked, eye icons visible), the unticked "Change Root Password?" and "Disable Root SSH" checkboxes, Network Folder Name, and the Folder Preview graphic showing \\servername.local\foldername. -->
 
-When you click **Next**, a confirmation dialog appears reminding you to save your credentials — **especially the root password**. Click **OK, Proceed** if you have already recorded them, or **Back** to go store them first.
+When you click **Next**, a confirmation dialog appears reminding you to save your credentials. Click **OK, Proceed** if you have already recorded them, or **Back** to go store them first.
 
 ![Save your credentials confirmation dialog](images/sss-simple-01-credentials-confirm.png)
 <!-- SCREENSHOT: The modal warning the user to save their username, password and especially the root password, with the "OK, Proceed" and "Back" buttons. -->
@@ -547,7 +589,7 @@ When you click **Next**, a confirmation dialog appears reminding you to save you
 *"Based on the quantity of storage drives you installed in the server, we will setup the storage array with a balance of capacity, performance, and redundancy."*
 
 ![Simple Setup — Storage Drive Summary](images/sss-simple-02-drive-summary.png)
-<!-- SCREENSHOT: The full Storage Drive Summary step: the 3D chassis drive canvas on the left with one drive selected/highlighted, the Drive Properties panel populated on the right, the green "No issues found." Issues panel, the Split Pools checkbox, and the capacity table showing failure tolerance and usable space. -->
+<!-- SCREENSHOT: The full Storage Drive Summary step: the 3D chassis drive canvas on the left with one drive selected/highlighted, the Drive Properties panel populated on the right, the green "No issues found." Issues panel, and the planned pool layout below with its per-group redundancy lines and total usable capacity. -->
 
 **Left panel — the drive view.** A 3D representation of your chassis with every drive bay. Click a drive to inspect it. The view refreshes automatically every few seconds, so if a drive is missing, reseat it and watch it appear.
 
@@ -566,17 +608,23 @@ When you click **Next**, a confirmation dialog appears reminding you to save you
 ![Choose a wipe method](images/sss-simple-02-wipe-method.png)
 <!-- SCREENSHOT: The Wipe Method modal showing both options — Full erase and Quick wipe — with their descriptions and the confirm/cancel buttons. -->
 
-**Active Backup (Split Pools).** Tick **Split Pools** to divide your drives into a Storage pool and a Backup pool. The Backup pool always holds a copy of your Storage pool, replicated with ZFS snapshots.
+**Planned pool layout.** Below the drive view the wizard spells out exactly what it intends to build. You do not choose a RAID level here — Simple setup builds a single storage pool from every detected drive and picks the redundancy level to match the drive count:
 
-- Requires **at least 6 drives** so both pools keep redundancy. The checkbox is disabled below that.
-- Snapshots are taken **hourly** (kept for 1 day), **daily** (kept for 1 week), and **weekly** (kept for 1 month), so you can restore from multiple points in time.
-- If you have an odd number of drives, one is left out as a spare.
-- Either way, a weekly **Scrub** task is scheduled to verify data integrity.
+| Drives detected | Layout |
+|---|---|
+| 5 or more | **RAID-Z2** — survives 2 simultaneous drive failures |
+| 3 or 4 | **RAID-Z1** — survives 1 drive failure |
+| 2 | **Mirror** |
+| 1 | No redundancy |
 
-A capacity table below shows, for each pool, how many disk failures it will tolerate and how much usable space you get.
+A chassis holding both hard drives and SSDs gets one redundancy group of each, so media types are never mixed inside a single group. Any drive that cannot join a group is held as a **hot spare**, provided it is large enough to replace a data drive; anything too small is listed as left out.
 
-![Split Pools enabled with capacity breakdown](images/sss-simple-02-split-pools.png)
-<!-- SCREENSHOT: Close crop of the Active Backup section with the Split Pools checkbox ticked, the snapshot-retention explanation text, and the capacity table showing both a Storage row and a Backup row with failure tolerance and usable capacity. -->
+Each planned group is listed on its own line — for example *"Group 1 — 8 drive(s) as RAID-Z2, tolerating 2 disk failure(s)."* — followed by **Total usable capacity** and, where applicable, how many drives are held as hot spares.
+
+**Automatic protection.** Simple setup always schedules:
+
+- **Snapshots** — **hourly** (kept for 1 day), **daily** (kept for 1 week), and **weekly** (kept for 1 month), so you can roll back to multiple points in time.
+- A weekly **Scrub** task to verify data integrity.
 
 **Next** is disabled while any errors are present.
 
@@ -588,11 +636,10 @@ The screen shows your configuration in columns:
 
 - **System Summary** — Server Name, User Name, Password (hidden, with an eye icon to reveal), and Network Folder Name.
 - **Samba Summary** — share name, path, permissions, and who has access.
-- **Storage ZFS** — pool name, RAID type, drive count, usable capacity, dataset settings.
-- **Backup ZFS** — the same for the backup pool, if you enabled Split Pools.
+- **Storage ZFS Summary** — pool name, available capacity, each virtual device with its type and redundancy, and the dataset name.
 
 ![Simple Setup — Summary](images/sss-simple-03-summary.png)
-<!-- SCREENSHOT: The Summary step showing the three columns (System Summary with the masked password and eye toggle, the ZFS storage pool summary, and the backup pool summary) plus the orange data-loss warning banner at the bottom and the Complete Setup button. -->
+<!-- SCREENSHOT: The Summary step showing the System Summary column (with the masked password and eye toggle) and the Samba and Storage ZFS Summary panels, plus the orange data-loss warning banner at the bottom and the Complete Setup button. -->
 
 > **Warning:** Completing this setup will delete any pre-existing pools and shares on the system. If you have done ZFS or Samba configuration outside of this application, you may lose data. If you have not, disregard this warning and continue.
 
@@ -611,14 +658,15 @@ The Custom path is six steps and gives you control over every option. Choose it 
 | Field | Notes | Default |
 |---|---|---|
 | **Server Name** | Hostname. Letters, numbers, dashes. Max 63 characters. | Current hostname |
-| **Admin Username** | Lowercase letters, numbers, underscores, dashes. Max 32 characters. Cannot be reserved or already in use. | — |
+| **Admin Username** | Lowercase letters and numbers, no spaces. Max 32 characters. Cannot be reserved or already in use. | — |
 | **Admin Password** / **Confirm Password** | 8+ characters with an uppercase letter, number, and symbol. | — |
 | **Timezone** | Used for scheduling and log timestamps. | Auto-detect |
-| **Disable Root SSH** | Security best practice. Your admin user can still use `sudo`. | Enabled |
-| **Sync Time via NTP** | Keeps the server clock accurate automatically. | Enabled |
+| **Change Root Password** | *"Leave this off to keep the existing root password. Turn it on to set a new one during setup."* Ticking it reveals **Reuse Admin Password**, or **Root Password** / **Confirm Root Password** if you would rather set a separate one. | Off |
+| **Disable Root SSH** | Optional extra hardening. Blocks remote SSH logins as root; your admin user can still use `sudo`. | Off |
+| **Sync Time via NTP** | Keeps the server clock accurate automatically. | On |
 
 ![Custom Setup — Server Info](images/sss-custom-01-server-info.png)
-<!-- SCREENSHOT: The "Custom Setup — Server Info" step with the two-column field grid: Server Name, Admin Username, Admin Password + Confirm, the Timezone dropdown open, and the Disable Root SSH / Sync Time via NTP checkboxes both ticked. -->
+<!-- SCREENSHOT: The "Custom Setup — Server Info" step with the two-column field grid: Server Name, Admin Username, Admin Password + Confirm, the Timezone dropdown open, the unticked Change Root Password and Disable Root SSH checkboxes, and the ticked Sync Time via NTP checkbox. -->
 
 #### Custom Step 2: ZFS Configuration
 
@@ -628,24 +676,25 @@ The Custom path is six steps and gives you control over every option. Choose it 
 
 | Level | Minimum Drives | Failure Tolerance |
 |---|---|---|
-| **mirror** | 2 | Half the drives |
-| **raidz1** | 3 | 1 drive |
-| **raidz2** | 4 | 2 drives |
-| **raidz3** | 5 | 3 drives |
+| **Stripe** | 1 | None |
+| **Mirror** | 2 | Half the drives |
+| **RAID-Z1** | 3 | 1 drive |
+| **RAID-Z2** | 4 | 2 drives |
+| **RAID-Z3** | 5 | 3 drives |
 
-**Enable Backup Pool** assigns some drives to a Storage pool and some to a Backup pool. Requires at least 6 drives. When enabled, a **Pool** column appears in the drive table so you can assign each drive to *Storage* or *Backup*.
+**Use recommended** picks the level 45Drives would choose for the number of drives you have selected.
 
 **Drive Selection** uses the same 3D chassis view alongside a table showing slot, model, serial, capacity, type, and health. The heading tracks your progress: *"Select Drives (4 selected, minimum 3)"*. An **Issues** section lists any problems, and a **Wipe all drives** option is available exactly as in the Simple path.
 
 ![Custom Setup — ZFS drive selection](images/sss-custom-02-zfs-drives.png)
-<!-- SCREENSHOT: The ZFS Configuration step showing the RAID Level dropdown, the "Enable Backup Pool" checkbox, the 3D chassis canvas beside the drive table with checkboxes and the Pool column (Storage/Backup) visible, and the "Select Drives (N selected, minimum M)" heading. -->
+<!-- SCREENSHOT: The ZFS Configuration step showing the RAID Level dropdown and the "Use recommended" button, the 3D chassis canvas beside the drive table with checkboxes, and the "Select Drives (N selected, minimum M)" heading. -->
 
 **Storage Pool options**
 
 | Option | Description | Default |
 |---|---|---|
 | **Pool Name** | Root of your storage hierarchy | `tank` |
-| **Auto-expand** | Grow the pool when larger disks are added | On |
+| **Auto-expand** | Grow the pool when larger disks are added | Off |
 | **Auto-replace** | Automatically replace failed drives if a spare exists | On |
 | **Auto-trim (SSD)** | Enable TRIM. Not needed for HDDs. | Off |
 | **Force create** | Create even if disks are in use. Use with caution. | Off |
@@ -657,15 +706,17 @@ The Custom path is six steps and gives you control over every option. Choose it 
 
 | Option | Description | Default |
 |---|---|---|
-| **Name** | Also used as the default Samba share name | Your folder name |
+| **Name** | Also used as the default Samba share name. Letters, numbers, dashes, and underscores only — **no spaces**. | Your folder name |
 | **Compression** | LZ4 (recommended), ZSTD, GZIP, Off | LZ4 |
 | **Access Time** | Off (recommended) or On | Off |
 | **Case Sensitivity** | Sensitive, Insensitive, Mixed | Sensitive |
+| **Dedup** | Off (recommended), On, Verify | Off |
+| **Record Size** | 4K – 1M | 128K |
 
-If **Enable Backup Pool** is ticked, an identical section appears for the Backup pool, described as *"the active backup where your main storage pool will be replicated for safekeeping."*
+The first dataset is the primary one and maps to your Samba share. **+ Add Dataset** creates additional datasets inside the same pool, each with its own copy of the options above; the trash icon removes one.
 
 ![Custom Setup — pool and dataset options](images/sss-custom-02-zfs-options.png)
-<!-- SCREENSHOT: The expanded Storage Pool and Dataset configuration panels showing Pool Name, the four toggles (auto-expand, auto-replace, auto-trim, force create), Compression / Dedup / Record Size dropdowns, and the dataset Name / Compression / Access Time / Case Sensitivity fields. -->
+<!-- SCREENSHOT: The expanded Storage Pool and Dataset configuration panels showing Pool Name, the four toggles (auto-expand, auto-replace, auto-trim, force create), Compression / Dedup / Record Size dropdowns, the dataset Name / Compression / Access Time / Case Sensitivity fields, and the "+ Add Dataset" button. -->
 
 #### Custom Step 3: Users & Groups
 
@@ -714,10 +765,10 @@ Click **+ Add User** for each additional account:
 
 *"Review your configuration below."*
 
-A full breakdown across columns: System (server name, admin user, password, timezone, root SSH, NTP), Users & Groups, Samba (workgroup, server string, log level, and each share), the Storage Pool (with expandable Drives, Pool Options, and Dataset panels), and the Backup Pool if enabled.
+A full breakdown across columns: **System** (server name, admin user, password, timezone, whether the root password will be changed or left **Unchanged**, whether root SSH is **Enabled** or **Disabled**, and NTP), **Users & Groups**, **Samba** (workgroup, server string, log level, and each share), and the **Storage Pool** with expandable **Drives**, **Pool Options**, and **Dataset Options** panels.
 
 ![Custom Setup — Summary](images/sss-custom-05-summary.png)
-<!-- SCREENSHOT: The Custom Summary step with all three columns populated and at least one collapsible panel (e.g. "Drives" or "Pool Options") expanded, plus the orange data-loss warning banner and the Complete Setup button. -->
+<!-- SCREENSHOT: The Custom Summary step with all columns populated and at least one collapsible panel (e.g. "Drives" or "Pool Options") expanded, plus the orange data-loss warning banner and the Complete Setup button. -->
 
 The same data-loss warning appears at the bottom. Click **Complete Setup** when you are satisfied.
 
@@ -732,20 +783,35 @@ The wizard now applies everything, showing a live checklist. Each row displays �
 ![Applying the configuration](images/sss-complete-progress.png)
 <!-- SCREENSHOT: The "Setting Up Server" screen mid-run: several steps ticked green, one step showing the active spinner, and the remaining steps greyed out as pending. -->
 
-1. Initializing Storage Setup
-2. Configuring SSH Security and Root Access
+1. Storage Setup
+2. SSH Security and Root Access
 3. Clearing ZFS and Samba data
-4. Updating Server Name
-5. Creating Users and Groups
-6. Configuring ZFS Storage
-7. Configuring Storage Sharing
-8. Opening Samba Port
-9. Ensuring Node Version (18)
-10. Scheduling Snapshot/Backup Tasks
+4. Server Name
+5. Users and Groups
+6. ZFS Storage
+7. Storage Sharing
+8. Samba Port
+9. Snapshot tasks
+10. Services and Storage
 
 If you chose to wipe drives, an **Erasing Selected Drives** step is inserted. With **Full erase** selected you will see a warning: *"Every block on the selected drives is being overwritten. This normally runs for hours on large hard drives and cannot be interrupted safely — leave this page open until it finishes."*
 
-If you enabled Split Pools, the final step schedules the **Active Backup tasks**.
+**If a step fails**
+
+The screen switches to **Setup failed.** and shows the reason. Two buttons appear:
+
+| Button | What it does |
+|---|---|
+| **View Logs** | Opens the raw setup log so you can see exactly where it stopped |
+| **Restart Services and Retry** | Restarts the server-side services and runs the setup again |
+
+Setup can also finish successfully but with non-fatal problems. In that case a **⚠ N warnings** section lists them, with its own **View Logs** button. The server is usable, but read the warnings before you rely on it.
+
+![Super Simple Setup — setup failed](images/sss-complete-failed.png)
+<!-- SCREENSHOT: The "Setting Up Server" screen in its failure state: earlier steps ticked green, the failed step marked ✖, the "Setup failed." heading with the error message beneath it, and the View Logs and Restart Services and Retry buttons. A second capture of the ⚠ warnings list would also be useful. -->
+
+![Super Simple Setup — setup log viewer](images/sss-setup-logs.png)
+<!-- SCREENSHOT: The Setup Logs modal opened from View Logs, showing the raw setup output with the failing command visible. -->
 
 > **Important:** If you changed the Server Name, the server reboots after setup to finalise the hostname change. This is normal — wait a minute and reconnect.
 
@@ -753,15 +819,20 @@ If you enabled Split Pools, the final step schedules the **Active Backup tasks**
 
 *"You now have a network attached server that you can start using immediately."*
 
-Two buttons finish the flow:
+*"Your setup is complete! You can now manage your backup tasks via the Backup Manager, configure additional systems with Setup More Storage Servers, or access advanced controls and monitoring through the Houston Command Center."*
+
+Three buttons finish the flow:
 
 | Button | What it does |
 |---|---|
+| **Return to Dashboard** | Closes the setup wizard and drops you back on the Storage Wizard dashboard |
 | **Configure Backups** | Takes you to the Backup Manager |
 | **Setup More Storage Servers** | Restarts the setup wizard for another server |
 
+All three trigger the reboot first if you changed the Server Name.
+
 ![Setup complete — what happens next](images/sss-complete-next-steps.png)
-<!-- SCREENSHOT: The completed setup screen showing all steps ticked green, the success message, and the Configure Backups and Setup More Storage Servers buttons. -->
+<!-- SCREENSHOT: The completed setup screen showing all steps ticked green, the success message, and the Return to Dashboard, Configure Backups and Setup More Storage Servers buttons. -->
 
 ---
 
@@ -790,7 +861,11 @@ Click **Apply to all servers missing values** to push the defaults into every se
 
 Use **+ Add Server** to add a card for each machine, and fill in whatever differs per server. A sticky action bar at the bottom tracks progress: total servers, how many are **done** (green), how many **failed** (red), and which one is currently running. A **Parallel mode** option runs several servers at once instead of one after another.
 
-**Import Template** and **Export Template** let you save a bulk configuration to a JSON file and reuse it on your next deployment.
+**Import Template** and **Export Template** let you save a bulk configuration to a JSON file and reuse it on your next deployment. **View Example Template** opens a worked example — *"Save this as a `.json` file, fill in your own values, then use Import Template."* — with **Copy JSON** and **Download Example** buttons so you have something to start from.
+
+Each server is deployed in **Simple** or **Custom** mode. Simple asks only for a hostname and a share name and lays out the ZFS pool for you; Custom exposes pool layout, datasets, users, groups, and Samba shares, the same as the single-server custom wizard.
+
+A server that fails to probe is skipped rather than blocking the batch — the rest still deploy, and the failed ones can be fixed and retried on their own with **Retry Failed**.
 
 ---
 
@@ -808,6 +883,40 @@ Open a server's management page from the Dashboard by hovering its row in **Save
 | **Refresh** | Re-probe the server for its current state |
 
 When you open the page it probes the server and shows *"Probing server…"*. If the probe fails you get the reason and a **Retry** button. If the server is rebooting after a hostname change, the tabs grey out and you see *"Server is rebooting… Waiting for `<name>` to come back online"* until it returns.
+
+### Destructive Changes and Admin Access
+
+Anything that removes or overwrites something already on the server is treated as a destructive change and asks for your admin password again before it runs:
+
+> **Confirm Admin Password** — *"This change removes or overwrites something already on the server, so it needs your admin password again."*
+
+The password is checked against the server itself, not against anything cached locally. Once it is accepted, admin access stays unlocked for **five minutes** so a run of related edits does not prompt you over and over. While it is unlocked an amber **Admin unlocked `<time remaining>`** badge sits in the page header — hover it for *"Destructive actions will run without asking again for `<time>`. Click to lock now."* Click the badge to lock it again immediately.
+
+![Confirm Admin Password](images/server-manage-admin-gate.png)
+<!-- SCREENSHOT: The Confirm Admin Password modal with its explanation text, the Admin Password field, the "Verified against the server itself. Stays valid for 5 minutes." note, and the Cancel / Confirm buttons. -->
+
+![Admin unlocked badge](images/server-manage-admin-unlocked.png)
+<!-- SCREENSHOT: Close crop of the Server Management header with the amber "Admin unlocked 4m 32s" badge and its open-padlock icon sitting beside the Edit and Refresh buttons. -->
+
+The changes that trigger the prompt are:
+
+| Area | Actions |
+|---|---|
+| **Storage** | Create a storage pool (erases the selected disks), add a vdev, attach / detach / offline / replace a disk, destroy a dataset, destroy or roll back a snapshot |
+| **Users & Groups** | Delete a user, change a user password, delete a group |
+| **Samba** | Change or remove a share, change global Samba settings, change a Samba user password |
+| **Server** | Apply staged server configuration changes |
+
+### Servers Added for Backups Only
+
+A server added with **Connect for Backup Only** has no administrator credential stored on this computer, so there is nothing for this page to manage. Instead of the tabs you get:
+
+> **You don't have admin access to this server** — *"This server was added for backups only, so no administrator password is stored on this computer. Backups to `<share>` work normally, but its storage, users, and shares can only be changed by whoever administers it."*
+
+If you do have the admin login, **Add Admin Credentials** promotes the entry to a fully managed server.
+
+![Server Management — backup-only server](images/server-manage-backup-only.png)
+<!-- SCREENSHOT: The Server Management page for a backup-only server: no tab bar, the "You don't have admin access to this server" card with its explanation, and the Add Admin Credentials button. -->
 
 ### The Tabs
 
@@ -858,7 +967,7 @@ Four counters sit at the top:
 | **Active (<30d)** | Used within the last 30 days |
 | **Stale (30+d)** | Not used in over 30 days |
 
-Search by host, username, or label, and filter by **All**, **Active**, **Stale**, or **Orphaned**. Credentials are grouped by host, with a reachability indicator per host and a per-credential status. The **⋯** menu on each row lets you manage that individual login.
+Search by host, username, or label, and filter by **All**, **Active**, **Stale**, or **Orphaned**. Credentials are grouped by host, with a reachability indicator per host and a per-credential status. Hosts added for backups alone carry the same **Backup only** badge you see on the Dashboard. The **⋯** menu on each row lets you manage that individual login.
 
 **Clean N Stale** removes every credential that has not been used in 30 days or more.
 
@@ -976,11 +1085,14 @@ Select one or more tasks to enable the action buttons:
 | Action | Description |
 |---|---|
 | **Run Now** | Runs the selected backup immediately instead of waiting for the schedule |
+| **Stop Run** | Replaces **Run Now** while a selected task is copying. Available on Windows, macOS, and Linux. |
 | **View/Restore** | Browses the files inside a backup and restores individual files or whole backups |
 | **Edit** | Changes a task's name, source folder, schedule, or credentials. Enabled when exactly one task is selected. |
 | **Logs** | Opens that task's run history |
 | **Delete** (trash icon) | Removes the task |
 | **Refresh** | Re-reads tasks from the system |
+
+A running task also gets its own stop button in its row — hover it for *"Stop this run"*. Either way you are asked to confirm: *"Stopping now keeps whatever has already been copied; the next run picks up where this one left off."* A stopped task is reported as **Cancelled**, not **Failed**, so it does not count against your failure total.
 
 When no tasks exist you will see *"No backup tasks found"* and *"Click New Backup above to create your first backup task."*
 
@@ -1560,14 +1672,14 @@ The right panel is **Restore Destination**:
 ![Restore Destination panel](images/restore-destination-panel.png)
 <!-- SCREENSHOT: The Restore Destination panel with "Restore to Server" selected, the "Restore to original path" checkbox unticked so the Server destination path field is visible, and the "Create folder if it doesn't exist" and "Create as ZFS dataset" options shown with the Parent dataset field. -->
 
-Start the restore. Progress is shown as *"Restoring…"* and then *"Restore Complete"*. A **Cancel** button is available while it runs, and any failure is reported with the error.
+Start the restore. Progress is shown as *"Restoring…"* and then *"Restore Complete"*. A **Cancel** button is available while it runs; a cancelled restore is reported as cancelled rather than complete, and any failure is reported with the error.
 
 ![Restore in progress](images/restore-progress.png)
 <!-- SCREENSHOT: The restore progress state showing the "Restoring…" label, a progress bar and the Cancel button. A second capture of the "Restore Complete" success state would also be useful. -->
 
 ### Snapshots
 
-On the **Remote Backups** tab, click **Snapshots** to open the snapshot manager. This is where ZFS point-in-time copies live — including the hourly, daily, and weekly snapshots created automatically when you enabled **Split Pools** during setup.
+On the **Remote Backups** tab, click **Snapshots** to open the snapshot manager. This is where ZFS point-in-time copies live — including the hourly, daily, and weekly snapshots that Super Simple Setup schedules for you on every new server.
 
 The left panel lists your **Datasets**. Select one to see its snapshots. Each snapshot offers three actions:
 
@@ -1590,14 +1702,31 @@ Snapshots that serve as replication anchors are marked, and hovering over the ma
 
 ## 16. Automatic Updates
 
-The Storage Wizard updates itself. Roughly five seconds after startup it checks for a new release, downloads it in the background, and installs it the next time you quit the app. You will be notified when an update is ready.
+The Storage Wizard updates itself. Shortly after startup it checks for a new release, and when one is found a notification appears in the app.
 
 ![Update notification](images/update-notification.png)
-<!-- SCREENSHOT: The in-app notification telling the user an update has been downloaded and will install when the app quits. -->
+<!-- SCREENSHOT: The Update Available notification showing the version line, the release notes panel, and the Dismiss / Download Update buttons. -->
+
+The notification walks through four states:
+
+| State | What you see |
+|---|---|
+| **Update Available** | *"Version X is available. You are on Y."* with the release notes, plus **Dismiss** and **Download Update** |
+| **Downloading Update** | A progress bar and percentage, plus **Continue in Background** |
+| **Update Ready to Install** | *"Version X has been downloaded and is ready to install."* with **Later** and the install button |
+| **Update Failed** | The reported reason, so you can retry from Settings |
+
+The install button is **Install Now** on Linux and **Restart & Install** on Windows and macOS, and each platform gets a short note explaining what happens next:
+
+- **Linux** — *"Your computer will ask for your password."* Installing replaces the system package, which needs administrator access. This is the password for **this computer**, not for a server.
+- **Windows** — *"The app will close and reopen."* The installer runs in the background and Windows may briefly show a security prompt.
+- **macOS** — *"The app will close and reopen."* If you launched the app from its disk image, move it to Applications first.
+
+You can also drive all of this by hand from **Settings → System → Updates**, which shows the current version and offers **Check for Updates**, **Download Update**, the install button, and **Show Details** to reopen the notification.
 
 Updates are disabled while running a development build. Pre-release versions are never installed automatically.
 
-To update the **server** components (Super Simple Setup, Task Scheduler, WireShield), use your server's normal package manager, or re-run the Setup Wizard connection step which refreshes the installed packages.
+To update the **server** components (Houston Broadcaster, Super Simple Setup, Task Scheduler, WireShield), re-run the Setup Wizard connection step or the **Add Existing Backup Server** flow — both check the installed versions against the minimums this app needs and upgrade anything that is missing or out of date, without touching your pools, datasets, or shares.
 
 ---
 
@@ -1653,11 +1782,20 @@ Wait a minute after powering on and click **Rescan Servers**. If it still does n
 **Should I choose Simple or Custom setup?**
 Choose **Simple**. It applies 45Drives' best practices based on the drives you installed and produces a fully production-ready server. Use **Custom** only when you need a specific RAID level, extra datasets, multiple shares, or additional user accounts.
 
-**What does "Split Pools" actually give me?**
-It divides your drives into a Storage pool and a Backup pool on the same machine. The Backup pool holds a replicated copy of your Storage pool, refreshed by hourly, daily, and weekly snapshots. It costs you roughly half your usable capacity but protects against accidental deletion and drive failure. It requires at least 6 drives.
+**What protection do I get out of the box?**
+Simple setup builds one storage pool with the best redundancy your drive count allows — RAID-Z2 at 5 or more drives, RAID-Z1 at 3 or 4, a mirror at 2 — holds any leftover drive as a hot spare, and schedules hourly, daily, and weekly ZFS snapshots plus a weekly scrub. That covers drive failure and accidental deletion.
 
-**Is Split Pools the same as an off-site backup?**
-No. Split Pools protects against drive failure and mistakes, but both copies are in the same chassis. For protection against fire, theft, or flood you need an off-site copy — use a **Remote Backup** task over a **WireShield** tunnel, or a **Cloud Backup**.
+**Is that the same as an off-site backup?**
+No. Redundancy and snapshots both live in the same chassis, so they do nothing about fire, theft, or flood. For that you need a copy somewhere else — a **Remote Backup** task over a **WireShield** tunnel, or a **Cloud Backup**.
+
+**Should I tick "Disable Root SSH" during setup?**
+Only if you are sure. It is off by default because the Storage Wizard, Bulk Setup, and 45Drives support all reach the server over SSH, and several of those flows expect to sign in as root. Your admin user can still use `sudo` either way.
+
+**Why does the app keep asking for my admin password in Server Management?**
+Anything that removes or overwrites existing configuration — destroying a dataset, deleting a user, changing a share — re-checks your admin password against the server before it runs. After the first confirmation it stays unlocked for five minutes, shown by the amber **Admin unlocked** badge in the header.
+
+**What is a "Backup only" server?**
+One added with **Connect for Backup Only**, using just the Samba share details. Backups run normally, but because no administrator password is stored on this computer the app cannot read its storage or manage its users and shares. Add the admin credentials from Server Management to promote it.
 
 **Which backup type should I use for a second server?**
 If both servers run ZFS, use **ZFS Backup (Server-to-Server)** — it sends only incremental changes and preserves permissions and metadata exactly. Otherwise use **File Copy / Sync (Rsync)**.
@@ -1675,7 +1813,10 @@ Yes. WireShield enables the tunnel at boot on both servers.
 Server logins are stored securely on your own computer and never leave it. You can review, filter, and clean them up from **Manage Connections**.
 
 **I forgot my server password. Can I recover it?**
-No. The setup wizard warns you to record your Server Name, Network Folder Name, Username, Password, and root password because they cannot be retrieved afterwards. You would need physical or console access to the server to reset the account.
+No. The setup wizard warns you to record your Server Name, Network Folder Name, Username, and Password because they cannot be retrieved afterwards. You would need physical or console access to the server to reset the account.
+
+**Can I stop a backup that is already running?**
+Yes. Select the task in the Local Backups list and click **Stop Run**, or use the stop icon in the task's own row. Whatever has already been copied stays put and the next run picks up where it left off. The task is recorded as **Cancelled**, not failed.
 
 **Can I set up several servers at once?**
 Yes — use **Setup Multiple Servers** for Bulk Server Setup, and export a template so you can reuse the same configuration next time.
@@ -1694,7 +1835,10 @@ Yes. It checks for updates shortly after launch, downloads them in the backgroun
 | **Setup finished but the server is unreachable** | If you changed the Server Name, the server reboots to finalise the hostname change. Wait a minute and reconnect using the new name or the IP. |
 | **Drives missing from the drive view** | Power the server down, reseat the drives, and power back on. The drive view refreshes every few seconds, so missing drives will reappear on their own once seated. |
 | **"Cannot proceed with errors" on the drive step** | Read the **Issues** panel. Common causes are mismatched drive capacities and drives reporting health warnings. |
-| **Split Pools checkbox is greyed out** | You need at least 6 drives so both pools keep redundancy. |
+| **Super Simple Setup says "Setup failed."** | Click **View Logs** on that screen to see which step stopped and why, then **Restart Services and Retry**. |
+| **Setup finished but shows warnings** | Expand the **⚠ N warnings** section and click **View Logs**. The server is usable, but read them before relying on it. |
+| **Server Management keeps asking for the admin password** | That is expected for destructive changes. Confirm once and it stays unlocked for five minutes — the amber **Admin unlocked** badge in the header shows how long is left. |
+| **A server shows "Backup only" and its storage is blank** | It was added with **Connect for Backup Only**, so no admin credential is stored here. Backups still run. Open Server Management and click **Add Admin Credentials** to manage it. |
 | **Local backup fails with invalid credentials** | Re-check the Samba username and password. These are the User Name and Password you created during Super Simple Setup, not your computer's login. |
 | **Local backups never run on macOS** | Grant cron **Full Disk Access** in System Settings → Privacy & Security. |
 | **Local backups never run on Linux** | The first backup requires your admin password to install the schedule. Re-run the wizard and supply it when prompted. |

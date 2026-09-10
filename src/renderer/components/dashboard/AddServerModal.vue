@@ -712,7 +712,7 @@ const { requestTour } = useTourManager()
 const addServerTourSteps: TourStep[] = [
     {
         target: '[data-tour="add-server-choose"]',
-        message: 'There are two ways to add a server here.\n\nSet Up New Server runs the full wizard against factory-fresh hardware. Add Existing Backup Server is for a machine that is already configured — it is registered with this app without touching its storage or shares.',
+        message: 'There are three ways to add a server here.\n\nSet Up New Server runs the full wizard against factory-fresh hardware. Add Existing Backup Server is for a machine that is already configured — it is registered with this app without touching its storage or shares. Connect for Backup Only is for a share someone else administers: it stores just the share details, so backups run but the server cannot be managed from here.',
         onEnter: () => { step.value = 'choose' },
     },
     {
@@ -722,7 +722,7 @@ const addServerTourSteps: TourStep[] = [
     },
     {
         target: '[data-tour="add-server-form"]',
-        message: 'An existing server needs two sets of credentials: the admin login this app uses over SSH to read status and manage the server, and the Samba share details your desktop uses to reach the files.\n\nLeave the SMB fields blank to reuse the admin login. A nickname is optional but makes the server easier to spot in lists.',
+        message: 'An existing server needs two sets of credentials: the admin login this app uses over SSH to read status and manage the server, and the Samba share details your desktop uses to reach the files.\n\nLeave the SMB fields blank to reuse the admin login. A nickname is optional but makes the server easier to spot in lists.\n\nA backup-only connection asks for the share details alone, and the server is marked Backup only in your lists.',
         onEnter: () => { step.value = 'form' },
     },
     {

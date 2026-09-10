@@ -412,7 +412,7 @@ const bulkTourSteps: TourStep[] = [
   },
   {
     target: '[data-tour="bulk-templates"]',
-    message: 'Templates save you from retyping the same configuration.\n\nExport Template writes your current batch to a JSON file; Import Template loads one back in. Keep a template per site or per hardware model and each new deployment becomes a one-click job.',
+    message: 'Templates save you from retyping the same configuration.\n\nExport Template writes your current batch to a JSON file; Import Template loads one back in. View Example Template shows a filled-in sample you can copy or download as a starting point. Keep a template per site or per hardware model and each new deployment becomes a one-click job.',
   },
   {
     target: '[data-tour="bulk-defaults"]',
