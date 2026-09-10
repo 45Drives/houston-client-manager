@@ -17,11 +17,6 @@ export interface RaidPreview {
   rawCapacity: string;
 }
 
-export interface SplitPoolPreview {
-  storage: RaidPreview;
-  backup: RaidPreview;
-}
-
 /** Pick RAID level based on disk count (matches SSS wizard logic) */
 export function pickRaidLevel(diskCount: number): RaidLevel {
   if (diskCount >= 6) return 'raidz2';
@@ -97,17 +92,4 @@ function previewForDisks(disks: BulkDisk[]): RaidPreview {
 /** Get RAID preview for a single pool using all disks */
 export function getSinglePoolPreview(disks: BulkDisk[]): RaidPreview {
   return previewForDisks(disks);
-}
-
-/** Get RAID preview for split pools (active backup) — even split, odd disk is spare */
-export function getSplitPoolPreview(disks: BulkDisk[]): SplitPoolPreview {
-  const spare = disks.length % 2;
-  const half = Math.floor((disks.length - spare) / 2);
-  const storageDisks = disks.slice(0, half);
-  const backupDisks = disks.slice(half, half * 2);
-
-  return {
-    storage: previewForDisks(storageDisks),
-    backup: previewForDisks(backupDisks),
-  };
 }

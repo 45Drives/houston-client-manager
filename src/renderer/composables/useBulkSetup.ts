@@ -230,7 +230,6 @@ export function useBulkSetup() {
       rootPass: '',
       rootPassConfirm: '',
       clearExistingData: false,
-      splitPools: false,
       steps: [],
       ...partial,
     });
@@ -421,11 +420,6 @@ export function useBulkSetup() {
     }
     applyProbeOutcome(srv, pr?.error);
 
-    // Auto-disable splitPools if not enough disks
-    if (srv.splitPools && srv.diskInfo && srv.diskInfo.availableDisks.length <= 4) {
-      srv.splitPools = false;
-    }
-
     return !srv.probeError;
   }
 
@@ -452,13 +446,6 @@ export function useBulkSetup() {
     const needsProbe = servers.value.some(s => s.validated === true && !s.diskInfo);
     if (needsProbe) {
       await probeAll();
-    }
-
-    // Auto-disable splitPools if server doesn't have enough disks
-    for (const srv of servers.value) {
-      if (srv.splitPools && srv.diskInfo && srv.diskInfo.availableDisks.length <= 4) {
-        srv.splitPools = false;
-      }
     }
 
     const ready: BulkServerState[] = [];
@@ -544,7 +531,6 @@ export function useBulkSetup() {
         serverModel: s.serverModel,
         chassisSize: s.chassisSize,
         clearExistingData: s.clearExistingData,
-        splitPools: s.splitPools,
       }));
 
       const summary = await window.electron.ipcRenderer.invoke('bulk-setup:run', JSON.parse(JSON.stringify(entries)), options ? JSON.parse(JSON.stringify(options)) : undefined);
@@ -591,7 +577,6 @@ export function useBulkSetup() {
         serverModel: srv.serverModel,
         chassisSize: srv.chassisSize,
         clearExistingData: srv.clearExistingData,
-        splitPools: srv.splitPools,
       }];
 
       await window.electron.ipcRenderer.invoke('bulk-setup:run', JSON.parse(JSON.stringify(entries)), options ? JSON.parse(JSON.stringify(options)) : undefined);
@@ -617,7 +602,6 @@ export function useBulkSetup() {
       rootPass: '',
       rootPassConfirm: '',
       clearExistingData: false,
-      splitPools: false,
       steps: [],
       ...s,
       id: uuidv4(),

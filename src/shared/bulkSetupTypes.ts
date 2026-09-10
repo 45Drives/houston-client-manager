@@ -58,8 +58,6 @@ export interface BulkServerEntry {
   existingUsers?: string[];
   /** Whether to destroy existing ZFS pools and Samba shares before setup (default: false) */
   clearExistingData?: boolean;
-  /** Active Backup: split disks into storage + backup pool with ZFS replication (default: false) */
-  splitPools?: boolean;
   /** Clear partition tables and filesystem/ZFS/RAID signatures before creating pools (default: false) */
   wipeDrives?: boolean;
   /** Only "quick" is offered in bulk; a full erase would run for hours per server. */
@@ -105,7 +103,6 @@ export interface BulkEasySetupConfig {
   folderName?: string;
   smbUser?: string;
   smbPass?: string;
-  splitPools?: boolean;
   serverConfig?: BulkServerConfig;
   usersAndGroups?: BulkUsersAndGroupsConfig;
   zfsConfigs?: BulkZFSConfig[];

@@ -98,23 +98,21 @@
         <div class="flex items-center justify-between">
           <label class="text-xs font-medium text-muted">Select Drives for Storage Pool</label>
           <div class="flex items-center gap-2">
-            <button @click="selectAllDisks('storage')" class="text-xs text-blue-600 dark:text-blue-400 hover:underline">
+            <button @click="selectAllDisks()" class="text-xs text-blue-600 dark:text-blue-400 hover:underline">
               Select All
             </button>
-            <button @click="clearDiskSelection('storage')" class="text-xs text-muted hover:underline">
+            <button @click="clearDiskSelection()" class="text-xs text-muted hover:underline">
               Clear
             </button>
           </div>
         </div>
         <div class="flex flex-wrap gap-1.5">
           <button v-for="disk in availableDisks" :key="disk.name"
-            @click="toggleDisk(disk, 'storage')"
+            @click="toggleDisk(disk)"
             class="px-2 py-1 rounded text-xs font-mono transition-colors"
-            :class="isSelectedFor(disk, 'storage')
+            :class="isSelected(disk)
               ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 ring-1 ring-blue-400'
-              : isSelectedFor(disk, 'backup')
-                ? 'bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300 opacity-50 cursor-not-allowed'
-                : 'bg-neutral-100 dark:bg-neutral-700 text-default hover:bg-neutral-200 dark:hover:bg-neutral-600'">
+              : 'bg-neutral-100 dark:bg-neutral-700 text-default hover:bg-neutral-200 dark:hover:bg-neutral-600'">
             {{ disk.alias || disk.name }} ({{ disk.size }})
           </button>
         </div>
@@ -254,116 +252,6 @@
             </button>
           </div>
         </details>
-      </div>
-
-      <!-- Backup pool toggle and config -->
-      <div class="space-y-3">
-        <label class="flex items-center gap-2 cursor-pointer">
-          <input type="checkbox" v-model="enableBackupPool"
-            :disabled="availableDisks.length <= 4 && selectedStorageDisks.length === availableDisks.length"
-            class="rounded border-neutral-400 dark:border-neutral-500 text-green-500" />
-          <span class="text-xs font-medium" :class="enableBackupPool ? 'text-green-600 dark:text-green-400' : 'text-muted'">
-            Enable Backup Pool
-          </span>
-          <span v-if="availableDisks.length <= 4 && !enableBackupPool" class="text-xs text-muted">(needs more available disks)</span>
-        </label>
-
-        <template v-if="enableBackupPool">
-          <!-- Backup drive selection -->
-          <div v-if="unselectedDisks.length > 0 || selectedBackupDisks.length > 0" class="space-y-2">
-            <div class="flex items-center justify-between">
-              <label class="text-xs font-medium text-muted">Select Drives for Backup Pool</label>
-              <div class="flex items-center gap-2">
-                <button @click="selectAllDisks('backup')" class="text-xs text-green-600 dark:text-green-400 hover:underline">
-                  Select Remaining
-                </button>
-                <button @click="clearDiskSelection('backup')" class="text-xs text-muted hover:underline">
-                  Clear
-                </button>
-              </div>
-            </div>
-            <div class="flex flex-wrap gap-1.5">
-              <button v-for="disk in availableDisks" :key="'backup-' + disk.name"
-                @click="toggleDisk(disk, 'backup')"
-                :disabled="isSelectedFor(disk, 'storage')"
-                class="px-2 py-1 rounded text-xs font-mono transition-colors"
-                :class="isSelectedFor(disk, 'backup')
-                  ? 'bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300 ring-1 ring-green-400'
-                  : isSelectedFor(disk, 'storage')
-                    ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 opacity-50 cursor-not-allowed'
-                    : 'bg-neutral-100 dark:bg-neutral-700 text-default hover:bg-neutral-200 dark:hover:bg-neutral-600'">
-                {{ disk.alias || disk.name }} ({{ disk.size }})
-              </button>
-            </div>
-          </div>
-
-          <!-- Backup pool config -->
-          <div class="rounded-lg border border-green-200 dark:border-green-800 p-3 space-y-3">
-            <div class="flex items-center justify-between">
-              <span class="text-xs font-semibold text-green-700 dark:text-green-400">Backup Pool</span>
-              <div class="flex items-center gap-2">
-                <span class="text-xs text-muted">{{ selectedBackupDisks.length }} disk(s)</span>
-                <button @click="copyStorageOptions()" class="text-xs text-blue-600 dark:text-blue-400 hover:underline">
-                  Copy from Storage
-                </button>
-              </div>
-            </div>
-            <div class="grid grid-cols-3 gap-3">
-              <div>
-                <label class="text-xs font-medium text-muted mb-1 block">Pool Name</label>
-                <input v-model="backupPool.name" type="text" placeholder="tank-backup"
-                  class="w-full input-textlike rounded-lg px-3 py-1.5 text-sm" />
-              </div>
-              <div>
-                <label class="text-xs font-medium text-muted mb-1 block">RAID Level</label>
-                <select v-model="backupPool.raidLevel" class="w-full input-textlike rounded-lg px-3 py-1.5 text-sm">
-                  <option value="auto">Auto (best practice)</option>
-                  <option value="disk">Disk (no redundancy)</option>
-                  <option value="mirror">Mirror</option>
-                  <option value="raidz1">RAIDZ1</option>
-                  <option value="raidz2">RAIDZ2</option>
-                  <option value="raidz3">RAIDZ3</option>
-                </select>
-              </div>
-              <div>
-                <label class="text-xs font-medium text-muted mb-1 block">Dataset Name</label>
-                <input v-model="backupPool.datasetName" type="text" placeholder="backup"
-                  class="w-full input-textlike rounded-lg px-3 py-1.5 text-sm" />
-              </div>
-            </div>
-
-            <details class="text-xs">
-              <summary class="text-muted cursor-pointer hover:text-default font-medium">Pool & Dataset Options</summary>
-              <div class="mt-2 grid grid-cols-3 gap-3">
-                <div>
-                  <label class="text-xs text-muted mb-1 block">Compression</label>
-                  <select v-model="backupPool.poolOptions.compression" class="w-full input-textlike rounded-lg px-2 py-1 text-xs">
-                    <option value="lz4">LZ4</option>
-                    <option value="zstd">ZSTD</option>
-                    <option value="gzip">GZIP</option>
-                    <option value="off">Off</option>
-                  </select>
-                </div>
-                <div>
-                  <label class="text-xs text-muted mb-1 block">Record Size</label>
-                  <select v-model="backupPool.poolOptions.recordsize" class="w-full input-textlike rounded-lg px-2 py-1 text-xs">
-                    <option :value="128">128K</option>
-                    <option :value="64">64K</option>
-                    <option :value="32">32K</option>
-                    <option :value="1024">1M</option>
-                  </select>
-                </div>
-                <div>
-                  <label class="text-xs text-muted mb-1 block">Dedup</label>
-                  <select v-model="backupPool.poolOptions.dedup" class="w-full input-textlike rounded-lg px-2 py-1 text-xs">
-                    <option value="off">Off</option>
-                    <option value="on">On</option>
-                  </select>
-                </div>
-              </div>
-            </details>
-          </div>
-        </template>
       </div>
 
       <!-- ZFS validation error -->
@@ -647,14 +535,6 @@ function nextTab() {
     }
     const storageErr = validateRaidVsDiskCount(storagePool.raidLevel, selectedStorageDisks.value.length, 'Storage pool');
     if (storageErr) { zfsError.value = storageErr; return; }
-    if (enableBackupPool.value) {
-      if (selectedBackupDisks.value.length === 0) {
-        zfsError.value = 'Select at least one disk for the backup pool';
-        return;
-      }
-      const backupErr = validateRaidVsDiskCount(backupPool.raidLevel, selectedBackupDisks.value.length, 'Backup pool');
-      if (backupErr) { zfsError.value = backupErr; return; }
-    }
   }
 
   if (idx < tabs.length - 1) {
@@ -727,31 +607,8 @@ const storagePool = reactive<PoolConfigState>({
   additionalDatasets: [],
 });
 
-const backupPool = reactive<PoolConfigState>({
-  name: 'tank-backup',
-  raidLevel: 'auto',
-  datasetName: 'backup',
-  poolOptions: {
-    compression: 'lz4',
-    recordsize: 128,
-    dedup: 'off',
-    autotrim: 'off',
-    autoexpand: 'on',
-    autoreplace: 'on',
-  },
-  datasetOptions: {
-    compression: 'lz4',
-    atime: 'off',
-    casesensitivity: 'sensitive',
-  },
-  additionalDatasets: [],
-});
-
-const enableBackupPool = ref(false);
-
 // Disk selections
 const selectedStorageDiskNames = ref<Set<string>>(new Set());
-const selectedBackupDiskNames = ref<Set<string>>(new Set());
 
 const availableDisks = computed<BulkDisk[]>(() => props.diskInfo?.availableDisks || []);
 
@@ -759,55 +616,27 @@ const selectedStorageDisks = computed(() =>
   availableDisks.value.filter(d => selectedStorageDiskNames.value.has(d.name))
 );
 
-const selectedBackupDisks = computed(() =>
-  availableDisks.value.filter(d => selectedBackupDiskNames.value.has(d.name))
-);
-
-const unselectedDisks = computed(() =>
-  availableDisks.value.filter(d => !selectedStorageDiskNames.value.has(d.name) && !selectedBackupDiskNames.value.has(d.name))
-);
-
-function isSelectedFor(disk: BulkDisk, pool: 'storage' | 'backup'): boolean {
-  if (pool === 'storage') return selectedStorageDiskNames.value.has(disk.name);
-  return selectedBackupDiskNames.value.has(disk.name);
+function isSelected(disk: BulkDisk): boolean {
+  return selectedStorageDiskNames.value.has(disk.name);
 }
 
-function toggleDisk(disk: BulkDisk, pool: 'storage' | 'backup') {
+function toggleDisk(disk: BulkDisk) {
   zfsError.value = '';
-  const targetSet = pool === 'storage' ? selectedStorageDiskNames.value : selectedBackupDiskNames.value;
-  const otherSet = pool === 'storage' ? selectedBackupDiskNames.value : selectedStorageDiskNames.value;
-
-  if (otherSet.has(disk.name)) return; // already in the other pool
-
-  if (targetSet.has(disk.name)) {
-    targetSet.delete(disk.name);
+  if (selectedStorageDiskNames.value.has(disk.name)) {
+    selectedStorageDiskNames.value.delete(disk.name);
   } else {
-    targetSet.add(disk.name);
+    selectedStorageDiskNames.value.add(disk.name);
   }
 }
 
-function selectAllDisks(pool: 'storage' | 'backup') {
-  const targetSet = pool === 'storage' ? selectedStorageDiskNames.value : selectedBackupDiskNames.value;
-  const otherSet = pool === 'storage' ? selectedBackupDiskNames.value : selectedStorageDiskNames.value;
+function selectAllDisks() {
   for (const disk of availableDisks.value) {
-    if (!otherSet.has(disk.name)) {
-      targetSet.add(disk.name);
-    }
+    selectedStorageDiskNames.value.add(disk.name);
   }
 }
 
-function clearDiskSelection(pool: 'storage' | 'backup') {
-  if (pool === 'storage') {
-    selectedStorageDiskNames.value.clear();
-  } else {
-    selectedBackupDiskNames.value.clear();
-  }
-}
-
-function copyStorageOptions() {
-  backupPool.poolOptions = { ...storagePool.poolOptions };
-  backupPool.datasetOptions = { ...storagePool.datasetOptions };
-  backupPool.raidLevel = storagePool.raidLevel;
+function clearDiskSelection() {
+  selectedStorageDiskNames.value.clear();
 }
 
 // ── Users & Groups state ───────────────────────────────────────────────
@@ -1002,26 +831,6 @@ function hydrateFromConfig(cfg: BulkEasySetupConfig) {
         storagePool.raidLevel = vdevType as any;
       }
     }
-
-    if (cfg.zfsConfigs.length > 1) {
-      enableBackupPool.value = true;
-      const backupCfg = cfg.zfsConfigs[1];
-      backupPool.name = backupCfg.pool.name;
-      backupPool.datasetName = backupCfg.dataset.name;
-      Object.assign(backupPool.poolOptions, backupCfg.poolOptions);
-      Object.assign(backupPool.datasetOptions, backupCfg.datasetOptions);
-      if (backupCfg.pool.vdevs.length > 0) {
-        selectedBackupDiskNames.value.clear();
-        for (const vdev of backupCfg.pool.vdevs) {
-          for (const disk of vdev.disks) {
-            const match = availableDisks.value.find(d =>
-              d.name === disk.name || d.alias === disk.alias
-            );
-            if (match) selectedBackupDiskNames.value.add(match.name);
-          }
-        }
-      }
-    }
   }
 }
 
@@ -1071,29 +880,6 @@ function buildConfig(): BulkEasySetupConfig {
     });
   }
 
-  // Backup pool ZFS config
-  if (enableBackupPool.value) {
-    const backupDisks = selectedBackupDisks.value;
-    if (backupDisks.length > 0) {
-      const raidLevel = resolveRaidLevel(backupPool.raidLevel, backupDisks.length);
-      const vdevDisks = backupDisks.map(d => ({
-        path: d.alias ? `/dev/disk/by-vdev/${d.alias}` : `/dev/${d.name}`,
-        name: d.name,
-        alias: d.alias,
-      }));
-
-      zfsConfigs.push({
-        pool: {
-          name: backupPool.name || 'tank-backup',
-          vdevs: [{ type: raidLevel, disks: vdevDisks }],
-        },
-        poolOptions: { ...backupPool.poolOptions, forceCreate: true },
-        dataset: { name: backupPool.datasetName || 'backup' },
-        datasetOptions: { ...backupPool.datasetOptions },
-      });
-    }
-  }
-
   // Build Samba config
   const resolvedShares = sambaShares.map(s => ({
     ...s,
@@ -1105,7 +891,6 @@ function buildConfig(): BulkEasySetupConfig {
     folderName: storagePool.datasetName || 'share',
     smbUser: config.smbUser,
     smbPass: config.smbPass,
-    splitPools: enableBackupPool.value,
     serverConfig: { ...serverConfig },
     usersAndGroups: {
       users: users.filter(u => u.username),
@@ -1121,7 +906,7 @@ function buildConfig(): BulkEasySetupConfig {
 
 // Emit changes on any reactive state change
 watch(
-  [config, serverConfig, storagePool, backupPool, enableBackupPool, selectedStorageDiskNames, selectedBackupDiskNames, users, groups, sambaGlobal, sambaShares],
+  [config, serverConfig, storagePool, selectedStorageDiskNames, users, groups, sambaGlobal, sambaShares],
   () => {
     emit('update:modelValue', buildConfig());
   },

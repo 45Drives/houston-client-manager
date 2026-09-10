@@ -88,21 +88,6 @@
               </div>
             </div>
 
-            <!-- Backup ZFS Summary (split pools, simple mode only) -->
-            <div v-if="srv.mode !== 'custom' && srv.splitPools && srv.diskInfo && srv.diskInfo.availableDisks.length > 4">
-              <div class="font-medium text-muted uppercase tracking-wider mb-1">Backup ZFS Summary</div>
-              <div class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-0.5">
-                <span class="text-muted">Pool:</span>
-                <span class="text-default font-mono">tank-backup</span>
-                <span class="text-muted">RAID Level:</span>
-                <span class="text-default">{{ getSplitPreview(srv).backup.raidLabel }}</span>
-                <span class="text-muted">Disks:</span>
-                <span class="text-default">{{ getSplitPreview(srv).backup.diskCount }}</span>
-                <span class="text-muted">Usable Capacity:</span>
-                <span class="text-default font-medium">~{{ getSplitPreview(srv).backup.usableCapacity }}</span>
-              </div>
-            </div>
-
             <!-- Samba Summary -->
             <div>
               <div class="font-medium text-muted uppercase tracking-wider mb-1">Samba Summary</div>
@@ -191,7 +176,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import type { BulkServerState } from '../../composables/useBulkSetup';
-import { getSinglePoolPreview, getSplitPoolPreview } from '../../../shared/bulkSetupRaid';
+import { getSinglePoolPreview } from '../../../shared/bulkSetupRaid';
 
 const props = defineProps<{
   servers: BulkServerState[];
@@ -203,16 +188,7 @@ defineEmits<{
 }>();
 
 function getPreview(srv: BulkServerState) {
-  const disks = srv.diskInfo?.availableDisks || [];
-  if (srv.splitPools) {
-    return getSplitPoolPreview(disks).storage;
-  }
-  return getSinglePoolPreview(disks);
-}
-
-function getSplitPreview(srv: BulkServerState) {
-  const disks = srv.diskInfo?.availableDisks || [];
-  return getSplitPoolPreview(disks);
+  return getSinglePoolPreview(srv.diskInfo?.availableDisks || []);
 }
 
 function wipeTargetCount(srv: BulkServerState): number {

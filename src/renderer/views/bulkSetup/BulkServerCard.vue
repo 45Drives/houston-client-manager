@@ -207,18 +207,6 @@ A full block-level erase is not offered here because it runs for hours per drive
 The server refuses to touch any drive backing the running OS regardless of this setting.`" />
       </div>
 
-      <!-- Active Backup toggle -->
-      <div v-if="server.mode === 'simple'" class="flex items-center gap-2">
-        <label class="flex items-center gap-2 cursor-pointer">
-          <input type="checkbox" v-model="server.splitPools"
-            :disabled="server.diskInfo && server.diskInfo.availableDisks.length <= 4"
-            class="rounded border-neutral-400 dark:border-neutral-500 text-blue-500 focus:ring-blue-500" />
-          <span class="text-xs font-medium" :class="server.splitPools ? 'text-blue-600 dark:text-blue-400' : 'text-muted'">Active Backup (split disks into storage + backup pools)</span>
-        </label>
-        <span v-if="server.diskInfo && server.diskInfo.availableDisks.length <= 4"
-          class="text-xs text-red-500 dark:text-red-400">Not enough disks (need more than 4)</span>
-      </div>
-
       <!-- Simple mode fields -->
       <div v-if="server.mode === 'simple'" class="space-y-3">
         <div class="grid grid-cols-2 gap-3">
@@ -348,52 +336,16 @@ The server refuses to touch any drive backing the running OS regardless of this 
         <div v-if="server.diskInfo.availableDisks.length > 0" class="rounded-lg border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-900/50 p-3 text-xs space-y-2 text-left">
           <div class="font-medium text-default text-sm">Storage Preview</div>
 
-          <!-- Single pool preview -->
-          <template v-if="!server.splitPools">
-            <div class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1">
-              <span class="text-muted">Pool:</span>
-              <span class="text-default font-mono">tank</span>
-              <span class="text-muted">RAID:</span>
-              <span class="text-default">{{ raidPreview.raidLabel }} ({{ raidPreview.diskCount }} disks)</span>
-              <span class="text-muted">Usable:</span>
-              <span class="text-default font-medium">~{{ raidPreview.usableCapacity }}</span>
-              <span class="text-muted">Raw:</span>
-              <span class="text-default">{{ raidPreview.rawCapacity }}</span>
-            </div>
-          </template>
-
-          <!-- Split pool preview -->
-          <template v-else>
-            <div class="space-y-2">
-              <div class="space-y-1 p-2 rounded bg-default border border-neutral-200 dark:border-neutral-700">
-                <div class="font-medium text-blue-600 dark:text-blue-400">Storage Pool</div>
-                <div class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5">
-                  <span class="text-muted">Pool:</span>
-                  <span class="text-default font-mono">tank</span>
-                  <span class="text-muted">RAID:</span>
-                  <span class="text-default">{{ splitPreview.storage.raidLabel }}</span>
-                  <span class="text-muted">Disks:</span>
-                  <span class="text-default">{{ splitPreview.storage.diskCount }}</span>
-                  <span class="text-muted">Usable:</span>
-                  <span class="text-default font-medium">~{{ splitPreview.storage.usableCapacity }}</span>
-                </div>
-              </div>
-              <div class="space-y-1 p-2 rounded bg-default border border-neutral-200 dark:border-neutral-700">
-                <div class="font-medium text-green-600 dark:text-green-400">Backup Pool</div>
-                <div class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5">
-                  <span class="text-muted">Pool:</span>
-                  <span class="text-default font-mono">tank-backup</span>
-                  <span class="text-muted">RAID:</span>
-                  <span class="text-default">{{ splitPreview.backup.raidLabel }}</span>
-                  <span class="text-muted">Disks:</span>
-                  <span class="text-default">{{ splitPreview.backup.diskCount }}</span>
-                  <span class="text-muted">Usable:</span>
-                  <span class="text-default font-medium">~{{ splitPreview.backup.usableCapacity }}</span>
-                </div>
-              </div>
-              <div class="text-muted text-xs">ZFS replication will sync storage → backup automatically</div>
-            </div>
-          </template>
+          <div class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1">
+            <span class="text-muted">Pool:</span>
+            <span class="text-default font-mono">tank</span>
+            <span class="text-muted">RAID:</span>
+            <span class="text-default">{{ raidPreview.raidLabel }} ({{ raidPreview.diskCount }} disks)</span>
+            <span class="text-muted">Usable:</span>
+            <span class="text-default font-medium">~{{ raidPreview.usableCapacity }}</span>
+            <span class="text-muted">Raw:</span>
+            <span class="text-default">{{ raidPreview.rawCapacity }}</span>
+          </div>
         </div>
         <div v-else />
 
@@ -404,15 +356,10 @@ The server refuses to touch any drive backing the running OS regardless of this 
             None — no usable drives were found on this server.
           </div>
           <div class="flex flex-wrap gap-1.5">
-            <span v-for="(disk, di) in server.diskInfo.availableDisks" :key="disk.name"
-              class="px-2 py-0.5 rounded font-mono"
-              :class="diskBadgeClass(di)"
-              :title="diskTooltip(di)">
+            <span v-for="disk in server.diskInfo.availableDisks" :key="disk.name"
+              class="px-2 py-0.5 rounded font-mono bg-neutral-100 dark:bg-neutral-700 text-default">
               {{ disk.alias || disk.name }} ({{ disk.size }}, {{ disk.type }})
             </span>
-          </div>
-          <div v-if="server.splitPools && spareCount > 0" class="mt-1.5 text-amber-500 dark:text-amber-400">
-            {{ spareCount }} disk unassigned (odd number — left as spare)
           </div>
           <div v-if="server.diskInfo.existingPools.length" class="mt-1.5 text-amber-600 dark:text-amber-400">
             ⚠ Existing pools: {{ server.diskInfo.existingPools.join(', ') }}
@@ -481,7 +428,7 @@ import BulkCustomConfig from './BulkCustomConfig.vue';
 import { CommanderToolTip } from '../../components/commander';
 import type { BulkServerState } from '../../composables/useBulkSetup';
 import type { Server } from '../../types';
-import { getSinglePoolPreview, getSplitPoolPreview } from '../../../shared/bulkSetupRaid';
+import { getSinglePoolPreview } from '../../../shared/bulkSetupRaid';
 
 const props = defineProps<{
   server: BulkServerState;
@@ -590,49 +537,6 @@ const wipeSummaryLine = computed(() => {
 // A wipe is pointless once nothing on the server has stale data
 watch(drivesWithExistingData, (drives) => {
   if (drives.length === 0) props.server.wipeDrives = false;
-});
-
-const splitPreview = computed(() => {
-  const disks = props.server.diskInfo?.availableDisks || [];
-  return getSplitPoolPreview(disks);
-});
-
-/** Index where backup pool disks start (first half is storage, second half is backup) */
-const splitHalf = computed(() => {
-  const count = props.server.diskInfo?.availableDisks.length || 0;
-  const spare = count % 2;
-  return Math.floor((count - spare) / 2);
-});
-
-function diskBadgeClass(index: number): string {
-  if (!props.server.splitPools) {
-    return 'bg-neutral-100 dark:bg-neutral-700 text-default';
-  }
-  const half = splitHalf.value;
-  if (index < half) {
-    // Storage pool — blue
-    return 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300';
-  }
-  if (index < half * 2) {
-    // Backup pool — green
-    return 'bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300';
-  }
-  // Spare (odd disk out) — neutral/amber
-  return 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300';
-}
-
-function diskTooltip(index: number): string {
-  if (!props.server.splitPools) return '';
-  const half = splitHalf.value;
-  if (index < half) return 'Storage Pool (tank)';
-  if (index < half * 2) return 'Backup Pool (tank-backup)';
-  return 'Unassigned spare (odd disk count)';
-}
-
-const spareCount = computed(() => {
-  if (!props.server.splitPools) return 0;
-  const count = props.server.diskInfo?.availableDisks.length || 0;
-  return count % 2;
 });
 
 const customErrorFields = ['customAdminUser', 'customAdminPass', 'customSmbUser', 'customSmbPass', 'customPoolName', 'customDisks'] as const;

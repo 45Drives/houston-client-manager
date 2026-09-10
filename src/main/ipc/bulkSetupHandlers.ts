@@ -756,18 +756,6 @@ function buildEasySetupConfig(entry: BulkServerEntry): Record<string, any> {
     throw new Error(`No suitable disks found on ${entry.host}. Probe returned ${allDisks.length} disk(s) but none are eligible for ZFS pool creation.`);
   }
 
-  const useSplitPools = entry.splitPools === true && disks.length > 4;
-
-  // Split disks for active backup mode (even split, odd disk left as spare)
-  let storageDisks = disks;
-  let backupDisks: typeof disks = [];
-  if (useSplitPools) {
-    const spare = disks.length % 2;
-    const half = Math.floor((disks.length - spare) / 2);
-    storageDisks = disks.slice(0, half);
-    backupDisks = disks.slice(half, half * 2);
-  }
-
   // Pick RAID level based on disk count
   function pickRaid(count: number): string {
     if (count >= 6) return 'raidz2';
@@ -776,8 +764,7 @@ function buildEasySetupConfig(entry: BulkServerEntry): Record<string, any> {
     return 'disk';
   }
 
-  const storageRaid = pickRaid(storageDisks.length);
-  const backupRaid = pickRaid(backupDisks.length);
+  const storageRaid = pickRaid(disks.length);
 
   // Simple mode: build full config matching EasySetupConfigurator's expectations
   return {
@@ -785,7 +772,6 @@ function buildEasySetupConfig(entry: BulkServerEntry): Record<string, any> {
     folderName: shareName,
     smbUser: entry.smbUser,
     smbPass: entry.smbPass,
-    splitPools: useSplitPools,
     skipClearExisting: !entry.clearExistingData,
     wipeDrives: entry.wipeDrives === true,
     wipeMode: 'quick',
@@ -793,7 +779,7 @@ function buildEasySetupConfig(entry: BulkServerEntry): Record<string, any> {
       {
         pool: {
           name: poolName,
-          vdevs: [{ type: storageRaid, disks: storageDisks }],
+          vdevs: [{ type: storageRaid, disks }],
         },
         poolOptions: {
           autoexpand: 'on',
@@ -807,26 +793,6 @@ function buildEasySetupConfig(entry: BulkServerEntry): Record<string, any> {
           compression: 'lz4',
           atime: 'off',
         },
-      },
-      {
-        pool: {
-          name: `${poolName}-backup`,
-          vdevs: useSplitPools
-            ? [{ type: backupRaid, disks: backupDisks }]
-            : [{ type: 'disk', disks: [] }],
-        },
-        poolOptions: useSplitPools ? {
-          autoexpand: 'on',
-          autoreplace: 'on',
-          autotrim: 'on',
-          compression: 'lz4',
-          forceCreate: true,
-        } : {},
-        dataset: { name: useSplitPools ? shareName : 'backup' },
-        datasetOptions: useSplitPools ? {
-          compression: 'lz4',
-          atime: 'off',
-        } : {},
       },
     ],
     sambaConfig: {

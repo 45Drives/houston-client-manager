@@ -66,7 +66,6 @@ const fields = [
   { key: 'smbUser', desc: 'File-sharing account created on the server.' },
   { key: 'smbPass', desc: 'Leave empty — supply it in the app or via Global Defaults.' },
   { key: 'clearExistingData', desc: 'Destroy existing ZFS pools and Samba shares first. Defaults to false.' },
-  { key: 'splitPools', desc: 'Optional. Split drives into storage + backup pools. Needs 6+ drives.' },
   { key: 'wipeDrives', desc: 'Optional. Quick-wipe drives carrying old partitions or signatures.' },
 ]
 
