@@ -116,10 +116,15 @@
               <input type="checkbox" class="input-checkbox" :checked="isSelected(task)"
                 @change="toggleSelection(task)" :aria-checked="isSelected(task)" />
             </td>
-            <td class="px-3 py-1.5 truncate font-medium" :title="taskDisplayName(task)">{{ taskDisplayName(task) }}</td>
-            <td class="px-3 py-1.5 text-gray-500" :title="task.smb_user">{{ task.smb_user }}</td>
-            <td class="px-3 py-1.5 truncate max-w-[180px] text-gray-500" :title="sourceText(task)">{{ sourceText(task) }}</td>
-            <td class="px-3 py-1.5 truncate max-w-[180px] text-gray-500" :title="fullDestPath(task)">{{ destinationText(task) }}</td>
+            <!-- max-width tracks the resize handle; `truncate` alone lets a long name widen the fixed table. -->
+            <td class="px-3 py-1.5 truncate font-medium" :style="{ maxWidth: colWidths[1] + 'px' }"
+              :title="taskDisplayName(task)">{{ taskDisplayName(task) }}</td>
+            <td class="px-3 py-1.5 truncate text-gray-500" :style="{ maxWidth: colWidths[2] + 'px' }"
+              :title="task.smb_user">{{ task.smb_user }}</td>
+            <td class="px-3 py-1.5 truncate text-gray-500" :style="{ maxWidth: colWidths[3] + 'px' }"
+              :title="sourceText(task)">{{ sourceText(task) }}</td>
+            <td class="px-3 py-1.5 truncate text-gray-500" :style="{ maxWidth: colWidths[4] + 'px' }"
+              :title="fullDestPath(task)">{{ destinationText(task) }}</td>
             <td class="px-3 py-1.5 capitalize text-gray-500">{{ formatFrequency(task.schedule?.repeatFrequency) }}</td>
             <td class="px-3 py-1.5">
               <span class="inline-flex items-center gap-1.5 text-xs font-medium px-2 py-0.5 rounded-full"
