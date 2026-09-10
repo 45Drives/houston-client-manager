@@ -29,7 +29,7 @@ Parallel mode sets every server up at once. Anything that fails can be retried o
           </button>
         <!-- Back to dashboard (always available) -->
         <button @click="router.push({ name: 'dashboard' })"
-            class="btn btn-secondary h-fit px-4 py-2 text-sm">
+            class="btn bg-success h-fit px-4 py-2 text-sm">
             Back to Dashboard
         </button>
 
@@ -41,7 +41,7 @@ Parallel mode sets every server up at once. Anything that fails can be retried o
         class="card-refined rounded-lg px-4 py-3" data-tour="bulk-defaults">
         <div class="flex items-center gap-3 mb-2">
           <h2 class="text-sm font-semibold text-default">Global Defaults</h2>
-          <span class="text-xs text-muted">(Applied to servers without per-server values)</span>
+          <span class="text-xs text-muted">(Overwrites every server in the batch; blank fields are left untouched)</span>
         </div>
         <div class="grid grid-cols-4 gap-3">
           <div>
@@ -51,9 +51,16 @@ Parallel mode sets every server up at once. Anything that fails can be retried o
           </div>
           <div>
             <label class="text-xs font-medium text-muted mb-1 block">SSH Password</label>
-            <input v-model="globalDefaults.password" type="password" placeholder="Shared password"
-              class="w-full input-textlike rounded-lg px-3 py-1.5 text-sm"
-              :disabled="globalDefaults.authMethod === 'key'" />
+            <div class="relative">
+              <input v-model="globalDefaults.password" :type="showGlobalSshPass ? 'text' : 'password'" placeholder="Shared password"
+                class="w-full input-textlike rounded-lg px-3 py-1.5 text-sm pr-8"
+                :disabled="globalDefaults.authMethod === 'key'" />
+              <button type="button" @click="showGlobalSshPass = !showGlobalSshPass"
+                class="absolute right-2 top-1/2 -translate-y-1/2 text-muted">
+                <EyeIcon v-if="!showGlobalSshPass" class="w-4 h-4" />
+                <EyeSlashIcon v-else class="w-4 h-4" />
+              </button>
+            </div>
           </div>
           <div>
             <label class="text-xs font-medium text-muted mb-1 block">SMB Username</label>
@@ -62,8 +69,15 @@ Parallel mode sets every server up at once. Anything that fails can be retried o
           </div>
           <div>
             <label class="text-xs font-medium text-muted mb-1 block">SMB Password</label>
-            <input v-model="globalDefaults.smbPass" type="password" placeholder="Shared SMB pass"
-              class="w-full input-textlike rounded-lg px-3 py-1.5 text-sm" />
+            <div class="relative">
+              <input v-model="globalDefaults.smbPass" :type="showGlobalSmbPass ? 'text' : 'password'" placeholder="Shared SMB pass"
+                class="w-full input-textlike rounded-lg px-3 py-1.5 text-sm pr-8" />
+              <button type="button" @click="showGlobalSmbPass = !showGlobalSmbPass"
+                class="absolute right-2 top-1/2 -translate-y-1/2 text-muted">
+                <EyeIcon v-if="!showGlobalSmbPass" class="w-4 h-4" />
+                <EyeSlashIcon v-else class="w-4 h-4" />
+              </button>
+            </div>
           </div>
         </div>
         <!-- Advanced: SSH Key (global) -->
@@ -87,8 +101,15 @@ Parallel mode sets every server up at once. Anything that fails can be retried o
               </div>
               <div>
                 <label class="text-xs text-muted mb-1 block">Key Passphrase (optional)</label>
-                <input v-model="globalDefaults.sshPassphrase" type="password" placeholder="Leave empty if none"
-                  class="w-full input-textlike rounded-lg px-3 py-1.5 text-sm max-w-xs" />
+                <div class="relative max-w-xs">
+                  <input v-model="globalDefaults.sshPassphrase" :type="showGlobalPassphrase ? 'text' : 'password'" placeholder="Leave empty if none"
+                    class="w-full input-textlike rounded-lg px-3 py-1.5 text-sm pr-8" />
+                  <button type="button" @click="showGlobalPassphrase = !showGlobalPassphrase"
+                    class="absolute right-2 top-1/2 -translate-y-1/2 text-muted">
+                    <EyeIcon v-if="!showGlobalPassphrase" class="w-4 h-4" />
+                    <EyeSlashIcon v-else class="w-4 h-4" />
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -101,7 +122,7 @@ Parallel mode sets every server up at once. Anything that fails can be retried o
           </span>
         </label>
         <button @click="onApplyDefaults" class="mt-2 text-xs text-blue-600 dark:text-blue-400 hover:underline">
-          Apply to all servers missing values
+          Apply to all servers
         </button>
       </div>
 
@@ -280,7 +301,7 @@ Parallel mode sets every server up at once. Anything that fails can be retried o
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
-import { ServerIcon } from '@heroicons/vue/24/outline';
+import { ServerIcon, EyeIcon, EyeSlashIcon } from '@heroicons/vue/24/outline';
 import { CommanderToolTip } from '../../components/commander';
 import { useHeader } from '../../composables/useHeader';
 import { useServerDiscovery } from '../../composables/useServerDiscovery';
@@ -350,6 +371,10 @@ const globalDefaults = ref({
   wipeDrives: false,
 });
 
+const showGlobalSshPass = ref(false);
+const showGlobalSmbPass = ref(false);
+const showGlobalPassphrase = ref(false);
+
 async function browseGlobalSshKey() {
   const filePath = await window.electron?.ipcRenderer.invoke('dialog:openSshKey');
   if (filePath) {
@@ -391,7 +416,7 @@ const bulkTourSteps: TourStep[] = [
   },
   {
     target: '[data-tour="bulk-defaults"]',
-    message: 'Global Defaults fill in the values that are the same on every server — SSH login, SMB user and password, or a shared SSH key.\n\nApply to all servers missing values pushes them into every row that is still blank, leaving anything you customised alone.',
+    message: 'Global Defaults fill in the values that are the same on every server — SSH login, SMB user and password, or a shared SSH key.\n\nApply to all servers pushes them into every row in the batch, overwriting whatever is already there. Leave a field blank to leave that field untouched on each server.',
     onEnter: () => ensureServerRows(2),
   },
   {

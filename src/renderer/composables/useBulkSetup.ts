@@ -253,14 +253,18 @@ export function useBulkSetup() {
 
   function applyGlobalDefaults(defaults: { username?: string; password?: string; authMethod?: 'password' | 'key'; sshKeyPath?: string; sshPassphrase?: string; smbUser?: string; smbPass?: string; wipeDrives?: boolean }) {
     for (const srv of servers.value) {
-      if (defaults.username && !srv.username) srv.username = defaults.username;
-      if (defaults.password && !srv.password) srv.password = defaults.password;
-      if (defaults.authMethod && !srv.authMethod) srv.authMethod = defaults.authMethod;
-      if (defaults.sshKeyPath && !srv.sshKeyPath) srv.sshKeyPath = defaults.sshKeyPath;
-      if (defaults.sshPassphrase && !srv.sshPassphrase) srv.sshPassphrase = defaults.sshPassphrase;
-      if (defaults.smbUser && !srv.smbUser) srv.smbUser = defaults.smbUser;
-      if (defaults.smbPass && !srv.smbPass) srv.smbPass = defaults.smbPass;
-      // Explicit toggle rather than fill-if-empty, so unchecking clears every server
+      // Overwrites every server; blank fields in the defaults are left alone so a
+      // partially filled panel doesn't wipe values that were entered per-server.
+      if (defaults.username) srv.username = defaults.username;
+      if (defaults.password) srv.password = defaults.password;
+      if (defaults.authMethod) srv.authMethod = defaults.authMethod;
+      if (defaults.sshKeyPath) srv.sshKeyPath = defaults.sshKeyPath;
+      if (defaults.sshPassphrase) srv.sshPassphrase = defaults.sshPassphrase;
+      if (defaults.smbUser) srv.smbUser = defaults.smbUser;
+      if (defaults.smbPass) {
+        srv.smbPass = defaults.smbPass;
+        srv.smbPassConfirm = defaults.smbPass;
+      }
       if (defaults.wipeDrives !== undefined) srv.wipeDrives = defaults.wipeDrives;
     }
   }
