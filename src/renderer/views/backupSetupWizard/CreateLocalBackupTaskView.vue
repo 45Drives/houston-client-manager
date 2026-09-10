@@ -27,6 +27,9 @@
 									<option v-if="!serversLoaded && savedServers.length === 0" value="" disabled>
 										Loading servers…
 									</option>
+									<option v-else value="" disabled>
+										Select a backup location…
+									</option>
 									<option v-for="item in savedServers" :key="item.id" :value="item.id">
 										  {{ `\\\\${item.name || item.hostname || item.host}\\${item.shareName}` }}
 									</option>
@@ -141,8 +144,9 @@
 				<button @click="proceedToPreviousStep" class="btn btn-secondary h-fit">
 					Back
 				</button>
-				<button :disabled="backUpSetupConfig?.backUpTasks.length === 0" @click="proceedToNextStep"
-					class="btn btn-primary h-fit">
+				<button :disabled="!canProceed" @click="proceedToNextStep"
+					class="btn btn-primary h-fit"
+					:title="!selectedServer ? 'Select a backup location first' : ''">
 					Next
 				</button>
 			</div>
@@ -269,7 +273,16 @@ watch(savedServers, (serverList) => {
 		const match = serverList.find(srv => target?.includes(srv.host));
 		selectedServerId.value = match?.id ?? serverList[0].id;
 	}
+}, { immediate: true });
+
+// Clear the selection if the chosen server disappears from the list.
+watch(selectedServer, (srv) => {
+	if (!srv) selectedServerId.value = '';
 });
+
+const canProceed = computed(() =>
+	!!selectedServer.value && (backUpSetupConfig?.backUpTasks.length ?? 0) > 0
+);
 
 // Update all task schedules when interval frequency changes (simple mode)
 watch(scheduleFrequency, (newSchedule) => {
@@ -471,7 +484,8 @@ const proceedToNextStep = () => {
 		(backUpSetupConfig as any).planType = scheduleMode.value === 'interval' ? 'simple' : 'custom';
 	}
 
-	const srv = selectedServer.value!;
+	const srv = selectedServer.value;
+	if (!srv) return;
 	if (backUpSetupConfig) {
 		(backUpSetupConfig as any).serverDisplayHost = serverDisplayHost.value;
 		(backUpSetupConfig as any).serverShare = srv.shareName;
@@ -489,11 +503,11 @@ const proceedToNextStep = () => {
 const proceedToPreviousStep = () => closeWizardModal();
 useEnterToAdvance(
 	() => {
-		if (backUpSetupConfig!.backUpTasks.length > 0) proceedToNextStep();
+		if (canProceed.value) proceedToNextStep();
 	},
 	200,
 	() => {
-		if (backUpSetupConfig!.backUpTasks.length > 0) proceedToNextStep();
+		if (canProceed.value) proceedToNextStep();
 	},
 	() => {
 		proceedToPreviousStep();
