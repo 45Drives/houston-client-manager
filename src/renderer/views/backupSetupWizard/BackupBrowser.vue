@@ -34,8 +34,9 @@
             <!-- LEFT: Files in backup -->
             <div class="w-3/5 flex flex-col min-h-0 bg-white dark:bg-neutral-800 rounded-lg border border-neutral-200 dark:border-neutral-700 overflow-hidden" data-tour="file-panel">
                 <!-- File panel header -->
-                <div class="px-3 py-2 border-b border-default flex items-center justify-between shrink-0">
-                    <span class="text-sm font-medium text-default">
+                <div class="px-3 py-2 border-b border-default shrink-0 flex flex-col gap-1.5">
+                    <span class="text-sm font-medium text-default truncate block w-full text-left"
+                        :title="selectedBackup ? selectedBackup.folder : ''">
                         {{ selectedBackup ? `Files in "${selectedBackup.folder}"` : 'Select a backup to browse files' }}
                     </span>
                     <div v-if="selectedBackup" class="flex items-center gap-2">
@@ -47,7 +48,7 @@
                             Deselect All
                         </button>
                         <span v-if="selectedFilesCount > 0"
-                            class="ml-2 text-xs bg-primary text-white px-2 py-0.5 rounded-full">
+                            class="ml-auto text-xs bg-primary text-white px-2 py-0.5 rounded-full shrink-0">
                             {{ selectedFilesCount }} selected
                         </span>
                     </div>
@@ -201,29 +202,36 @@
                 <!-- Restore progress -->
                 <div v-if="restoreProgress.total > 0 && restoreProgress.current < restoreProgress.total"
                     class="p-3 rounded-lg border border-default bg-accent shrink-0">
-                    <div class="flex items-center justify-between text-sm mb-2">
-                        <span class="text-default">Restoring {{ restoreProgress.current }}/{{ restoreProgress.total }}…</span>
-                        <span class="text-muted font-mono text-xs truncate ml-2 max-w-[60%]">{{ restoreProgress.lastFile }}</span>
+                    <div class="flex items-center justify-between text-sm mb-1">
+                        <span class="text-default">Restoring {{ restoreProgress.current + 1 }}/{{ restoreProgress.total }}…</span>
+                        <span class="text-muted text-xs shrink-0 ml-2">{{ activeFilePercent }}%</span>
                     </div>
+                    <p class="text-xs text-muted truncate mb-2" :title="restoreProgress.lastFile">
+                        {{ activeFileName || restoreProgress.lastFile }}
+                    </p>
                     <div class="w-full h-2 bg-well rounded-full overflow-hidden">
                         <div class="h-full bg-primary rounded-full transition-all"
-                            :style="{ width: `${(restoreProgress.current / restoreProgress.total) * 100}%` }" />
+                            :style="{ width: `${activeFilePercent}%` }" />
+                    </div>
+                    <div v-if="restoreProgress.totalBytes > 0" class="flex justify-between text-xs text-muted mt-1">
+                        <span>{{ formatFileSize(restoreProgress.copiedBytes) }} / {{ formatFileSize(restoreProgress.totalBytes) }}</span>
+                        <span>{{ restoreProgress.current }} of {{ restoreProgress.total }} done</span>
                     </div>
                 </div>
 
                 <!-- Restore complete -->
                 <div v-if="restoreProgress.total > 0 && restoreProgress.current === restoreProgress.total"
-                    class="p-3 rounded-lg border border-default bg-accent shrink-0 text-sm text-default">
+                    class="p-3 rounded-lg border border-default bg-accent shrink-0 text-sm text-default text-center">
                     Restored {{ restoreProgress.current }} of {{ restoreProgress.total }} file(s).
                 </div>
 
                 <!-- Open restored folders prompt -->
                 <div v-if="showOpenFolderPrompt"
                     class="p-3 rounded-lg border border-default bg-accent shrink-0">
-                    <p class="text-sm text-default mb-2">
+                    <p class="text-sm text-default mb-2 text-center">
                         Restore complete. Open the restored folder{{ restoredFolders.length > 1 ? 's' : '' }}?
                     </p>
-                    <div class="flex items-center gap-2">
+                    <div class="flex items-center justify-center gap-2">
                         <button class="btn btn-sm btn-primary h-fit flex items-center gap-1.5" @click="openRestoredFolders">
                             <FolderOpenIcon class="w-4 h-4" />
                             Open {{ restoredFolders.length > 1 ? 'All' : 'Folder' }}
@@ -547,10 +555,20 @@ const ipcActionHandler = (raw: string) => {
             selectedBackup.value.files = files
             focusedFile.value = null
             filesLoading.value = false
+        } else if (response.type === 'restoreBackupsProgress') {
+            const p = response.progress || {}
+            restoreProgress.value.current = Math.max(0, (p.fileIndex ?? 1) - 1)
+            restoreProgress.value.lastFile = p.file ?? restoreProgress.value.lastFile
+            restoreProgress.value.copiedBytes = p.copiedBytes ?? 0
+            restoreProgress.value.totalBytes = p.totalBytes ?? 0
         } else if (response.type === 'restoreBackupsResult') {
+            // Backend sends the payload as `result`; older builds used `value`.
+            const r = response.result ?? response.value ?? {}
             restoreProgress.value.current++
-            restoreProgress.value.lastFile = response.value.file
-            if (response.value.error) console.error(`Error restoring ${response.value.file}: ${response.value.error}`)
+            restoreProgress.value.lastFile = r.file ?? restoreProgress.value.lastFile
+            restoreProgress.value.copiedBytes = 0
+            restoreProgress.value.totalBytes = 0
+            if (r.error) console.error(`Error restoring ${r.file}: ${r.error}`)
         } else if (response.type === 'restoreCompleted') {
             const client = selectedBackup.value?.client
             const validFolder = (p: string) => p && p !== '/' && p !== '\\'
@@ -580,7 +598,7 @@ onUnmounted(() => {
     backups.value = []
     selectedBackup.value = null
     focusedFile.value = null
-    restoreProgress.value = { current: 0, total: 0, lastFile: '' }
+    restoreProgress.value = { current: 0, total: 0, lastFile: '', copiedBytes: 0, totalBytes: 0 }
     restoredFolders.value = []
     showOpenFolderPrompt.value = false
     multiSelectedMap.value = {}
@@ -615,10 +633,24 @@ const isConfirmOpen = ref(false)
 const showOpenFolderPrompt = ref(false)
 const restoredFolders = ref<string[]>([])
 
-const restoreProgress = ref<{ current: number; total: number; lastFile: string }>({
+const restoreProgress = ref<{ current: number; total: number; lastFile: string; copiedBytes: number; totalBytes: number }>({
     current: 0,
     total: 0,
-    lastFile: ''
+    lastFile: '',
+    copiedBytes: 0,
+    totalBytes: 0
+})
+
+const activeFileName = computed(() => {
+    const p = restoreProgress.value.lastFile
+    if (!p) return ''
+    return p.split('/').pop() ?? p
+})
+
+const activeFilePercent = computed(() => {
+    const { copiedBytes, totalBytes } = restoreProgress.value
+    if (totalBytes <= 0) return 0
+    return Math.min(100, Math.round((copiedBytes / totalBytes) * 100))
 })
 
 const restoreSelected = async () => {
@@ -635,7 +667,7 @@ const restoreSelected = async () => {
     if (!confirmed) return
 
     const filesToRestore = (selectedBackup.value.files || []).filter(f => f.selected)
-    restoreProgress.value = { current: 0, total: filesToRestore.length, lastFile: '' }
+    restoreProgress.value = { current: 0, total: filesToRestore.length, lastFile: '', copiedBytes: 0, totalBytes: 0 }
 
     const { smb_host, smb_share, smb_user, smb_pass } = resolveConnForTask(selectedBackup.value.__task)
 

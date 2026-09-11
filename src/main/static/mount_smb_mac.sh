@@ -13,20 +13,14 @@ USERNAME="$3"
 MODE="$4" # "popup" or "silent"
 
 SERVER="smb://${HOST}/${SHARE}"
-MOUNT_POINT="/Volumes/${SHARE}"
+MOUNT_ROOT="${HOME}/houston-mounts"
+MOUNT_POINT="${MOUNT_ROOT}/${SHARE}"
 KEYCHAIN_SERVICE="houston-smb-${HOST}-${SHARE}-${USERNAME}"
 CRED_FILE="${HOME}/Library/Application Support/45Drives/Houston/credentials/${HOST}_${SHARE}_${USERNAME}.cred"
 
 json_error() {
   local msg="$1"
   echo "{\"smb_server\":\"${SERVER}\",\"share\":\"${SHARE}\",\"error\":\"${msg//\"/\\\"}\"}"
-}
-
-has_gui_session() {
-  # Console owner is the currently logged-in GUI user. If it's root, likely no GUI session.
-  local console_user
-  console_user="$(/usr/bin/stat -f "%Su" /dev/console 2>/dev/null || true)"
-  [ -n "$console_user" ] && [ "$console_user" != "root" ]
 }
 
 maybe_open_mountpoint() {
@@ -61,12 +55,6 @@ if [ -n "${EXISTING_MP}" ]; then
   exit 0
 fi
 
-# ----------- Require GUI session -----------
-if ! has_gui_session; then
-  json_error "No active GUI session; cannot mount via AppleScript in headless/SSH context."
-  exit 1
-fi
-
 # ----------- Retrieve password -----------
 # Login keychain first, then the daemon credential file the backup tasks use.
 PASSWORD="$(/usr/bin/security find-generic-password -s "${KEYCHAIN_SERVICE}" -a "${USERNAME}" -w 2>/dev/null || true)"
@@ -78,26 +66,30 @@ if [ -z "$PASSWORD" ]; then
   exit 1
 fi
 
-# ----------- Mount using AppleScript -----------
-MOUNT_RESULT="$(/usr/bin/osascript <<EOF
-try
-  mount volume "${SERVER}" as user name "${USERNAME}" with password "${PASSWORD}"
-  return "SUCCESS"
-on error errMsg
-  return "ERROR: " & errMsg
-end try
-EOF
-)"
+# ----------- Mount with mount_smbfs -----------
+# Headless, so it raises no "You are attempting to connect to the server" dialog and
+# needs no GUI session. Mounts where the backup daemon mounts, so both sides agree.
+urlenc() {
+  local s="$1" out='' i c
+  for (( i = 0; i < ${#s}; i++ )); do
+    c="${s:i:1}"
+    case "$c" in
+      [a-zA-Z0-9.~_-]) out+="$c" ;;
+      *) out+="$(printf '%%%02X' "'$c")" ;;
+    esac
+  done
+  printf '%s' "$out"
+}
 
-if [[ "$MOUNT_RESULT" == ERROR:* ]]; then
-  json_error "${MOUNT_RESULT#"ERROR: "}"
+MOUNT_POINT="${MOUNT_ROOT}/${SHARE}"
+/bin/mkdir -p "$MOUNT_POINT" 2>/dev/null || true
+
+if ! MOUNT_ERR="$(/sbin/mount_smbfs -N "//$(urlenc "$USERNAME"):$(urlenc "$PASSWORD")@${HOST}/${SHARE}" "$MOUNT_POINT" 2>&1)"; then
+  json_error "mount_smbfs failed: ${MOUNT_ERR}"
   exit 1
 fi
 
-# ----------- Validate mount -----------x
-/bin/sleep 1
-
-# Find the actual mountpoint from mount output (could be /Volumes/<share> or /Volumes/<share>-1, etc.)
+# ----------- Validate mount -----------
 ACTUAL_MP="$(find_mountpoint)"
 
 if [ -z "${ACTUAL_MP}" ]; then
@@ -105,7 +97,6 @@ if [ -z "${ACTUAL_MP}" ]; then
   exit 1
 fi
 
-# If mac chose a different mountpoint name, use it
 MOUNT_POINT="$ACTUAL_MP"
 
 maybe_open_mountpoint
