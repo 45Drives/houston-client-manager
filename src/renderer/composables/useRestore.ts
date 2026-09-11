@@ -1,5 +1,6 @@
 import { ref, reactive, onBeforeUnmount, computed } from 'vue';
 import { IPCRouter } from '@45drives/houston-common-lib';
+import { beginRemoteOp, finishRemoteOp, cancelRemoteOp } from './useRemoteOps';
 
 // ── Types (mirror restoreManager.ts) ─────────────────────────────────────────
 
@@ -308,6 +309,8 @@ export function useRestore(serverIp: () => string, username: () => string) {
   }) {
     restoring.value = true;
     error.value = null;
+    const operationId = crypto.randomUUID();
+    progress.operationId = operationId;
     progress.phase = 'listing';
     progress.message = undefined;
     progress.currentFile = undefined;
@@ -342,6 +345,14 @@ export function useRestore(serverIp: () => string, username: () => string) {
       'Name' in f ? f.Name : f.name
     );
 
+    beginRemoteOp({
+      id: operationId,
+      kind: 'restore',
+      label: `Restoring ${source}${sourcePath === '/' ? '' : sourcePath} → ${opts.destPath}`,
+      serverIp: serverIp(),
+      username: username(),
+    });
+
     try {
       const result = await window.electron.ipcRenderer.invoke('restore:start', {
         serverIp: serverIp(),
@@ -352,6 +363,7 @@ export function useRestore(serverIp: () => string, username: () => string) {
         target: opts.target,
         s2sTask,
         selectedFiles: selected,
+        operationId,
       });
       if (result.cancelled) {
         progress.phase = 'cancelled';
@@ -359,9 +371,11 @@ export function useRestore(serverIp: () => string, username: () => string) {
       } else if (!result.success) {
         error.value = result.error ?? 'Restore failed';
       }
+      finishRemoteOp(operationId, { cancelled: result.cancelled, error: result.success ? undefined : result.error });
       return result;
     } catch (e: any) {
       error.value = e?.message ?? 'Restore failed';
+      finishRemoteOp(operationId, { error: error.value });
       return { success: false, error: error.value };
     } finally {
       restoring.value = false;
@@ -371,11 +385,7 @@ export function useRestore(serverIp: () => string, username: () => string) {
   async function cancelRestore() {
     if (!progress.operationId) return;
     try {
-      await window.electron.ipcRenderer.invoke('restore:cancel', {
-        serverIp: serverIp(),
-        username: username(),
-        operationId: progress.operationId,
-      });
+      await cancelRemoteOp(progress.operationId);
       progress.phase = 'cancelled';
       progress.message = 'Restore cancelled';
       progress.currentFile = undefined;
@@ -423,6 +433,15 @@ export function useRestore(serverIp: () => string, username: () => string) {
   async function rollbackSnapshot(snapshotName: string) {
     restoring.value = true;
     error.value = null;
+    const opId = crypto.randomUUID();
+    beginRemoteOp({
+      id: opId,
+      kind: 'snapshot',
+      label: `Rolling back ${snapshotName}`,
+      serverIp: serverIp(),
+      username: username(),
+      cancellable: false,
+    });
     try {
       const result = await window.electron.ipcRenderer.invoke('snapshot:rollback', {
         serverIp: serverIp(),
@@ -432,9 +451,11 @@ export function useRestore(serverIp: () => string, username: () => string) {
       if (!result.success) {
         error.value = result.error ?? 'Rollback failed';
       }
+      finishRemoteOp(opId, { error: result.success ? undefined : (result.error ?? 'Rollback failed') });
       return result;
     } catch (e: any) {
       error.value = e?.message ?? 'Rollback failed';
+      finishRemoteOp(opId, { error: error.value });
       return { success: false, error: error.value };
     } finally {
       restoring.value = false;

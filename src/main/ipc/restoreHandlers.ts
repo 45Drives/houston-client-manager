@@ -159,8 +159,13 @@ export function registerRestoreHandlers(ctx: IPCHandlerContext) {
       target: 'server' | 'client';
       s2sTask?: { remoteHost: string; remotePort: number; remoteUser: string };
       selectedFiles?: string[];
+      operationId?: string;
     }) => {
-      const operationId = crypto.randomUUID();
+      // The renderer may mint the id so it can show the operation before the first
+      // progress event lands; anything else is not trusted into a shell pattern.
+      const operationId = /^[0-9a-fA-F-]{8,64}$/.test(opts.operationId ?? '')
+        ? opts.operationId!
+        : crypto.randomUUID();
       const onProgress = makeProgressCallback(operationId);
 
       const fileCount = opts.selectedFiles?.length ?? 0;

@@ -447,6 +447,26 @@ function sendCredsToWebview(ip: string, username: string, password: string) {
     window.electron?.ipcRenderer.send('store-manual-creds', { ip, username, password });
 }
 
+/**
+ * Discovery does not always have the selected host — a saved favourite on another subnet
+ * never shows up there. Without a server object the remote panel stays on its empty state,
+ * so Connect looks like it did nothing.
+ */
+function resolveServer(ip: string): ServerType {
+    const discovered = discoveryState.servers.find(s => s.ip === ip);
+    if (discovered) return discovered;
+    const stored = unifiedServers.value.find(s => s.host === ip);
+    return {
+        ip,
+        name: stored?.name || stored?.hostname || ip,
+        lastSeen: Date.now(),
+        status: 'unknown',
+        shareName: stored?.shareName || undefined,
+        serverName: stored?.name || undefined,
+        manuallyAdded: true,
+    };
+}
+
 async function onLoginSubmit({ username, password, remember }:
     { username: string; password: string; remember: boolean }) {
     const ip = selectedIp.value!;
@@ -467,8 +487,7 @@ async function onLoginSubmit({ username, password, remember }:
         restoreUsername.value = username;
         restoreConnected.value = true;
     }
-    const srv = discoveryState.servers.find(s => s.ip === ip) || null;
-    if (srv) currentServer!.value = srv;
+    if (currentServer) currentServer.value = resolveServer(ip);
     prefillUsername.value = null;
     loginOpen.value = false;
     if (activeCredId.value) window.electron?.ipcRenderer.invoke('servers:touch', activeCredId.value);
@@ -493,8 +512,7 @@ async function maybeAutoConnect(forceModalIfNoSaved = false) {
             restoreUsername.value = saved.username;
             restoreConnected.value = true;
         }
-        const srv = discoveryState.servers.find(s => s.ip === ip) || null;
-        if (srv) currentServer!.value = srv;
+        if (currentServer) currentServer.value = resolveServer(ip);
         return;
     }
     prefillUsername.value = null;
@@ -518,8 +536,7 @@ watch(selectedIp, async (ip) => {
             if (activeTab.value === 'remote') {
                 sendCredsToWebview(ip, saved.username, saved.password);
             }
-            const srv = discoveryState.servers.find(s => s.ip === ip) || null;
-            if (srv) currentServer!.value = srv;
+            if (currentServer) currentServer.value = resolveServer(ip);
             return;
         }
     }

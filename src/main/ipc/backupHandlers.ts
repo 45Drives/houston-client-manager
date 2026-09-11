@@ -4,7 +4,7 @@ import { BackUpSetupConfigurator } from '../backup';
 import type { BackUpSetupConfig, BackUpTask } from '@45drives/houston-common-lib';
 import fetchBackups from '../backup/FetchBackups';
 import fetchFilesInBackup from '../backup/FetchFilesFromBackup';
-import restoreBackups from '../backup/RestoreBackups';
+import restoreBackups, { cancelRestoreBackups } from '../backup/RestoreBackups';
 import { checkBackupTaskStatus } from '../backup/CheckSmbStatus';
 import mountSmbPopup from '../smbMountPopup';
 import { getOS, extractJsonFromOutput } from '../utils';
@@ -245,12 +245,25 @@ export async function handleBackupMessage(message: any, ctx: IPCHandlerContext):
           target: 'client',
           sourceType: 'backup',
           fileCount: summary.restored,
-          success: summary.failed === 0 && summary.restored > 0,
-          error: summary.firstError,
+          success: !summary.cancelled && summary.failed === 0 && summary.restored > 0,
+          cancelled: summary.cancelled,
+          error: summary.cancelled ? 'Restore cancelled by user' : summary.firstError,
         };
         saveSettings({ restoreHistory: [entry, ...(settings.restoreHistory || [])].slice(0, 20) });
       } catch (err) {
         console.warn('restoreBackups: could not record restore history:', err);
+      }
+      return true;
+    }
+
+    case 'cancelRestoreBackups': {
+      const stopped = cancelRestoreBackups(message.uuid);
+      ctx.jsonLogger.warn({ event: 'cancelRestoreBackups', uuid: message.uuid, stopped });
+      if (!stopped) {
+        // Nothing was running, so nothing will emit the terminal event the UI waits on.
+        router.send('renderer', 'action', JSON.stringify({
+          type: 'restoreCompleted', allFolders: [], cancelled: true,
+        }));
       }
       return true;
     }

@@ -18,7 +18,26 @@ interface RestoreBackupsData {
 export interface RestoreBackupsSummary {
   restored: number;
   failed: number;
+  cancelled?: boolean;
   firstError?: string;
+}
+
+interface ActiveRun {
+  uuid: string;
+  cancelled: boolean;
+  /** Tears down the streams for the file being copied right now, if any. */
+  abort: (() => void) | null;
+}
+
+/** Only one restore can be triggered from the UI at a time, so one slot is enough. */
+let activeRun: ActiveRun | null = null;
+
+export function cancelRestoreBackups(uuid?: string): boolean {
+  if (!activeRun) return false;
+  if (uuid && activeRun.uuid !== uuid) return false;
+  activeRun.cancelled = true;
+  activeRun.abort?.();
+  return true;
 }
 
 export default async function restoreBackups(
@@ -50,9 +69,13 @@ export default async function restoreBackups(
   console.debug(" Files to restore:", files);
 
   const summary: RestoreBackupsSummary = { restored: 0, failed: 0 };
+  const run: ActiveRun = { uuid, cancelled: false, abort: null };
+  activeRun = run;
 
+  try {
   // 2) Copy each file, reporting back via IPC
   for (let i = 0; i < files.length; i++) {
+    if (run.cancelled) break;
     const relFile = files[i];
     const sourcePath = path.join(folderPath, relFile);
 
@@ -88,7 +111,8 @@ export default async function restoreBackups(
         relFile,
         i,
         files.length,
-        IPCRouter
+        IPCRouter,
+        run
       );
 
       IPCRouter.send("renderer", "action", JSON.stringify({
@@ -97,6 +121,7 @@ export default async function restoreBackups(
       }));
       summary.restored++;
     } catch (err) {
+      if (run.cancelled) break;
       console.error("   Copy failed:", err);
       summary.failed++;
       summary.firstError ??= (err as Error).message;
@@ -106,6 +131,8 @@ export default async function restoreBackups(
       }));
     }
   }
+
+  summary.cancelled = run.cancelled;
 
   // 3) Tell the UI which folders were restored
   try {
@@ -123,7 +150,8 @@ export default async function restoreBackups(
 
     IPCRouter.send("renderer", "action", JSON.stringify({
       type: "restoreCompleted",
-      allFolders: restoredFolders,
+      allFolders: run.cancelled ? [] : restoredFolders,
+      cancelled: run.cancelled,
     }));
   } catch (e) {
     console.error(" Failed to send restore completion:", e);
@@ -131,6 +159,9 @@ export default async function restoreBackups(
 
   console.debug("===  restoreBackups finished ===");
   return summary;
+  } finally {
+    if (activeRun === run) activeRun = null;
+  }
 }
 
 async function copyFileWithProgress(
@@ -139,7 +170,8 @@ async function copyFileWithProgress(
   originalFilePath: string,
   fileIndex: number,
   totalFiles: number,
-  IPCRouter: IPCMessageRouter
+  IPCRouter: IPCMessageRouter,
+  run: ActiveRun
 ): Promise<{ file: string }> {
   const destFullPath = normalizeRestorePath(destRelPath);
   console.debug(` copyFile(): ${sourcePath} → ${destFullPath}`);
@@ -160,6 +192,23 @@ async function copyFileWithProgress(
   return new Promise((resolve, reject) => {
     const readStream = fs.createReadStream(sourcePath);
     const writeStream = fs.createWriteStream(destFullPath);
+
+    let settled = false;
+    const settle = (fn: () => void) => {
+      if (settled) return;
+      settled = true;
+      run.abort = null;
+      fn();
+    };
+
+    run.abort = () => {
+      readStream.destroy();
+      writeStream.destroy();
+      // A half-written file is worse than no file: the user would not know it was truncated.
+      fs.unlink(destFullPath, () => {
+        settle(() => reject(new Error('Restore cancelled')));
+      });
+    };
 
     let copiedBytes = 0;
     let lastEmit = Date.now();
@@ -184,10 +233,11 @@ async function copyFileWithProgress(
       }
     });
 
-    readStream.on("error", (err) => reject(err));
-    writeStream.on("error", (err) => reject(err));
+    readStream.on("error", (err) => settle(() => reject(err)));
+    writeStream.on("error", (err) => settle(() => reject(err)));
 
     writeStream.on("finish", () => {
+      if (settled) return;
       console.debug("   File copied successfully");
       // final 100% progress emit
       IPCRouter.send("renderer", "action", JSON.stringify({
@@ -200,7 +250,7 @@ async function copyFileWithProgress(
           totalBytes,
         },
       }));
-      resolve({ file: originalFilePath });
+      settle(() => resolve({ file: originalFilePath }));
     });
 
     readStream.pipe(writeStream);

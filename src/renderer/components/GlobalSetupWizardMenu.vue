@@ -34,47 +34,6 @@
                         </button>
                     </div>
 
-                    <!-- In Progress section -->
-                    <div v-if="activityCount > 0" class="px-4 pt-4 pb-1">
-                        <p class="section-label">In Progress</p>
-                        <div class="flex flex-col gap-2.5">
-                            <div v-for="(info, uuid) in taskProgressMap" :key="uuid"
-                                class="rounded-md border border-neutral-200 dark:border-neutral-700 p-2.5">
-                                <div class="flex items-center justify-between gap-2 mb-1.5">
-                                    <span class="text-xs font-medium text-default truncate" :title="info.name">{{ info.name }}</span>
-                                    <span class="text-[11px] text-gray-400 shrink-0">
-                                        {{ info.percent != null ? info.percent + '%' : 'Backing up' }}
-                                    </span>
-                                </div>
-                                <div class="w-full h-1.5 bg-neutral-200 dark:bg-neutral-700 rounded-full overflow-hidden">
-                                    <div v-if="info.percent != null" class="h-full bg-primary rounded-full transition-all"
-                                        :style="{ width: info.percent + '%' }" />
-                                    <div v-else class="h-full w-1/3 bg-primary/40 rounded-full animate-pulse" />
-                                </div>
-                            </div>
-
-                            <div v-if="isRestoring" class="rounded-md border border-neutral-200 dark:border-neutral-700 p-2.5">
-                                <div class="flex items-center justify-between gap-2 mb-1.5">
-                                    <span class="text-xs font-medium text-default truncate" :title="restore.label">
-                                        Restoring {{ restore.label }}
-                                    </span>
-                                    <span class="text-[11px] text-gray-400 shrink-0">{{ overallPercent }}%</span>
-                                </div>
-                                <div class="w-full h-1.5 bg-neutral-200 dark:bg-neutral-700 rounded-full overflow-hidden">
-                                    <div class="h-full bg-primary rounded-full transition-all"
-                                        :style="{ width: overallPercent + '%' }" />
-                                </div>
-                                <p class="text-[11px] text-gray-400 mt-1 truncate" :title="restore.lastFile">
-                                    {{ restore.current }} of {{ restore.total }} · {{ activeFileName }}
-                                </p>
-                                <button class="btn btn-sm btn-secondary h-fit mt-2 w-full text-xs"
-                                    @click="viewRestore">
-                                    View Restore
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-
                     <!-- Navigation section -->
                     <div class="px-4 pt-4 pb-2">
                         <p class="section-label">Navigation</p>
@@ -138,6 +97,79 @@
                         </div>
                     </div>
 
+                    <!-- In Progress section -->
+                    <div v-if="activityCount > 0" class="px-4 pt-3 pb-2">
+                        <p class="section-label">In Progress</p>
+                        <div class="flex flex-col gap-2.5">
+                            <div v-for="(info, uuid) in taskProgressMap" :key="uuid"
+                                class="rounded-md border border-neutral-200 dark:border-neutral-700 p-2.5">
+                                <div class="flex items-center justify-between gap-2 mb-1.5">
+                                    <span class="text-xs font-medium text-default truncate" :title="info.name">{{ info.name }}</span>
+                                    <span class="text-[11px] text-gray-400 shrink-0">
+                                        {{ info.percent != null ? info.percent + '%' : 'Backing up' }}
+                                    </span>
+                                </div>
+                                <div class="w-full h-1.5 bg-neutral-200 dark:bg-neutral-700 rounded-full overflow-hidden">
+                                    <div v-if="info.percent != null" class="h-full bg-primary rounded-full transition-all"
+                                        :style="{ width: info.percent + '%' }" />
+                                    <div v-else class="h-full w-1/3 bg-primary/40 rounded-full animate-pulse" />
+                                </div>
+                                <button class="btn btn-sm btn-secondary h-fit mt-2 w-full text-xs"
+                                    @click="stopBackup(uuid as string)">
+                                    Stop Backup
+                                </button>
+                            </div>
+
+                            <div v-if="isRestoring" class="rounded-md border border-neutral-200 dark:border-neutral-700 p-2.5">
+                                <div class="flex items-center justify-between gap-2 mb-1.5">
+                                    <span class="text-xs font-medium text-default truncate" :title="restore.label">
+                                        Restoring {{ restore.label }}
+                                    </span>
+                                    <span class="text-[11px] text-gray-400 shrink-0">{{ overallPercent }}%</span>
+                                </div>
+                                <div class="w-full h-1.5 bg-neutral-200 dark:bg-neutral-700 rounded-full overflow-hidden">
+                                    <div class="h-full bg-primary rounded-full transition-all"
+                                        :style="{ width: overallPercent + '%' }" />
+                                </div>
+                                <p class="text-[11px] text-gray-400 mt-1 truncate" :title="restore.lastFile">
+                                    {{ restore.current }} of {{ restore.total }} · {{ activeFileName }}
+                                </p>
+                                <div class="flex gap-2 mt-2">
+                                    <button class="btn btn-sm btn-secondary h-fit flex-1 text-xs" @click="viewRestore">
+                                        View Restore
+                                    </button>
+                                    <button class="btn btn-sm btn-secondary h-fit flex-1 text-xs"
+                                        :disabled="restore.cancelling" @click="cancelRestore">
+                                        {{ restore.cancelling ? 'Stopping…' : 'Cancel' }}
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div v-for="op in activeRemoteOps" :key="op.id"
+                                class="rounded-md border border-neutral-200 dark:border-neutral-700 p-2.5">
+                                <div class="flex items-center justify-between gap-2 mb-1.5">
+                                    <span class="text-xs font-medium text-default truncate" :title="op.label">{{ op.label }}</span>
+                                    <span class="text-[11px] text-gray-400 shrink-0">
+                                        {{ percentOf(op) != null ? percentOf(op) + '%' : op.phase }}
+                                    </span>
+                                </div>
+                                <div class="w-full h-1.5 bg-neutral-200 dark:bg-neutral-700 rounded-full overflow-hidden">
+                                    <div v-if="percentOf(op) != null" class="h-full bg-primary rounded-full transition-all"
+                                        :style="{ width: percentOf(op) + '%' }" />
+                                    <div v-else class="h-full w-1/3 bg-primary/40 rounded-full animate-pulse" />
+                                </div>
+                                <p v-if="op.currentFile" class="text-[11px] text-gray-400 mt-1 truncate" :title="op.currentFile">
+                                    {{ op.currentFile }}
+                                </p>
+                                <p class="text-[11px] text-gray-400 mt-1 truncate" :title="op.serverIp">{{ op.serverIp }}</p>
+                                <button v-if="op.cancellable" class="btn btn-sm btn-secondary h-fit mt-2 w-full text-xs"
+                                    :disabled="op.cancelling" @click="cancelRemoteOp(op.id)">
+                                    {{ op.cancelling ? 'Stopping…' : 'Cancel' }}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
                     <!-- Spacer -->
                     <div class="flex-1" />
 
@@ -164,6 +196,8 @@ import { useLogModal } from '../composables/useLogModal'
 import { useSettingsModal } from '../composables/useSettingsModal'
 import { useBackupProgress } from '../composables/useBackupProgress'
 import { useRestoreProgress } from '../composables/useRestoreProgress'
+import { useRemoteOps } from '../composables/useRemoteOps'
+import { IPCRouter } from '@45drives/houston-common-lib'
 
 const router = useRouter()
 const route = useRoute()
@@ -172,15 +206,27 @@ const { setTheme, currentTheme } = useThemeFromAlias()
 const { openLogModal } = useLogModal()
 const { openSettingsModal } = useSettingsModal()
 const { taskProgressMap, runningTaskCount } = useBackupProgress()
-const { restore, isRestoring, overallPercent, activeFileName } = useRestoreProgress()
+const { restore, isRestoring, overallPercent, activeFileName, cancelRestore } = useRestoreProgress()
+const { activeRemoteOps, remoteOpCount, percentOf, cancelRemoteOp } = useRemoteOps()
 
-const activityCount = computed(() => runningTaskCount.value + (isRestoring.value ? 1 : 0))
+const activityCount = computed(
+    () => runningTaskCount.value + (isRestoring.value ? 1 : 0) + remoteOpCount.value,
+)
 const activityTitle = computed(() => {
     const parts: string[] = []
     if (runningTaskCount.value > 0) parts.push(`${runningTaskCount.value} backup(s) running`)
     if (isRestoring.value) parts.push('restore in progress')
+    if (remoteOpCount.value > 0) parts.push(`${remoteOpCount.value} server operation(s) running`)
     return parts.length ? `Menu — ${parts.join(', ')}` : 'Menu'
 })
+
+/** The task payload is not to hand here, so stop by uuid and let the backend look it up. */
+function stopBackup(uuid: string) {
+    IPCRouter.getInstance().send('backend', 'action', JSON.stringify({
+        type: 'cancelBackUpTaskNow',
+        task: { uuid },
+    }))
+}
 
 const themes = [
     { value: 'theme-default' as const, label: '45Drives', color: '#D92B2F' },

@@ -1,4 +1,5 @@
 import { ref, computed } from 'vue';
+import { beginRemoteOp, finishRemoteOp } from './useRemoteOps';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -77,6 +78,30 @@ export function useSnapshotManager(serverIp: () => string, username: () => strin
   const selectedDataset = ref<string | null>(null);
   const selectedSnapshot = ref<ZfsSnapshot | null>(null);
   const filePath = ref<string[]>([]);
+
+  /** ZFS work has no progress stream, so it is tracked as an indeterminate shared op. */
+  async function trackedOp<T extends { success: boolean; error?: string }>(
+    label: string,
+    fn: () => Promise<T>,
+  ): Promise<T> {
+    const id = crypto.randomUUID();
+    beginRemoteOp({
+      id,
+      kind: 'snapshot',
+      label,
+      serverIp: serverIp(),
+      username: username(),
+      cancellable: false,
+    });
+    try {
+      const result = await fn();
+      finishRemoteOp(id, { error: result.success ? undefined : (result.error ?? label + ' failed') });
+      return result;
+    } catch (e: any) {
+      finishRemoteOp(id, { error: e?.message ?? label + ' failed' });
+      throw e;
+    }
+  }
 
   // ── Derived ────────────────────────────────────────────────────────────
 
@@ -177,13 +202,16 @@ export function useSnapshotManager(serverIp: () => string, username: () => strin
     operating.value = true;
     error.value = null;
     try {
-      const result: SnapshotCreateResult = await window.electron.ipcRenderer.invoke('snapshot:create', {
-        serverIp: serverIp(),
-        username: username(),
-        dataset,
-        snapName,
-        recursive,
-      });
+      const result = await trackedOp<SnapshotCreateResult>(
+        `Creating snapshot ${dataset}@${snapName}`,
+        () => window.electron.ipcRenderer.invoke('snapshot:create', {
+          serverIp: serverIp(),
+          username: username(),
+          dataset,
+          snapName,
+          recursive,
+        }),
+      );
       if (!result.success) {
         error.value = result.error ?? 'Create failed';
       } else {
@@ -203,12 +231,15 @@ export function useSnapshotManager(serverIp: () => string, username: () => strin
     operating.value = true;
     error.value = null;
     try {
-      const result: SnapshotDestroyResult = await window.electron.ipcRenderer.invoke('snapshot:destroy', {
-        serverIp: serverIp(),
-        username: username(),
-        snapshotName,
-        recursive,
-      });
+      const result = await trackedOp<SnapshotDestroyResult>(
+        `Deleting snapshot ${snapshotName}`,
+        () => window.electron.ipcRenderer.invoke('snapshot:destroy', {
+          serverIp: serverIp(),
+          username: username(),
+          snapshotName,
+          recursive,
+        }),
+      );
       if (!result.success) {
         error.value = result.error ?? 'Destroy failed';
       } else {
@@ -228,11 +259,14 @@ export function useSnapshotManager(serverIp: () => string, username: () => strin
     operating.value = true;
     error.value = null;
     try {
-      const result: SnapshotRollbackResult = await window.electron.ipcRenderer.invoke('snapshot:rollback', {
-        serverIp: serverIp(),
-        username: username(),
-        snapshotName,
-      });
+      const result = await trackedOp<SnapshotRollbackResult>(
+        `Rolling back ${snapshotName}`,
+        () => window.electron.ipcRenderer.invoke('snapshot:rollback', {
+          serverIp: serverIp(),
+          username: username(),
+          snapshotName,
+        }),
+      );
       if (!result.success) {
         error.value = result.error ?? 'Rollback failed';
       }
@@ -304,14 +338,17 @@ export function useSnapshotManager(serverIp: () => string, username: () => strin
     operating.value = true;
     error.value = null;
     try {
-      const result: SnapshotRestoreResult = await window.electron.ipcRenderer.invoke('snapshot:restore-files', {
-        serverIp: serverIp(),
-        username: username(),
-        dataset: selectedSnapshot.value.dataset,
-        snapName: selectedSnapshot.value.snapName,
-        filePaths: selected.map(f => f.path),
-        destPath,
-      });
+      const result = await trackedOp<SnapshotRestoreResult>(
+        `Restoring ${selected.length} file(s) from ${selectedSnapshot.value.snapName}`,
+        () => window.electron.ipcRenderer.invoke('snapshot:restore-files', {
+          serverIp: serverIp(),
+          username: username(),
+          dataset: selectedSnapshot.value!.dataset,
+          snapName: selectedSnapshot.value!.snapName,
+          filePaths: selected.map(f => f.path),
+          destPath,
+        }),
+      );
       if (!result.success) {
         error.value = result.error ?? 'Restore failed';
       }

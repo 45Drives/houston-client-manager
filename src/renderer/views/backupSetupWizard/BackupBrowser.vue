@@ -219,12 +219,24 @@
                         <span>{{ formatFileSize(restoreProgress.copiedBytes) }} / {{ formatFileSize(restoreProgress.totalBytes) }}</span>
                         <span>{{ restoreProgress.current }} of {{ restoreProgress.total }} done</span>
                     </div>
+                    <button class="btn btn-sm btn-outline-shadow h-fit w-full mt-2"
+                        :disabled="restoreProgress.cancelling" @click="cancelRestore">
+                        {{ restoreProgress.cancelling ? 'Stopping…' : 'Cancel Restore' }}
+                    </button>
                 </div>
 
-                <!-- Restore complete -->
+                <!-- Restore finished -->
                 <div v-if="!isRestoring && restoreProgress.finishedAt !== null"
-                    class="p-3 rounded-lg border border-default bg-accent shrink-0 text-sm text-default text-center">
-                    Restored {{ restoreProgress.current }} of {{ restoreProgress.total }} file(s).
+                    class="p-3 rounded-lg border border-default bg-accent shrink-0 text-sm text-center"
+                    :class="restoreProgress.cancelled ? 'text-amber-600 dark:text-amber-400' : 'text-default'">
+                    <template v-if="restoreProgress.cancelled">
+                        Restore cancelled after {{ restoreProgress.current }} of {{ restoreProgress.total }} file(s).
+                    </template>
+                    <template v-else>
+                        Restored {{ restoreProgress.current }} of {{ restoreProgress.total }} file(s).
+                    </template>
+                    <button v-if="!showOpenFolderPrompt" class="btn btn-sm btn-secondary h-fit mt-2 w-full"
+                        @click="dismissRestoreResult">Dismiss</button>
                 </div>
 
                 <!-- Open restored folders prompt -->
@@ -609,7 +621,7 @@ const isConfirmOpen = ref(false)
 
 const {
     restore: restoreProgress, isRestoring, activeFileName, activeFilePercent,
-    beginRestore, dismissRestoreResult,
+    beginRestore, dismissRestoreResult, cancelRestore,
 } = useRestoreProgress()
 
 const restoredFolders = computed(() => restoreProgress.value.folders)

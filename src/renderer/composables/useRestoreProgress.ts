@@ -27,6 +27,10 @@ export interface RestoreState {
   finishedAt: number | null;
   /** Fallback folder when the backend reports none. */
   client: string;
+  /** A stop was requested and the backend has not confirmed it yet. */
+  cancelling: boolean;
+  /** The finished run was stopped by the user rather than completing. */
+  cancelled: boolean;
 }
 
 function emptyState(): RestoreState {
@@ -43,6 +47,8 @@ function emptyState(): RestoreState {
     folders: [],
     finishedAt: null,
     client: "",
+    cancelling: false,
+    cancelled: false,
   };
 }
 
@@ -95,6 +101,19 @@ export function resetRestore(): void {
 export function dismissRestoreResult(): void {
   restore.value.finishedAt = null;
   restore.value.folders = [];
+  restore.value.cancelled = false;
+}
+
+/** Asks the backend to stop after the file in flight; the terminal event still arrives. */
+export function cancelRestore(): void {
+  const s = restore.value;
+  if (!s.active || s.cancelling) return;
+  s.cancelling = true;
+  IPCRouter.getInstance().send(
+    "backend",
+    "action",
+    JSON.stringify({ type: "cancelRestoreBackups", uuid: s.uuid }),
+  );
 }
 
 const validFolder = (p: unknown): p is string => typeof p === "string" && p !== "" && p !== "/" && p !== "\\";
@@ -141,6 +160,8 @@ const actionHandler = (raw: string) => {
           ? [s.client]
           : [];
     s.active = false;
+    s.cancelling = false;
+    s.cancelled = !!msg.cancelled;
     s.finishedAt = Date.now();
     if (s.total === 0) s.total = s.current;
   }
@@ -165,5 +186,6 @@ export function useRestoreProgress() {
     beginRestore,
     resetRestore,
     dismissRestoreResult,
+    cancelRestore,
   };
 }
