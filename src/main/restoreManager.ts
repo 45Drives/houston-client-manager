@@ -1197,6 +1197,37 @@ function downloadViaRsync(
 }
 
 /**
+ * Resolve the filesystem path on the server that backs an SMB share.
+ *
+ * Samba shares can be defined in smb.conf, an included fragment, the registry
+ * (`net conf`), or as a usershare, so try each source and take the first
+ * absolute path any of them reports.
+ */
+async function resolveSmbSharePath(ssh: NodeSSH, share: string): Promise<string> {
+  const q = shellQuote(share);
+  const smbConfAwk =
+    `/^[[:space:]]*\\[/ { s=$0; sub(/^[^[]*\\[/,"",s); sub(/\\].*$/,"",s); cur=(tolower(s)==want); next } ` +
+    `cur && tolower($0) ~ /^[[:space:]]*path[[:space:]]*=/ ` +
+    `{ sub(/^[^=]*=[[:space:]]*/,""); sub(/[[:space:]]+$/,""); print; exit }`;
+
+  const probes = [
+    `testparm -s --section-name=${q} --parameter-name=path 2>/dev/null`,
+    `sudo -n testparm -s --section-name=${q} --parameter-name=path 2>/dev/null`,
+    `net conf getparm ${q} path 2>/dev/null`,
+    `sudo -n net conf getparm ${q} path 2>/dev/null`,
+    `net usershare info ${q} 2>/dev/null | sed -n 's/^path=//p'`,
+    `awk -v want="$(printf %s ${q} | tr 'A-Z' 'a-z')" ${shellQuote(smbConfAwk)} /etc/samba/smb.conf 2>/dev/null`,
+  ];
+
+  for (const cmd of probes) {
+    const res = await ssh.execCommand(cmd);
+    const hit = res.stdout.split('\n').map(l => l.trim()).find(l => l.startsWith('/'));
+    if (hit) return hit;
+  }
+  return '';
+}
+
+/**
  * Windows download: mount SMB share via net use, robocopy from staged path, then unmount.
  *
  * Flow:
@@ -1267,27 +1298,15 @@ function downloadViaRobocopy(
         const ssh = await connectSSH(host, username);
         const smbMountPath = credential.share; // The share name on the server
         try {
-          // Find where the SMB share is mounted on the server
-          const mountResult = await ssh.execCommand(
-            `net usershare info ${shellQuote(smbMountPath)} 2>/dev/null | head -2 | tail -1 || smbstatus --shares 2>/dev/null | grep -i ${shellQuote(smbMountPath)} | awk '{print $2}'`,
-          );
-
-          // Alternative: try to find it via testparm
-          const sharePathResult = await ssh.execCommand(
-            `testparm -s 2>/dev/null | grep -A5 "\\[${smbMountPath}\\]" | grep "path" | awk '{print $3}'`,
-          );
-
-          let shareMountPath = sharePathResult.stdout.trim();
+          const shareMountPath = await resolveSmbSharePath(ssh, smbMountPath);
           if (!shareMountPath) {
-            // Try net usershare
-            const netResult = await ssh.execCommand(
-              `net usershare info ${shellQuote(smbMountPath)} 2>/dev/null | grep "^path=" | cut -d= -f2`,
-            );
-            shareMountPath = netResult.stdout.trim();
-          }
-
-          if (!shareMountPath) {
-            resolve({ success: false, error: `Could not determine mount path for SMB share "${smbMountPath}" on ${host}` });
+            resolve({
+              success: false,
+              error:
+                `Could not determine the server-side path for SMB share "${smbMountPath}" on ${host}. ` +
+                `The share is mounted, but "${username}" could not read the Samba config to find its directory. ` +
+                `Check that the share is defined in /etc/samba/smb.conf and that "${username}" can run testparm.`,
+            });
             return;
           }
 
