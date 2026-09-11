@@ -757,14 +757,35 @@ function buildRsyncFileFilter(selectedFiles?: string[]): string {
   return `${includes} --exclude='*'`;
 }
 
+/** Escape rclone filter metacharacters so a literal file name matches itself. */
+function escapeRcloneGlob(name: string): string {
+  return name.replace(/[\\*?[\]{}]/g, (c) => `\\${c}`);
+}
+
 /**
  * Build rclone filter flags for selected files.
  * Uses --filter instead of --include/--exclude to avoid parse order issues.
  */
 function buildRcloneFilterFlags(selectedFiles?: string[]): string {
   if (!selectedFiles || selectedFiles.length === 0) return '';
-  const filters = selectedFiles.map(f => `--filter '+ ${f}'`).join(' ');
-  return `${filters} --filter '- *'`;
+  const filters = selectedFiles
+    .map(f => `--filter ${shellQuote(`+ ${escapeRcloneGlob(f)}`)}`)
+    .join(' ');
+  return `${filters} --filter ${shellQuote('- *')}`;
+}
+
+/** Remote pid file used to stop a transfer that is already running. */
+function restorePidFile(opId: string): string {
+  return `/tmp/houston-restore-${opId.replace(/[^A-Za-z0-9_-]/g, '')}.pid`;
+}
+
+/**
+ * Record the transfer's pid on the server. `pkill -f <opId>` alone cannot find
+ * it because the operation id never appears in rclone/rsync's own argv.
+ */
+function cancellableRemoteCommand(opId: string, cmd: string): string {
+  const pidFile = restorePidFile(opId);
+  return `{ exec ${cmd} ; } & __hpid=$!; echo $__hpid > ${pidFile}; wait $__hpid; __hrc=$?; rm -f ${pidFile}; exit $__hrc`;
 }
 
 // ── Restore operations ───────────────────────────────────────────────────────
@@ -826,7 +847,7 @@ export async function restoreToServer(
       cmd = `rclone copy --progress ${filter} ${shellQuote(fullSource)} ${shellQuote(destPath)} 2>&1`;
     }
 
-    const result = await ssh.execCommand(cmd, {
+    const result = await ssh.execCommand(cancellableRemoteCommand(opId, cmd), {
       onStdout: (chunk) => {
         const text = chunk.toString();
         if (source === 'server') {
@@ -887,7 +908,7 @@ export async function restoreToClient(
       cmd = `rclone copy --progress ${filter} ${shellQuote(fullSource)} ${shellQuote(stagingDir)} 2>&1`;
     }
 
-    const stageResult = await ssh.execCommand(cmd, {
+    const stageResult = await ssh.execCommand(cancellableRemoteCommand(opId, cmd), {
       onStdout: (chunk) => {
         const text = chunk.toString();
         if (source === 'server') {
@@ -954,7 +975,10 @@ export async function restoreFromS2S(
     const filter = buildRsyncFileFilter(selectedFiles);
 
     const result = await ssh.execCommand(
-      `rsync -a --info=progress2 ${filter} -e ${shellQuote(sshCmd)} ${shellQuote(sourceSpec)} ${shellQuote(destPath + '/')} 2>&1`,
+      cancellableRemoteCommand(
+        opId,
+        `rsync -a --info=progress2 ${filter} -e ${shellQuote(sshCmd)} ${shellQuote(sourceSpec)} ${shellQuote(destPath + '/')} 2>&1`,
+      ),
       {
         onStdout: (chunk) => parseRsyncProgress(chunk.toString(), opId, onProgress),
       },
@@ -1007,7 +1031,10 @@ export async function restoreS2SToClient(
     const filter = buildRsyncFileFilter(selectedFiles);
 
     const stageResult = await ssh.execCommand(
-      `rsync -a --info=progress2 ${filter} -e ${shellQuote(sshCmd)} ${shellQuote(sourceSpec)} ${shellQuote(stagingDir + '/')} 2>&1`,
+      cancellableRemoteCommand(
+        opId,
+        `rsync -a --info=progress2 ${filter} -e ${shellQuote(sshCmd)} ${shellQuote(sourceSpec)} ${shellQuote(stagingDir + '/')} 2>&1`,
+      ),
       {
         onStdout: (chunk) => parseRsyncProgress(chunk.toString(), opId, onProgress),
       },
@@ -1649,9 +1676,10 @@ export async function cancelRestore(
   cancelledOperations.add(operationId);
   const ssh = await connectSSH(serverIp, username);
   try {
-    // Kill any rclone/rsync processes that have the staging dir in their args
+    const pidFile = restorePidFile(operationId);
     await ssh.execCommand(
-      `pkill -f ${shellQuote(operationId)} 2>/dev/null || true`
+      `p=$(cat ${pidFile} 2>/dev/null); [ -n "$p" ] && kill -TERM "$p" 2>/dev/null; ` +
+      `pkill -f ${shellQuote(operationId)} 2>/dev/null; true`
     );
     return true;
   } catch {

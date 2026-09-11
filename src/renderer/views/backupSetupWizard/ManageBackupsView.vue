@@ -62,30 +62,27 @@
 
             <!-- Right-aligned group -->
             <template v-if="activeTab === 'remote'">
-                <button class="btn btn-sm h-fit flex items-center gap-1.5" data-tour="restore-btn"
-                    :class="remoteView === 'restore' ? 'btn-outline-shadow' : 'btn-primary'" :disabled="!restoreConnected"
-                    @click="remoteView = remoteView === 'restore' ? 'backups' : 'restore'">
-                    <template v-if="remoteView === 'restore'">
-                        <ArrowLeftIcon class="w-4 h-4" />
-                        Return to Backups
-                    </template>
-                    <template v-else>
+                <div class="inline-flex rounded-lg border border-default overflow-hidden shrink-0"
+                    :class="restoreConnected ? '' : 'opacity-50'" data-tour="remote-view-switcher">
+                    <button class="px-3 py-1.5 text-sm font-medium flex items-center gap-1.5 transition-colors disabled:cursor-not-allowed"
+                        :class="remoteView === 'backups' ? 'bg-accent text-default shadow-[inset_0_-2px_0_var(--btn-primary-bg)]' : 'bg-well hover:bg-accent text-muted'"
+                        :disabled="!restoreConnected" @click="remoteView = 'backups'">
+                        <ClipboardDocumentListIcon class="w-4 h-4" />
+                        Backups
+                    </button>
+                    <button class="px-3 py-1.5 text-sm font-medium border-l border-default flex items-center gap-1.5 transition-colors disabled:cursor-not-allowed"
+                        :class="remoteView === 'restore' ? 'bg-accent text-default shadow-[inset_0_-2px_0_var(--btn-primary-bg)]' : 'bg-well hover:bg-accent text-muted'"
+                        :disabled="!restoreConnected" @click="remoteView = 'restore'">
                         <ArrowDownTrayIcon class="w-4 h-4" />
                         Restore
-                    </template>
-                </button>
-                <button class="btn btn-sm h-fit flex items-center gap-1.5" data-tour="snapshots-btn"
-                    :class="remoteView === 'snapshots' ? 'btn-outline-shadow' : 'btn-primary'" :disabled="!restoreConnected"
-                    @click="remoteView = remoteView === 'snapshots' ? 'backups' : 'snapshots'">
-                    <template v-if="remoteView === 'snapshots'">
-                        <ArrowLeftIcon class="w-4 h-4" />
-                        Return to Backups
-                    </template>
-                    <template v-else>
+                    </button>
+                    <button class="px-3 py-1.5 text-sm font-medium border-l border-default flex items-center gap-1.5 transition-colors disabled:cursor-not-allowed"
+                        :class="remoteView === 'snapshots' ? 'bg-accent text-default shadow-[inset_0_-2px_0_var(--btn-primary-bg)]' : 'bg-well hover:bg-accent text-muted'"
+                        :disabled="!restoreConnected" @click="remoteView = 'snapshots'">
                         <CameraIcon class="w-4 h-4" />
                         Snapshots
-                    </template>
-                </button>
+                    </button>
+                </div>
             </template>
             <template v-else>
                 <button class="btn btn-sm btn-primary h-fit flex items-center gap-1.5" @click="newBackupTask" data-tour="new-backup">
@@ -202,6 +199,7 @@ import {
     ComputerDesktopIcon, GlobeAltIcon, PlusIcon,
     ArrowLeftIcon, ArrowDownTrayIcon, Cog6ToothIcon, XMarkIcon,
     LinkIcon, ArrowRightOnRectangleIcon, TrashIcon, CameraIcon,
+    ClipboardDocumentListIcon,
 } from '@heroicons/vue/24/outline';
 
 useHeader('Backup Manager');
@@ -311,12 +309,8 @@ function buildRemoteTourSteps(): TourStep[] {
         },
         ...schedulerSteps,
         {
-            target: '[data-tour="restore-btn"]',
-            message: 'Open the Restore browser to recover files from server-to-server or cloud backups on the remote server.',
-        },
-        {
-            target: '[data-tour="snapshots-btn"]',
-            message: 'Manage ZFS snapshots on the connected server.\n\nCreate, browse, restore, rollback, or delete snapshots for any dataset.',
+            target: '[data-tour="remote-view-switcher"]',
+            message: 'Switch between the three remote views here.\n\nBackups shows the server\'s scheduled tasks, Restore opens the browser for recovering files from server-to-server or cloud backups, and Snapshots creates, browses, rolls back, or deletes ZFS snapshots.\n\nClick Backups any time to return to the task list \u2014 the Dashboard button on the far left leaves the Backup Manager entirely.',
         },
     ];
 }

@@ -1640,7 +1640,7 @@ On the **Local Backups** tab, select a task and click **View/Restore**. This ope
 
 ### Restoring from a Remote Backup
 
-On the **Remote Backups** tab, connect to your server and click **Restore**. The button changes to **Return to Backups** so you can toggle back.
+On the **Remote Backups** tab, connect to your server and click **Restore** in the view switcher at the top right. The switcher has three segments — **Backups**, **Restore**, and **Snapshots** — so click **Backups** whenever you want to go back to the task list.
 
 **Choose a source**
 

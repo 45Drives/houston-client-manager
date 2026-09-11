@@ -130,6 +130,12 @@
                             <!-- Actions -->
                             <div class="flex items-center gap-1 shrink-0">
                                 <button class="p-1.5 rounded hover:bg-neutral-100 dark:hover:bg-neutral-700 transition-colors"
+                                    :title="cred.favorite ? 'Remove from favorites' : 'Add to favorites'"
+                                    @click="toggleFavorite(cred)">
+                                    <StarIconSolid v-if="cred.favorite" class="w-3.5 h-3.5 text-yellow-400" />
+                                    <StarIconOutline v-else class="w-3.5 h-3.5 text-gray-400 hover:text-yellow-400" />
+                                </button>
+                                <button class="p-1.5 rounded hover:bg-neutral-100 dark:hover:bg-neutral-700 transition-colors"
                                     title="Edit"
                                     @click="editCredential(cred)">
                                     <PencilIcon class="w-3.5 h-3.5 text-gray-400" />
@@ -301,8 +307,9 @@ import { useRouter } from 'vue-router'
 import {
     ArrowLeftIcon, TrashIcon, PencilIcon, SignalIcon,
     MagnifyingGlassIcon, ServerIcon, InformationCircleIcon, LockClosedIcon,
+    StarIcon as StarIconOutline,
 } from '@heroicons/vue/24/outline'
-import { EyeIcon, EyeSlashIcon } from '@heroicons/vue/20/solid'
+import { EyeIcon, EyeSlashIcon, StarIcon as StarIconSolid } from '@heroicons/vue/20/solid'
 import { useHeader } from '../composables/useHeader'
 import { useServers, isBackupOnly, type StoredServer } from '../composables/useServers'
 import { discoveryStateInjectionKey } from '../keys/injection-keys'
@@ -312,7 +319,7 @@ useHeader('Manage Connections')
 
 const router = useRouter()
 const discoveryState = inject<DiscoveryState>(discoveryStateInjectionKey)!
-const { savedServers: allServersList, refresh: refreshServers, updateServer, removeServer: removeServerById } = useServers()
+const { savedServers: allServersList, refresh: refreshServers, updateServer, removeServer: removeServerById, setFavorite } = useServers()
 
 // ── Types ────────────────────────────────────────────────────────────────
 
@@ -519,6 +526,10 @@ async function executeBulkDelete() {
 function editCredential(cred: CredEntry) {
     // Navigate to the dedicated server management view
     router.push({ name: 'server-manage', params: { id: cred.id } })
+}
+
+async function toggleFavorite(cred: CredEntry) {
+    await setFavorite(cred.id, !cred.favorite)
 }
 
 const editCanSave = computed(() =>

@@ -392,6 +392,10 @@ export function useRestore(serverIp: () => string, username: () => string) {
     } catch (e: any) {
       console.error('Failed to cancel restore:', e);
       error.value = e?.message ?? 'Failed to cancel restore';
+    } finally {
+      // The in-flight restore:start promise can lag behind the kill; don't leave
+      // the UI stuck on "Restoring…" waiting for it.
+      restoring.value = false;
     }
   }
 

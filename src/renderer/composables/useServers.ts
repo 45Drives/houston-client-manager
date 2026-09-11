@@ -140,21 +140,27 @@ export function useServers() {
         if (!disc) continue
         const discoveredName = disc.name || disc.serverName || ''
         const discoveredShare = disc.shareName || ''
+        // A display name the user typed must survive discovery. Only a name that still
+        // mirrors the machine's own hostname/address is treated as auto-assigned.
+        const storedName = s.name || ''
+        const autoNamed = !storedName || storedName === s.hostname || storedName === s.host || storedName === s.ip
         // Discovery reports the server's live name/share, so a rename or re-setup wins
-        const nameChanged = !!discoveredName && discoveredName !== disc.ip && discoveredName !== s.name
+        const hostnameChanged = !!discoveredName && discoveredName !== disc.ip && discoveredName !== s.hostname
+        const nameChanged = autoNamed && !!discoveredName && discoveredName !== disc.ip && discoveredName !== storedName
         const shareChanged = !!discoveredShare && discoveredShare !== s.shareName
-        if (!nameChanged && !shareChanged) continue
         // Prevent firing the same update repeatedly
-        if (nameChanged && _syncedNames.get(s.id) === discoveredName) continue
-        if (!nameChanged && _syncedShares.get(s.id) === discoveredShare) continue
-        if (nameChanged) _syncedNames.set(s.id, discoveredName)
-        if (shareChanged) _syncedShares.set(s.id, discoveredShare)
+        const syncName = (nameChanged || hostnameChanged) && _syncedNames.get(s.id) !== discoveredName
+        const syncShare = shareChanged && _syncedShares.get(s.id) !== discoveredShare
+        if (!syncName && !syncShare) continue
+        if (syncName) _syncedNames.set(s.id, discoveredName)
+        if (syncShare) _syncedShares.set(s.id, discoveredShare)
         // Fire-and-forget update to persist the new name + hostname
         window.electron?.ipcRenderer.invoke('servers:update', {
           id: s.id,
-          ...(nameChanged ? { name: discoveredName, hostname: discoveredName } : {}),
+          ...(syncName && nameChanged ? { name: discoveredName } : {}),
+          ...(syncName && hostnameChanged ? { hostname: discoveredName } : {}),
           ...(disc.ip && disc.ip !== s.host ? { ip: disc.ip } : {}),
-          ...(shareChanged ? { shareName: discoveredShare } : {}),
+          ...(syncShare ? { shareName: discoveredShare } : {}),
         }).then(() => refresh()).catch(e => console.error('Failed to sync server from discovery:', e))
       }
     }, { deep: true })

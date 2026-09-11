@@ -18,6 +18,12 @@
 The tabs cover how this app connects to the server, its network and VPN tunnels, its ZFS pools and datasets, its users and groups, its Samba shares, and its system and service status.
 
 The page is read-only until you click Edit. In edit mode changes are collected into a Staged Changes panel so you can review the whole set and apply it in one go, rather than each field taking effect the moment you type it.`" />
+                                <button v-if="server" type="button" class="shrink-0"
+                                    :title="server.favorite ? 'Remove from favorites' : 'Add to favorites'"
+                                    @click="toggleFavorite">
+                                    <StarIconSolid v-if="server.favorite" class="w-4 h-4 text-yellow-400" />
+                                    <StarIconOutline v-else class="w-4 h-4 text-gray-400 hover:text-yellow-400" />
+                                </button>
                                 <template v-if="rebooting">
                                     <ArrowPathIcon class="w-4 h-4 animate-spin text-amber-500 shrink-0" />
                                     <span class="text-xs font-normal text-amber-500">Rebooting…</span>
@@ -1160,8 +1166,9 @@ import {
     ArrowLeftIcon, ArrowPathIcon, PencilIcon, ServerIcon,
     ExclamationTriangleIcon, XMarkIcon, PlusIcon,
     GlobeAltIcon, CircleStackIcon, UsersIcon, ShareIcon, CpuChipIcon,
-    LinkIcon, LockClosedIcon, LockOpenIcon,
+    LinkIcon, LockClosedIcon, LockOpenIcon, StarIcon as StarIconOutline,
 } from '@heroicons/vue/24/outline'
+import { StarIcon as StarIconSolid } from '@heroicons/vue/24/solid'
 import { useHeader } from '../composables/useHeader'
 import { useServers, type StoredServer } from '../composables/useServers'
 import { useServerManage } from '../composables/useServerManage'
@@ -1180,7 +1187,7 @@ useHeader('Server Management')
 
 const route = useRoute()
 const router = useRouter()
-const { savedServers, updateServer, refresh: refreshServers } = useServers()
+const { savedServers, updateServer, refresh: refreshServers, setFavorite } = useServers()
 
 // ── Tab definitions ────────────────────────────────────────────────────────
 
@@ -1343,6 +1350,12 @@ const server = computed<StoredServer | undefined>(() =>
 
 // Management needs an admin credential we do not have for backup-only servers.
 const hasAdminAccess = computed(() => server.value?.hasAdminCreds !== false)
+
+async function toggleFavorite() {
+    const s = server.value
+    if (!s) return
+    await setFavorite(s.id, !s.favorite)
+}
 
 const {
     active: adminUnlocked,
