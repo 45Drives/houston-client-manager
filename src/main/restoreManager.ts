@@ -806,15 +806,25 @@ function parseRcloneProgress(
   }
 }
 
+/** Escape rsync wildcard metacharacters so a literal file name matches itself. */
+function escapeRsyncGlob(name: string): string {
+  return name.replace(/[\\*?[\]]/g, (c) => `\\${c}`);
+}
+
 /**
  * Build rsync file filter args for selected files.
  * Returns an rsync filter string or empty string if no selection (restore all).
  */
 function buildRsyncFileFilter(selectedFiles?: string[]): string {
   if (!selectedFiles || selectedFiles.length === 0) return '';
-  // Include only selected files, exclude everything else
-  const includes = selectedFiles.map(f => `--include=${shellQuote(f)}`).join(' ');
-  return `${includes} --exclude='*'`;
+  // The `/***` twin matches nothing for a file, and pulls the whole subtree for a directory.
+  const includes = selectedFiles
+    .flatMap((f) => {
+      const pattern = escapeRsyncGlob(f.replace(/^\/+/, ''));
+      return [`--include=${shellQuote(pattern)}`, `--include=${shellQuote(`${pattern}/***`)}`];
+    })
+    .join(' ');
+  return `${includes} --exclude=${shellQuote('*')}`;
 }
 
 /** Escape rclone filter metacharacters so a literal file name matches itself. */
@@ -1037,7 +1047,7 @@ export async function restoreFromS2S(
     const result = await ssh.execCommand(
       cancellableRemoteCommand(
         opId,
-        `rsync -a --info=progress2 ${filter} -e ${shellQuote(sshCmd)} ${shellQuote(sourceSpec)} ${shellQuote(destPath + '/')} 2>&1`,
+        `rsync -a -s --info=progress2 ${filter} -e ${shellQuote(sshCmd)} ${shellQuote(sourceSpec)} ${shellQuote(destPath + '/')} 2>&1`,
       ),
       {
         onStdout: (chunk) => parseRsyncProgress(chunk.toString(), opId, onProgress),
@@ -1093,7 +1103,7 @@ export async function restoreS2SToClient(
     const stageResult = await ssh.execCommand(
       cancellableRemoteCommand(
         opId,
-        `rsync -a --info=progress2 ${filter} -e ${shellQuote(sshCmd)} ${shellQuote(sourceSpec)} ${shellQuote(stagingDir + '/')} 2>&1`,
+        `rsync -a -s --info=progress2 ${filter} -e ${shellQuote(sshCmd)} ${shellQuote(sourceSpec)} ${shellQuote(stagingDir + '/')} 2>&1`,
       ),
       {
         onStdout: (chunk) => parseRsyncProgress(chunk.toString(), opId, onProgress),
@@ -1137,15 +1147,46 @@ async function downloadFromServer(
 ): Promise<RestoreResult> {
   const safeHost = assertSafeHost(serverIp);
   const safeUser = assertSafeUsername(username);
+  const destDir = normalizeLocalDir(localDestPath);
 
   // Ensure local destination exists
-  await fs.promises.mkdir(localDestPath, { recursive: true });
+  await fs.promises.mkdir(destDir, { recursive: true });
 
   if (process.platform === 'win32') {
-    return downloadViaRobocopy(safeHost, safeUser, serverPath, localDestPath, operationId, onProgress);
+    return downloadViaRobocopy(safeHost, safeUser, serverPath, destDir, operationId, onProgress);
   } else {
-    return downloadViaRsync(safeHost, safeUser, serverPath, localDestPath, operationId, onProgress);
+    return downloadViaRsync(safeHost, safeUser, serverPath, destDir, operationId, onProgress);
   }
+}
+
+/**
+ * Normalize a user-chosen local directory for the current platform.
+ *
+ * Trailing separators must go: robocopy reads `"C:\dir\"` as an escaped quote and
+ * swallows the rest of the command line, and rsync treats a trailing slash as
+ * "contents of" rather than "the directory itself".
+ */
+function normalizeLocalDir(dir: string): string {
+  const normalized = path.normalize(dir);
+  // Never strip the separator off a root such as `C:\` or `/`.
+  if (normalized.length <= (process.platform === 'win32' ? 3 : 1)) return normalized;
+  return normalized.replace(/[\\/]+$/, '');
+}
+
+/** Count files under a local directory tree, for verifying a transfer actually landed. */
+async function countLocalFiles(dir: string): Promise<number> {
+  let total = 0;
+  let entries: fs.Dirent[];
+  try {
+    entries = await fs.promises.readdir(dir, { withFileTypes: true });
+  } catch {
+    return 0;
+  }
+  for (const entry of entries) {
+    if (entry.isDirectory()) total += await countLocalFiles(path.join(dir, entry.name));
+    else total += 1;
+  }
+  return total;
 }
 
 /**
@@ -1164,10 +1205,11 @@ function downloadViaRsync(
     const privateKeyPath = path.join(keyDir, 'id_rsa');
     const sshCmd = `ssh -i ${privateKeyPath} -o StrictHostKeyChecking=accept-new -o BatchMode=yes`;
     const source = `${username}@${host}:${serverPath}/`;
-    const dest = localDestPath.endsWith('/') ? localDestPath : `${localDestPath}/`;
+    const dest = `${localDestPath}/`;
 
     const proc = spawn('rsync', [
-      '-a', '--info=progress2',
+      // -s keeps the remote shell from re-splitting a path with spaces or globs.
+      '-a', '-s', '--info=progress2',
       '-e', sshCmd,
       source,
       dest,
@@ -1321,15 +1363,22 @@ function downloadViaRobocopy(
             return;
           }
 
+          const stagedCount = Number(
+            (await ssh.execCommand(`find ${shellQuote(smbStagingDir)} -type f | wc -l`)).stdout.trim(),
+          ) || 0;
+
           // Now robocopy from the mapped drive to local dest
           onProgress?.({ operationId, phase: 'downloading', message: `Copying files to ${localDestPath}...` });
           const rcSource = `${driveLetter}:\\.houston-restore-staging\\${operationId}`;
 
           const rc = await new Promise<RestoreResult>((rcResolve) => {
+            // No `shell: true`: cmd.exe would re-split a destination like
+            // `C:\Users\me\Downloads\rsync backup fr server` into extra arguments,
+            // which robocopy silently reads as file filters and then copies nothing.
             const proc = spawn('robocopy', [
               rcSource, localDestPath,
               '/E', '/Z', '/FFT', '/R:2', '/W:5', '/MT:8', '/NJH', '/bytes',
-            ], { shell: true });
+            ], { windowsHide: true });
 
             let output = '';
             proc.stdout.on('data', (chunk: Buffer) => {
@@ -1348,9 +1397,12 @@ function downloadViaRobocopy(
             proc.on('close', (code) => {
               // robocopy: 0-7 = success, 8+ = error
               if (code !== null && code < 8) {
-                rcResolve({ success: true });
+                rcResolve({ success: true, filesRestored: stagedCount });
               } else {
-                rcResolve({ success: false, error: stderr.trim() || `robocopy exited with code ${code}` });
+                rcResolve({
+                  success: false,
+                  error: stderr.trim() || output.trim().split('\n').slice(-5).join('\n') || `robocopy exited with code ${code}`,
+                });
               }
             });
 
@@ -1361,6 +1413,17 @@ function downloadViaRobocopy(
 
           // Clean up server-side SMB staging
           await ssh.execCommand(`rm -rf ${shellQuote(smbStagingDir)}`).catch(() => {});
+
+          // robocopy reports success when it copies nothing, so confirm files actually landed.
+          if (rc.success && stagedCount > 0 && (await countLocalFiles(localDestPath)) === 0) {
+            resolve({
+              success: false,
+              error:
+                `robocopy reported success but no files reached ${localDestPath}. ` +
+                `${stagedCount} file(s) were staged on \\\\${host}\\${credential.share}.`,
+            });
+            return;
+          }
 
           resolve(rc);
         } finally {
