@@ -205,7 +205,7 @@ const darkMode = useDarkModeState()
 const { setTheme, currentTheme } = useThemeFromAlias()
 const { openLogModal } = useLogModal()
 const { openSettingsModal } = useSettingsModal()
-const { taskProgressMap, runningTaskCount } = useBackupProgress()
+const { taskProgressMap, runningTaskCount, removeFinishedTask } = useBackupProgress()
 const { restore, isRestoring, overallPercent, activeFileName, cancelRestore } = useRestoreProgress()
 const { activeRemoteOps, remoteOpCount, percentOf, cancelRemoteOp } = useRemoteOps()
 
@@ -226,6 +226,8 @@ function stopBackup(uuid: string) {
         type: 'cancelBackUpTaskNow',
         task: { uuid },
     }))
+    // Drop the card now rather than leaving it frozen at its last percent while the kill lands.
+    removeFinishedTask(uuid)
 }
 
 const themes = [

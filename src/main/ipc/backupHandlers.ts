@@ -600,6 +600,8 @@ export async function handleBackupMessage(message: any, ctx: IPCHandlerContext):
           ctx.jsonLogger.info({ event: 'cancelBackUpTaskNow', taskUuid: uuid, ...result });
           await ensureCancelledEndEvent(task);
           clearTaskProgress(uuid);
+          // Notifications are a user preference, so the progress store is told separately.
+          router.send('renderer', 'action', JSON.stringify({ type: 'backupRunEnded', uuid }));
           ctx.notify(
             result.cancelled
               ? `Backup task "${label}" cancelled.`

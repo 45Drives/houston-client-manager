@@ -46,6 +46,7 @@ import AdminGateModal from '../renderer/components/AdminGateModal.vue'
 import UpdateNotification from '../renderer/components/UpdateNotification.vue'
 import SettingsModal from '../renderer/views/backupSetupWizard/SettingsModal.vue'
 import GuidedTour from '../renderer/components/GuidedTour.vue'
+import { maybeClearFromNotification } from '../renderer/composables/useBackupProgress'
 import { divisionCodeInjectionKey, currentServerInjectionKey, discoveryStateInjectionKey, discoveryRescanInjectionKey, thisOsInjectionKey } from '../renderer/keys/injection-keys'
 import type { Server, DivisionType, DiscoveryState } from '../renderer/types'
 import { useServerDiscovery } from '../renderer/composables/useServerDiscovery'
@@ -110,6 +111,7 @@ onMounted(() => {
   const isJson = (s: string) => { try { JSON.parse(s); return true } catch { return false } }
   const isErrorMessage = (s: string) => s.startsWith('Error') || /\bfailed\b/i.test(s)
   const notificationHandler = (_e: any, message: string) => {
+    maybeClearFromNotification(message)
     if (isErrorMessage(message)) return reportError(new Error(message))
     if (isJson(message)) {
       const m = JSON.parse(message)

@@ -93,9 +93,13 @@ export function beginTasks(
   }
 }
 
+/** Only terminal phrasings: "disabled"/"Running" notifications name a task that is still live. */
+const TERMINAL_TASK_NOTIFICATION =
+  /Backup task "(.+?)" (?:cancelled|was not running|completed|failed)/i;
+
 export function maybeClearFromNotification(message: string): void {
   if (!isRunningNow.value) return;
-  const m = message.match(/Backup task "(.+?)"/i);
+  const m = message.match(TERMINAL_TASK_NOTIFICATION);
   if (!m) return;
 
   const name = m[1].trim();
@@ -182,8 +186,8 @@ let listening = false;
 /**
  * Reconciliation used to live in ManageBackupsView's own listener, so a run that ended
  * while the user was on another screen kept its entry — and the menu badge with it —
- * until they navigated back. Both the completion notification and the running-uuid set
- * are handled here instead.
+ * until they navigated back. Terminal notifications arrive on a separate Electron channel
+ * and are forwarded here by AppShell.
  */
 const actionHandler = (raw: string) => {
   let msg: any;
@@ -192,10 +196,10 @@ const actionHandler = (raw: string) => {
   } catch {
     return;
   }
-  if (msg?.type === "notification" && msg.message) {
-    maybeClearFromNotification(msg.message);
-  } else if (msg?.type === "sendBackupEvents" && "runningUuids" in msg) {
+  if (msg?.type === "sendBackupEvents" && "runningUuids" in msg) {
     syncRunningUuids(Array.isArray(msg.runningUuids) ? msg.runningUuids : []);
+  } else if (msg?.type === "backupRunEnded" && msg.uuid) {
+    removeFinishedTask(msg.uuid);
   }
 };
 
