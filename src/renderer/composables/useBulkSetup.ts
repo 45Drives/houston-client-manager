@@ -9,7 +9,9 @@ import type {
   BulkSetupTemplate,
   BulkDiskInfo,
   BulkSetupStep,
+  SnapshotPolicyName,
 } from '../../shared/bulkSetupTypes';
+import { DEFAULT_SNAPSHOT_POLICY } from '../../shared/bulkSetupTypes';
 import { validateServerEntry, isEntryValid, type FieldErrors } from '../../shared/bulkSetupValidation';
 import { useServers } from './useServers';
 
@@ -230,6 +232,7 @@ export function useBulkSetup() {
       rootPass: '',
       rootPassConfirm: '',
       clearExistingData: false,
+      snapshotPolicy: DEFAULT_SNAPSHOT_POLICY,
       steps: [],
       ...partial,
     });
@@ -251,7 +254,7 @@ export function useBulkSetup() {
 
   // ── Global defaults ────────────────────────────────────────────────────
 
-  function applyGlobalDefaults(defaults: { username?: string; password?: string; authMethod?: 'password' | 'key'; sshKeyPath?: string; sshPassphrase?: string; smbUser?: string; smbPass?: string; wipeDrives?: boolean }) {
+  function applyGlobalDefaults(defaults: { username?: string; password?: string; authMethod?: 'password' | 'key'; sshKeyPath?: string; sshPassphrase?: string; smbUser?: string; smbPass?: string; wipeDrives?: boolean; snapshotPolicy?: SnapshotPolicyName }) {
     for (const srv of servers.value) {
       // Overwrites every server; blank fields in the defaults are left alone so a
       // partially filled panel doesn't wipe values that were entered per-server.
@@ -265,6 +268,7 @@ export function useBulkSetup() {
         srv.smbPass = defaults.smbPass;
         srv.smbPassConfirm = defaults.smbPass;
       }
+      if (defaults.snapshotPolicy) srv.snapshotPolicy = defaults.snapshotPolicy;
       if (defaults.wipeDrives !== undefined) srv.wipeDrives = defaults.wipeDrives;
     }
   }

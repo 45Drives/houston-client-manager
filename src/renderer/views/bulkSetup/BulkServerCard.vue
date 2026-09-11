@@ -227,6 +227,19 @@ The server refuses to touch any drive backing the running OS regardless of this 
           </div>
         </div>
 
+        <div>
+          <label class="text-xs font-medium text-muted mb-1 block">Snapshot History</label>
+          <select v-model="server.snapshotPolicy"
+            class="w-full input-textlike rounded-lg px-3 py-1.5 text-sm">
+            <option v-for="opt in SNAPSHOT_POLICY_OPTIONS" :key="opt.value" :value="opt.value">
+              {{ opt.label }} — {{ opt.detail }}
+            </option>
+          </select>
+          <span v-if="server.snapshotPolicy === 'none'" class="text-xs text-amber-600 dark:text-amber-400 mt-0.5 block">
+            Deleted or overwritten files will not be recoverable from this server.
+          </span>
+        </div>
+
         <!-- SMB + Root password 2-column layout -->
         <div class="grid grid-cols-2 gap-3">
           <!-- Left column: SMB User, SMB Pass, Confirm SMB Pass -->
@@ -430,6 +443,7 @@ import { CommanderToolTip } from '../../components/commander';
 import type { BulkServerState } from '../../composables/useBulkSetup';
 import type { Server } from '../../types';
 import { getSinglePoolPreview } from '../../../shared/bulkSetupRaid';
+import { SNAPSHOT_POLICY_OPTIONS } from '../../../shared/bulkSetupTypes';
 
 const props = defineProps<{
   server: BulkServerState;

@@ -121,6 +121,18 @@ Parallel mode sets every server up at once. Anything that fails can be retried o
             Quick-wipe drives that carry old partitions or signatures
           </span>
         </label>
+        <div class="mt-3 max-w-md">
+          <label class="text-xs font-medium text-muted mb-1 block">Snapshot History</label>
+          <select v-model="globalDefaults.snapshotPolicy"
+            class="w-full input-textlike rounded-lg px-3 py-1.5 text-sm">
+            <option v-for="opt in SNAPSHOT_POLICY_OPTIONS" :key="opt.value" :value="opt.value">
+              {{ opt.label }} — {{ opt.detail }}
+            </option>
+          </select>
+          <p class="text-xs text-muted mt-1">
+            Point-in-time copies kept on the server so a deleted or overwritten file can be recovered.
+          </p>
+        </div>
         <button @click="onApplyDefaults" class="mt-2 text-xs text-blue-600 dark:text-blue-400 hover:underline">
           Apply to all servers
         </button>
@@ -312,6 +324,7 @@ import { useTourManager, type TourStep } from '../../composables/useTourManager'
 import BulkServerCard from './BulkServerCard.vue';
 import BulkDeployConfirmModal from './BulkDeployConfirmModal.vue';
 import BulkTemplateExampleModal from './BulkTemplateExampleModal.vue';
+import { SNAPSHOT_POLICY_OPTIONS, DEFAULT_SNAPSHOT_POLICY, type SnapshotPolicyName } from '../../../shared/bulkSetupTypes';
 
 useHeader('Bulk Server Setup');
 
@@ -369,6 +382,7 @@ const globalDefaults = ref({
   sshPassphrase: '',
   smbUser: '',
   smbPass: '',
+  snapshotPolicy: DEFAULT_SNAPSHOT_POLICY as SnapshotPolicyName,
   wipeDrives: false,
 });
 

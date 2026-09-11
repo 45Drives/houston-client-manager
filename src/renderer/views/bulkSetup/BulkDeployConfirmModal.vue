@@ -117,6 +117,18 @@
               </template>
             </div>
 
+            <!-- Snapshot Summary -->
+            <div>
+              <div class="font-medium text-muted uppercase tracking-wider mb-1">Snapshot Summary</div>
+              <div class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-0.5">
+                <span class="text-muted">History:</span>
+                <span class="text-default"
+                  :class="srv.snapshotPolicy === 'none' ? 'text-amber-600 dark:text-amber-400' : ''">
+                  {{ snapshotPolicyLabel(srv.snapshotPolicy) }}
+                </span>
+              </div>
+            </div>
+
             <!-- Users & Groups (custom mode) -->
             <div v-if="srv.mode === 'custom' && srv.customConfig?.usersAndGroups">
               <div class="font-medium text-muted uppercase tracking-wider mb-1">Users &amp; Groups</div>
@@ -177,6 +189,7 @@
 import { computed } from 'vue';
 import type { BulkServerState } from '../../composables/useBulkSetup';
 import { getSinglePoolPreview } from '../../../shared/bulkSetupRaid';
+import { snapshotPolicyLabel } from '../../../shared/bulkSetupTypes';
 
 const props = defineProps<{
   servers: BulkServerState[];

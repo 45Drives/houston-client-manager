@@ -3,6 +3,28 @@
 
 export type BulkSetupMode = 'simple' | 'custom';
 
+/** Mirrors SnapshotPolicyName in houston-common-lib's defaultTaskConfigs. */
+export type SnapshotPolicyName = 'none' | 'minimal' | 'standard' | 'extended' | 'maximum';
+
+export const SNAPSHOT_POLICY_OPTIONS: {
+  value: SnapshotPolicyName;
+  label: string;
+  detail: string;
+}[] = [
+  { value: 'none', label: 'Off', detail: 'No automatic snapshots' },
+  { value: 'minimal', label: 'Minimal', detail: 'Daily, kept 1 week' },
+  { value: 'standard', label: 'Standard', detail: 'Hourly 1 day, daily 1 week, weekly 1 month' },
+  { value: 'extended', label: 'Extended', detail: 'Hourly 2 days, daily 2 weeks, weekly 3 months' },
+  { value: 'maximum', label: 'Maximum', detail: 'Hourly 7 days, daily 1 month, weekly 1 year' },
+];
+
+export const DEFAULT_SNAPSHOT_POLICY: SnapshotPolicyName = 'standard';
+
+export function snapshotPolicyLabel(policy?: SnapshotPolicyName): string {
+  const opt = SNAPSHOT_POLICY_OPTIONS.find(o => o.value === (policy ?? DEFAULT_SNAPSHOT_POLICY));
+  return opt ? `${opt.label} — ${opt.detail}` : 'Standard';
+}
+
 export type BulkSetupStatus =
   | 'queued'
   | 'bootstrapping'
@@ -58,6 +80,8 @@ export interface BulkServerEntry {
   existingUsers?: string[];
   /** Whether to destroy existing ZFS pools and Samba shares before setup (default: false) */
   clearExistingData?: boolean;
+  /** How much snapshot history the default snapshot tasks keep (default: 'standard') */
+  snapshotPolicy?: SnapshotPolicyName;
   /** Clear partition tables and filesystem/ZFS/RAID signatures before creating pools (default: false) */
   wipeDrives?: boolean;
   /** Only "quick" is offered in bulk; a full erase would run for hours per server. */
@@ -109,6 +133,8 @@ export interface BulkEasySetupConfig {
   sambaConfig?: BulkSambaConfig;
   /** If true, skip destruction of existing ZFS pools and Samba shares */
   skipClearExisting?: boolean;
+  /** How much snapshot history the default snapshot tasks keep */
+  snapshotPolicy?: SnapshotPolicyName;
   /** If true, erase every configured drive before creating pools */
   wipeDrives?: boolean;
   /** Bulk only ever sends "quick"; the manager defaults to it anyway */

@@ -205,7 +205,15 @@ function settleRestoreError(opId: string, error: string, onProgress?: RestorePro
 async function connectSSH(host: string, username: string, password?: string): Promise<NodeSSH> {
   const safeHost = assertSafeHost(host);
   const safeUser = assertSafeUsername(username);
-  return acquireSSH(safeHost, { username: safeUser, method: 'password', password });
+  // Windows has no ssh-agent, so the vault entry is often the only auth the fallback chain can use.
+  const cred = getCredentialManager().getForHost(safeHost);
+  return acquireSSH(safeHost, {
+    username: safeUser,
+    method: cred?.sshKeyPath ? 'key' : 'password',
+    password: password || cred?.password,
+    privateKeyPath: cred?.sshKeyPath || undefined,
+    passphrase: cred?.sshPassphrase || undefined,
+  });
 }
 
 function assertCommandSuccess(result: SSHExecCommandResponse, context: string): string {
@@ -1199,7 +1207,7 @@ function downloadViaRsync(
  */
 function downloadViaRobocopy(
   host: string,
-  _username: string,
+  username: string,
   serverPath: string,
   localDestPath: string,
   operationId: string,
@@ -1255,7 +1263,8 @@ function downloadViaRobocopy(
         // We need the server to move files from /tmp to the SMB share first.
         // Let's rsync server-side: /tmp/staging → SMB share staging area, then robocopy from mounted share.
 
-        const ssh = await connectSSH(host, credential.username);
+        // SSH must use the server login account, not the SMB share account.
+        const ssh = await connectSSH(host, username);
         const smbMountPath = credential.share; // The share name on the server
         try {
           // Find where the SMB share is mounted on the server

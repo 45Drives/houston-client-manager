@@ -20,6 +20,7 @@ import type {
   BulkDisk,
   BulkExcludedDisk,
 } from '../../shared/bulkSetupTypes';
+import { DEFAULT_SNAPSHOT_POLICY } from '../../shared/bulkSetupTypes';
 
 interface BulkSetupContext {
   mainWindow: BrowserWindow;
@@ -694,6 +695,7 @@ function buildEasySetupConfig(entry: BulkServerEntry): Record<string, any> {
     cfg.skipClearExisting = !entry.clearExistingData;
     cfg.wipeDrives = entry.wipeDrives === true;
     cfg.wipeMode = 'quick';
+    cfg.snapshotPolicy = entry.snapshotPolicy ?? cfg.snapshotPolicy ?? DEFAULT_SNAPSHOT_POLICY;
 
     // Ensure serverConfig has adminUser/adminPass from SSH creds if not set
     if (cfg.serverConfig) {
@@ -775,6 +777,7 @@ function buildEasySetupConfig(entry: BulkServerEntry): Record<string, any> {
     skipClearExisting: !entry.clearExistingData,
     wipeDrives: entry.wipeDrives === true,
     wipeMode: 'quick',
+    snapshotPolicy: entry.snapshotPolicy ?? DEFAULT_SNAPSHOT_POLICY,
     zfsConfigs: [
       {
         pool: {
