@@ -27,7 +27,7 @@ import { cancelUnixRun, trackRun, untrackRun } from './runRegistry';
  * when their stamp falls behind, so a script fix reaches tasks created before it shipped.
  * The Windows ACTION_BAT_VERSION exists for the same reason.
  */
-const TASK_SCRIPT_VERSION = 7;
+const TASK_SCRIPT_VERSION = 8;
 
 const LEGACY_SCRIPT_DIR = "/Library/Application Support/Houston/scripts";
 
@@ -683,9 +683,14 @@ cleanup() {
   # Unmount only what this run mounted. The mount point itself is never removed: an
   # unprivileged run cannot recreate one it does not own, and an empty directory is free.
   if [ "$WE_MOUNTED" = "true" ]; then
-    /sbin/umount "$MOUNT_DIR" 2>/dev/null \\
-      || /usr/sbin/diskutil unmount force "$MOUNT_DIR" >/dev/null 2>&1 \\
-      || true
+    # A sibling task may have adopted this mount; every live run keeps a progress file.
+    if ls "$(dirname "$PROGRESS_FILE")"/*.progress >/dev/null 2>&1; then
+      echo "[INFO] Leaving $MOUNT_DIR mounted: another backup task is still running"
+    else
+      /sbin/umount "$MOUNT_DIR" 2>/dev/null \\
+        || /usr/sbin/diskutil unmount force "$MOUNT_DIR" >/dev/null 2>&1 \\
+        || true
+    fi
   fi
 }
 trap cleanup EXIT
@@ -749,22 +754,52 @@ urlenc() {
 
 mkdir -p "$MOUNT_DIR"
 
-if /sbin/mount | grep -q " on $MOUNT_DIR "; then
-  echo "[INFO] Already mounted at $MOUNT_DIR"
+# mount_smbfs answers a second mount of the same share with EEXIST, so an existing mount
+# has to be found and adopted — a sibling task, a previous run, or the app's own backup
+# browser may already hold it, and not always at this task's mount point.
+find_share_mount() {
+  /sbin/mount | /usr/bin/awk -v h="$HOST" -v s="$SHARE" '
+    BEGIN { pat = "//.*" tolower(h) "/" tolower(s) " on " }
+    tolower($0) ~ pat {
+      line = $0
+      sub(/^.* on /, "", line)
+      sub(/ \\([^(]*\\)$/, "", line)
+      print line
+      exit
+    }
+  '
+}
+
+EXISTING_MOUNT="$(find_share_mount || true)"
+if [ -n "$EXISTING_MOUNT" ]; then
+  echo "[INFO] Already mounted at $EXISTING_MOUNT"
+  MOUNT_DIR="$EXISTING_MOUNT"
 else
   echo "[INFO] Mounting //$HOST/$SHARE at $MOUNT_DIR"
   set_progress "" "Mounting share..."
-  if ! /sbin/mount_smbfs -N "//$(urlenc "$SMB_USER"):$(urlenc "$PASSWORD")@$HOST/$SHARE" "$MOUNT_DIR"; then
-    echo "[ERROR] SMB mount failed for //$HOST/$SHARE"
-    exit 1
+  if MOUNT_ERR="$(/sbin/mount_smbfs -N "//$(urlenc "$SMB_USER"):$(urlenc "$PASSWORD")@$HOST/$SHARE" "$MOUNT_DIR" 2>&1)"; then
+    WE_MOUNTED=true
+  else
+    # Another task on this share can win the gap between the check above and this mount.
+    sleep 2
+    EXISTING_MOUNT="$(find_share_mount || true)"
+    if [ -n "$EXISTING_MOUNT" ]; then
+      echo "[INFO] Share was mounted concurrently at $EXISTING_MOUNT"
+      MOUNT_DIR="$EXISTING_MOUNT"
+    else
+      echo "[ERROR] SMB mount failed for //$HOST/$SHARE: $MOUNT_ERR"
+      exit 1
+    fi
   fi
-  WE_MOUNTED=true
 fi
 
 if ! /sbin/mount | grep -q " on $MOUNT_DIR "; then
   echo "[ERROR] $MOUNT_DIR is not mounted after mount_smbfs reported success"
   exit 1
 fi
+
+# Adopting another mount point moves the destination with it.
+DEST_DIR="$MOUNT_DIR/$(printf '%s' "$TARGET" | sed 's|^/*||')"
 
 echo "[SUCCESS] SMB share mounted at $MOUNT_DIR"
 
