@@ -105,7 +105,7 @@
           <p v-if="isInstalling && activityDetail" class="mt-1 text-sm text-muted truncate" :title="activityDetail">
             {{ activityDetail }}
           </p>
-          <p v-else-if="statusMessage" class="text-base">
+          <p v-else-if="!isInstalling && statusMessage" class="text-base">
             {{ statusMessage }}
             <br />
             <span class="text-sm">Troubleshooting steps:</span>
