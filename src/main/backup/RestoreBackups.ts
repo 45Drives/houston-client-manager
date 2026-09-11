@@ -1,4 +1,5 @@
 import { getOS } from "../utils";
+import { resolveMacShareRoot } from "./macDaemon";
 import fsAsync from "fs/promises";
 import fs from "fs";
 import path from "path";
@@ -28,7 +29,7 @@ export default async function restoreBackups(
   if (os === "win") {
     basePath = data.mountPoint ?? `\\\\${data.smb_host}\\${data.smb_share}`;
   } else if (os === "mac") {
-    basePath = data.mountPoint ?? path.join("/Volumes", data.smb_share);
+    basePath = data.mountPoint ?? resolveMacShareRoot(data.smb_share);
   } else {
     basePath = data.mountPoint ?? `/mnt/houston-mounts/${data.smb_share}`;
   }

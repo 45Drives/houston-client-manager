@@ -34,6 +34,21 @@ maybe_open_mountpoint() {
   fi
 }
 
+# Read the real mountpoint out of `mount` output. The backup daemon mounts with
+# mount_smbfs under ~/houston-mounts/<share>, so it is not always /Volumes/<share>.
+find_mountpoint() {
+  /sbin/mount | /usr/bin/awk -v h="${HOST}" -v s="${SHARE}" '
+    BEGIN { pat = "//.*@?" tolower(h) "/" tolower(s) " on " }
+    tolower($0) ~ pat {
+      line = $0
+      sub(/^.* on /, "", line)
+      sub(/ \([^(]*\)$/, "", line)
+      print line
+      exit
+    }
+  '
+}
+
 # ----------- Require GUI session -----------
 if ! has_gui_session; then
   json_error "No active GUI session; cannot mount via AppleScript in headless/SSH context."
@@ -48,8 +63,9 @@ if [ -z "$PASSWORD" ]; then
 fi
 
 # ----------- If already mounted, return success -----------
-# Match either //user@host/share or //host/share mounted on /Volumes/<something>
-if /sbin/mount | /usr/bin/grep -qiE "//[^[:space:]]*@?${HOST}/${SHARE}[[:space:]]+on[[:space:]]+"; then
+EXISTING_MP="$(find_mountpoint)"
+if [ -n "${EXISTING_MP}" ]; then
+  MOUNT_POINT="$EXISTING_MP"
   maybe_open_mountpoint
   echo "{\"smb_server\":\"${SERVER}\",\"share\":\"${SHARE}\",\"status\":\"already mounted\",\"MountPoint\":\"${MOUNT_POINT}\"}"
   exit 0
@@ -75,12 +91,7 @@ fi
 /bin/sleep 1
 
 # Find the actual mountpoint from mount output (could be /Volumes/<share> or /Volumes/<share>-1, etc.)
-ACTUAL_MP="$(/sbin/mount | /usr/bin/awk -v h="${HOST}" -v s="${SHARE}" '
-  BEGIN{IGNORECASE=1}
-  $0 ~ ("//.*@?" h "/" s " on ") {
-    for (i=1;i<=NF;i++) if ($i=="on") { print $(i+1); exit }
-  }
-')"
+ACTUAL_MP="$(find_mountpoint)"
 
 if [ -z "${ACTUAL_MP}" ]; then
   json_error "Mount command returned success but share not present in mount output"

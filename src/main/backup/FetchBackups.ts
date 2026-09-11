@@ -2,6 +2,7 @@ import { app, BrowserWindow } from "electron";
 import { getOS, extractJsonFromOutput } from "../utils";
 import { BackupEntry } from "@45drives/houston-common-lib";
 import mountSmbPopup from "../smbMountPopup";
+import { resolveMacShareRoot } from "./macDaemon";
 import path from 'path';
 import fsAsync from 'fs/promises';
 
@@ -66,7 +67,7 @@ export default async function fetchBackupsFromServer(data: FetchBackupsData, mai
     // use the mapped drive letter, not UNC
     backupRoot = mountResult.MountPoint;
   } else if (getOS() === "mac") {
-    backupRoot = path.join("/Volumes", data.smb_share);
+    backupRoot = mountResult.MountPoint || resolveMacShareRoot(data.smb_share);
   } else {
     backupRoot = `/mnt/houston-mounts/${data.smb_share}`;
   }

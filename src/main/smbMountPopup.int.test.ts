@@ -187,7 +187,10 @@ describe("SMB mount integration", () => {
         share: smb_share,
       });
 
-      expect(out.MountPoint).toMatch(new RegExp(`^/Volumes/${escRe(smb_share)}(?:-\\d+)?$`));
+      // Backups mount under ~/houston-mounts, Finder mounts under /Volumes.
+      expect(out.MountPoint).toMatch(
+        new RegExp(`^(?:/Volumes|${escRe(os.homedir())}/houston-mounts)/${escRe(smb_share)}(?:-\\d+)?$`)
+      );
 
       expect(out.status).toBeDefined();
       expect(["already mounted", "mounted successfully"]).toContain(out.status);

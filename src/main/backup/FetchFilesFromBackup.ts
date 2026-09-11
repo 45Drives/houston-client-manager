@@ -1,4 +1,5 @@
 import { getOS } from "../utils";
+import { resolveMacShareRoot } from "./macDaemon";
 import path from "path";
 import fs from "fs";
 
@@ -33,7 +34,7 @@ export default async function fetchFilesFromBackup(data: FetchFilesFromBackupDat
     if (data.mountPoint) {
       basePath = data.mountPoint;
     } else {
-      basePath = path.join("/Volumes", data.smb_share);
+      basePath = resolveMacShareRoot(data.smb_share);
     }
   } else {
     if (data.mountPoint) {

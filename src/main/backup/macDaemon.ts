@@ -47,6 +47,22 @@ export function ensureUserDirs(): void {
   fs.mkdirSync(MAC_CRED_DIR, { recursive: true, mode: 0o700 });
 }
 
+/**
+ * Where a share is reachable on this Mac. Backups mount with mount_smbfs under
+ * MAC_MOUNT_ROOT, while a Finder/AppleScript mount lands in /Volumes, so neither
+ * location can be assumed. Prefer whichever is actually mounted.
+ */
+export function resolveMacShareRoot(share: string): string {
+  const daemonMount = path.join(MAC_MOUNT_ROOT, share);
+  const volumesMount = path.join("/Volumes", share);
+  for (const candidate of [daemonMount, volumesMount]) {
+    try {
+      if (fs.readdirSync(candidate).length > 0) return candidate;
+    } catch { /* not mounted */ }
+  }
+  return volumesMount;
+}
+
 // ---------------------------------------------------------------------------
 // Run locks
 //

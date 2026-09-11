@@ -16,6 +16,7 @@ import type { IPCHandlerContext } from './types';
 import { getCredentialManager } from '../credentialManager';
 import { startBackupProgressWatcher, clearTaskProgress } from '../backup/progressWatcher';
 import { isSafeUuid } from '../backup/runRegistry';
+import { resolveMacShareRoot } from '../backup/macDaemon';
 import { removeBackupConfig, syncBackupConfig, getClientId } from '../backup/broadcasterApi';
 
 /** Resolve SMB password: use provided password, or look it up from the credential vault */
@@ -603,13 +604,14 @@ export async function handleBackupMessage(message: any, ctx: IPCHandlerContext):
           const mountResult = extractJsonFromOutput(raw);
           folderPath = path.join(mountResult.MountPoint, uuid);
         } else if (getOS() === 'mac') {
-          // Try mountSmbPopup to get actual mount point, fall back to /Volumes/{share}
+          // Try mountSmbPopup to get the actual mount point; the backup daemon and Finder
+          // mount the same share in different places, so probe both as a fallback.
           try {
             const raw = await mountSmbPopup(smb_host, smb_share, smb_user, '', ctx.mainWindow, 'silent');
             const mountResult = extractJsonFromOutput(raw);
-            folderPath = path.join(mountResult.MountPoint || `/Volumes/${smb_share}`, uuid);
+            folderPath = path.join(mountResult.MountPoint || resolveMacShareRoot(smb_share), uuid);
           } catch {
-            folderPath = path.join(`/Volumes/${smb_share}`, uuid);
+            folderPath = path.join(resolveMacShareRoot(smb_share), uuid);
           }
         } else {
           // On Linux, try the fstab-based mount first (same path the backup script uses)
