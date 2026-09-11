@@ -36,11 +36,11 @@
                             <option v-for="opt in serversForDropdown" :key="opt.ip" :value="opt.ip">{{ opt.label }}</option>
                         </optgroup>
                     </select>
-                    <button class="btn btn-sm btn-primary h-fit flex items-center gap-1.5" :disabled="!selectedIp" @click="openLogin">
+                    <button class="btn btn-sm btn-primary h-fit flex items-center gap-1.5" :disabled="!canConnect" @click="openLogin">
                         <LinkIcon class="w-4 h-4" />
                         Connect
                     </button>
-                    <button class="btn btn-sm btn-outline-shadow h-fit flex items-center gap-1.5"
+                    <button class="btn btn-sm btn-danger h-fit flex items-center gap-1.5"
                         :class="currentServer || showRemoteTour ? '' : 'invisible pointer-events-none'"
                         :disabled="!currentServer"
                         @click="disconnect()">
@@ -104,7 +104,6 @@
             <div class="flex-1 min-h-0 bg-well rounded-lg border border-default overflow-hidden bg-default">
                 <BackUpListView ref="backUpListRef" class="h-full"
                     :selectedCount="selectedBackUpTasks.length"
-                    :isRunningNow="isRunningNow"
                     :runningTaskIds="runningTaskIds"
                     @backUpTaskSelected="handleBackUpTaskSelected"
                     @run="runSelected"
@@ -244,7 +243,7 @@ const managerTourSteps: TourStep[] = [
     },
     {
         target: '[data-tour="run-now"]',
-        message: 'Run a backup immediately.\n\nThese action buttons appear when you select one or more tasks from the list. Click Run Now to trigger a backup right away instead of waiting for the schedule.\n\nWhile a task is copying, Run Now becomes Stop Run. Stopping keeps whatever has already been copied and the next run picks up where it left off, so the task is recorded as cancelled rather than failed.',
+        message: 'Run a backup immediately.\n\nThese action buttons appear when you select one or more tasks from the list. Click Run Now to trigger a backup right away instead of waiting for the schedule.\n\nWhile a task is copying, Run Now becomes Stop Run. If your selection mixes running and idle tasks you get both buttons, each showing how many tasks it affects. Stopping keeps whatever has already been copied and the next run picks up where it left off, so the task is recorded as cancelled rather than failed.',
     },
     {
         target: '[data-tour="view-restore"]',
@@ -402,6 +401,9 @@ const selectedOptionLabel = computed(() => {
     const disc = serversForDropdown.value.find(o => o.ip === ip);
     return disc?.label || ip;
 });
+
+// Connect is only meaningful for a server we are not already connected to.
+const canConnect = computed(() => !!selectedIp.value && currentServer?.value?.ip !== selectedIp.value);
 
 const favoriteServers = computed(() => {
     const fmt = settings.value?.serverDisplayFormat ?? 'both';
@@ -563,18 +565,18 @@ const deleteSelectedTasks = () => {
     backUpListRef.value?.deleteSelectedTasks?.();
 };
 
-async function runSelected() {
-    if (selectedBackUpTasks.value.length === 0 || isRunningNow.value) return;
-    beginTasks(selectedBackUpTasks.value);
+async function runSelected(tasks: BackUpTask[]) {
+    if (tasks.length === 0) return;
+    beginTasks(tasks);
     try {
-        await backUpListRef.value?.runSelectedNow?.();
+        await backUpListRef.value?.runSelectedNow?.(tasks);
     } catch {
         stopRunningUi();
     }
 }
 
-function stopSelected() {
-    backUpListRef.value?.stopSelectedNow?.();
+function stopSelected(tasks: BackUpTask[]) {
+    backUpListRef.value?.stopSelectedNow?.(tasks);
 }
 
 /** The backend confirms with a "cancelled" notification, but drop the bars right away so
@@ -603,7 +605,6 @@ function viewSelectedLog() {
 }
 
 const {
-    isRunningNow,
     runningTaskIds,
     taskProgressMap,
     runningTaskCount,

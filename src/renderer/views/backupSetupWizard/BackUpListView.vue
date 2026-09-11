@@ -7,18 +7,19 @@
         :class="selectedBackUps.length > 0 || activeTour?.id === 'backup-manager' ? '' : 'invisible pointer-events-none'">
         <span class="text-xs text-gray-500 mr-1">{{ selectedBackUps.length }} selected</span>
 
-        <button v-if="selectedRunning.length > 0"
-          class="btn btn-sm btn-danger btn-with-icon h-fit"
-          @click="$emit('stop')">
-          <StopIcon class="w-4 h-4" />
-          Stop Run
+        <!-- A mixed selection shows both, each counted, so neither action is ambiguous. -->
+        <button v-if="selectedRunning.length === 0 || selectedIdle.length > 0"
+          class="btn btn-sm btn-primary btn-with-icon h-fit" data-tour="run-now"
+          :disabled="selectedIdle.length < 1" @click="$emit('run', selectedIdle)">
+          <PlayIcon class="w-4 h-4" />
+          {{ selectedRunning.length > 0 ? `Run ${selectedIdle.length}` : 'Run Now' }}
         </button>
 
-        <button v-else class="btn btn-sm btn-primary btn-with-icon h-fit" data-tour="run-now"
-          :disabled="isRunningNow || selectedBackUps.length < 1" @click="$emit('run')">
-          <PlayIcon class="w-4 h-4" />
-          <template v-if="!isRunningNow">Run Now</template>
-          <template v-else>Running…</template>
+        <button v-if="selectedRunning.length > 0"
+          class="btn btn-sm btn-danger btn-with-icon h-fit"
+          @click="$emit('stop', selectedRunning)">
+          <StopIcon class="w-4 h-4" />
+          {{ selectedIdle.length > 0 ? `Stop ${selectedRunning.length}` : `Stop Run${selectedRunning.length > 1 ? 's' : ''}` }}
         </button>
 
         <button class="btn btn-sm btn-outline-shadow btn-with-icon h-fit" data-tour="view-restore"
@@ -312,15 +313,14 @@ import { useTourManager, type TourStep } from '../../composables/useTourManager'
 
 const props = defineProps<{
   selectedCount: number;
-  isRunningNow: boolean;
   runningTaskIds: string[];
 }>();
 
 const router = useRouter();
 const emit = defineEmits<{
   (event: 'backUpTaskSelected', tasks: BackUpTask[]): void;
-  (event: 'run'): void;
-  (event: 'stop'): void;
+  (event: 'run', tasks: BackUpTask[]): void;
+  (event: 'stop', tasks: BackUpTask[]): void;
   (event: 'stopped', uuids: string[]): void;
   (event: 'view'): void;
   (event: 'edit'): void;
@@ -708,15 +708,19 @@ function saveEdit() {
   emit('backUpTaskSelected', []);
 }
 
-function runSelectedNow() {
-  selectedBackUps.value.forEach(task => {
+function runSelectedNow(tasks: BackUpTask[] = selectedIdle.value) {
+  tasks.forEach(task => {
     IPCRouter.getInstance().send('backend', 'action', JSON.stringify({ type: 'runBackUpTaskNow', task }));
   });
 }
 
-/** Selected tasks that are actually mid-run, which is what the toolbar button switches on. */
+/** Selected tasks that are actually mid-run, which is what the toolbar buttons split on. */
 const selectedRunning = computed(() =>
   selectedBackUps.value.filter(isStoppable)
+);
+
+const selectedIdle = computed(() =>
+  selectedBackUps.value.filter(t => !isStoppable(t))
 );
 
 /**
@@ -750,8 +754,8 @@ async function stopTasks(tasks: BackUpTask[]) {
   shortPollingUntil = Date.now() + 30000;
 }
 
-function stopSelectedNow() {
-  return stopTasks(selectedBackUps.value);
+function stopSelectedNow(tasks: BackUpTask[] = selectedRunning.value) {
+  return stopTasks(tasks);
 }
 
 function toggleTaskDisabled(task: BackUpTask) {
