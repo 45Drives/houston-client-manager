@@ -27,3 +27,4 @@ scripts/release/RELEASE*
 .electron-dev-userdata/
 docs/training/
 docs/*-plan.md
+docs/*_MIGRATION.md
