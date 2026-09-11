@@ -68,18 +68,18 @@
         <div class="flex-1 min-h-0 flex gap-4">
                 <!-- LEFT: File list -->
                 <div class="w-3/5 flex flex-col min-h-0 rounded-lg border border-neutral-200 dark:border-neutral-700 overflow-hidden bg-white dark:bg-neutral-800">
-                    <div class="px-3 py-2 border-b border-default flex items-center justify-between shrink-0">
+                    <div class="px-3 py-2 border-b border-default flex items-center gap-3 shrink-0">
                         <button class="text-sm font-medium text-default flex items-center gap-1 hover:text-primary transition-colors"
                             @click="toggleSort">
                             Name
                             <span class="text-xs">{{ sortDir === 'asc' ? '▲' : '▼' }}</span>
                         </button>
-                        <div v-if="restore.files.value.length > 0" class="flex items-center gap-2">
+                        <div v-if="restore.files.value.length > 0" class="flex items-center gap-2 flex-1 min-w-0">
                             <button class="text-xs text-muted hover:text-default" @click="restore.selectAll()">Select All</button>
                             <span class="text-muted">|</span>
                             <button class="text-xs text-muted hover:text-default" @click="restore.deselectAll()">Deselect All</button>
                             <span v-if="restore.selectedFiles.value.length > 0"
-                                class="ml-2 text-xs bg-primary text-white px-2 py-0.5 rounded-full">
+                                class="ml-auto text-xs bg-primary text-white px-2 py-0.5 rounded-full shrink-0">
                                 {{ restore.selectedFiles.value.length }} selected
                             </span>
                         </div>
