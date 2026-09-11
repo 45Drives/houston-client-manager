@@ -5,7 +5,8 @@
             <!-- <h2 class="text-sm font-semibold text-default">Restore Browser</h2> -->
             <div class="flex items-center gap-3" data-tour="restore-source-picker">
                 <select v-model="restore.sourceType.value"
-                    class="input-textlike border border-default rounded px-2 py-1 text-sm min-w-[210px]"
+                    class="input-textlike border border-default rounded px-2 py-1 text-sm min-w-[210px] disabled:opacity-50"
+                    :disabled="restoreLocked"
                     @change="onSourceTypeChange">
                     <option value="s2s">Server Backups</option>
                     <option value="cloud">Cloud Backups</option>
@@ -14,7 +15,8 @@
                 <!-- Cloud: remote picker -->
                 <template v-if="restore.sourceType.value === 'cloud'">
                     <select v-model="selectedRemote"
-                        class="input-textlike border border-default rounded px-2 py-1 text-sm min-w-[210px]"
+                        class="input-textlike border border-default rounded px-2 py-1 text-sm min-w-[210px] disabled:opacity-50"
+                        :disabled="restoreLocked"
                         @change="onRemoteSelected">
                         <option value="">Select cloud account…</option>
                         <option v-for="r in restore.remotes.value" :key="r.name" :value="r.name">
@@ -26,7 +28,8 @@
                 <!-- S2S: task picker -->
                 <template v-if="restore.sourceType.value === 's2s'">
                     <select v-model="selectedTaskName"
-                        class="input-textlike border border-default rounded px-2 py-1 text-sm min-w-[400px]"
+                        class="input-textlike border border-default rounded px-2 py-1 text-sm min-w-[400px] disabled:opacity-50"
+                        :disabled="restoreLocked"
                         @change="onS2STaskSelected">
                         <option value="">Select backup task…</option>
                         <option v-for="t in restore.s2sTasks.value" :key="t.name" :value="t.name">
@@ -37,9 +40,9 @@
 
                 <!-- Refresh -->
                 <button v-if="restore.sourceType.value === 'cloud' || restore.sourceType.value === 's2s'"
-                    class="w-8 h-8 p-0 rounded-md bg-transparent inline-flex items-center justify-center text-gray-500 hover:text-default hover:bg-neutral-100 dark:hover:bg-neutral-700 transition-colors"
+                    class="w-8 h-8 p-0 rounded-md bg-transparent inline-flex items-center justify-center text-gray-500 hover:text-default hover:bg-neutral-100 dark:hover:bg-neutral-700 transition-colors disabled:opacity-50"
                     title="Refresh"
-                    :disabled="restore.loading.value"
+                    :disabled="restore.loading.value || restoreLocked"
                     @click="restore.sourceType.value === 'cloud' ? restore.loadRemotes() : restore.loadS2STasks()">
                     <ArrowPathIcon class="w-4 h-4" />
                 </button>
@@ -149,26 +152,28 @@
                 <div class="w-2/5 flex flex-col min-h-0 gap-4" data-tour="restore-controls">
                     <!-- Destination card -->
                     <div class="bg-accent rounded-lg border border-default overflow-hidden shrink-0">
-                        <div class="px-3 py-2 border-b border-default">
+                        <div class="px-3 py-2 border-b border-default flex items-center justify-between gap-2">
                             <span class="text-sm font-medium text-default">Restore Destination</span>
+                            <span v-if="restoreLocked" class="text-xs text-muted">Locked while restoring</span>
                         </div>
-                        <div class="px-3 py-2">
+                        <div class="px-3 py-2" :class="restoreLocked ? 'opacity-60' : ''">
 
                         <div class="space-y-2">
-                            <label class="flex items-center gap-2 cursor-pointer">
-                                <input type="radio" v-model="restoreTarget" value="server" />
+                            <label class="flex items-center gap-2" :class="restoreLocked ? 'cursor-not-allowed' : 'cursor-pointer'">
+                                <input type="radio" v-model="restoreTarget" value="server" :disabled="restoreLocked" />
                                 <span class="text-sm">Restore to Server</span>
                             </label>
-                            <label class="flex items-center gap-2 cursor-pointer">
-                                <input type="radio" v-model="restoreTarget" value="client" />
+                            <label class="flex items-center gap-2" :class="restoreLocked ? 'cursor-not-allowed' : 'cursor-pointer'">
+                                <input type="radio" v-model="restoreTarget" value="client" :disabled="restoreLocked" />
                                 <span class="text-sm">Download to this Computer</span>
                             </label>
                         </div>
 
                         <!-- Server destination path with autocomplete -->
                         <div v-if="restoreTarget === 'server'" class="mt-3">
-                            <label v-if="restore.originalLocalPath.value" class="flex items-center gap-2 cursor-pointer mb-2">
-                                <input type="checkbox" v-model="restoreToOriginalPath" />
+                            <label v-if="restore.originalLocalPath.value" class="flex items-center gap-2 mb-2"
+                                :class="restoreLocked ? 'cursor-not-allowed' : 'cursor-pointer'">
+                                <input type="checkbox" v-model="restoreToOriginalPath" :disabled="restoreLocked" />
                                 <span class="text-xs text-muted">Restore to original path</span>
                             </label>
 
@@ -184,6 +189,7 @@
                                 <label class="text-xs text-muted mb-1 block">Server destination path</label>
                                 <input v-model="destPath" type="text" placeholder="/data/restored"
                                     list="dest-path-suggestions"
+                                    :disabled="restoreLocked"
                                     class="input-textlike w-full border border-default rounded px-2 py-1 text-sm"
                                     @input="onDestPathInput" />
                                 <datalist id="dest-path-suggestions">
@@ -192,17 +198,18 @@
 
                                 <!-- Create options -->
                                 <div class="mt-2 space-y-1.5">
-                                    <label class="flex items-center gap-2 cursor-pointer">
-                                        <input type="checkbox" v-model="createDirOnRestore" />
+                                    <label class="flex items-center gap-2" :class="restoreLocked ? 'cursor-not-allowed' : 'cursor-pointer'">
+                                        <input type="checkbox" v-model="createDirOnRestore" :disabled="restoreLocked" />
                                         <span class="text-xs text-muted">Create folder if it doesn't exist</span>
                                     </label>
-                                    <label class="flex items-center gap-2 cursor-pointer">
-                                        <input type="checkbox" v-model="createZfsDataset" />
+                                    <label class="flex items-center gap-2" :class="restoreLocked ? 'cursor-not-allowed' : 'cursor-pointer'">
+                                        <input type="checkbox" v-model="createZfsDataset" :disabled="restoreLocked" />
                                         <span class="text-xs text-muted">Create as ZFS dataset</span>
                                     </label>
                                     <div v-if="createZfsDataset" class="ml-5 space-y-1">
                                         <label class="text-xs text-muted block">Parent dataset (e.g. tank/data)</label>
                                         <input v-model="zfsParentDataset" type="text" placeholder="tank/data"
+                                            :disabled="restoreLocked"
                                             class="input-textlike w-full border border-default rounded px-2 py-1 text-xs" />
                                     </div>
                                 </div>
@@ -216,7 +223,8 @@
                                 <input :value="destPath" type="text" readonly
                                     class="input-textlike flex-1 border border-default rounded px-2 py-1 text-sm bg-default"
                                     placeholder="Choose folder…" />
-                                <button class="btn btn-sm btn-outline-shadow h-fit" @click="pickLocalFolder">Browse</button>
+                                <button class="btn btn-sm btn-outline-shadow h-fit" :disabled="restoreLocked"
+                                    @click="pickLocalFolder">Browse</button>
                             </div>
                             <div class="text-xs text-muted">
                                 Files will be staged on the server's SMB share, then downloaded to your machine.
@@ -228,11 +236,23 @@
                     <!-- Progress card (during restore) -->
                     <div v-if="restore.restoring.value || restore.progress.phase === 'complete' || restore.progress.phase === 'cancelled'"
                         class="p-3 rounded-lg border border-default bg-accent shrink-0">
-                        <h3 class="text-sm font-medium mb-2">
+                        <h3 class="text-sm font-medium mb-1">
                             {{ restore.progress.phase === 'complete' ? 'Restore Complete'
                                 : restore.progress.phase === 'cancelled' ? 'Restore Cancelled'
-                                : cancelRequested ? 'Cancelling…' : 'Restoring…' }}
+                                : cancelRequested ? 'Cancelling…' : restoreHeading }}
                         </h3>
+                        <div class="text-xs text-muted truncate mb-2" :title="restoreDestLabel">
+                            {{ restoreDestLabel }}
+                        </div>
+
+                        <!-- Files covered by this restore (transferred together as one job) -->
+                        <div v-if="restore.restoreFileNames.value.length"
+                            class="mb-2 max-h-24 overflow-y-auto rounded border border-default bg-well/50 px-2 py-1">
+                            <div v-for="name in restore.restoreFileNames.value" :key="name"
+                                class="text-xs text-muted truncate" :title="name">
+                                {{ name }}
+                            </div>
+                        </div>
 
                         <div v-if="restore.progress.phase !== 'complete' && restore.progress.phase !== 'cancelled' && restore.progress.phase !== 'error'">
                             <!-- Progress bar -->
@@ -650,6 +670,24 @@ const progressPercent = computed(() => {
         return Math.min(100, Math.round((p.filesProcessed / p.filesTotal) * 100));
     }
     return 0;
+});
+
+// Only one restore can run at a time, so freeze the source/destination inputs while it does.
+const restoreLocked = computed(() => restore.restoring.value);
+
+// The transfer runs as a single rsync/rclone job, so progress is the total across all files.
+const restoreHeading = computed(() => {
+    const n = restore.restoreFileNames.value.length;
+    if (!n) return 'Restoring…';
+    return `Restoring ${n} file${n === 1 ? '' : 's'}…`;
+});
+
+const restoreDestLabel = computed(() => {
+    const dest = restore.restoreDestPath.value;
+    if (!dest) return '';
+    return restore.restoreTargetKind.value === 'client'
+        ? `Downloading to this computer → ${dest}`
+        : `Restoring to server → ${dest}`;
 });
 
 const selectedTotalSize = computed(() =>

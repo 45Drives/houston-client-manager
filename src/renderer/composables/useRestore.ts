@@ -84,6 +84,12 @@ export function useRestore(serverIp: () => string, username: () => string) {
   const restoring = ref(false);
   const error = ref<string | null>(null);
 
+  // Snapshot of what the in-flight (or last) restore covers — the browser list can
+  // change underneath us, so the progress panel reads from here instead.
+  const restoreFileNames = ref<string[]>([]);
+  const restoreDestPath = ref('');
+  const restoreTargetKind = ref<'server' | 'client'>('server');
+
   const progress = reactive<RestoreProgress>({
     operationId: '',
     phase: 'listing',
@@ -345,6 +351,12 @@ export function useRestore(serverIp: () => string, username: () => string) {
       'Name' in f ? f.Name : f.name
     );
 
+    restoreFileNames.value = selected.length > 0
+      ? [...selected]
+      : files.value.map(f => ('Name' in f ? f.Name : f.name));
+    restoreDestPath.value = opts.destPath;
+    restoreTargetKind.value = opts.target;
+
     beginRemoteOp({
       id: operationId,
       kind: 'restore',
@@ -554,6 +566,9 @@ export function useRestore(serverIp: () => string, username: () => string) {
     currentPath,
     currentRemote,
     sourceType,
+    restoreFileNames,
+    restoreDestPath,
+    restoreTargetKind,
 
     // Computed
     breadcrumb,
