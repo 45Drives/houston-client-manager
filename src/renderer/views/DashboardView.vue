@@ -92,7 +92,8 @@
                                 class="px-4 py-2.5 flex items-center gap-3 hover:bg-neutral-50 dark:hover:bg-neutral-700/30 transition-colors">
                                 <span class="status-dot shrink-0"
                                     :class="item.status === 'success' ? 'status-dot-ok' : item.status === 'failed' ? 'status-dot-error' : 'status-dot-active'"></span>
-                                <span class="text-sm text-default truncate flex-1">{{ item.label }}</span>
+                                <span class="text-sm text-default truncate flex-1 min-w-0"
+                                    :title="item.label">{{ item.label }}</span>
                                 <span class="text-xs text-gray-400 shrink-0">{{ item.timeAgo }}</span>
                             </div>
                         </div>
