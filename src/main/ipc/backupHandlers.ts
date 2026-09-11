@@ -17,6 +17,7 @@ import { getCredentialManager } from '../credentialManager';
 import { startBackupProgressWatcher, clearTaskProgress } from '../backup/progressWatcher';
 import { isSafeUuid } from '../backup/runRegistry';
 import { resolveMacShareRoot } from '../backup/macDaemon';
+import { loadSettings, saveSettings, type RestoreHistoryEntry } from '../settingsStore';
 import { removeBackupConfig, syncBackupConfig, getClientId } from '../backup/broadcasterApi';
 
 /** Resolve SMB password: use provided password, or look it up from the credential vault */
@@ -230,8 +231,26 @@ export async function handleBackupMessage(message: any, ctx: IPCHandlerContext):
           console.warn('restoreBackups: mount attempt failed:', mountErr);
         }
       }
-      await restoreBackups(message.data, router);
-      ctx.jsonLogger.info({ event: 'restoreBackups_complete', host: rHost, share: rShare });
+      const summary = await restoreBackups(message.data, router);
+      ctx.jsonLogger.info({ event: 'restoreBackups_complete', host: rHost, share: rShare, ...summary });
+
+      try {
+        const settings = loadSettings();
+        const entry: RestoreHistoryEntry = {
+          timestamp: Date.now(),
+          source: `${rShare}/${message.data.uuid}`,
+          sourcePath: message.data.mountPoint ? path.join(message.data.mountPoint, message.data.uuid) : `${rHost}:${rShare}`,
+          destPath: message.data.client || '',
+          target: 'client',
+          sourceType: 'backup',
+          fileCount: summary.restored,
+          success: summary.failed === 0 && summary.restored > 0,
+          error: summary.firstError,
+        };
+        saveSettings({ restoreHistory: [entry, ...(settings.restoreHistory || [])].slice(0, 20) });
+      } catch (err) {
+        console.warn('restoreBackups: could not record restore history:', err);
+      }
       return true;
     }
 

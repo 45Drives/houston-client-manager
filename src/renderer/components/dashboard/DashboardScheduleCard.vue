@@ -28,7 +28,7 @@
                 <div v-for="task in upcomingTasks" :key="task.name"
                     class="flex items-center gap-2 text-sm">
                     <ClockIcon class="w-3.5 h-3.5 text-gray-400 shrink-0" />
-                    <span class="text-default truncate flex-1">{{ task.name }}</span>
+                    <span class="text-default truncate flex-1" :title="task.name">{{ task.name }}</span>
                     <span class="text-xs text-gray-400 shrink-0">{{ task.when }}</span>
                 </div>
             </div>

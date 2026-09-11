@@ -111,11 +111,13 @@
                         </div>
                         <div v-if="selectedBackup.__task?.smb_user" class="flex justify-between gap-2">
                             <span class="text-muted shrink-0">Server User</span>
-                            <span class="text-default text-right truncate">{{ selectedBackup.__task.smb_user }}</span>
+                            <span class="text-default text-right truncate"
+                                :title="selectedBackup.__task.smb_user">{{ selectedBackup.__task.smb_user }}</span>
                         </div>
                         <div v-if="selectedBackup.__task?.share" class="flex justify-between gap-2">
                             <span class="text-muted shrink-0">Share</span>
-                            <span class="text-default text-right truncate">{{ selectedBackup.__task.share }}</span>
+                            <span class="text-default text-right truncate"
+                                :title="selectedBackup.__task.share">{{ selectedBackup.__task.share }}</span>
                         </div>
                         <div v-if="selectedBackup.lastBackup" class="flex justify-between gap-2">
                             <span class="text-muted shrink-0">Last Backup</span>

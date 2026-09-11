@@ -270,7 +270,8 @@ Parallel mode sets every server up at once. Anything that fails can be retried o
             <span v-if="srv.result?.success && srv.result?.durationMs" class="text-xs text-muted ml-auto">
               {{ formatDuration(srv.result.durationMs) }}
             </span>
-            <span v-if="srv.result?.error" class="text-xs text-red-600 dark:text-red-400 ml-auto truncate max-w-xs">
+            <span v-if="srv.result?.error" class="text-xs text-red-600 dark:text-red-400 ml-auto truncate max-w-xs"
+              :title="srv.result.error">
               {{ srv.result.error }}
             </span>
           </div>

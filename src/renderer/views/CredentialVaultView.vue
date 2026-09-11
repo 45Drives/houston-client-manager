@@ -107,7 +107,8 @@
                             <!-- Info -->
                             <div class="flex-1 min-w-0">
                                 <div class="flex items-center gap-1.5">
-                                    <span class="text-sm font-medium text-default truncate">
+                                    <span class="text-sm font-medium text-default truncate"
+                                        :title="cred.name || `${cred.username}@${cred.host}`">
                                         {{ cred.name || `${cred.username}@${cred.host}` }}
                                     </span>
                                     <span v-if="cred.shareName" class="text-xs text-gray-400">/{{ cred.shareName }}</span>

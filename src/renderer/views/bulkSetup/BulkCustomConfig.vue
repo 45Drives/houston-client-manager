@@ -270,7 +270,8 @@
           class="flex items-center gap-2 p-2 bg-neutral-50 dark:bg-neutral-800/50 rounded">
           <input v-model="group.name" type="text" placeholder="group-name"
             class="input-textlike rounded px-2 py-1 text-xs flex-1 max-w-[200px]" />
-          <span class="text-xs text-muted flex-1 truncate">{{ (group.members || []).join(', ') || 'no members' }}</span>
+          <span class="text-xs text-muted flex-1 truncate"
+            :title="(group.members || []).join(', ') || 'no members'">{{ (group.members || []).join(', ') || 'no members' }}</span>
           <button @click="groups.splice(gi, 1)" class="text-red-500 hover:text-red-600 px-1 text-xs">✕</button>
         </div>
         <p v-if="groups.length === 0" class="text-xs text-muted text-left">No custom groups added.</p>

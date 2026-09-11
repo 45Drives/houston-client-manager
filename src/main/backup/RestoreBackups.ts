@@ -15,10 +15,16 @@ interface RestoreBackupsData {
   files: string[];
 }
 
+export interface RestoreBackupsSummary {
+  restored: number;
+  failed: number;
+  firstError?: string;
+}
+
 export default async function restoreBackups(
   data: RestoreBackupsData,
   IPCRouter: IPCMessageRouter
-) {
+): Promise<RestoreBackupsSummary> {
   const os = getOS();
 
   console.debug("===  restoreBackups triggered ===");
@@ -43,6 +49,8 @@ export default async function restoreBackups(
   console.debug(" Source folderPath:", folderPath);
   console.debug(" Files to restore:", files);
 
+  const summary: RestoreBackupsSummary = { restored: 0, failed: 0 };
+
   // 2) Copy each file, reporting back via IPC
   for (let i = 0; i < files.length; i++) {
     const relFile = files[i];
@@ -64,6 +72,8 @@ export default async function restoreBackups(
       console.debug("   Source file exists");
     } catch {
       console.error(`   Source file NOT found: ${sourcePath}`);
+      summary.failed++;
+      summary.firstError ??= `Source file not found: ${sourcePath}`;
       IPCRouter.send("renderer", "action", JSON.stringify({
         type: "restoreBackupsResult",
         result: { file: relFile, error: `Source file not found: ${sourcePath}` },
@@ -85,8 +95,11 @@ export default async function restoreBackups(
         type: "restoreBackupsResult",
         result,
       }));
+      summary.restored++;
     } catch (err) {
       console.error("   Copy failed:", err);
+      summary.failed++;
+      summary.firstError ??= (err as Error).message;
       IPCRouter.send("renderer", "action", JSON.stringify({
         type: "restoreBackupsResult",
         result: { file: relFile, error: (err as Error).message },
@@ -117,6 +130,7 @@ export default async function restoreBackups(
   }
 
   console.debug("===  restoreBackups finished ===");
+  return summary;
 }
 
 async function copyFileWithProgress(

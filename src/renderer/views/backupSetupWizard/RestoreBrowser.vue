@@ -130,7 +130,7 @@
                             <DocumentIcon v-else class="w-4 h-4 text-muted shrink-0" />
 
                             <!-- Name -->
-                            <span class="text-sm text-default truncate flex-1">{{ fileName(file) }}</span>
+                            <span class="text-sm text-default truncate flex-1" :title="fileName(file)">{{ fileName(file) }}</span>
 
                             <!-- Size -->
                             <span class="text-xs text-muted whitespace-nowrap">
@@ -243,7 +243,8 @@
                             <div class="text-xs text-muted">
                                 {{ restore.progress.message || restore.progress.phase }}
                             </div>
-                            <div v-if="restore.progress.currentFile" class="text-xs text-muted truncate mt-1">
+                            <div v-if="restore.progress.currentFile" class="text-xs text-muted truncate mt-1"
+                                :title="restore.progress.currentFile">
                                 {{ restore.progress.currentFile }}
                             </div>
                             <button class="btn btn-sm btn-secondary h-fit text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20 mt-2 disabled:opacity-50"
@@ -273,11 +274,12 @@
                         class="bg-accent rounded-lg border border-default p-3 text-xs space-y-1 shrink-0">
                         <div class="flex gap-2">
                             <span class="text-muted shrink-0">From:</span>
-                            <span class="text-default truncate">{{ restoreSourceLabel }}</span>
+                            <span class="text-default truncate" :title="restoreSourceLabel">{{ restoreSourceLabel }}</span>
                         </div>
                         <div class="flex gap-2">
                             <span class="text-muted shrink-0">To:</span>
-                            <span class="text-default truncate">{{ restoreToOriginalPath && restore.originalLocalPath.value ? restore.originalLocalPath.value : destPath }}</span>
+                            <span class="text-default truncate"
+                                :title="restoreToOriginalPath && restore.originalLocalPath.value ? restore.originalLocalPath.value : destPath">{{ restoreToOriginalPath && restore.originalLocalPath.value ? restore.originalLocalPath.value : destPath }}</span>
                         </div>
                         <div v-if="restore.selectedFiles.value.length > 0 && restore.selectedFiles.value.length < restore.files.value.length"
                             class="flex gap-2">

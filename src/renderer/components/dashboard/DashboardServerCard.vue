@@ -37,6 +37,7 @@
                     <div class="flex-1 min-w-0">
                         <div class="flex items-center gap-1.5">
                             <span class="text-sm font-medium truncate"
+                                :title="server.name || server.host"
                                 :class="server.host === props.selectedHost ? 'text-primary' : 'text-default'">
                                 {{ server.name || server.host }}
                             </span>
@@ -49,7 +50,8 @@
                                 Backup only
                             </span>
                         </div>
-                        <div class="text-xs text-gray-400 truncate">
+                        <div class="text-xs text-gray-400 truncate"
+                            :title="`${server.username}@${server.host}${server.shareName ? ` / ${server.shareName}` : ''}`">
                             {{ server.username }}@{{ server.host }}{{ server.shareName ? ` / ${server.shareName}` : '' }}
                             <span v-if="server.lastUsedAt"> · {{ formatTimeAgo(server.lastUsedAt) }}</span>
                         </div>

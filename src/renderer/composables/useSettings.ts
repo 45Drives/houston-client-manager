@@ -45,7 +45,7 @@ export interface RestoreHistoryEntry {
   sourcePath: string;
   destPath: string;
   target: 'server' | 'client';
-  sourceType: 'cloud' | 's2s' | 'snapshot';
+  sourceType: 'cloud' | 's2s' | 'snapshot' | 'backup';
   fileCount: number | string;
   success: boolean;
   /** The user stopped this restore; it did not fail on its own. */
@@ -82,6 +82,13 @@ export function useSettings() {
       loading.value = false;
     }
     return _settings.value;
+  }
+
+  /** Forces a fetch; `load` short-circuits once the shared cache is warm, and the
+   *  main process writes settings (restore history, etc.) behind its back. */
+  async function reload() {
+    _loaded.value = false;
+    return load();
   }
 
   async function save(partial: Partial<AppSettings>) {
@@ -127,6 +134,7 @@ export function useSettings() {
     settings: _settings,
     loading,
     load,
+    reload,
     save,
     reset,
     listServers,

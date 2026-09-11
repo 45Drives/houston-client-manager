@@ -24,7 +24,7 @@
                     <XCircleIcon v-else class="w-5 h-5 text-red-500" />
                 </div>
                 <div class="flex-1 min-w-0">
-                    <div class="text-sm font-medium text-default truncate">{{ lastBackup.name }}</div>
+                    <div class="text-sm font-medium text-default truncate" :title="lastBackup.name">{{ lastBackup.name }}</div>
                     <div class="text-xs text-gray-400">
                         {{ lastBackup.status === 'running' ? 'Running now' : lastBackup.timeAgo }}
                     </div>
@@ -44,7 +44,7 @@
                 <ClockIcon class="w-4 h-4 text-gray-400 shrink-0" />
                 <div class="flex-1 min-w-0">
                     <div class="text-xs text-gray-500 dark:text-gray-400">Next Scheduled</div>
-                    <div class="text-sm text-default font-medium truncate">{{ nextScheduled.name }}</div>
+                    <div class="text-sm text-default font-medium truncate" :title="nextScheduled.name">{{ nextScheduled.name }}</div>
                 </div>
                 <span class="text-xs text-gray-400 shrink-0">{{ nextScheduled.when }}</span>
             </div>

@@ -50,7 +50,7 @@
                         :class="snap.selectedDataset.value === ds.name ? 'bg-slate-600/5 dark:bg-slate-400/5 border-l-slate-600 dark:border-l-slate-400' : 'border-l-transparent hover:bg-neutral-50 dark:hover:bg-neutral-700/30'"
                         @click="snap.selectDataset(ds.name)">
                         <div class="text-sm font-medium text-default truncate" :title="ds.name">{{ ds.name }}</div>
-                        <div class="text-xs text-muted truncate">{{ ds.mountpoint }} — {{ ds.used }} used</div>
+                        <div class="text-xs text-muted truncate" :title="ds.mountpoint">{{ ds.mountpoint }} — {{ ds.used }} used</div>
                     </div>
                 </div>
             </div>
@@ -201,7 +201,7 @@
                             <FolderIcon v-if="file.isDir" class="w-4 h-4 text-primary shrink-0" />
                             <DocumentIcon v-else class="w-4 h-4 text-muted shrink-0" />
 
-                            <span class="text-sm text-default truncate flex-1">{{ file.name }}</span>
+                            <span class="text-sm text-default truncate flex-1" :title="file.name">{{ file.name }}</span>
 
                             <span class="text-xs text-muted whitespace-nowrap">
                                 {{ file.isDir ? '—' : formatSize(file.size) }}

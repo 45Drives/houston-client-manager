@@ -10,7 +10,8 @@
       <!-- Server info -->
       <div class="flex-1 min-w-0">
         <div class="flex items-center gap-2">
-          <span class="font-medium text-default text-sm truncate">
+          <span class="font-medium text-default text-sm truncate"
+            :title="server.serverName || server.host || `Server ${index + 1}`">
             {{ server.serverName || server.host || `Server ${index + 1}` }}
           </span>
           <span v-if="server.host" class="text-xs text-muted font-mono">{{ server.host }}</span>
@@ -395,7 +396,7 @@ The server refuses to touch any drive backing the running OS regardless of this 
           <!-- Step label -->
           <div class="flex-1 min-w-0">
             <span class="text-default" :class="{ 'font-medium': s.status === 'running' }">{{ s.label }}</span>
-            <span v-if="s.error" class="block text-xs text-red-500 dark:text-red-400 mt-0.5 truncate">{{ s.error }}</span>
+            <span v-if="s.error" class="block text-xs text-red-500 dark:text-red-400 mt-0.5 truncate" :title="s.error">{{ s.error }}</span>
           </div>
         </div>
       </div>

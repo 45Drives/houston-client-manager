@@ -121,7 +121,7 @@ export interface RestoreHistoryEntry {
   sourcePath: string;
   destPath: string;
   target: 'server' | 'client';
-  sourceType: 'cloud' | 's2s' | 'snapshot';
+  sourceType: 'cloud' | 's2s' | 'snapshot' | 'backup';
   fileCount: number | string;
   success: boolean;
   /** The user stopped this restore; it did not fail on its own. */

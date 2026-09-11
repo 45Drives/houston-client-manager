@@ -28,19 +28,31 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onMounted } from 'vue'
 import { CheckCircleIcon } from '@heroicons/vue/24/solid'
 import { useOnboarding } from '../../composables/useOnboarding'
+import { useSettings } from '../../composables/useSettings'
+import { useBackupTasksFeed } from '../../composables/useBackupTasksFeed'
 import DashboardCard from './DashboardCard.vue'
 
 const { onboarding } = useOnboarding()
+const { settings, reload } = useSettings()
+const { tasks } = useBackupTasksFeed()
+
+onMounted(() => { reload() })
+
+// These three steps describe actions, so they track real state rather than
+// whether the matching guided tour happened to be dismissed.
+const hasBackupTask = computed(() => tasks.value.length > 0)
+const hasRunBackup = computed(() => tasks.value.some(t => !!t.lastRunAt))
+const hasRestored = computed(() => (settings.value?.restoreHistory?.length ?? 0) > 0)
 
 const steps = computed(() => [
     { key: 'dashboardTourDone', label: 'Explore the dashboard', done: onboarding.value.dashboardTourDone },
     { key: 'backupManagerSeen', label: 'Visit Backup Manager', done: onboarding.value.backupManagerSeen },
-    { key: 'createBackupTourDone', label: 'Create your first backup', done: onboarding.value.createBackupTourDone },
-    { key: 'backupListTourDone', label: 'Run a backup', done: onboarding.value.backupListTourDone },
-    { key: 'restoreBrowserTourDone', label: 'Restore files', done: onboarding.value.restoreBrowserTourDone },
+    { key: 'createBackup', label: 'Create your first backup', done: hasBackupTask.value },
+    { key: 'runBackup', label: 'Run a backup', done: hasRunBackup.value },
+    { key: 'restoreFiles', label: 'Restore files', done: hasRestored.value },
 ])
 
 const totalSteps = computed(() => steps.value.length)

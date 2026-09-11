@@ -60,7 +60,7 @@
                                     <button class="btn btn-sm btn-secondary h-fit px-2" @click="editingServerId = null">Cancel</button>
                                 </div>
                                 <div v-else class="flex items-center gap-2">
-                                    <span class="text-sm font-medium truncate">
+                                    <span class="text-sm font-medium truncate" :title="srv.name || srv.host">
                                         {{ srv.name || srv.host }}
                                     </span>
                                     <span v-if="srv.name" class="text-xs text-muted">({{ srv.host }})</span>

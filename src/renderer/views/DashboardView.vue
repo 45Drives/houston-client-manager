@@ -181,6 +181,7 @@ import { useHeader } from '../composables/useHeader'
 import { useLogModal } from '../composables/useLogModal'
 import { useSettingsModal } from '../composables/useSettingsModal'
 import { useOnboarding } from '../composables/useOnboarding'
+import { useSettings } from '../composables/useSettings'
 import { useTourManager, type TourStep } from '../composables/useTourManager'
 import { useServers, isBackupOnly, type StoredServer } from '../composables/useServers'
 import { useBackupTasksFeed, type FeedTask } from '../composables/useBackupTasksFeed'
@@ -201,6 +202,8 @@ const { openLogModal } = useLogModal()
 const { openSettingsModal } = useSettingsModal()
 const { onboarding, markDone } = useOnboarding()
 const { requestTour } = useTourManager()
+const { settings: appSettings, reload: reloadAppSettings } = useSettings()
+onMounted(() => { reloadAppSettings() })
 
 const goSetup = () => router.push({ name: 'setup' })
 const goBulkSetup = () => router.push({ name: 'bulk-setup' })
@@ -227,11 +230,14 @@ function onAddDiscoveredServer(srv: { ip: string; name?: string }) {
     serverCard.value?.addExistingServer(srv)
 }
 
-// Onboarding visibility
+// Onboarding visibility — mirrors the checklist in DashboardOnboardingCard.
 const allOnboardingDone = computed(() => {
     const o = onboarding.value
-    return o.dashboardTourDone && o.backupManagerSeen && o.createBackupTourDone
-        && o.backupListTourDone && o.restoreBrowserTourDone
+    const hasRestored = (appSettings.value?.restoreHistory?.length ?? 0) > 0
+    return o.dashboardTourDone && o.backupManagerSeen
+        && backupTasks.value.length > 0
+        && backupTasks.value.some(t => !!t.lastRunAt)
+        && hasRestored
 })
 
 // Storage health pass-through for system health widget

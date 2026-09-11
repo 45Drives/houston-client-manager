@@ -843,7 +843,7 @@ The page is read-only until you click Edit. In edit mode changes are collected i
                                         <span class="font-semibold">{{ disk.alias || disk.name }}</span>
                                         <span v-if="disk.alias" class="text-[10px] text-gray-400">({{ disk.name }})</span>
                                     </div>
-                                    <span v-if="disk.model" class="text-[10px] text-gray-400 truncate">{{ disk.model }}</span>
+                                    <span v-if="disk.model" class="text-[10px] text-gray-400 truncate" :title="disk.model">{{ disk.model }}</span>
                                 </div>
                                 <div class="flex flex-col items-end shrink-0 text-[10px] text-gray-400">
                                     <span>{{ disk.size }}</span>
@@ -2330,7 +2330,7 @@ const InfoRow = defineComponent({
     setup(props) {
         return () => h('div', { class: 'flex items-center gap-3 px-3 py-1.5 bg-neutral-100 dark:bg-neutral-800 rounded-lg border border-neutral-200 dark:border-neutral-700' }, [
             h('span', { class: 'text-xs font-medium text-gray-500 dark:text-gray-400 min-w-[120px] shrink-0' }, props.label),
-            h('span', { class: 'text-sm text-default truncate' }, props.value),
+            h('span', { class: 'text-sm text-default truncate', title: props.value }, props.value),
         ])
     },
 })

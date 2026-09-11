@@ -15,7 +15,7 @@
                 <XCircleIcon v-else class="w-5 h-5 text-red-500" />
             </div>
             <div class="flex-1 min-w-0 space-y-1">
-                <div class="text-sm font-medium text-default truncate">
+                <div class="text-sm font-medium text-default truncate" :title="lastRestore.source">
                     {{ lastRestore.source }}
                 </div>
                 <div class="text-xs text-gray-400 space-x-2">
@@ -44,24 +44,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { computed, onMounted } from 'vue'
 import { ArrowDownTrayIcon, XCircleIcon, NoSymbolIcon } from '@heroicons/vue/24/outline'
-import { useSettings, type RestoreHistoryEntry } from '../../composables/useSettings'
+import { useSettings } from '../../composables/useSettings'
 import DashboardCard from './DashboardCard.vue'
 
-interface DisplayRestore {
-    source: string
-    sourceType: string
-    fileCount: number | string
-    target: string
-    success: boolean
-    cancelled?: boolean
-    error?: string
-    timeAgo: string
-}
-
-const lastRestore = ref<DisplayRestore | null>(null)
-const { settings, load } = useSettings()
+const { settings, reload } = useSettings()
 
 function formatTimeAgo(epoch: number): string {
     const diff = Date.now() - epoch
@@ -75,21 +63,22 @@ function formatTimeAgo(epoch: number): string {
     return `${Math.floor(days / 30)}mo ago`
 }
 
-onMounted(async () => {
-    await load()
-    const history = settings.value?.restoreHistory
-    if (history && history.length > 0) {
-        const r = history[0]
-        lastRestore.value = {
-            source: r.source || r.sourcePath?.split('/').pop() || 'Unknown',
-            sourceType: r.sourceType === 's2s' ? 'Server-to-Server' : r.sourceType === 'snapshot' ? 'Snapshot' : 'Cloud',
-            fileCount: r.fileCount,
-            target: r.target,
-            success: r.success,
-            cancelled: r.cancelled,
-            error: r.error,
-            timeAgo: formatTimeAgo(r.timestamp),
-        }
+const lastRestore = computed(() => {
+    const r = settings.value?.restoreHistory?.[0]
+    if (!r) return null
+    return {
+        source: r.source || r.sourcePath?.split('/').pop() || 'Unknown',
+        sourceType: r.sourceType === 's2s' ? 'Server-to-Server'
+            : r.sourceType === 'snapshot' ? 'Snapshot'
+                : r.sourceType === 'backup' ? 'Backup' : 'Cloud',
+        fileCount: r.fileCount,
+        target: r.target,
+        success: r.success,
+        cancelled: r.cancelled,
+        error: r.error,
+        timeAgo: formatTimeAgo(r.timestamp),
     }
 })
+
+onMounted(() => { reload() })
 </script>

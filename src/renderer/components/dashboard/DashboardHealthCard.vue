@@ -25,8 +25,8 @@
                     <span class="status-dot shrink-0"
                         :class="srv.setupComplete || srv.status === 'complete' ? 'status-dot-ok' : 'status-dot-idle'" />
                     <div class="flex-1 min-w-0">
-                        <div class="text-xs font-medium text-default truncate">{{ srv.name || srv.ip }}</div>
-                        <div class="text-[11px] text-gray-400 truncate">
+                        <div class="text-xs font-medium text-default truncate" :title="srv.name || srv.ip">{{ srv.name || srv.ip }}</div>
+                        <div class="text-[11px] text-gray-400 truncate" :title="srv.ip">
                             {{ srv.ip }}
                             <span v-if="srv.setupComplete || srv.status === 'complete'" class="text-green-500">· set up</span>
                             <span v-else class="text-amber-500">· not set up</span>
