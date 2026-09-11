@@ -203,11 +203,14 @@ async function copyFileWithProgress(
 
     run.abort = () => {
       readStream.destroy();
-      writeStream.destroy();
       // A half-written file is worse than no file: the user would not know it was truncated.
-      fs.unlink(destFullPath, () => {
+      // Windows holds the handle until 'close', so unlinking any sooner silently fails.
+      const remove = () => fs.unlink(destFullPath, () => {
         settle(() => reject(new Error('Restore cancelled')));
       });
+      if (writeStream.closed) remove();
+      else writeStream.once('close', remove);
+      writeStream.destroy();
     };
 
     let copiedBytes = 0;
