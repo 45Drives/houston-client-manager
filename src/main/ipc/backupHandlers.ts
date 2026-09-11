@@ -33,7 +33,8 @@ function resolvePassword(host: string, share: string, user: string, pass: string
       const wildcard = cm.retrieve(host, '*', user);
       if (wildcard?.password) return wildcard.password;
     }
-    return '';
+    // The task's own runtime credential file outlives the vault entry.
+    return cm.readRuntimeCredPassword(host, share, user) ?? '';
   }
   // No user specified — search by host+share
   const cred = cm.findByHostAndShare(host, share);

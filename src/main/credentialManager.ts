@@ -1056,6 +1056,37 @@ export class CredentialManager {
     else if (platform === 'darwin') this.exportMacCredFile(cred);
   }
 
+  /** Path of the 0600 credential file the scheduled backup reads at run time. */
+  private runtimeCredFilePath(host: string, share: string, username: string): string | null {
+    const name = `${host}_${share}_${username}.cred`;
+    switch (os.platform()) {
+      case 'linux':
+        return path.join('/etc/samba/houston-credentials', name);
+      case 'win32':
+        return path.join(process.env.ProgramData || 'C:\\ProgramData', 'houston-backups', 'credentials', name);
+      case 'darwin':
+        return path.join(os.homedir(), 'Library', 'Application Support', '45Drives', 'Houston', 'credentials', name);
+      default:
+        return null;
+    }
+  }
+
+  /**
+   * Last-resort password lookup for an already-scheduled task. The vault can lose the SMB
+   * password (server record removed, vault reset, task imported from another machine)
+   * while the task itself still runs fine off its exported credential file.
+   */
+  readRuntimeCredPassword(host: string, share: string, username: string): string | null {
+    const file = this.runtimeCredFilePath(host, share, username);
+    if (!file) return null;
+    try {
+      const m = /^password=(.*)$/m.exec(fs.readFileSync(file, 'utf-8'));
+      return m ? m[1].replace(/\r$/, '') : null;
+    } catch {
+      return null;
+    }
+  }
+
   private exportLinuxCredFile(cred: PlaintextCredential): void {
     const credDir = '/etc/samba/houston-credentials';
     const credFile = path.join(credDir, `${cred.host}_${cred.share}_${cred.username}.cred`);
