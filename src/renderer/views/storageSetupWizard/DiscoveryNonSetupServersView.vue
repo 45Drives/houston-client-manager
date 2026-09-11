@@ -102,8 +102,8 @@
             </svg>
             <span class="text-base">{{ statusMessage }}</span>
           </div>
-          <p v-if="isInstalling && currentActivity" class="mt-1 text-sm text-muted truncate" :title="currentActivity">
-            {{ currentActivity }}
+          <p v-if="isInstalling && activityDetail" class="mt-1 text-sm text-muted truncate" :title="activityDetail">
+            {{ activityDetail }}
           </p>
           <p v-else-if="statusMessage" class="text-base">
             {{ statusMessage }}
@@ -171,6 +171,7 @@ import { useServerCredentials } from '../../composables/useServerCredentials'
 import { useRebootWatcher } from '../../composables/useRebootWatcher'
 import { currentServerInjectionKey, discoveryStateInjectionKey } from '../../keys/injection-keys'
 import { describeConnectionError, failureLine } from '../../../shared/connectionErrors'
+import { setupPhaseHeadline, isRedundantDetail } from '../../../shared/setupProgress'
 
 const router = useRouter()
 const providedCurrentServer = inject(currentServerInjectionKey) as Ref<Server | null>
@@ -190,6 +191,11 @@ const logBox = ref<HTMLElement | null>(null);
 
 type SetupProgress = { host: string; step: string; label: string; line: string };
 
+// The detail line only earns its space when it says something the headline doesn't.
+const activityDetail = computed(() =>
+  isRedundantDetail(currentActivity.value, statusMessage.value) ? '' : currentActivity.value
+);
+
 function scrollLogsToBottom() {
   nextTick(() => { if (logBox.value) logBox.value.scrollTop = logBox.value.scrollHeight });
 }
@@ -201,6 +207,8 @@ function toggleLogs() {
 
 function handleSetupProgress(_e: unknown, p: SetupProgress) {
   if (!p || p.host !== effectiveIp.value) return;
+  const headline = setupPhaseHeadline(p.step);
+  if (headline) statusMessage.value = headline;
   currentActivity.value = p.label;
   setupLogs.value.push(p.line);
   if (setupLogs.value.length > 1000) setupLogs.value.splice(0, setupLogs.value.length - 1000);

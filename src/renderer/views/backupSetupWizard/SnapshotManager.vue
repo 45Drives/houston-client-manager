@@ -309,8 +309,14 @@
                         from dataset <strong class="text-default">{{ deleteTarget.dataset }}</strong>?
                     </p>
 
+                    <!-- Chain check still running -->
+                    <div v-if="snap.anchorsLoading.value"
+                        class="p-3 bg-accent border border-default rounded text-sm text-muted mb-4">
+                        Checking whether this snapshot anchors a replication task…
+                    </div>
+
                     <!-- Replication anchor warning -->
-                    <div v-if="deleteTargetAnchor"
+                    <div v-else-if="deleteTargetAnchor"
                         class="p-3 bg-amber-50 dark:bg-amber-900/15 border border-amber-300 dark:border-amber-700 rounded text-sm mb-4">
                         <div class="flex items-start gap-2">
                             <ExclamationTriangleIcon class="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
@@ -339,10 +345,36 @@
                         </div>
                     </div>
 
+                    <!-- Detection failed — warn rather than imply the snapshot is safe -->
+                    <div v-else-if="deleteAnchorUnknown"
+                        class="p-3 bg-amber-50 dark:bg-amber-900/15 border border-amber-300 dark:border-amber-700 rounded text-sm mb-4">
+                        <div class="flex items-start gap-2">
+                            <ExclamationTriangleIcon class="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
+                            <div>
+                                <p class="font-medium text-amber-800 dark:text-amber-300 mb-1">
+                                    Could not verify whether this snapshot is a replication anchor
+                                </p>
+                                <p class="text-amber-700 dark:text-amber-400 mb-2">
+                                    If it is, deleting it breaks the incremental replication chain and the next backup
+                                    will send a <strong>full copy</strong> of all your data.
+                                </p>
+                                <p v-if="deleteUnknownReason" class="text-xs text-amber-600 dark:text-amber-400 break-words">
+                                    {{ deleteUnknownReason }}
+                                </p>
+                                <label class="flex items-center gap-2 mt-3 cursor-pointer">
+                                    <input v-model="deleteAnchorConfirmed" type="checkbox" />
+                                    <span class="text-xs text-amber-800 dark:text-amber-300">
+                                        Delete anyway — I accept the risk of a full backup next time
+                                    </span>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+
                     <div class="flex justify-end gap-2">
                         <button class="btn btn-sm btn-outline-shadow h-fit" @click="cancelDelete">Cancel</button>
                         <button class="btn btn-sm btn-danger h-fit"
-                            :disabled="snap.operating.value || (!!deleteTargetAnchor && !deleteAnchorConfirmed)"
+                            :disabled="snap.operating.value || deleteBlocked"
                             @click="doDelete">
                             {{ snap.operating.value ? 'Deleting…' : 'Delete' }}
                         </button>
@@ -415,6 +447,8 @@ const createRecursive = ref(false);
 const rollbackTarget = ref<ZfsSnapshot | null>(null);
 const deleteTarget = ref<ZfsSnapshot | null>(null);
 const deleteAnchorConfirmed = ref(false);
+/** Populated when the main process refuses the destroy after its own re-check. */
+const deleteServerBlock = ref<{ kind: 'anchor' | 'anchor_unknown'; reason?: string } | null>(null);
 const restoreDestPath = ref('');
 const snapSortAsc = ref(false); // false = newest first (descending), true = oldest first (ascending)
 
@@ -422,6 +456,25 @@ const snapSortAsc = ref(false); // false = newest first (descending), true = old
 const deleteTargetAnchor = computed(() => {
     if (!deleteTarget.value) return null;
     return snap.getAnchor(deleteTarget.value.snapName) ?? null;
+});
+
+/** Detection failed, so we can't claim this snapshot is safe to delete. */
+const deleteAnchorUnknown = computed(() =>
+    !!deleteTarget.value
+    && !deleteTargetAnchor.value
+    && !snap.anchorsLoading.value
+    && (snap.anchorStatus.value === 'unavailable' || deleteServerBlock.value?.kind === 'anchor_unknown'),
+);
+
+const deleteUnknownReason = computed(() =>
+    deleteServerBlock.value?.reason ?? snap.anchorReason.value ?? null,
+);
+
+/** Delete stays locked until the chain check finishes and any warning is acknowledged. */
+const deleteBlocked = computed(() => {
+    if (snap.anchorsLoading.value) return true;
+    if (deleteTargetAnchor.value || deleteAnchorUnknown.value) return !deleteAnchorConfirmed.value;
+    return false;
 });
 
 const sortedSnapshots = computed(() => {
@@ -505,26 +558,42 @@ async function doRollback() {
 
 function confirmDelete(s: ZfsSnapshot) {
     deleteAnchorConfirmed.value = false;
+    deleteServerBlock.value = null;
     deleteTarget.value = s;
+    // Detection may have failed earlier (or never run) — retry before offering Delete.
+    if (!snap.anchorsLoading.value && snap.anchorStatus.value !== 'ok') snap.loadAnchors();
 }
 
 function cancelDelete() {
     deleteTarget.value = null;
     deleteAnchorConfirmed.value = false;
+    deleteServerBlock.value = null;
 }
 
 async function doDelete() {
-    if (!deleteTarget.value) return;
+    if (!deleteTarget.value || deleteBlocked.value) return;
     const name = deleteTarget.value.snapName;
-    const result = await snap.destroySnapshot(deleteTarget.value.name);
+    const result = await snap.destroySnapshot(deleteTarget.value.name, false, deleteAnchorConfirmed.value);
+
+    // The main process re-checks the chain, so it can refuse even when the list looked clean.
+    if (result.blocked) {
+        deleteServerBlock.value = { kind: result.blocked, reason: result.reason };
+        deleteAnchorConfirmed.value = false;
+        if (result.anchor) snap.anchorMap.value.set(result.anchor.snapName, result.anchor);
+        snap.clearError();
+        return;
+    }
+
     if (result.success) {
         deleteTarget.value = null;
         deleteAnchorConfirmed.value = false;
+        deleteServerBlock.value = null;
         pushNotification(new Notification('Snapshot Deleted', `"${name}" deleted.`, 'success', 6000));
         // Refresh anchors since the chain may have changed
         snap.loadAnchors();
     } else {
         deleteTarget.value = null;
+        deleteServerBlock.value = null;
         reportError(new Error(result.error ?? 'Failed to delete snapshot'));
     }
 }

@@ -68,6 +68,16 @@ export interface ReplicationAnchor {
   }>;
 }
 
+export interface ReplicationAnchorResult {
+  /** 'ok' = the chain was fully inspected; 'unavailable' = anchors could not be determined */
+  status: 'ok' | 'unavailable';
+  anchors: ReplicationAnchor[];
+  /** Replication tasks whose sides could not be read, so their anchor is unknown */
+  unverifiedTasks: string[];
+  /** Why detection could not complete (set only when status is 'unavailable') */
+  reason?: string;
+}
+
 export interface RestoreRequest {
   serverIp: string;
   username: string;
@@ -457,25 +467,105 @@ async function readRsyncEnvFiles(ssh: NodeSSH): Promise<S2STask[]> {
  * snapshot (by GUID) between the local and remote sides. That common snapshot
  * is the "replication anchor" — deleting it forces a full re-send on the next
  * replication run.
+ *
+ * Detection never throws: it reports `status: 'unavailable'` when a side could not
+ * be read, so callers can warn instead of assuming the snapshot is safe to delete.
  */
 export async function getReplicationAnchors(
   serverIp: string,
   username: string,
   dataset: string,
-): Promise<ReplicationAnchor[]> {
-  const ssh = await connectSSH(serverIp, username);
+  opts: { includeDescendants?: boolean } = {},
+): Promise<ReplicationAnchorResult> {
+  const unverifiedTasks: string[] = [];
+  let ssh: Awaited<ReturnType<typeof connectSSH>>;
+  try {
+    ssh = await connectSSH(serverIp, username);
+  } catch (e: any) {
+    return {
+      status: 'unavailable',
+      anchors: [],
+      unverifiedTasks: [],
+      reason: `Could not connect to ${serverIp}: ${e?.message ?? e}`,
+    };
+  }
+
+  type Snap = { name: string; guid: string; creation: number };
+
+  /** Returns null when the listing could not be read (as opposed to "no snapshots"). */
+  const readSnapshots = async (
+    ds: string, host: string, user: string, port: number,
+  ): Promise<Snap[] | null> => {
+    if (!ds) return null;
+    const listArgs = ['zfs', 'list', '-H', '-p', '-o', 'name,guid,creation', '-t', 'snapshot', '-r', ds];
+    const cmd = host
+      ? [
+          'ssh', '-p', String(port),
+          '-o', 'BatchMode=yes',
+          '-o', 'ConnectTimeout=10',
+          '-o', 'StrictHostKeyChecking=accept-new',
+          `${user}@${host}`,
+          ...listArgs,
+        ].map(shellQuote).join(' ')
+      : listArgs.map(shellQuote).join(' ');
+    try {
+      const result = await ssh.execCommand(`${cmd} 2>/dev/null`);
+      if (result.code !== 0) return null;
+      return result.stdout
+        .trim()
+        .split('\n')
+        .filter(Boolean)
+        .map(line => {
+          const parts = line.split('\t');
+          return { name: parts[0], guid: parts[1], creation: parseInt(parts[2] || '0', 10) };
+        })
+        .filter(s => s.name.startsWith(ds + '@')); // Only direct snapshots of this dataset
+    } catch {
+      return null;
+    }
+  };
+
+  const localSnapCache = new Map<string, Snap[] | null>();
+  const readLocalSnapshots = async (ds: string): Promise<Snap[] | null> => {
+    if (!localSnapCache.has(ds)) localSnapCache.set(ds, await readSnapshots(ds, '', '', 22));
+    return localSnapCache.get(ds)!;
+  };
+
   try {
     // 1. Get all scheduler task instances
     const scriptPath = '/opt/45drives/houston/scheduler/scripts/get-task-instances.py';
+    // No scheduler at all means no replication tasks exist; a scheduler that fails
+    // to answer means we genuinely don't know, which is a different answer.
+    const scriptExists = await ssh.execCommand(`test -f ${shellQuote(scriptPath)}`);
+    if (scriptExists.code !== 0) {
+      return { status: 'ok', anchors: [], unverifiedTasks: [] };
+    }
+
     const taskResult = await ssh.execCommand(`python3 ${shellQuote(scriptPath)} 2>/dev/null`);
+    if (taskResult.code !== 0 || !taskResult.stdout.trim()) {
+      return {
+        status: 'unavailable',
+        anchors: [],
+        unverifiedTasks: [],
+        reason: 'Could not read the scheduler task list from the server.',
+      };
+    }
 
-    if (taskResult.code !== 0 || !taskResult.stdout.trim()) return [];
-
-    const allTasks: Array<{
+    let allTasks: Array<{
       name: string;
       template: string;
       parameters: Record<string, string>;
-    }> = JSON.parse(taskResult.stdout);
+    }>;
+    try {
+      allTasks = JSON.parse(taskResult.stdout);
+    } catch {
+      return {
+        status: 'unavailable',
+        anchors: [],
+        unverifiedTasks: [],
+        reason: 'The scheduler task list could not be parsed.',
+      };
+    }
 
     // 2. Filter for ZfsReplicationTask instances involving this dataset
     const repTasks = allTasks
@@ -499,96 +589,45 @@ export async function getReplicationAnchors(
         };
       });
 
-    // Push: source is local. Pull: dest is local.
-    const matchingTasks = repTasks.filter(t => {
-      if (t.direction === 'push') return t.sourceDataset === dataset;
-      if (t.direction === 'pull') return t.destDataset === dataset;
-      return false;
-    });
+    // Push: source is local. Pull: dest is local. A recursive destroy also takes out
+    // child datasets, so those tasks have to be considered too.
+    const isLocalMatch = (ds: string) =>
+      ds === dataset || (!!opts.includeDescendants && ds.startsWith(dataset + '/'));
 
-    if (matchingTasks.length === 0) return [];
+    const matchingTasks = repTasks
+      .map(task => ({
+        task,
+        localDataset: task.direction === 'push' ? task.sourceDataset : task.destDataset,
+      }))
+      .filter(({ localDataset }) => isLocalMatch(localDataset));
 
-    // 3. Get local snapshots with GUIDs
-    const localSnapResult = await ssh.execCommand(
-      `zfs list -H -p -o name,guid,creation -t snapshot -r ${shellQuote(dataset)} 2>/dev/null`,
-    );
-    if (localSnapResult.code !== 0 || !localSnapResult.stdout.trim()) return [];
+    if (matchingTasks.length === 0) {
+      return { status: 'ok', anchors: [], unverifiedTasks: [] };
+    }
 
-    const localSnaps = localSnapResult.stdout
-      .trim()
-      .split('\n')
-      .filter(Boolean)
-      .map(line => {
-        const parts = line.split('\t');
-        return { name: parts[0], guid: parts[1], creation: parseInt(parts[2] || '0', 10) };
-      })
-      .filter(s => s.name.startsWith(dataset + '@')); // Only direct snapshots of this dataset
-
-    if (localSnaps.length === 0) return [];
-
-    // 4. For each task, get remote snapshots and find the most recent common snapshot
+    // 3. For each task, compare local and remote snapshot GUIDs to find the anchor
     const anchorMap = new Map<string, { tasks: Array<{ name: string; target: string }> }>();
 
-    for (const task of matchingTasks) {
-      let otherDataset: string;
-      let otherHost: string;
-      let otherUser: string;
-      let otherSshPort: number;
+    for (const { task, localDataset } of matchingTasks) {
+      // Push: other side is the destination. Pull: other side is the source, on the remote host.
+      const otherDataset = task.direction === 'push' ? task.destDataset : task.sourceDataset;
+      const otherHost = task.destHost;
+      const otherUser = task.destUser;
+      const otherSshPort = task.destSshPort;
 
-      if (task.direction === 'push') {
-        // Push: other side is destination
-        otherDataset = task.destDataset;
-        otherHost = task.destHost;
-        otherUser = task.destUser;
-        otherSshPort = task.destSshPort;
-      } else {
-        // Pull: other side is source (on the remote host)
-        otherDataset = task.sourceDataset;
-        otherHost = task.destHost;
-        otherUser = task.destUser;
-        otherSshPort = task.destSshPort;
-      }
-
-      let remoteSnaps: Array<{ name: string; guid: string; creation: number }> = [];
-      try {
-        if (otherHost) {
-          // SSH hop: managed server → remote host
-          const hopCmd = [
-            'ssh',
-            '-p', String(otherSshPort),
-            '-o', 'BatchMode=yes',
-            '-o', 'ConnectTimeout=10',
-            '-o', 'StrictHostKeyChecking=accept-new',
-            `${otherUser}@${otherHost}`,
-            'zfs', 'list', '-H', '-p',
-            '-o', 'name,guid,creation',
-            '-t', 'snapshot',
-            '-r', otherDataset,
-          ].map(shellQuote).join(' ');
-          const result = await ssh.execCommand(`${hopCmd} 2>/dev/null`);
-          if (result.code === 0 && result.stdout.trim()) {
-            remoteSnaps = result.stdout.trim().split('\n').filter(Boolean).map(line => {
-              const parts = line.split('\t');
-              return { name: parts[0], guid: parts[1], creation: parseInt(parts[2] || '0', 10) };
-            }).filter(s => s.name.startsWith(otherDataset + '@'));
-          }
-        } else {
-          // Local: destination is on the same server
-          const result = await ssh.execCommand(
-            `zfs list -H -p -o name,guid,creation -t snapshot -r ${shellQuote(otherDataset)} 2>/dev/null`,
-          );
-          if (result.code === 0 && result.stdout.trim()) {
-            remoteSnaps = result.stdout.trim().split('\n').filter(Boolean).map(line => {
-              const parts = line.split('\t');
-              return { name: parts[0], guid: parts[1], creation: parseInt(parts[2] || '0', 10) };
-            }).filter(s => s.name.startsWith(otherDataset + '@'));
-          }
-        }
-      } catch {
-        // Can't reach the other side — skip this task
+      const localSnaps = await readLocalSnapshots(localDataset);
+      if (localSnaps === null) {
+        unverifiedTasks.push(task.name);
         continue;
       }
+      if (localSnaps.length === 0) continue;
 
+      const remoteSnaps = await readSnapshots(otherDataset, otherHost, otherUser, otherSshPort);
+      if (remoteSnaps === null) {
+        unverifiedTasks.push(task.name);
+        continue;
+      }
+      // No snapshots on the other side means there is no incremental chain to break.
       if (remoteSnaps.length === 0) continue;
 
       // Find most recent common snapshot by GUID
@@ -614,8 +653,8 @@ export async function getReplicationAnchors(
       }
     }
 
-    // 5. Convert to array
-    return Array.from(anchorMap.entries()).map(([snapshotName, info]) => {
+    // 4. Convert to array
+    const anchors = Array.from(anchorMap.entries()).map(([snapshotName, info]) => {
       const atIdx = snapshotName.indexOf('@');
       return {
         snapshotName,
@@ -623,9 +662,22 @@ export async function getReplicationAnchors(
         tasks: info.tasks,
       };
     });
-  } catch {
-    // If scheduler isn't installed or any parse error, return empty gracefully
-    return [];
+
+    return {
+      status: unverifiedTasks.length > 0 ? 'unavailable' : 'ok',
+      anchors,
+      unverifiedTasks,
+      reason: unverifiedTasks.length > 0
+        ? `Could not reach the replication target for: ${unverifiedTasks.join(', ')}`
+        : undefined,
+    };
+  } catch (e: any) {
+    return {
+      status: 'unavailable',
+      anchors: [],
+      unverifiedTasks,
+      reason: e?.message ?? 'Replication anchor detection failed.',
+    };
   } finally {
     ssh.dispose();
   }

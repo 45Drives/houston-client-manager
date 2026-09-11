@@ -245,15 +245,6 @@
                             {{ restoreDestLabel }}
                         </div>
 
-                        <!-- Files covered by this restore (transferred together as one job) -->
-                        <div v-if="restore.restoreFileNames.value.length"
-                            class="mb-2 max-h-24 overflow-y-auto rounded border border-default bg-well/50 px-2 py-1">
-                            <div v-for="name in restore.restoreFileNames.value" :key="name"
-                                class="text-xs text-muted truncate" :title="name">
-                                {{ name }}
-                            </div>
-                        </div>
-
                         <div v-if="restore.progress.phase !== 'complete' && restore.progress.phase !== 'cancelled' && restore.progress.phase !== 'error'">
                             <!-- Progress bar -->
                             <div class="w-full bg-accent rounded-full h-2 mb-2">
@@ -262,10 +253,6 @@
                             </div>
                             <div class="text-xs text-muted">
                                 {{ restore.progress.message || restore.progress.phase }}
-                            </div>
-                            <div v-if="restore.progress.currentFile" class="text-xs text-muted truncate mt-1"
-                                :title="restore.progress.currentFile">
-                                {{ restore.progress.currentFile }}
                             </div>
                             <button class="btn btn-sm btn-secondary h-fit text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20 mt-2 disabled:opacity-50"
                                 :disabled="cancelRequested" @click="onCancelRestore">

@@ -404,10 +404,41 @@ export function registerRestoreHandlers(ctx: IPCHandlerContext) {
 
   ipcMain.handle(
     'snapshot:destroy',
-    async (_event, { serverIp, username, snapshotName, recursive }: {
-      serverIp: string; username: string; snapshotName: string; recursive?: boolean;
+    async (_event, { serverIp, username, snapshotName, recursive, acknowledgeAnchor }: {
+      serverIp: string; username: string; snapshotName: string;
+      recursive?: boolean;
+      /** Set once the user has been shown and accepted the replication-chain warning. */
+      acknowledgeAnchor?: boolean;
     }) => {
       ctx.jsonLogger.warn({ event: 'snapshot:destroy', serverIp, snapName: snapshotName, recursive });
+
+      // Re-check here rather than trusting the renderer: the chain may have changed
+      // since the list was rendered, and the UI warning is only a speed bump.
+      if (!acknowledgeAnchor) {
+        const atIdx = snapshotName.indexOf('@');
+        const dataset = atIdx === -1 ? snapshotName : snapshotName.substring(0, atIdx);
+        const snapName = atIdx === -1 ? '' : snapshotName.substring(atIdx + 1);
+        const check = await getReplicationAnchors(serverIp, username, dataset, {
+          includeDescendants: !!recursive,
+        });
+        const hit = check.anchors.find(a => a.snapName === snapName);
+        if (hit || check.status === 'unavailable') {
+          ctx.jsonLogger.warn({
+            event: 'snapshot:destroy.blocked', serverIp, snapName: snapshotName,
+            blocked: hit ? 'anchor' : 'anchor_unknown', reason: check.reason,
+          });
+          return {
+            success: false,
+            blocked: hit ? 'anchor' : 'anchor_unknown',
+            anchor: hit ?? null,
+            reason: check.reason,
+            error: hit
+              ? 'This snapshot is a replication anchor. Confirm before deleting.'
+              : 'Could not verify whether this snapshot is a replication anchor. Confirm before deleting.',
+          };
+        }
+      }
+
       const result = await destroyZfsSnapshot(serverIp, username, snapshotName, recursive);
       ctx.jsonLogger[result?.success ? 'info' : 'error']({ event: 'snapshot:destroy.done', serverIp, snapName: snapshotName, success: result?.success, error: result?.error });
       return result;
@@ -441,12 +472,12 @@ export function registerRestoreHandlers(ctx: IPCHandlerContext) {
 
   ipcMain.handle(
     'snapshot:get-replication-anchors',
-    async (_event, { serverIp, username, dataset }: {
-      serverIp: string; username: string; dataset: string;
+    async (_event, { serverIp, username, dataset, includeDescendants }: {
+      serverIp: string; username: string; dataset: string; includeDescendants?: boolean;
     }) => {
       ctx.jsonLogger.info({ event: 'snapshot:get-replication-anchors', serverIp, dataset });
-      const result = await getReplicationAnchors(serverIp, username, dataset);
-      ctx.jsonLogger.info({ event: 'snapshot:get-replication-anchors.done', serverIp, dataset, count: result.length });
+      const result = await getReplicationAnchors(serverIp, username, dataset, { includeDescendants });
+      ctx.jsonLogger.info({ event: 'snapshot:get-replication-anchors.done', serverIp, dataset, status: result.status, count: result.anchors.length, unverified: result.unverifiedTasks });
       return result;
     },
   );

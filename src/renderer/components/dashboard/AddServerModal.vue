@@ -218,9 +218,9 @@ Use Add Existing for a server someone else set up, one you configured directly i
                         </span>
                         <span class="min-w-0">
                             {{ ps.label }}
-                            <span v-if="ps.status === 'active' && currentActivity"
-                                class="block text-[11px] text-gray-400 truncate" :title="currentActivity">
-                                {{ currentActivity }}
+                            <span v-if="ps.status === 'active' && detailFor(ps.label)"
+                                class="block text-[11px] text-gray-400 truncate" :title="detailFor(ps.label)">
+                                {{ detailFor(ps.label) }}
                             </span>
                         </span>
                     </div>
@@ -285,6 +285,7 @@ import type { DiscoveryState, Server } from '../../types'
 import { useServers } from '../../composables/useServers'
 import { useOnboarding } from '../../composables/useOnboarding'
 import { useTourManager, type TourStep } from '../../composables/useTourManager'
+import { isRedundantDetail } from '../../../shared/setupProgress'
 
 const emit = defineEmits<{
     'go-setup': []
@@ -333,6 +334,11 @@ const showLogs = ref(false)
 const logBox = ref<HTMLElement | null>(null)
 
 type SetupProgress = { host: string; step: string; label: string; line: string }
+
+// The activity line sits under its phase, so suppress it when it just repeats the phase.
+function detailFor(phaseLabel: string): string {
+    return isRedundantDetail(currentActivity.value, phaseLabel) ? '' : currentActivity.value
+}
 
 function scrollLogsToBottom() {
     nextTick(() => { if (logBox.value) logBox.value.scrollTop = logBox.value.scrollHeight })

@@ -37,6 +37,10 @@ export interface SnapshotCreateResult {
 export interface SnapshotDestroyResult {
   success: boolean;
   error?: string;
+  /** Set when the main process refused to destroy without an explicit acknowledgement */
+  blocked?: 'anchor' | 'anchor_unknown';
+  anchor?: ReplicationAnchor | null;
+  reason?: string;
 }
 
 export interface SnapshotRollbackResult {
@@ -50,6 +54,13 @@ export interface ReplicationAnchor {
   snapshotName: string;
   snapName: string;
   tasks: Array<{ name: string; target: string }>;
+}
+
+export interface ReplicationAnchorResult {
+  status: 'ok' | 'unavailable';
+  anchors: ReplicationAnchor[];
+  unverifiedTasks: string[];
+  reason?: string;
 }
 
 export interface SnapshotRestoreResult {
@@ -74,6 +85,9 @@ export function useSnapshotManager(serverIp: () => string, username: () => strin
   /** Map of snapName → anchor info for the currently selected dataset */
   const anchorMap = ref<Map<string, ReplicationAnchor>>(new Map());
   const anchorsLoading = ref(false);
+  /** 'unavailable' means we could not prove a snapshot is safe to delete, not that it is. */
+  const anchorStatus = ref<'ok' | 'unavailable'>('unavailable');
+  const anchorReason = ref<string | null>(null);
 
   const selectedDataset = ref<string | null>(null);
   const selectedSnapshot = ref<ZfsSnapshot | null>(null);
@@ -95,7 +109,9 @@ export function useSnapshotManager(serverIp: () => string, username: () => strin
     });
     try {
       const result = await fn();
-      finishRemoteOp(id, { error: result.success ? undefined : (result.error ?? label + ' failed') });
+      // A guard that asks for confirmation isn't a failure, so don't flag the op red.
+      const blocked = (result as { blocked?: string }).blocked;
+      finishRemoteOp(id, { error: (result.success || blocked) ? undefined : (result.error ?? label + ' failed') });
       return result;
     } catch (e: any) {
       finishRemoteOp(id, { error: e?.message ?? label + ' failed' });
@@ -142,6 +158,8 @@ export function useSnapshotManager(serverIp: () => string, username: () => strin
     files.value = [];
     filePath.value = [];
     anchorMap.value = new Map();
+    anchorStatus.value = 'unavailable';
+    anchorReason.value = null;
     await loadSnapshots(dsName);
     // Load replication anchors in the background (non-blocking)
     loadAnchors(dsName);
@@ -155,18 +173,21 @@ export function useSnapshotManager(serverIp: () => string, username: () => strin
 
     anchorsLoading.value = true;
     try {
-      const anchors: ReplicationAnchor[] = await window.electron.ipcRenderer.invoke(
+      const result: ReplicationAnchorResult = await window.electron.ipcRenderer.invoke(
         'snapshot:get-replication-anchors',
         { serverIp: serverIp(), username: username(), dataset: ds },
       );
       const map = new Map<string, ReplicationAnchor>();
-      for (const a of anchors) {
+      for (const a of result?.anchors ?? []) {
         map.set(a.snapName, a);
       }
       anchorMap.value = map;
-    } catch {
-      // Scheduler may not be installed — silently ignore
+      anchorStatus.value = result?.status === 'ok' ? 'ok' : 'unavailable';
+      anchorReason.value = result?.reason ?? null;
+    } catch (e: any) {
       anchorMap.value = new Map();
+      anchorStatus.value = 'unavailable';
+      anchorReason.value = e?.message ?? 'Replication anchor detection failed.';
     } finally {
       anchorsLoading.value = false;
     }
@@ -227,7 +248,11 @@ export function useSnapshotManager(serverIp: () => string, username: () => strin
     }
   }
 
-  async function destroySnapshot(snapshotName: string, recursive: boolean = false): Promise<SnapshotDestroyResult> {
+  async function destroySnapshot(
+    snapshotName: string,
+    recursive: boolean = false,
+    acknowledgeAnchor: boolean = false,
+  ): Promise<SnapshotDestroyResult> {
     operating.value = true;
     error.value = null;
     try {
@@ -238,8 +263,10 @@ export function useSnapshotManager(serverIp: () => string, username: () => strin
           username: username(),
           snapshotName,
           recursive,
+          acknowledgeAnchor,
         }),
       );
+      if (result.blocked) return result;
       if (!result.success) {
         error.value = result.error ?? 'Destroy failed';
       } else {
@@ -388,6 +415,8 @@ export function useSnapshotManager(serverIp: () => string, username: () => strin
     filePath.value = [];
     error.value = null;
     anchorMap.value = new Map();
+    anchorStatus.value = 'unavailable';
+    anchorReason.value = null;
   }
 
   return {
@@ -405,6 +434,8 @@ export function useSnapshotManager(serverIp: () => string, username: () => strin
     filePath,
     anchorMap,
     anchorsLoading,
+    anchorStatus,
+    anchorReason,
 
     // Computed
     breadcrumb,
