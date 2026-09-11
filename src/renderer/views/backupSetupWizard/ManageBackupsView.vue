@@ -189,7 +189,7 @@ import SnapshotManager from './SnapshotManager.vue';
 import ServerLoginModal from './ServerLoginModal.vue';
 import BackUpListView from './BackUpListView.vue';
 import { useServerCredentials } from '../../composables/useServerCredentials';
-import { computed, inject, Ref, ref, watch, onMounted, onBeforeUnmount } from 'vue';
+import { computed, inject, Ref, ref, watch, onMounted } from 'vue';
 import { currentServerInjectionKey, discoveryStateInjectionKey, reviewBackUpSetupKey } from '../../keys/injection-keys';
 import { useRouter } from 'vue-router';
 import { useHeader } from '../../composables/useHeader';
@@ -593,33 +593,12 @@ const {
     beginTasks,
     stopRunningUi,
     removeFinishedTask,
-    maybeClearFromNotification,
-    syncRunningUuids,
     setTaskNameResolver,
 } = useBackupProgress();
 
 setTaskNameResolver((uuid) => backUpListRef.value?.getTaskName?.(uuid));
 
-const actionHandler = (raw: string) => {
-    try {
-        const msg = JSON.parse(raw);
-        if (msg?.type === 'notification' && msg.message) {
-            maybeClearFromNotification(msg.message);
-        }
-        // Restore running state from event log (backup_start without backup_end)
-        if (msg?.type === 'sendBackupEvents' && 'runningUuids' in msg) {
-            syncRunningUuids(Array.isArray(msg.runningUuids) ? msg.runningUuids : []);
-        }
-    } catch (e) { console.debug('actionHandler parse error:', e); }
-};
-
-onMounted(() => {
-    IPCRouter.getInstance().addEventListener('action', actionHandler);
-});
-
-onBeforeUnmount(() => {
-    try { IPCRouter.getInstance().removeEventListener?.('action', actionHandler); } catch { }
-});
+// Notification and running-uuid reconciliation is handled inside useBackupProgress.
 
 function refreshBackups() {
     backUpListRef.value?.fetchBackupTasks();

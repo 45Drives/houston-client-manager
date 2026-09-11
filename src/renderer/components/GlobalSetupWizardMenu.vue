@@ -1,8 +1,12 @@
 <template>
     <div class="z-50">
-        <button ref="menuButton" @click="toggle"
-            class="w-8 h-8 p-0 rounded-md bg-transparent inline-flex items-center justify-center text-gray-500 dark:text-gray-400 hover:bg-neutral-100 dark:hover:bg-neutral-700 hover:text-gray-700 dark:hover:text-gray-200 transition-colors">
+        <button ref="menuButton" @click="toggle" :title="activityTitle"
+            class="relative w-8 h-8 p-0 rounded-md bg-transparent inline-flex items-center justify-center text-gray-500 dark:text-gray-400 hover:bg-neutral-100 dark:hover:bg-neutral-700 hover:text-gray-700 dark:hover:text-gray-200 transition-colors">
             <Bars3Icon class="w-5 h-5" />
+            <span v-if="activityCount > 0"
+                class="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 rounded-full bg-primary text-white text-[10px] font-semibold leading-4 text-center">
+                {{ activityCount }}
+            </span>
         </button>
 
         <teleport to="body">
@@ -28,6 +32,47 @@
                             class="w-8 h-8 p-0 rounded-md bg-transparent inline-flex items-center justify-center text-gray-500 dark:text-gray-400 hover:bg-neutral-100 dark:hover:bg-neutral-700 hover:text-gray-700 dark:hover:text-gray-200 transition-colors">
                             <XMarkIcon class="w-4 h-4" />
                         </button>
+                    </div>
+
+                    <!-- In Progress section -->
+                    <div v-if="activityCount > 0" class="px-4 pt-4 pb-1">
+                        <p class="section-label">In Progress</p>
+                        <div class="flex flex-col gap-2.5">
+                            <div v-for="(info, uuid) in taskProgressMap" :key="uuid"
+                                class="rounded-md border border-neutral-200 dark:border-neutral-700 p-2.5">
+                                <div class="flex items-center justify-between gap-2 mb-1.5">
+                                    <span class="text-xs font-medium text-default truncate" :title="info.name">{{ info.name }}</span>
+                                    <span class="text-[11px] text-gray-400 shrink-0">
+                                        {{ info.percent != null ? info.percent + '%' : 'Backing up' }}
+                                    </span>
+                                </div>
+                                <div class="w-full h-1.5 bg-neutral-200 dark:bg-neutral-700 rounded-full overflow-hidden">
+                                    <div v-if="info.percent != null" class="h-full bg-primary rounded-full transition-all"
+                                        :style="{ width: info.percent + '%' }" />
+                                    <div v-else class="h-full w-1/3 bg-primary/40 rounded-full animate-pulse" />
+                                </div>
+                            </div>
+
+                            <div v-if="isRestoring" class="rounded-md border border-neutral-200 dark:border-neutral-700 p-2.5">
+                                <div class="flex items-center justify-between gap-2 mb-1.5">
+                                    <span class="text-xs font-medium text-default truncate" :title="restore.label">
+                                        Restoring {{ restore.label }}
+                                    </span>
+                                    <span class="text-[11px] text-gray-400 shrink-0">{{ overallPercent }}%</span>
+                                </div>
+                                <div class="w-full h-1.5 bg-neutral-200 dark:bg-neutral-700 rounded-full overflow-hidden">
+                                    <div class="h-full bg-primary rounded-full transition-all"
+                                        :style="{ width: overallPercent + '%' }" />
+                                </div>
+                                <p class="text-[11px] text-gray-400 mt-1 truncate" :title="restore.lastFile">
+                                    {{ restore.current }} of {{ restore.total }} · {{ activeFileName }}
+                                </p>
+                                <button class="btn btn-sm btn-secondary h-fit mt-2 w-full text-xs"
+                                    @click="viewRestore">
+                                    View Restore
+                                </button>
+                            </div>
+                        </div>
                     </div>
 
                     <!-- Navigation section -->
@@ -107,7 +152,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import {
     Bars3Icon, HomeIcon, ServerIcon, CircleStackIcon,
@@ -117,6 +162,8 @@ import { toggleDarkMode, useDarkModeState } from '@45drives/houston-common-ui'
 import { useThemeFromAlias } from '../composables/useThemeFromAlias'
 import { useLogModal } from '../composables/useLogModal'
 import { useSettingsModal } from '../composables/useSettingsModal'
+import { useBackupProgress } from '../composables/useBackupProgress'
+import { useRestoreProgress } from '../composables/useRestoreProgress'
 
 const router = useRouter()
 const route = useRoute()
@@ -124,6 +171,16 @@ const darkMode = useDarkModeState()
 const { setTheme, currentTheme } = useThemeFromAlias()
 const { openLogModal } = useLogModal()
 const { openSettingsModal } = useSettingsModal()
+const { taskProgressMap, runningTaskCount } = useBackupProgress()
+const { restore, isRestoring, overallPercent, activeFileName } = useRestoreProgress()
+
+const activityCount = computed(() => runningTaskCount.value + (isRestoring.value ? 1 : 0))
+const activityTitle = computed(() => {
+    const parts: string[] = []
+    if (runningTaskCount.value > 0) parts.push(`${runningTaskCount.value} backup(s) running`)
+    if (isRestoring.value) parts.push('restore in progress')
+    return parts.length ? `Menu — ${parts.join(', ')}` : 'Menu'
+})
 
 const themes = [
     { value: 'theme-default' as const, label: '45Drives', color: '#D92B2F' },
@@ -151,6 +208,14 @@ onBeforeUnmount(() => {
 
 function goto(name: string) {
     router.push({ name })
+    show.value = false
+}
+
+function viewRestore() {
+    const ids = restore.value.uuid
+    router.push(ids
+        ? { name: 'view-selected-backups', query: { ids } }
+        : { name: 'backup-manage' })
     show.value = false
 }
 

@@ -1,4 +1,4 @@
-import { computed, ref } from "vue";
+import { computed, ref, watch } from "vue";
 import { IPCRouter } from "@45drives/houston-common-lib";
 
 /**
@@ -179,10 +179,55 @@ const progressHandler = (data: {
 
 let listening = false;
 
+/**
+ * Reconciliation used to live in ManageBackupsView's own listener, so a run that ended
+ * while the user was on another screen kept its entry — and the menu badge with it —
+ * until they navigated back. Both the completion notification and the running-uuid set
+ * are handled here instead.
+ */
+const actionHandler = (raw: string) => {
+  let msg: any;
+  try {
+    msg = JSON.parse(raw);
+  } catch {
+    return;
+  }
+  if (msg?.type === "notification" && msg.message) {
+    maybeClearFromNotification(msg.message);
+  } else if (msg?.type === "sendBackupEvents" && "runningUuids" in msg) {
+    syncRunningUuids(Array.isArray(msg.runningUuids) ? msg.runningUuids : []);
+  }
+};
+
+/** Nothing polls for events outside the dashboard and Backup Manager, so a live run does. */
+const RECONCILE_INTERVAL_MS = 15_000;
+let reconcileTimer: ReturnType<typeof setInterval> | null = null;
+
+function startReconcilePolling(): void {
+  if (reconcileTimer) return;
+  reconcileTimer = setInterval(() => {
+    if (!isRunningNow.value) {
+      clearInterval(reconcileTimer!);
+      reconcileTimer = null;
+      return;
+    }
+    IPCRouter.getInstance().send(
+      "backend",
+      "action",
+      JSON.stringify({ type: "fetchBackupEvents" })
+    );
+  }, RECONCILE_INTERVAL_MS);
+}
+
 function ensureListening(): void {
   if (listening) return;
   listening = true;
-  IPCRouter.getInstance().addEventListener("backupProgress", progressHandler);
+  const router = IPCRouter.getInstance();
+  router.addEventListener("backupProgress", progressHandler);
+  router.addEventListener("action", actionHandler);
+  watch(isRunningNow, (running) => {
+    if (running) startReconcilePolling();
+  });
 }
 
 export function useBackupProgress() {

@@ -202,7 +202,7 @@
                 <div class="flex-1 min-h-0"></div>
 
                 <!-- Restore progress -->
-                <div v-if="restoreProgress.total > 0 && restoreProgress.current < restoreProgress.total"
+                <div v-if="isRestoring"
                     class="p-3 rounded-lg border border-default bg-accent shrink-0">
                     <div class="flex items-center justify-between text-sm mb-1">
                         <span class="text-default">Restoring {{ restoreProgress.current + 1 }}/{{ restoreProgress.total }}…</span>
@@ -222,7 +222,7 @@
                 </div>
 
                 <!-- Restore complete -->
-                <div v-if="restoreProgress.total > 0 && restoreProgress.current === restoreProgress.total"
+                <div v-if="!isRestoring && restoreProgress.finishedAt !== null"
                     class="p-3 rounded-lg border border-default bg-accent shrink-0 text-sm text-default text-center">
                     Restored {{ restoreProgress.current }} of {{ restoreProgress.total }} file(s).
                 </div>
@@ -238,17 +238,17 @@
                             <FolderOpenIcon class="w-4 h-4" />
                             Open {{ restoredFolders.length > 1 ? 'All' : 'Folder' }}
                         </button>
-                        <button class="btn btn-sm btn-secondary h-fit" @click="showOpenFolderPrompt = false">Dismiss</button>
+                        <button class="btn btn-sm btn-secondary h-fit" @click="dismissRestoreResult">Dismiss</button>
                     </div>
                 </div>
 
                 <!-- Action buttons -->
                 <div v-if="selectedBackup" class="shrink-0 flex flex-col gap-2" data-tour="restore-actions">
                     <button class="btn btn-primary w-full h-fit flex items-center justify-center gap-1.5 py-2.5"
-                        :disabled="selectedFilesCount === 0"
+                        :disabled="selectedFilesCount === 0 || isRestoring"
                         @click="restoreSelected">
                         <ArrowDownTrayIcon class="w-4 h-4" />
-                        Restore Selected ({{ selectedFilesCount }})
+                        {{ isRestoring ? 'Restore in progress…' : `Restore Selected (${selectedFilesCount})` }}
                     </button>
                     <div class="flex gap-2">
                         <button class="btn btn-sm btn-outline-shadow flex-1 h-fit flex items-center justify-center gap-1.5"
@@ -280,6 +280,7 @@ import {
     InformationCircleIcon
 } from '@heroicons/vue/24/outline'
 import { useOnboarding } from '../../composables/useOnboarding'
+import { useRestoreProgress } from '../../composables/useRestoreProgress'
 import { useTourManager, type TourStep } from '../../composables/useTourManager'
 useHeader('View Selected Backups')
 const router = useRouter();
@@ -557,31 +558,6 @@ const ipcActionHandler = (raw: string) => {
             selectedBackup.value.files = files
             focusedFile.value = null
             filesLoading.value = false
-        } else if (response.type === 'restoreBackupsProgress') {
-            const p = response.progress || {}
-            restoreProgress.value.current = Math.max(0, (p.fileIndex ?? 1) - 1)
-            restoreProgress.value.lastFile = p.file ?? restoreProgress.value.lastFile
-            restoreProgress.value.copiedBytes = p.copiedBytes ?? 0
-            restoreProgress.value.totalBytes = p.totalBytes ?? 0
-        } else if (response.type === 'restoreBackupsResult') {
-            // Backend sends the payload as `result`; older builds used `value`.
-            const r = response.result ?? response.value ?? {}
-            restoreProgress.value.current++
-            restoreProgress.value.lastFile = r.file ?? restoreProgress.value.lastFile
-            restoreProgress.value.copiedBytes = 0
-            restoreProgress.value.totalBytes = 0
-            if (r.error) console.error(`Error restoring ${r.file}: ${r.error}`)
-        } else if (response.type === 'restoreCompleted') {
-            const client = selectedBackup.value?.client
-            const validFolder = (p: string) => p && p !== '/' && p !== '\\'
-            restoredFolders.value = response.allFolders?.filter(validFolder)?.length
-                ? response.allFolders.filter(validFolder)
-                : validFolder(response.folder)
-                    ? [response.folder]
-                    : client
-                        ? [client]
-                        : []
-            showOpenFolderPrompt.value = restoredFolders.value.length > 0
         } else if (response.type === 'deleteBackupsCompleted') {
             // Remove deleted backups from the list
             const deleted: string[] = response.uuids || []
@@ -600,10 +576,8 @@ onUnmounted(() => {
     backups.value = []
     selectedBackup.value = null
     focusedFile.value = null
-    restoreProgress.value = { current: 0, total: 0, lastFile: '', copiedBytes: 0, totalBytes: 0 }
-    restoredFolders.value = []
-    showOpenFolderPrompt.value = false
     multiSelectedMap.value = {}
+    // Restore state deliberately survives: it is shared and the run may still be going.
 })
 
 async function selectBackup(backup: RichBackupEntry) {
@@ -632,31 +606,20 @@ function deselectAll() {
 }
 
 const isConfirmOpen = ref(false)
-const showOpenFolderPrompt = ref(false)
-const restoredFolders = ref<string[]>([])
 
-const restoreProgress = ref<{ current: number; total: number; lastFile: string; copiedBytes: number; totalBytes: number }>({
-    current: 0,
-    total: 0,
-    lastFile: '',
-    copiedBytes: 0,
-    totalBytes: 0
-})
+const {
+    restore: restoreProgress, isRestoring, activeFileName, activeFilePercent,
+    beginRestore, dismissRestoreResult,
+} = useRestoreProgress()
 
-const activeFileName = computed(() => {
-    const p = restoreProgress.value.lastFile
-    if (!p) return ''
-    return p.split('/').pop() ?? p
-})
-
-const activeFilePercent = computed(() => {
-    const { copiedBytes, totalBytes } = restoreProgress.value
-    if (totalBytes <= 0) return 0
-    return Math.min(100, Math.round((copiedBytes / totalBytes) * 100))
-})
+const restoredFolders = computed(() => restoreProgress.value.folders)
+const showOpenFolderPrompt = computed(
+    () => restoreProgress.value.finishedAt !== null && restoreProgress.value.folders.length > 0
+)
 
 const restoreSelected = async () => {
     if (!selectedBackup.value || !selectedBackup.value.__task) return
+    if (isRestoring.value) return
 
     isConfirmOpen.value = true
     const confirmed = await confirm({
@@ -667,9 +630,16 @@ const restoreSelected = async () => {
     }).unwrapOr(false)
     isConfirmOpen.value = false
     if (!confirmed) return
+    // The dialog is async, so re-check rather than trusting the pre-dialog result.
+    if (isRestoring.value) return
 
     const filesToRestore = (selectedBackup.value.files || []).filter(f => f.selected)
-    restoreProgress.value = { current: 0, total: filesToRestore.length, lastFile: '', copiedBytes: 0, totalBytes: 0 }
+    beginRestore({
+        uuid: selectedBackup.value.uuid,
+        label: selectedBackup.value.folder || selectedBackup.value.client || selectedBackup.value.uuid,
+        total: filesToRestore.length,
+        client: selectedBackup.value.client,
+    })
 
     const { smb_host, smb_share, smb_user, smb_pass } = resolveConnForTask(selectedBackup.value.__task)
 
@@ -741,7 +711,7 @@ const openRestoredFolders = () => {
         const normalizedPath = fixedFolder.match(/^([A-Za-z]:\/|\/)/) ? fixedFolder : `/${fixedFolder}`
         IPCRouter.getInstance().send('backend', 'action', JSON.stringify({ type: 'openFolder', path: normalizedPath }))
     }
-    showOpenFolderPrompt.value = false
+    dismissRestoreResult()
 }
 </script>
 
