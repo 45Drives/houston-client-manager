@@ -23,6 +23,10 @@ if [ "$(uname -s)" != "Darwin" ]; then
   exit 0
 fi
 
+# Pre-rename builds left an untracked houston-backupd here; extraResources would ship it and
+# break the universal merge, which only knows about the current name.
+rm -f src/main/static/mac/houston-backupd src/main/static/mac/houston-backupd.sh
+
 clang -arch arm64 -arch x86_64 -mmacosx-version-min=11.0 -O2 -Wall -Wextra -o "$OUT" "$SRC"
 
 if [ -n "${MAC_SHIM_IDENTITY:-}" ]; then
