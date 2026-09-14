@@ -2,6 +2,7 @@ import type { BrowserWindow } from 'electron';
 import { checkSSH } from '../setupSsh';
 import type { Server } from '../types';
 import { loadSettings } from '../settingsStore';
+import { logEvent, errDetail } from '../logging';
 
 export interface DiscoveryContext {
   discoveredServers: Server[];
@@ -28,7 +29,9 @@ export async function handleDiscoveryMessage(message: any, ctx: DiscoveryContext
         });
         httpsReachable = res.ok;
       } catch (err) {
-        console.warn('HTTPS check failed:', err);
+        // The cause code separates "host is up, Cockpit isn't installed yet"
+        // (ECONNREFUSED) from "we can't route to this address at all".
+        logEvent('discovery:https-check.error', { host: ip, ...errDetail(err) }, 'warn');
       }
 
       let reachable = httpsReachable;

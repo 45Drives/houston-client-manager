@@ -49,7 +49,7 @@ describe('DEFAULT_SETTINGS', () => {
     expect(DEFAULT_SETTINGS.discoveryScanIntervalMs).toBe(5000);
     expect(DEFAULT_SETTINGS.discoveryInactivityTimeoutMs).toBe(60000);
     expect(DEFAULT_SETTINGS.discoveryFallbackEnabled).toBe(true);
-    expect(DEFAULT_SETTINGS.sshTimeoutMs).toBe(20000);
+    expect(DEFAULT_SETTINGS.sshTimeoutMs).toBe(60000);
     expect(DEFAULT_SETTINGS.logRetentionDays).toBe(14);
     expect(DEFAULT_SETTINGS.showNotifications).toBe(true);
   });
@@ -73,6 +73,18 @@ describe('loadSettings()', () => {
     expect(s.logRetentionDays).toBe(14);
     expect(s.showNotifications).toBe(true);
     expect(s.discoveryScanIntervalMs).toBe(5000);
+  });
+
+  it('raises a stored sshTimeoutMs still at the old 20s default', async () => {
+    writeRaw(JSON.stringify({ sshTimeoutMs: 20000 }));
+    const { loadSettings } = await freshImport();
+    expect(loadSettings().sshTimeoutMs).toBe(60000);
+  });
+
+  it('leaves a deliberately chosen sshTimeoutMs alone', async () => {
+    writeRaw(JSON.stringify({ sshTimeoutMs: 15000 }));
+    const { loadSettings } = await freshImport();
+    expect(loadSettings().sshTimeoutMs).toBe(15000);
   });
 
   it('returns defaults on corrupt JSON', async () => {

@@ -135,7 +135,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   discoveryScanIntervalMs: 5000,
   discoveryInactivityTimeoutMs: 60000,
   discoveryFallbackEnabled: true,
-  sshTimeoutMs: 20000,
+  sshTimeoutMs: 60000,
   sshFastCiphers: false,
   logRetentionDays: 14,
   showNotifications: true,
@@ -177,6 +177,9 @@ function filePath(): string {
 
 let cached: AppSettings | null = null;
 
+/** The old default. Too short for sshd stalling on reverse DNS, GSSAPI, or a slow VM. */
+const LEGACY_SSH_TIMEOUT_MS = 20000;
+
 export function loadSettings(): AppSettings {
   if (cached) return cached;
   try {
@@ -188,6 +191,11 @@ export function loadSettings(): AppSettings {
       // Deep-merge nested objects so partial stored values get defaults
       merged.onboarding = { ...DEFAULT_SETTINGS.onboarding, ...parsed.onboarding };
       merged.restoreHistory = Array.isArray(parsed.restoreHistory) ? parsed.restoreHistory : [];
+      // Every saved settings snapshot writes this key, so an install that never
+      // touched the slider still carries the old default and would miss the raise.
+      if (merged.sshTimeoutMs === LEGACY_SSH_TIMEOUT_MS) {
+        merged.sshTimeoutMs = DEFAULT_SETTINGS.sshTimeoutMs;
+      }
       cached = merged;
       return cached!;
     }

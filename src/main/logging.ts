@@ -7,6 +7,26 @@ export function errMsg(err: unknown): string {
 }
 
 /**
+ * `fetch` and ssh2 both throw errors whose message alone is useless
+ * ("fetch failed", "Timed out while waiting for handshake"); the actionable
+ * syscall code lives on `.code`, `.cause.code` or ssh2's `.level`.
+ */
+export function errDetail(err: unknown): Record<string, unknown> {
+  if (!(err instanceof Error)) return { error: String(err) };
+  const cause = (err as { cause?: unknown }).cause;
+  return {
+    error: err.message,
+    errorName: err.name,
+    ...((err as NodeJS.ErrnoException).code && { code: (err as NodeJS.ErrnoException).code }),
+    ...((err as { level?: string }).level && { level: (err as { level?: string }).level }),
+    ...(cause instanceof Error && {
+      cause: cause.message,
+      ...((cause as NodeJS.ErrnoException).code && { causeCode: (cause as NodeJS.ErrnoException).code }),
+    }),
+  };
+}
+
+/**
  * Structured event log. Safe to call before the Winston logger exists
  * (anything during early startup falls back to the console).
  */

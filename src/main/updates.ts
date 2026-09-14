@@ -1,4 +1,36 @@
 import { app, BrowserWindow, ipcMain } from 'electron'
+import { existsSync, readFileSync } from 'fs'
+import { dirname, join } from 'path'
+
+// In dev, Electron is launched with a direct path to build/main/src/main/main.js,
+// so there is no package.json at the app path and app.getVersion() falls back to
+// the Electron binary version. Walk up to the repo package.json instead.
+function resolveDevVersion(): string | undefined {
+    let dir = __dirname
+    for (let i = 0; i < 8; i++) {
+        const candidate = join(dir, 'package.json')
+        if (existsSync(candidate)) {
+            try {
+                const pkg = JSON.parse(readFileSync(candidate, 'utf8'))
+                if (pkg?.version) return pkg.version
+            } catch {
+                // keep walking up
+            }
+        }
+        const parent = dirname(dir)
+        if (parent === dir) break
+        dir = parent
+    }
+    return undefined
+}
+
+let cachedVersion: string | null = null
+
+export function getAppVersion(): string {
+    if (cachedVersion) return cachedVersion
+    cachedVersion = (app.isPackaged ? undefined : resolveDevVersion()) || app.getVersion()
+    return cachedVersion
+}
 
 type UpdateState = {
     status: 'idle' | 'checking' | 'available' | 'none' | 'downloading' | 'downloaded' | 'error'
@@ -15,7 +47,7 @@ export function initAutoUpdates(getMainWindow: () => BrowserWindow | null) {
     if (!app.isPackaged) {
         ipcMain.handle('update:status', async () => ({
             status: 'idle',
-            currentVersion: app.getVersion(),
+            currentVersion: getAppVersion(),
             platform: process.platform,
         }))
         ipcMain.handle('update:check', async () => ({ ok: false, devMode: true }))
@@ -35,7 +67,7 @@ export function initAutoUpdates(getMainWindow: () => BrowserWindow | null) {
     // Cached so the renderer can recover state if it mounts after an event fired.
     let lastState: UpdateState = {
         status: 'idle',
-        currentVersion: app.getVersion(),
+        currentVersion: getAppVersion(),
         platform: process.platform,
     }
 
@@ -78,7 +110,7 @@ export function initAutoUpdates(getMainWindow: () => BrowserWindow | null) {
         return 'We could not check for updates right now. Please try again later.'
     }
 
-    const base = () => ({ currentVersion: app.getVersion(), platform: process.platform })
+    const base = () => ({ currentVersion: getAppVersion(), platform: process.platform })
 
     autoUpdater.on('checking-for-update', () => {
         emit('update:checking', { ...base(), status: 'checking' })

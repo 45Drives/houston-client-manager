@@ -408,7 +408,7 @@ const draft = reactive<AppSettings>({
     discoveryScanIntervalMs: 5000,
     discoveryInactivityTimeoutMs: 60000,
     discoveryFallbackEnabled: true,
-    sshTimeoutMs: 20000,
+    sshTimeoutMs: 60000,
     sshFastCiphers: false,
     logRetentionDays: 14,
     showNotifications: true,

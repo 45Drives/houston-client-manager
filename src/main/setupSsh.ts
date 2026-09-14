@@ -6,7 +6,7 @@ import { NodeSSH } from 'node-ssh';
 import type { CipherAlgorithm } from 'ssh2';
 import net from 'net';
 import { loadSettings } from './settingsStore';
-import { logEvent, errMsg } from './logging';
+import { logEvent, errMsg, errDetail } from './logging';
 import { describeConnectionError, failureLine } from '../shared/connectionErrors';
 import { HOUSTON_PACKAGE_NAMES, isBelowMinimum } from '../shared/serverPackages';
 
@@ -280,6 +280,7 @@ export async function verifySshCredentials(
   auth?: SshAuth,
 ): Promise<{ success: boolean; error?: string; isAdmin?: boolean }> {
   const ssh = new NodeSSH();
+  const startedAt = Date.now();
   try {
     const connectOpts = auth
       ? buildSshConnectOptions(host, auth)
@@ -305,7 +306,20 @@ export async function verifySshCredentials(
     return { success: true, isAdmin };
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
-    logEvent('ssh:verify-credentials.error', { host, username, error: message }, 'warn');
+    // A bare readyTimeout says nothing about where it stalled, so probe the port:
+    // TCP open means sshd is slow to present its banner (reverse DNS, GSSAPI),
+    // TCP closed means the SYN is being dropped upstream.
+    const tcpOpen = (err as { level?: string }).level === 'client-timeout'
+      ? await checkSSH(host, 3000)
+      : undefined;
+    logEvent('ssh:verify-credentials.error', {
+      host,
+      username,
+      ...errDetail(err),
+      durationMs: Date.now() - startedAt,
+      readyTimeoutMs: loadSettings().sshTimeoutMs,
+      ...(tcpOpen !== undefined && { tcpPort22Open: tcpOpen }),
+    }, 'warn');
     return { success: false, error: message };
   } finally {
     ssh.dispose();
