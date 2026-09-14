@@ -1,6 +1,12 @@
-import { jsonLogger } from './main';
-
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
+
+// Set by main.ts once Winston is up. Kept local so importing this module never
+// pulls in main.ts (and through it Electron's `app`).
+let jsonLogger: { [level: string]: (payload: Record<string, unknown>) => void } | undefined;
+
+export function setJsonLogger(logger: unknown): void {
+  jsonLogger = logger as typeof jsonLogger;
+}
 
 export function errMsg(err: unknown): string {
   return err instanceof Error ? err.message : String(err);

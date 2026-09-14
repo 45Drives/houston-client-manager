@@ -109,6 +109,7 @@ import { registerTopologyHandlers } from './ipc/topologyHandlers';
 import { registerBulkSetupHandlers } from './ipc/bulkSetupHandlers';
 import { registerServerManageHandlers } from './ipc/serverManageHandlers';
 import { registerWireShieldHandlers } from './ipc/wireShieldHandlers';
+import { setJsonLogger } from './logging';
 import type { IPCHandlerContext } from './ipc/types';
 
 let discoveredServers: Server[] = [];
@@ -1134,6 +1135,8 @@ app.whenReady().then(() => {
       })
     ]
   });
+
+  setJsonLogger(jsonLogger);
 
   _origConsole.info('Logging initialized. Log dir:', resolvedLogDir);
 
