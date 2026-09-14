@@ -17,6 +17,9 @@ import { HOUSTON_PACKAGE_NAMES, isBelowMinimum } from '../shared/serverPackages'
 const REMOTE_IDLE_TIMEOUT_MS = 6 * 60_000;
 /** Absolute ceiling, even if the remote keeps printing progress. */
 const REMOTE_MAX_RUNTIME_MS = 60 * 60_000;
+/** The dependency probe prints nothing until it finishes, so this is its total budget.
+ *  The remote script bounds its own slow steps; this only catches a dead session. */
+const DEP_CHECK_TIMEOUT_MS = 4 * 60_000;
 /** Detect a half-open connection instead of blocking forever on a dead socket. */
 export const SSH_KEEPALIVE = { keepaliveInterval: 15_000, keepaliveCountMax: 12 };
 
@@ -31,8 +34,9 @@ async function execWithWatchdog(
   ssh: NodeSSH,
   command: string,
   options: ExecOptions,
-  ctx: { host: string; what: string; onNotice?: (line: string) => void },
+  ctx: { host: string; what: string; onNotice?: (line: string) => void; idleTimeoutMs?: number },
 ) {
+  const idleMs = ctx.idleTimeoutMs ?? REMOTE_IDLE_TIMEOUT_MS;
   let settled = false;
   let idleTimer: NodeJS.Timeout | undefined;
   let hardTimer: NodeJS.Timeout | undefined;
@@ -59,11 +63,11 @@ async function execWithWatchdog(
     idleTimer = setTimeout(
       () => abort(
         `${ctx.what} on ${ctx.host} stopped responding — no output for ` +
-        `${Math.round(REMOTE_IDLE_TIMEOUT_MS / 60_000)} minutes. This usually means the ` +
+        `${Math.round(idleMs / 60_000)} minutes. This usually means the ` +
         `server's package manager is locked by another update, is waiting on a prompt, ` +
         `or lost its connection. Check for a running apt/dnf process on the server and try again.`,
       ),
-      REMOTE_IDLE_TIMEOUT_MS,
+      idleMs,
     );
   };
 
@@ -377,6 +381,7 @@ export async function checkRemoteDeps(
     username,
     privateKey: fs.readFileSync(privateKeyPath, "utf8"),
     readyTimeout: loadSettings().sshTimeoutMs,
+    ...SSH_KEEPALIVE,
   });
 
   const script = `
@@ -390,6 +395,13 @@ houston_outdated=""
 repo=no
 
 has_cmd() { command -v "$1" >/dev/null 2>&1; }
+
+# The version comparison below is advisory, but dnf blocks forever on a lock held
+# by PackageKit and apt retries a dead mirror for minutes, so every network- or
+# lock-bound step gets a hard ceiling.
+run_bounded() {
+  if has_cmd timeout; then timeout 60 "$@"; else "$@"; fi
+}
 
 pkg_installed() {
   case "$OS_LIKE" in
@@ -482,10 +494,10 @@ if [ "$repo" = yes ] && [ -n "$installed_pkgs" ]; then
       # Scoped to the 45Drives repos so an unrelated broken or slow repo cannot
       # stall or fail the check. The glob is silently ignored when nothing matches.
       if has_cmd dnf; then
-        upgrades="$(dnf -q --refresh --disablerepo='*' --enablerepo='45drives*' check-update $installed_pkgs 2>/dev/null)" || rc=$?
+        upgrades="$(run_bounded dnf -q --refresh --disablerepo='*' --enablerepo='45drives*' check-update $installed_pkgs 2>/dev/null)" || rc=$?
       elif has_cmd yum; then
-        yum -q clean expire-cache >/dev/null 2>&1 || true
-        upgrades="$(yum -q --disablerepo='*' --enablerepo='45drives*' check-update $installed_pkgs 2>/dev/null)" || rc=$?
+        run_bounded yum -q clean expire-cache >/dev/null 2>&1 || true
+        upgrades="$(run_bounded yum -q --disablerepo='*' --enablerepo='45drives*' check-update $installed_pkgs 2>/dev/null)" || rc=$?
       fi
       if [ "$rc" = 100 ]; then
         for p in $installed_pkgs; do
@@ -501,10 +513,13 @@ if [ "$repo" = yes ] && [ -n "$installed_pkgs" ]; then
       # a build published since the last system update.
       for f in /etc/apt/sources.list.d/45drives-community*.list; do
         [ -f "$f" ] || continue
-        apt-get update -qq \\
+        run_bounded apt-get update -qq \\
           -o Dir::Etc::sourcelist="$f" \\
           -o Dir::Etc::sourceparts="-" \\
-          -o APT::Get::List-Cleanup="0" >/dev/null 2>&1 || true
+          -o APT::Get::List-Cleanup="0" \\
+          -o Acquire::Retries="1" \\
+          -o Acquire::http::Timeout="20" \\
+          -o Acquire::https::Timeout="20" >/dev/null 2>&1 || true
       done
       for p in $installed_pkgs; do
         pol="$(apt-cache policy "$p" 2>/dev/null)" || pol=""
@@ -527,7 +542,12 @@ echo "__OUTDATED__ $houston_outdated"
 echo "__VERSIONS__ $installed_versions"
 `;
 
-  const { stdout, stderr } = await ssh.execCommand(script);
+  const { stdout, stderr } = await execWithWatchdog(
+    ssh,
+    script,
+    {},
+    { host, what: 'Dependency check', idleTimeoutMs: DEP_CHECK_TIMEOUT_MS },
+  );
   ssh.dispose();
 
   const out = (stdout || stderr).trim();
