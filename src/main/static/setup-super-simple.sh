@@ -40,11 +40,27 @@ case "$OS_LIKE" in
       # --refresh: an already-configured repo otherwise resolves against cached metadata.
       dnf install -y --refresh "$@"
     }
-    # ZFS builds through DKMS, which needs headers for the running kernel. Best
-    # effort: an exact-version kernel-devel is often missing from the repo.
+    # Only needed on the DKMS fallback path. An exact-version kernel-devel is often
+    # missing once the distro has moved on to a newer minor release.
     install_kernel_devel() {
-      dnf install -y dkms "kernel-devel-$(uname -r)" "kernel-headers-$(uname -r)" \
-        || echo "[WARN] Could not install dkms/kernel headers for $(uname -r); ZFS may need a reboot onto a matching kernel."
+      dnf install -y dkms gcc make "kernel-devel-$(uname -r)" "kernel-headers-$(uname -r)" \
+        || echo "[WARN] Could not install dkms/kernel headers for $(uname -r); the ZFS build may fail."
+    }
+    # The repo publishes kmod-zfs per kernel. Installing the build that matches the
+    # running kernel takes seconds and needs no reboot, so DKMS is the fallback,
+    # not the default. Naming the kernel explicitly also stops dnf from pulling a
+    # kmod built for some other kernel, which installs fine and then never loads.
+    install_zfs_module() {
+      local kver
+      kver="$(uname -r)"
+      dnf install -y --refresh "kmod-zfs-${kver}" 2>/dev/null || true
+      if rpm -q "kmod-zfs-${kver}" >/dev/null 2>&1; then
+        echo "[INFO] Installed prebuilt ZFS module for ${kver}."
+        return 0
+      fi
+      echo "[INFO] No prebuilt ZFS module published for ${kver}; building through DKMS instead."
+      install_kernel_devel
+      dnf install -y zfs-dkms || echo "[WARN] zfs-dkms install failed; ZFS will be unavailable."
     }
     open_firewall_ports() {
       if command -v firewall-cmd >/dev/null 2>&1; then
@@ -125,7 +141,15 @@ case "$OS_LIKE" in
     }
     install_kernel_devel() {
       apt install -y -o DPkg::Lock::Timeout=600 dkms "linux-headers-$(uname -r)" \
-        || echo "[WARN] Could not install dkms/linux-headers for $(uname -r); ZFS may need a reboot onto a matching kernel."
+        || echo "[WARN] Could not install dkms/linux-headers for $(uname -r); the ZFS build may fail."
+    }
+    # Ubuntu ships zfs.ko inside the kernel package, so zfsutils-linux is enough and
+    # a DKMS build would only duplicate it. Debian has no in-tree module.
+    install_zfs_module() {
+      [[ "${ID:-}" == "debian" ]] || return 0
+      install_kernel_devel
+      apt install -y -o DPkg::Lock::Timeout=600 zfs-dkms \
+        || echo "[WARN] zfs-dkms unavailable; the contrib component may not be enabled in your apt sources."
     }
     open_firewall_ports() {
       if command -v ufw >/dev/null 2>&1; then
@@ -210,7 +234,7 @@ if ! setup_45d_repo; then
   exit 1
 fi
 
-install_kernel_devel
+install_zfs_module
 
 # Everything else arrives as a dependency of these three.
 install_pkg "${OUR_REQUIRED_PACKAGES[@]}"
@@ -219,7 +243,13 @@ install_pkg "${OUR_REQUIRED_PACKAGES[@]}"
 if [[ ! -f /etc/modules-load.d/zfs.conf ]]; then
   echo "zfs" > /etc/modules-load.d/zfs.conf
 fi
-modprobe zfs || echo "[WARN] Could not load the ZFS module; a reboot may be required."
+modprobe zfs 2>/dev/null || true
+# A successful install proves nothing; the module is built per-kernel and libzfs
+# cannot initialize without it, so every pool operation would fail later.
+if ! zfs version >/dev/null 2>&1; then
+  echo "[WARN] ZFS installed but its kernel module will not load on $(uname -r)."
+  echo "[WARN] If a kernel update is pending, reboot to finish it. Otherwise run 'dnf -y update' (or 'apt full-upgrade'), reboot, then re-run setup."
+fi
 
 open_firewall_ports
 
