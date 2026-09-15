@@ -24,6 +24,16 @@ export function useRebootWatcher() {
     }
 
     let serverUp = false
+
+    // The reboot is scheduled a few seconds out so the setup script can exit
+    // cleanly, which means the server is still answering right now. Watch it go
+    // down first, or the very first ping reports success against the old boot.
+    const downDeadline = Date.now() + 90_000
+    while (Date.now() < downDeadline) {
+      if (!(await ping())) break
+      await sleep(2000)
+    }
+
     while (!serverUp && (Date.now() - start) < timeoutMs) {
       serverUp = await ping()
       if (!serverUp) await sleep(5000)

@@ -35,32 +35,54 @@ OS_LIKE="${ID_LIKE:-$ID}"
 
 case "$OS_LIKE" in
   *rhel*)
+    # Pulling in a kernel update mid-setup strands the running kernel without a
+    # matching zfs.ko, turning a host that needed no reboot into one that does.
+    # shellcheck disable=SC2054  # the commas belong to dnf's option value
+    DNF_NO_KERNEL=(--setopt=exclude=kernel,kernel-core,kernel-modules,kernel-modules-core,kernel-modules-extra)
     install_pkg() {
       echo "[INFO] Installing: $*"
       # --refresh: an already-configured repo otherwise resolves against cached metadata.
-      dnf install -y --refresh "$@"
+      dnf install -y --refresh "${DNF_NO_KERNEL[@]}" "$@"
     }
-    # Only needed on the DKMS fallback path. An exact-version kernel-devel is often
-    # missing once the distro has moved on to a newer minor release.
+    # Only needed on the DKMS fallback path, and only for the RUNNING kernel —
+    # headers for anything else produce a module that will never load.
     install_kernel_devel() {
-      dnf install -y dkms gcc make "kernel-devel-$(uname -r)" "kernel-headers-$(uname -r)" \
-        || echo "[WARN] Could not install dkms/kernel headers for $(uname -r); the ZFS build may fail."
+      local kver="$1"
+      [[ -d "/usr/src/kernels/${kver}" ]] && return 0
+      dnf install -y "${DNF_NO_KERNEL[@]}" dkms gcc make elfutils-libelf-devel \
+        "kernel-devel-${kver}" "kernel-headers-${kver}" >/dev/null 2>&1 && return 0
+      # Rocky drops older kernel-devel from BaseOS as soon as a new minor ships.
+      # The Vault keeps them, so reach for it rather than failing the build.
+      local base="/etc/pki/rpm-gpg/RPM-GPG-KEY-Rocky-${VERSION_ID%%.*}"
+      if [[ "${ID:-}" == "rocky" && -f "$base" ]]; then
+        echo "[INFO] kernel-devel-${kver} is no longer in BaseOS; trying the Rocky Vault…"
+        dnf install -y "${DNF_NO_KERNEL[@]}" dkms gcc make elfutils-libelf-devel >/dev/null 2>&1 || true
+        dnf install -y \
+          --repofrompath="vault,https://dl.rockylinux.org/vault/rocky/${VERSION_ID}/BaseOS/$(uname -m)/os/" \
+          --setopt="vault.gpgkey=file://${base}" \
+          "${DNF_NO_KERNEL[@]}" "kernel-devel-${kver}" >/dev/null 2>&1 && return 0
+      fi
+      return 1
     }
     # The repo publishes kmod-zfs per kernel. Installing the build that matches the
     # running kernel takes seconds and needs no reboot, so DKMS is the fallback,
     # not the default. Naming the kernel explicitly also stops dnf from pulling a
     # kmod built for some other kernel, which installs fine and then never loads.
     install_zfs_module() {
-      local kver
-      kver="$(uname -r)"
-      dnf install -y --refresh "kmod-zfs-${kver}" 2>/dev/null || true
-      if rpm -q "kmod-zfs-${kver}" >/dev/null 2>&1; then
-        echo "[INFO] Installed prebuilt ZFS module for ${kver}."
+      local kver="$1"
+      if dnf install -y --refresh "${DNF_NO_KERNEL[@]}" "kmod-zfs-${kver}" >/dev/null 2>&1 \
+        && rpm -q "kmod-zfs-${kver}" >/dev/null 2>&1; then
+        echo "[INFO] Installed the prebuilt ZFS module for ${kver}."
         return 0
       fi
-      echo "[INFO] No prebuilt ZFS module published for ${kver}; building through DKMS instead."
-      install_kernel_devel
-      dnf install -y zfs-dkms || echo "[WARN] zfs-dkms install failed; ZFS will be unavailable."
+      echo "[INFO] No prebuilt ZFS module published for ${kver}; building one with DKMS."
+      if ! install_kernel_devel "$kver"; then
+        echo "[WARN] Could not obtain kernel headers for ${kver}, so a DKMS build would fail."
+        return 1
+      fi
+      # Bounded: a wedged DKMS build must not hang setup forever.
+      timeout 1200 dnf install -y "${DNF_NO_KERNEL[@]}" zfs-dkms \
+        || { echo "[WARN] The ZFS DKMS build did not complete."; return 1; }
     }
     open_firewall_ports() {
       if command -v firewall-cmd >/dev/null 2>&1; then
@@ -140,16 +162,31 @@ case "$OS_LIKE" in
       apt install -y -o DPkg::Lock::Timeout=600 "$@"
     }
     install_kernel_devel() {
-      apt install -y -o DPkg::Lock::Timeout=600 dkms "linux-headers-$(uname -r)" \
-        || echo "[WARN] Could not install dkms/linux-headers for $(uname -r); the ZFS build may fail."
+      local kver="$1"
+      [[ -d "/lib/modules/${kver}/build" ]] && return 0
+      apt install -y -o DPkg::Lock::Timeout=600 dkms gcc make "linux-headers-${kver}" >/dev/null 2>&1
     }
     # Ubuntu ships zfs.ko inside the kernel package, so zfsutils-linux is enough and
     # a DKMS build would only duplicate it. Debian has no in-tree module.
     install_zfs_module() {
+      local kver="$1"
       [[ "${ID:-}" == "debian" ]] || return 0
-      install_kernel_devel
-      apt install -y -o DPkg::Lock::Timeout=600 zfs-dkms \
-        || echo "[WARN] zfs-dkms unavailable; the contrib component may not be enabled in your apt sources."
+      # zfs-dkms lives in contrib, which is off by default on a stock Debian install.
+      if ! apt-cache policy zfs-dkms 2>/dev/null | grep -q 'Candidate: [0-9]'; then
+        echo "[INFO] Enabling the Debian contrib component for zfs-dkms…"
+        if command -v add-apt-repository >/dev/null 2>&1; then
+          add-apt-repository -y contrib >/dev/null 2>&1 || true
+        else
+          sed -i 's/^\(deb .*debian.org\/debian .* main\)$/\1 contrib/' /etc/apt/sources.list 2>/dev/null || true
+        fi
+        apt update -y >/dev/null 2>&1 || true
+      fi
+      if ! install_kernel_devel "$kver"; then
+        echo "[WARN] Could not obtain linux-headers-${kver}, so a DKMS build would fail."
+        return 1
+      fi
+      timeout 1200 apt install -y -o DPkg::Lock::Timeout=600 zfs-dkms \
+        || { echo "[WARN] The ZFS DKMS build did not complete."; return 1; }
     }
     open_firewall_ports() {
       if command -v ufw >/dev/null 2>&1; then
@@ -234,7 +271,35 @@ if ! setup_45d_repo; then
   exit 1
 fi
 
-install_zfs_module
+KVER="$(uname -r)"
+
+# `zfs version` is the only honest test: it initializes libzfs, which fails when
+# the userland is installed but no matching module can load. `command -v zfs`
+# and a successful rpm/dpkg install both report healthy in that state.
+zfs_works() { zfs version >/dev/null 2>&1; }
+
+# A zfs.ko built for a kernel we are not running means the host is mid
+# kernel-update. A reboot fixes that in seconds; no amount of rebuilding will.
+zfs_module_for_other_kernel() {
+  [[ -n "$(find /lib/modules -mindepth 2 -name 'zfs.ko*' -not -path "/lib/modules/${KVER}/*" -print -quit 2>/dev/null)" ]]
+}
+
+load_zfs() {
+  depmod -a "$KVER" >/dev/null 2>&1 || true
+  modprobe zfs >/dev/null 2>&1 || true
+  zfs_works
+}
+
+# Runs before the 45Drives packages so that their `zfs` dependency resolves
+# against a module already built for the running kernel, instead of letting the
+# resolver pick whichever kmod build the repo happens to have newest.
+# Attempted even when a module for some other kernel is already present: getting
+# one for the running kernel is what turns a mandatory reboot into no reboot.
+if load_zfs; then
+  echo "[INFO] ZFS is already working on ${KVER}."
+else
+  install_zfs_module "$KVER" || true
+fi
 
 # Everything else arrives as a dependency of these three.
 install_pkg "${OUR_REQUIRED_PACKAGES[@]}"
@@ -243,12 +308,21 @@ install_pkg "${OUR_REQUIRED_PACKAGES[@]}"
 if [[ ! -f /etc/modules-load.d/zfs.conf ]]; then
   echo "zfs" > /etc/modules-load.d/zfs.conf
 fi
-modprobe zfs 2>/dev/null || true
-# A successful install proves nothing; the module is built per-kernel and libzfs
-# cannot initialize without it, so every pool operation would fail later.
-if ! zfs version >/dev/null 2>&1; then
-  echo "[WARN] ZFS installed but its kernel module will not load on $(uname -r)."
-  echo "[WARN] If a kernel update is pending, reboot to finish it. Otherwise run 'dnf -y update' (or 'apt full-upgrade'), reboot, then re-run setup."
+
+if load_zfs; then
+  echo "[INFO] ZFS is ready: $(zfs version | head -1)"
+  echo "[ZFS_STATUS] ok"
+elif zfs_module_for_other_kernel; then
+  # The client app reboots the server on this marker once it has finished its own
+  # work, waits for it to come back, and carries on — the user never has to know
+  # what a kernel module is.
+  echo "[WARN] ZFS needs a restart to finish installing on ${KVER}."
+  echo "[ZFS_STATUS] reboot_required"
+  echo "[REBOOT_NEEDED]"
+else
+  echo "[WARN] ZFS is installed but no kernel module is available for ${KVER}."
+  echo "[WARN] Update the server ('dnf -y update' or 'apt full-upgrade'), reboot, then run setup again."
+  echo "[ZFS_STATUS] unavailable"
 fi
 
 open_firewall_ports

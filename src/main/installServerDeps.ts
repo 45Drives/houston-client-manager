@@ -1,6 +1,6 @@
 import path from "path";
 import { NodeSSH } from "node-ssh";
-import { checkSSH, setupSshKey, runBootstrapScript, checkRemoteDeps, ensureHoustonPackages, type RemoteDepCheck, type SshAuth, type SshAuthMethod } from "./setupSsh";
+import { checkSSH, setupSshKey, runBootstrapScript, checkRemoteDeps, ensureHoustonPackages, rebootRemoteServer, type RemoteDepCheck, type SshAuth, type SshAuthMethod } from "./setupSsh";
 import { assertSafeHost, assertSafeUsername } from "./security";
 import { getAgentSocket, getKeyDir, ensureKeyPair } from "./crossPlatformSsh";
 import { getHoustonPackage, houstonPackageLabel } from "../shared/serverPackages";
@@ -234,6 +234,13 @@ export async function installServerDepsRemotely({
         } catch (e: any) {
             console.warn("Post-bootstrap 45Drives package check failed:", e?.message || e);
             send("bootstrap-log", `[WARN] Could not verify 45Drives packages: ${e?.message || e}`);
+        }
+
+        // Last, so it cannot cut short the package work above. The caller waits
+        // for the host to drop and come back when `reboot` is true.
+        if (rebootRequired) {
+            send("bootstrap", "Restarting the server to finish enabling ZFS…");
+            await rebootRemoteServer(safeHost, safeUser, privateKeyPath, password);
         }
 
         return { success: true, reboot: rebootRequired };

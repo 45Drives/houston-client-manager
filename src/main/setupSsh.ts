@@ -458,8 +458,13 @@ if ! has_cmd cockpit-bridge; then
   add_base cockpit
 fi
 
-# ZFS: zpool binary
+# ZFS: the zpool binary alone proves nothing. The module is built per-kernel, so
+# after an un-rebooted kernel update the userland is present and every pool
+# operation still fails. Check that a module exists for the running kernel —
+# /sys and modinfo are both readable without root, unlike modprobe.
 if ! has_cmd zpool; then
+  add_base zfs
+elif [ ! -e /sys/module/zfs/version ] && ! modinfo -n zfs >/dev/null 2>&1; then
   add_base zfs
 fi
 
@@ -778,6 +783,44 @@ echo "[INFO] 45Drives packages installed."
 
   logEvent('ssh:ensure-houston-packages.done', { host, packages });
   return true;
+}
+
+/**
+ * Reboots a server the caller has already authenticated to. Used when the setup
+ * script reports [REBOOT_NEEDED]: the reboot is driven from here, after all
+ * remaining SSH work is done, rather than from the script itself, so it can
+ * never race with the package installs that follow bootstrap.
+ */
+export async function rebootRemoteServer(
+  host: string,
+  username: string,
+  privateKeyPath: string,
+  password: string,
+): Promise<void> {
+  const ssh = new NodeSSH();
+  try {
+    await ssh.connect({
+      host,
+      username,
+      privateKey: fs.readFileSync(privateKeyPath, "utf8"),
+      readyTimeout: loadSettings().sshTimeoutMs,
+      ...SSH_KEEPALIVE,
+    });
+    logEvent('ssh:reboot', { host, username });
+    // Fire-and-forget: the connection drops as soon as the reboot takes hold.
+    ssh
+      .execCommand(`sudo -S -p '' sh -c 'sleep 1; systemctl reboot' >/dev/null 2>&1 &`, {
+        stdin: password + "\n",
+        execOptions: { pty: true },
+      })
+      .catch(() => { });
+    await new Promise((r) => setTimeout(r, 2000));
+  } catch (e: any) {
+    // A dropped connection here means the reboot already started.
+    logEvent('ssh:reboot.disconnected', { host, username, error: String(e?.message || e) });
+  } finally {
+    ssh.dispose();
+  }
 }
 
 

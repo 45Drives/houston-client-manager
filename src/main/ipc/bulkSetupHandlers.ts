@@ -4,7 +4,7 @@ import { NodeSSH } from 'node-ssh';
 import fs from 'fs';
 import path from 'path';
 import type { Logger } from 'winston';
-import { checkSSH, setupSshKey, runBootstrapScript, checkRemoteDeps, ensureHoustonPackages, buildSshConnectOptions, connectWithFallback } from '../setupSsh';
+import { checkSSH, setupSshKey, runBootstrapScript, checkRemoteDeps, ensureHoustonPackages, rebootRemoteServer, buildSshConnectOptions, connectWithFallback } from '../setupSsh';
 import type { SshAuth } from '../setupSsh';
 import { getCredentialManager } from '../credentialManager';
 import { assertSafeHost, assertSafeUsername } from '../security';
@@ -471,6 +471,15 @@ async function bootstrapServer(
     }
   } catch { /* non-fatal — bootstrap already succeeded */ }
 
+  // Last, so it cannot cut short the package work above.
+  if (reboot) {
+    emitProgress(ctx, {
+      host, status: 'bootstrapping', step: 2, totalSteps: 10,
+      label: 'Restarting the server to finish enabling ZFS...',
+    });
+    await rebootRemoteServer(host, username, privateKeyPath, entry.password);
+  }
+
   return { success: true, reboot };
 }
 
@@ -871,6 +880,15 @@ async function setupSingleServer(
       // Wait for server to come back after reboot
       emitProgress(ctx, { host, status: 'bootstrapping', step: 2, totalSteps: 10, label: 'Server is rebooting... waiting for it to come back online.' });
       emitNotification(ctx, `🔄 ${serverLabel}: Rebooting (ZFS kernel modules installed)...`);
+      // The setup script schedules the reboot a few seconds out so it can exit
+      // cleanly, so the host is still answering here. Watch it drop first or the
+      // first probe succeeds against the pre-reboot boot and we carry on early.
+      const downDeadline = Date.now() + 90_000;
+      while (Date.now() < downDeadline) {
+        if (signal.aborted) return { host, success: false, error: 'Cancelled' };
+        if (!(await checkSSH(host, 3000))) break;
+        await new Promise(r => setTimeout(r, 2000));
+      }
       const startWait = Date.now();
       const maxWait = 180_000; // 3 minutes
       while (Date.now() - startWait < maxWait) {
