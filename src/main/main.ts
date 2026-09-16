@@ -1617,8 +1617,40 @@ app.whenReady().then(() => {
             resolve({ valid: false, error: detail, reason: classify(detail) });
           }
         );
+      } else if (platform === 'mac') {
+        // macOS has no smbclient — smbutil is the built-in equivalent, and it only takes
+        // credentials inside the URL, so every reserved character has to be escaped.
+        const enc = (s: string) => encodeURIComponent(s).replace(/[!'()*]/g, c => `%${c.charCodeAt(0).toString(16).toUpperCase()}`);
+        execFileCb(
+          '/usr/bin/smbutil',
+          ['view', '-N', `//${enc(safeUser)}:${enc(password)}@${targetHost}`],
+          { timeout: 20000 },
+          (err: any, stdout: string, stderr: string) => {
+            const output = `${stdout}\n${stderr}`;
+            jsonLogger.info({
+              event: 'smb:validate.smbutil',
+              host: targetHost,
+              share: safeShare,
+              exitCode: err?.code ?? 0,
+              killed: !!err?.killed,
+              stdoutChars: (stdout || '').length,
+            });
+            if (!err) {
+              resolve({ valid: true });
+            } else if (err.code === 'ENOENT') {
+              resolve({ valid: false, reason: 'unknown', error: 'smbutil is missing from this Mac, so the share credentials cannot be verified.' });
+            } else if (err.killed) {
+              resolve({ valid: false, reason: 'unreachable', error: `${targetHost} accepted the connection but never answered the file sharing request.` });
+            } else if (/authentication|permission denied|not permitted|password|NT_STATUS_LOGON_FAILURE|NT_STATUS_ACCESS_DENIED/i.test(output)) {
+              resolve({ valid: false, error: 'Invalid username or password', reason: 'auth' });
+            } else {
+              const detail = output.trim() || `smbutil failed without output (code ${err.code ?? 'unknown'})`;
+              resolve({ valid: false, error: detail, reason: classify(detail) });
+            }
+          }
+        );
       } else {
-        // smbclient on Linux/macOS — credentials go through the environment, not argv.
+        // smbclient on Linux — credentials go through the environment, not argv.
         const args = ['-L', `//${targetHost}`, '-U', safeUser, '-g'];
         const child = execFileCb(
           'smbclient',
@@ -1630,9 +1662,7 @@ app.whenReady().then(() => {
               resolve({
                 valid: false,
                 reason: 'unknown',
-                error: platform === 'mac'
-                  ? 'smbclient is not installed on this Mac, so the share credentials cannot be verified. Install it with "brew install samba" and try again.'
-                  : 'smbclient is not installed on this computer, so the share credentials cannot be verified. Install the "smbclient" package (e.g. sudo apt install smbclient) and try again.',
+                error: 'smbclient is not installed on this computer, so the share credentials cannot be verified. Install the "smbclient" package (e.g. sudo apt install smbclient) and try again.',
               });
             } else if (/NT_STATUS_LOGON_FAILURE|NT_STATUS_ACCESS_DENIED/i.test(output)) {
               resolve({ valid: false, error: 'Invalid username or password', reason: 'auth' });
@@ -1698,8 +1728,9 @@ app.whenReady().then(() => {
       candidates,
     });
 
-    // smbclient does the actual check on Linux/macOS, so offer to install it before failing.
-    if (platform !== 'win') {
+    // smbclient does the actual check on Linux, so offer to install it before failing.
+    // macOS uses smbutil, which is part of the OS.
+    if (platform !== 'win' && platform !== 'mac') {
       const tools = await ensureClientTools(['smbclient']);
       if (!tools.ok) {
         jsonLogger.warn({ event: 'smb:validate', host: safeHost, share: safeShare, result: 'missing-tools' });

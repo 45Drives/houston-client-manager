@@ -11,9 +11,11 @@ const SUDO_OPTIONS = { name: '45Drives Storage Wizard' };
  * Binaries this app shells out to on each platform. Windows needs none of this —
  * robocopy, PowerShell, Task Scheduler and "net use" all ship with the OS.
  */
+// macOS ships everything the app shells out to (smbutil, mount_smbfs, rsync, launchd),
+// so nothing has to be installed there.
 export const CLIENT_TOOLS: Record<'linux' | 'darwin', string[]> = {
   linux: ['smbclient', 'mount.cifs', 'rsync', 'crontab'],
-  darwin: ['smbclient'],
+  darwin: [],
 };
 
 interface PackageManager {
@@ -138,7 +140,8 @@ function missingToolMessage(status: ClientToolStatus): string {
   const list = status.missing.join(' and ');
   const verb = status.missing.length > 1 ? 'are' : 'is';
   if (os.platform() === 'darwin' && !resolveBinary('brew')) {
-    return `${list} ${verb} not installed on this Mac, which backups need. Install Homebrew from https://brew.sh, then run "brew install samba".`;
+    const packages = status.packages.length ? status.packages.join(' ') : list;
+    return `${list} ${verb} not installed on this Mac, which backups need. Install Homebrew from https://brew.sh, then run "brew install ${packages}".`;
   }
   if (status.hint) {
     return `${list} ${verb} not installed on this computer, which backups need. Install with: ${status.hint}`;
