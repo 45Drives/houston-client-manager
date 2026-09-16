@@ -25,6 +25,24 @@
                 </div>
             </div>
 
+            <!-- Degraded credential storage notice -->
+            <div v-if="vaultStatus && vaultStatus.backend !== 'os'"
+                class="flex items-start gap-3 rounded-md border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20 px-4 py-3">
+                <ExclamationTriangleIcon class="w-5 h-5 shrink-0 text-amber-600 dark:text-amber-400" />
+                <div class="text-xs text-amber-800 dark:text-amber-200 space-y-1">
+                    <p class="font-semibold">
+                        {{ vaultStatus.backend === 'file'
+                            ? 'Saved logins are not protected by your OS keychain'
+                            : 'Saved logins cannot be stored on this device' }}
+                    </p>
+                    <p>{{ vaultStatus.reason }}</p>
+                    <p v-if="vaultStatus.backend === 'file'">
+                        Install and unlock a keyring (gnome-keyring or KWallet on Linux) and restart the app to
+                        upgrade existing entries automatically.
+                    </p>
+                </div>
+            </div>
+
             <!-- Summary stats -->
             <div class="grid grid-cols-4 gap-4">
                 <div class="vault-stat-card">
@@ -307,7 +325,7 @@ import { useRouter } from 'vue-router'
 import {
     ArrowLeftIcon, TrashIcon, PencilIcon, SignalIcon,
     MagnifyingGlassIcon, ServerIcon, InformationCircleIcon, LockClosedIcon,
-    StarIcon as StarIconOutline,
+    StarIcon as StarIconOutline, ExclamationTriangleIcon,
 } from '@heroicons/vue/24/outline'
 import { EyeIcon, EyeSlashIcon, StarIcon as StarIconSolid } from '@heroicons/vue/20/solid'
 import { useHeader } from '../composables/useHeader'
@@ -561,7 +579,17 @@ async function executeEdit() {
 
 // ── Lifecycle ────────────────────────────────────────────────────────────
 
-onMounted(loadCredentials)
+type VaultStatus = { backend: 'os' | 'file' | 'none'; reason?: string }
+const vaultStatus = ref<VaultStatus | null>(null)
+
+onMounted(async () => {
+    await loadCredentials()
+    try {
+        vaultStatus.value = await window.electron.ipcRenderer.invoke('vault:status')
+    } catch {
+        vaultStatus.value = null
+    }
+})
 </script>
 
 <style scoped>

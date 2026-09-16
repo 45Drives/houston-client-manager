@@ -45,6 +45,7 @@ const INVOKE_CHANNELS = new Set([
   'cred:set-name',
   'cred:touch',
   // Unified servers
+  'vault:status',
   'servers:list',
   'servers:add',
   'servers:update',

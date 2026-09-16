@@ -13,8 +13,10 @@
  *   Windows: %APPDATA%/houston-client-manager/credentials.vault
  *
  * Encryption:
- *   Electron safeStorage encrypts each password individually before storage.
- *   Uses OS-native keychain/credential-store (libsecret / Keychain / DPAPI).
+ *   Each password is encrypted individually before storage. The preferred backend is
+ *   Electron safeStorage (libsecret / Keychain / DPAPI). When no OS credential store is
+ *   reachable, vaultCrypto falls back to AES-256-GCM under a 0600 key file so saved
+ *   servers and unattended backups keep working — see vaultCrypto.ts for the trade-off.
  *   Passwords NEVER appear in logs, IPC serialization, or process arguments.
  *
  * Schema (vault JSON):
@@ -41,13 +43,20 @@
  *   }
  */
 
-import { app, safeStorage } from 'electron';
+import { app } from 'electron';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import { execFileSync, execSync } from 'child_process';
 import { randomUUID } from 'crypto';
 import { assertSafeHost, assertSafeShare, assertSafeUsername, shellQuote, toBase64 } from './security';
+import {
+  decryptSecret,
+  encryptSecret,
+  getVaultBackend,
+  isFileBackedBlob,
+  isVaultEncryptionAvailable,
+} from './vaultCrypto';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -174,15 +183,11 @@ function vaultPath(): string {
 }
 
 function encryptPassword(plaintext: string): string {
-  if (!plaintext) return '';
-  const buf = safeStorage.encryptString(plaintext);
-  return buf.toString('base64');
+  return encryptSecret(plaintext);
 }
 
 function decryptPassword(base64Blob: string): string {
-  if (!base64Blob) return '';
-  const buf = Buffer.from(base64Blob, 'base64');
-  return safeStorage.decryptString(buf);
+  return decryptSecret(base64Blob);
 }
 
 function isIpAddress(s: string): boolean {
@@ -213,9 +218,35 @@ export class CredentialManager {
   constructor() {
     this.filePath = vaultPath();
     this.vault = this.load();
+    this.upgradeFallbackSecrets();
   }
 
   // ── Persistence ──────────────────────────────────────────────────────
+
+  /**
+   * Promote secrets written by the local-key fallback back into the OS keychain once
+   * one becomes reachable again (keyring installed, wallet unlocked, proper session).
+   * The reverse direction is impossible by design: OS blobs can only be read by the OS.
+   */
+  private upgradeFallbackSecrets(): void {
+    if (getVaultBackend() !== 'os') return;
+
+    let changed = false;
+    for (const server of Object.values(this.vault.servers)) {
+      for (const field of ['loginPass', 'sshPassphrase', 'smbPass'] as const) {
+        const blob = server[field];
+        if (!blob || !isFileBackedBlob(blob)) continue;
+        const plaintext = decryptPassword(blob);
+        if (!plaintext) continue;
+        server[field] = encryptPassword(plaintext);
+        changed = true;
+      }
+    }
+
+    if (changed) {
+      try { this.save(); } catch { /* keep the readable fallback blobs on disk */ }
+    }
+  }
 
   private load(): CredentialVault {
     try {
@@ -421,8 +452,8 @@ export class CredentialManager {
     setupComplete?: boolean;
     favorite?: boolean;
   }): string {
-    if (!safeStorage.isEncryptionAvailable()) {
-      throw new Error('OS credential encryption is not available. Cannot store credentials securely.');
+    if (!isVaultEncryptionAvailable()) {
+      throw new Error('Cannot store credentials securely: no OS credential store is available and the fallback key file could not be created.');
     }
 
     // Dedup: check if server already exists

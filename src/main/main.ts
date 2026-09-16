@@ -97,6 +97,7 @@ import { server, unwrap } from '@45drives/houston-common-lib';
 import { installServerDepsRemotely } from './installServerDeps';
 import { getPin, rememberPin } from './certPins'
 import { getCredentialManager } from './credentialManager';
+import { getVaultCryptoStatus } from './vaultCrypto';
 import { assertSafeHost, assertSafeShare, assertSafeUsername } from './security';
 import { checkSSH, verifySshCredentials } from './setupSsh';
 import { disposeAllSSH } from './sshPool';
@@ -1089,7 +1090,12 @@ app.on('web-contents-created', (_event, contents) => {
     webPreferences.allowRunningInsecureContent = false;
   });
 
-  contents.setWindowOpenHandler(() => {
+  // Cockpit modules open reference links (docs, YouTube) with window.open/target=_blank.
+  // Never create an in-app window for them — hand http(s) to the OS browser and deny the rest.
+  contents.setWindowOpenHandler(({ url }) => {
+    if (/^https?:\/\//i.test(url)) {
+      shell.openExternal(url).catch(err => console.warn('openExternal failed:', err));
+    }
     return { action: 'deny' };
   });
 });
@@ -1141,6 +1147,14 @@ app.whenReady().then(() => {
   setJsonLogger(jsonLogger);
 
   _origConsole.info('Logging initialized. Log dir:', resolvedLogDir);
+
+  const vaultStatus = getVaultCryptoStatus();
+  if (vaultStatus.backend === 'os') {
+    jsonLogger.info({ event: 'vault:backend', ...vaultStatus });
+  } else {
+    jsonLogger.warn({ event: 'vault:backend', ...vaultStatus });
+    _origConsole.warn('Credential vault backend:', vaultStatus.backend, '-', vaultStatus.reason);
+  }
 
 
   session.defaultSession.setCertificateVerifyProc((req, cb) => {
@@ -1345,6 +1359,11 @@ app.whenReady().then(() => {
   });
 
   // ── Unified Servers IPC (used by useServers composable) ───────────────
+
+  ipcMain.handle('vault:status', (event) => {
+    assertMainWindowSender(event);
+    return getVaultCryptoStatus();
+  });
 
   ipcMain.handle('servers:list', (event) => {
     assertMainWindowSender(event);
