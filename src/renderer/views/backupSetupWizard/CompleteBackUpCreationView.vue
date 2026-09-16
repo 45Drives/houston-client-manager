@@ -108,7 +108,7 @@ const openFdaSettings = () => window.electron.macOpenFdaSettings();
 watch(setupComplete, async (value) => {
   if (value === "yes" && backUpSetupConfig) {
     // Read before the task list is cleared below.
-    if (thisOs === 'mac') await checkFullDiskAccess(backUpSetupConfig.backUpTasks.map(t => t.source));
+    if (thisOs?.value === 'mac') await checkFullDiskAccess(backUpSetupConfig.backUpTasks.map(t => t.source));
     backUpSetupConfig.backUpTasks = [];
   }
 });

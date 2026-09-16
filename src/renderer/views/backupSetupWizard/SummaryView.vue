@@ -131,14 +131,20 @@ onMounted(async () => {
 
   isFirstBackupRun.value = result;
 
-  if (thisOs === 'mac') {
-    const source = backUpSetupConfig?.backUpTasks?.[0]?.source;
-    const fda = await window.electron.macFdaStatus(source);
-    if (fda?.supported) {
+  if (thisOs?.value === 'mac') {
+    // Every source, not just the first: one protected folder in the batch is enough.
+    for (const task of backUpSetupConfig?.backUpTasks ?? []) {
+      const fda = await window.electron.macFdaStatus(task.source);
+      if (!fda?.supported) break;
       fdaDaemonPath.value = fda.daemonPath;
-      fdaProtectedSource.value = fda.sourceNeedsAccess;
-      // "unknown" means the daemon has not reported yet, so don't cry wolf on a fresh install.
-      needsFullDiskAccess.value = fda.status === 'denied' && (fda.sourceNeedsAccess || fda.daemonInstalled);
+      if (fda.sourceNeedsAccess && fda.status !== 'granted') {
+        fdaProtectedSource.value = true;
+        needsFullDiskAccess.value = true;
+        break;
+      }
+      // On a machine where the daemon is already installed, a denial is worth flagging
+      // even when no source looks protected.
+      if (fda.daemonInstalled && fda.status === 'denied') needsFullDiskAccess.value = true;
     }
   }
 });
