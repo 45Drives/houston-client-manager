@@ -49,6 +49,7 @@ const config = defineConfig({
   },
   define: {
     __APP_VERSION__: JSON.stringify(version),
+    __COCKPIT_MODULE_SUFFIX__: JSON.stringify(process.env.COCKPIT_MODULE_SUFFIX || ''),
   },
 });
 

@@ -178,12 +178,13 @@ function withQs(path: string, qs: string) {
     return `${path}${path.includes('?') ? '&' : '?'}${qs}`
 }
 
-// `yarn dev` targets the `-test` builds of the Cockpit modules that developers
-// install alongside the released ones. Production builds always use the plain path.
+// Optional suffix for targeting side-by-side Cockpit module builds (e.g. `-test`).
+// Empty by default; set via `yarn dev --test` or COCKPIT_MODULE_SUFFIX.
 const resolvedRoutePath = computed(() => {
     const path = props.routePath
-    if (!import.meta.env.DEV || path.endsWith('-test')) return path
-    return `${path}-test`
+    const suffix = __COCKPIT_MODULE_SUFFIX__
+    if (!suffix || path.endsWith(suffix)) return path
+    return `${path}${suffix}`
 })
 
 const currentUrl = computed(() => {

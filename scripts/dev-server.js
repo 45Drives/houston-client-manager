@@ -18,6 +18,18 @@ let electronProcess = null;
 let electronProcessLocker = false;
 let rendererPort = 0;
 
+// Cockpit modules can be installed side by side (e.g. `/houston-common-test`).
+// Default is the production path; opt in with `yarn dev --test`,
+// `yarn dev --module-suffix=-staging`, or COCKPIT_MODULE_SUFFIX=-test.
+function resolveModuleSuffix(argv) {
+    const explicit = argv.find(a => a.startsWith('--module-suffix='));
+    if (explicit) return explicit.slice('--module-suffix='.length);
+    if (argv.includes('--test')) return '-test';
+    return process.env.COCKPIT_MODULE_SUFFIX || '';
+}
+
+process.env.COCKPIT_MODULE_SUFFIX = resolveModuleSuffix(process.argv.slice(2));
+
 async function startRenderer() {
     viteServer = await Vite.createServer({
         configFile: Path.join(__dirname, '..', 'vite.config.js'),
@@ -115,6 +127,9 @@ async function start() {
     console.log(`${Chalk.greenBright('=======================================')}`);
     console.log(`${Chalk.greenBright('Starting Electron + Vite Dev Server...')}`);
     console.log(`${Chalk.greenBright('=======================================')}`);
+    console.log(Chalk.cyan(`Cockpit modules: ${process.env.COCKPIT_MODULE_SUFFIX
+        ? `"${process.env.COCKPIT_MODULE_SUFFIX}" builds`
+        : 'production builds (use --test for -test builds)'}`));
 
     const devServer = await startRenderer();
     rendererPort = devServer.config.server.port;
