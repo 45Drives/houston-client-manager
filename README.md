@@ -94,16 +94,23 @@ Step-by-step instructions for every screen are in the [User Guide](docs/45Drives
 
 ## Development
 
+Full setup instructions for a new machine — prerequisites, the `houston-common` submodule, and release environment configuration — are in [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
+
 ```bash
-npm install
-npm run dev      # run the app in development
-npm run build    # build the renderer and main process
+git clone git@github.com:45Drives/houston-client-manager.git
+cd houston-client-manager
+git submodule update --init --recursive
+corepack enable && corepack prepare yarn@4.6.0 --activate
+yarn install
+yarn dev      # run the app in development
+yarn test     # unit tests
 ```
 
 Packaging is driven by `electron-builder.json`. Release artifacts are named `${productName}-${version}-${os}-${arch}.${ext}` and published to GitHub releases, which is also the source for in-app automatic updates.
 
 ### References
 
+- [Development setup](docs/DEVELOPMENT.md)
 - [User Guide](docs/45Drives_Storage_Wizard_User_Guide.md)
 - [Bulk setup template example](docs/bulk-setup-template-example.json)
 
