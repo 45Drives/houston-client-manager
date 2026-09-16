@@ -122,7 +122,7 @@ export class BackUpManagerMac implements BackUpManager {
     this.writeTaskScript(task, safeUser);
 
     // After the script exists, so a declined prompt still leaves a usable task.
-    primeTccAccess(safeHost, safeShare, safeUser, [task.source]);
+    await primeTccAccess(safeHost, safeShare, safeUser, [task.source]);
 
     // Sync backup config to broadcaster API (best-effort, non-blocking)
     syncBackupConfig(safeHost, username, password, task, getClientId()).catch(() => { });
@@ -171,7 +171,7 @@ export class BackUpManagerMac implements BackUpManager {
     // Once every script is on disk, so a declined prompt still leaves usable tasks.
     for (const { host, share, sources } of sourcesByShare.values()) {
       onProgress?.(total, total, 'Requesting macOS permissions');
-      primeTccAccess(host, share, safeUser, sources);
+      await primeTccAccess(host, share, safeUser, sources);
     }
   }
 

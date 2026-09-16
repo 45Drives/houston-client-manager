@@ -1,9 +1,12 @@
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
-import { execFileSync, execSync } from "child_process";
+import { execFile, execFileSync, execSync } from "child_process";
+import { promisify } from "util";
 import { getAssetSync } from "../utils";
 import { shellQuote } from "../security";
+
+const execFileAsync = promisify(execFile);
 
 /**
  * macOS scheduling runs from a LaunchDaemon rather than cron, so backups fire with no
@@ -302,35 +305,42 @@ export function revealDaemonBinary(): void {
  *
  * Every step is best-effort: an unreachable server or a denied folder must not block task
  * creation, because the prompt having been shown is the whole point.
+ *
+ * Must stay off the main thread. TCC blocks the calling thread while it asks the user, and
+ * the app can only draw that prompt if its run loop is still turning, so a synchronous
+ * version stalls until macOS gives up and re-raises the prompt minutes later.
  */
-export function primeTccAccess(
+export async function primeTccAccess(
   host: string,
   share: string,
   username: string,
   sources: string[]
-): void {
+): Promise<void> {
   for (const source of sources) {
     try {
-      fs.readdirSync(source);
+      await fs.promises.readdir(source);
     } catch {
       /* denied, or gone since it was picked */
     }
   }
 
+  let mountPoint = "";
   try {
     const script = getAssetSync("static", "mount_smb_mac.sh");
-    execFileSync("/bin/bash", [script, host, share, username, "silent"], {
+    const { stdout } = await execFileAsync("/bin/bash", [script, host, share, username, "silent"], {
       encoding: "utf8",
       timeout: 60_000,
     });
+    mountPoint = JSON.parse(stdout).MountPoint ?? "";
   } catch {
-    /* share unreachable or credentials not exported yet */
+    /* share unreachable, credentials not exported yet, or no JSON to read */
   }
 
   // Separate from the mount: the network-volume prompt is raised by reading the volume,
-  // not by mounting it.
+  // not by mounting it. Trust the mountpoint the script reported, since an empty share
+  // looks unmounted to resolveMacShareRoot().
   try {
-    fs.readdirSync(resolveMacShareRoot(share));
+    await fs.promises.readdir(mountPoint || resolveMacShareRoot(share));
   } catch {
     /* not mounted */
   }
