@@ -156,22 +156,33 @@ flowchart TD
 
 ### Software Installed on the Server During Setup
 
-The Storage Wizard installs and configures these automatically when you connect for the first time:
+When you connect to a server for the first time, the Storage Wizard adds the 45Drives package repository and installs three packages directly:
 
 | Package | Purpose |
 |---|---|
-| **cockpit** / **cockpit-bridge** | The server's web management interface |
-| **Houston Broadcaster** | The server-side API the desktop app talks to |
-| **Super Simple Setup** | The storage setup wizard |
-| **Task Scheduler** | Scheduled server-side backup tasks |
-| **WireShield** | Encrypted server-to-server tunnels |
-| **ZFS Management** | The server's ZFS pool and dataset tools |
-| **zfsutils / zfs** | Storage pools and datasets |
-| **samba** | Windows/macOS network file shares |
-| **rsync** | File copy and sync backups |
-| **rclone** | Cloud storage backups |
-| **wireguard-tools** | VPN tunnel networking |
-| **nfs-kernel-server / nfs-utils** | Optional NFS export support |
+| **cockpit-super-simple-setup** | The storage setup wizard that runs on the server |
+| **cockpit-zfs** | The server's ZFS pool and dataset management UI |
+| **wireshield** | Encrypted server-to-server VPN tunnels |
+
+Everything else arrives automatically as a dependency of those three. You do not choose these, and you cannot skip them:
+
+| Package | Pulled in by | Purpose |
+|---|---|---|
+| **cockpit** / **cockpit-bridge** / **cockpit-ws** | all three | The server's web management interface |
+| **houston-broadcaster** | Super Simple Setup | The server-side API the desktop app talks to |
+| **cockpit-scheduler** | Super Simple Setup | Scheduled server-side backup tasks |
+| **zfsutils-linux / zfs** | Super Simple Setup, cockpit-zfs | Storage pools and datasets |
+| **samba**, **samba-common-bin / samba-common-tools** | Super Simple Setup | Windows/macOS network file shares |
+| **avahi-daemon / avahi**, **avahi-utils**, **libnss-mdns** | Super Simple Setup | mDNS so the app can discover the server by name on the LAN |
+| **45drives-tools**, **python3-pyudev** | Super Simple Setup | Drive and chassis identification |
+| **nfs-kernel-server / nfs-utils** | Super Simple Setup | Provides `exportfs`, the NFS export tooling. Nothing is exported unless you create an NFS share yourself — installing it does not start sharing anything. |
+| **rsync** | Task Scheduler | File copy and sync backups |
+| **rclone** (≥ 1.59) | Task Scheduler | Cloud storage backups and Cloud Accounts |
+| **smartmontools**, **mbuffer**, **pv**, **netcat** | Task Scheduler | Drive health checks and backup transfer plumbing |
+| **wireguard-tools** | WireShield | VPN tunnel networking |
+| **podman**, **nmap**, **firewalld**, **miniupnpc**, **dnsmasq-base**, **bind9-dnsutils** | WireShield | Tunnel setup, port discovery, and firewall management |
+
+Setup also opens three firewall ports: **9090/TCP** (Cockpit), **9095/TCP** (Houston Broadcaster), and **5353/UDP** (mDNS discovery). It uses `firewalld` on Rocky and `ufw` on Debian/Ubuntu.
 
 ---
 
@@ -196,44 +207,60 @@ Download the latest version from the **[Releases page](https://github.com/45Driv
 
 ### macOS
 
-| Chip | File to Download |
+There is one macOS build and it is **universal** — the same file runs natively on Apple Silicon and Intel. There are no separate `arm64` and `x64` downloads.
+
+| File to Download | When to use it |
 |---|---|
-| Apple Silicon (M1/M2/M3/M4) | `45Drives-Storage-Wizard-<version>-mac-arm64.dmg` |
-| Intel | `45Drives-Storage-Wizard-<version>-mac-x64.dmg` |
-| Either | `45Drives-Storage-Wizard-<version>-mac-universal.dmg` |
+| `45Drives-Storage-Wizard-<version>-mac-universal.pkg` | **Recommended.** Installs the app and sets up scheduled Local Backups in one step. |
+| `45Drives-Storage-Wizard-<version>-mac-universal.dmg` | Classic drag-to-Applications install. |
+
+**Installing with the `.pkg` (recommended)**
+
+1. Double-click the `.pkg`.
+2. Follow the installer and enter your Mac's administrator password when prompted.
+3. Launch **45Drives Storage Wizard** from Applications or Launchpad.
+
+The installer puts the app in `/Applications` and, using the password you already entered, installs the background service that runs Local Backups. Because that work happens inside the macOS Installer, the app itself never has to ask you for an administrator password later.
+
+**Installing with the `.dmg`**
 
 1. Double-click the `.dmg`.
 2. Drag **45Drives Storage Wizard** into the **Applications** folder.
 3. Launch it from Applications or Launchpad.
 
+With the `.dmg`, the background service is not installed up front. The first time a Local Backup runs, macOS will ask for your administrator password once so the service can be installed.
+
 ![macOS DMG install — drag the app into Applications](images/install-macos-dmg.png)
 <!-- SCREENSHOT: The mounted .dmg window showing the 45Drives Storage Wizard icon and the arrow pointing at the Applications folder alias. -->
+<!-- SCREENSHOT NEEDED (images/install-macos-pkg.png): The macOS Installer running the .pkg, on the Installation Type or authentication step, showing the 45Drives Storage Wizard name and the administrator password prompt. Add the image reference above this comment once captured. -->
 
-> **Important:** If you plan to create **Local Backups** on macOS, you will need to grant scheduled backups (cron) **Full Disk Access** under **System Settings → Privacy & Security → Full Disk Access**. The app reminds you of this on the backup Summary screen.
+> **Important:** Local Backups on macOS run from a system background service, not from cron, so they keep running when you are signed out. That service is installed at `/Library/Application Support/45Drives/Houston/bin/StorageWizardBackup`. If you back up a protected folder — Desktop, Documents, Downloads, iCloud Drive, your Photos library, or an external volume under `/Volumes` — you must grant that file **Full Disk Access** under **System Settings → Privacy & Security → Full Disk Access**. The app detects this and walks you through it on the backup Summary screen.
 
 ### Linux
 
 | Distribution | File | Install Command |
 |---|---|---|
-| Ubuntu / Debian | `45drives-setup-wizard_<version>_amd64.deb` | `sudo apt install ./45drives-setup-wizard_<version>_amd64.deb` |
-| Rocky / RHEL / Fedora | `45drives-setup-wizard-<version>.x86_64.rpm` | `sudo dnf install ./45drives-setup-wizard-<version>.x86_64.rpm` |
-| Arch / Manjaro | `45drives-setup-wizard-<version>.pacman` | `sudo pacman -U 45drives-setup-wizard-<version>.pacman` |
+| Ubuntu / Debian | `45Drives-Storage-Wizard-<version>-linux-amd64.deb` | `sudo apt install ./45Drives-Storage-Wizard-<version>-linux-amd64.deb` |
+| Rocky / RHEL / Fedora | `45Drives-Storage-Wizard-<version>-linux-x86_64.rpm` | `sudo dnf install ./45Drives-Storage-Wizard-<version>-linux-x86_64.rpm` |
+| Arch / Manjaro | `45Drives-Storage-Wizard-<version>-linux-x64.pacman` | `sudo pacman -U 45Drives-Storage-Wizard-<version>-linux-x64.pacman` |
+
+The packages pull in `smbclient` / `samba-client`, `cifs-utils`, `rsync`, and `cron` / `cronie`, which the app needs for Local Backups.
 
 Launch the app from your desktop application menu once installation completes.
 
 ![Launching the app on Linux](images/install-linux.png)
 <!-- SCREENSHOT: The 45Drives Storage Wizard entry in a Linux desktop application menu (GNOME Activities or similar), showing the app icon and name. -->
 
-> **Note:** On Linux, the first time you schedule a **Local Backup** you will be prompted for your administrator password so the app can install the cron entries.
+> **Note:** On Linux, Local Backups are scheduled with cron. The first time you create one you will be prompted for your administrator password so the app can set up the server connection.
 
 ---
 
 ## 3. First Launch — The Dashboard
 
-When you open the app you land on the **Dashboard**. The window title shows the app name and version — for example, *45Drives Storage Wizard v1.4.0*.
+When you open the app you land on the **Dashboard**. The window title shows the app name and version — for example, *45Drives Storage Wizard v1.8.0*.
 
 ![Dashboard overview](images/dashboard-overview.png)
-<!-- SCREENSHOT: Full app window on the Dashboard with at least one saved server, a couple of scheduled tasks, and the Quick Actions sidebar visible. Window title bar showing "45Drives Storage Wizard v1.4.0" should be included. -->
+<!-- SCREENSHOT: Full app window on the Dashboard with at least one saved server, a couple of scheduled tasks, and the Quick Actions sidebar visible. Window title bar showing "45Drives Storage Wizard v<version>" should be included. -->
 
 ### Status Strip
 
@@ -353,6 +380,20 @@ Four theme swatches change the app's colour scheme to match your 45Drives produc
 
 A **Light / Dark** toggle sits beside them. Your choice is remembered between sessions and is also passed through to the server tools embedded in the app, so everything matches.
 
+**In Progress**
+
+Whenever something is actually running, an extra **In Progress** section appears below Appearance. It is hidden when nothing is happening. Each running job gets its own card with a live progress bar:
+
+| Job | Card shows |
+|---|---|
+| A backup | Task name, percentage (or *"Backing up"* when no percentage is available yet), and a **Stop Backup** button |
+| A restore | *"Restoring \<name\>"*, overall percentage, the current file and its position in the queue, plus **View Restore** and **Cancel** buttons |
+| A server-side operation | The operation label, percentage or phase, the current file, the server address, and a **Cancel** button when the operation can be cancelled |
+
+This means you can close the Backup Manager and still keep an eye on a long transfer from anywhere in the app.
+
+<!-- SCREENSHOT NEEDED (images/menu-in-progress.png): The same menu panel with a backup running, so the In Progress section is visible — at least one backup card with its progress bar and Stop Backup button, ideally alongside a restore card showing View Restore and Cancel. Add the image reference above this comment once captured. -->
+
 ### Settings
 
 The Settings modal is organised into five panels, grouped under **Servers**, **Client**, **Network**, and **System**:
@@ -372,7 +413,7 @@ Your saved servers. For each one you can:
 
 | Setting | Description |
 |---|---|
-| **Server display format** | How servers appear in dropdowns and lists — *Hostname only*, *IP only*, or both |
+| **Server display format** | How servers appear in dropdowns and lists — *Hostname (IP)*, *Hostname only*, or *IP only* |
 | **Show notification toasts** | Display in-app notifications for backup events |
 | **Guided tours** | Show step-by-step guided tours for new features and views |
 | **Reset guided tours** | Re-show all onboarding walkthroughs and welcome screens |
@@ -845,7 +886,7 @@ If you are deploying several servers at once, use **Setup Multiple Servers** fro
 ![Bulk Server Setup](images/bulk-setup-overview.png)
 <!-- SCREENSHOT: The Bulk Server Setup page with three server cards added, the Import Template / Export Template buttons in the header, the "+ Add Server" dashed button, and the sticky action bar at the bottom showing the done / failed / currently-running counters. -->
 
-**Global Defaults** (shown once you add more than one server) let you fill in values shared by every machine:
+**Global Defaults** (shown once you add more than one server) let you fill in values shared by every machine. The panel header spells out how it behaves: *"Overwrites every server in the batch; blank fields are left untouched."*
 
 | Field | Purpose |
 |---|---|
@@ -853,13 +894,14 @@ If you are deploying several servers at once, use **Setup Multiple Servers** fro
 | **SMB Username** / **SMB Password** | The file-sharing account created on each server |
 | **Authenticate with SSH private key** | Use a key instead of a password. Choose the key with **Browse…** and supply a **Key Passphrase** if the key has one. |
 | **Quick-wipe drives that carry old partitions or signatures** | Clears leftover partition data before creating pools |
+| **Snapshot History** | How many point-in-time copies each server keeps so a deleted or overwritten file can be recovered. Choose **Off**, **Minimal** (daily, kept 1 week), **Standard** (hourly 1 day, daily 1 week, weekly 1 month), **Extended** (hourly 2 days, daily 2 weeks, weekly 3 months), or **Maximum** (hourly 7 days, daily 1 month, weekly 1 year). Standard is the default. |
 
-Click **Apply to all servers missing values** to push the defaults into every server card that has blank fields.
+Click **Apply to all servers** to push the defaults into every server card in the batch. This overwrites whatever is already in those fields, so leave a field blank if you want to leave that field untouched on each server. The same Snapshot History choice is also available per server on each card, if one machine needs a different policy.
 
 ![Bulk Setup — Global Defaults](images/bulk-setup-global-defaults.png)
-<!-- SCREENSHOT: The Global Defaults panel showing the SSH and SMB username/password fields, the expanded "Advanced: Use SSH Key" section with the key path, Browse button and passphrase field, the quick-wipe checkbox, and the "Apply to all servers missing values" button. -->
+<!-- SCREENSHOT: The Global Defaults panel showing the SSH and SMB username/password fields, the expanded "Advanced: Use SSH Key" section with the key path, Browse button and passphrase field, the quick-wipe checkbox, the Snapshot History dropdown, and the "Apply to all servers" button. -->
 
-Use **+ Add Server** to add a card for each machine, and fill in whatever differs per server. A sticky action bar at the bottom tracks progress: total servers, how many are **done** (green), how many **failed** (red), and which one is currently running. A **Parallel mode** option runs several servers at once instead of one after another.
+Use **+ Add Server** to add a card for each machine, and fill in whatever differs per server. A sticky action bar at the bottom tracks progress: total servers, how many are **done** (green), how many **failed** (red), and which one is currently running. **Parallel mode** is on by default and sets up several servers at once (three at a time); turn it off to go one at a time if you want to watch each server. Anything that fails can be retried on its own with **Retry Failed** once the batch finishes — you do not have to re-run the whole batch.
 
 **Import Template** and **Export Template** let you save a bulk configuration to a JSON file and reuse it on your next deployment. **View Example Template** opens a worked example — *"Save this as a `.json` file, fill in your own values, then use Import Template."* — with **Copy JSON** and **Download Example** buttons so you have something to start from.
 
@@ -986,7 +1028,7 @@ The Backup Manager has two tabs, and understanding the difference is the key to 
 
 | Tab | What it backs up | Where the schedule lives |
 |---|---|---|
-| **Local Backups** | Folders on **this computer** → a Samba share on your server | On this computer (cron / Task Scheduler / launchd) |
+| **Local Backups** | Folders on **this computer** → a Samba share on your server | On this computer (cron on Linux, Task Scheduler on Windows, a LaunchDaemon on macOS) |
 | **Remote Backups** | Data **on the server** → another server, a cloud provider, or another dataset | On the server (Task Scheduler) |
 
 Use **Local Backups** to protect the laptop or workstation you are sitting at. Use **Remote Backups** to protect the server itself — including sending copies off-site.
@@ -1050,12 +1092,15 @@ If the credentials are wrong you will see *"Invalid credentials. Please check yo
 The screen lists the **Backup Location** and every **Backup Task** with its source folder, frequency, and next start time.
 
 ![Local backup — Summary](images/local-backup-03-summary.png)
-<!-- SCREENSHOT: The Summary step showing the Backup Location line and the scrollable list of task cards, each with Source, Frequency and Starts values, plus the OS-specific warning banner (Linux admin password or macOS Full Disk Access). -->
+<!-- SCREENSHOT: The Summary step showing the Backup Location line and the scrollable list of task cards, each with Source, Frequency and Starts values. -->
+<!-- SCREENSHOT NEEDED (images/local-backup-03-summary-macos.png): The same Summary step captured on macOS, showing the first-run admin-password notice, the "macOS will ask for permission the first time this backup runs" box, and the amber "Full Disk Access required" box with its Open Full Disk Access settings button and the StorageWizardBackup path. Add the image reference above this comment once captured. -->
 
-Platform-specific warnings appear here:
+Platform-specific notices appear here:
 
-- **Linux:** If this is your first backup, you will be prompted for your admin password so the schedule can be installed.
-- **macOS:** You will need to grant scheduled backups (cron) **Full Disk Access** in System Settings.
+- **Linux:** *"On Linux, if this is your first backup, you will be prompted for your admin password to set up the server connection."*
+- **macOS (`.dmg` installs, first backup only):** *"On macOS, the first backup installs a background service so your backups keep running when you're signed out. You'll be asked for your admin password once."* If you installed with the `.pkg`, this step already happened during installation and you will not be asked again.
+- **macOS (all installs):** *"macOS will ask for permission the first time this backup runs."* The prompts come from `StorageWizardBackup`, the background service. Click **Allow** on each one — macOS asks once per protected folder.
+- **macOS (protected folders only):** If a folder you chose is one macOS locks down — Desktop, Documents, Downloads, iCloud Drive, your Photos library, or an external volume under `/Volumes` — a **Full Disk Access required** box appears with an **Open Full Disk Access settings** button. Clicking it opens the right System Settings pane and reveals the service in Finder so you can drag it into the list. You can also use the **+** button and press **⌘⇧G** to paste the path shown on screen.
 
 ### Step 4: Congratulations
 
@@ -1113,8 +1158,10 @@ This tab shows two rows of controls, and knowing which is which saves confusion.
 
 | Toolbar | Controls |
 |---|---|
-| **Top (desktop app)** | **Dashboard**, the **Local Backups** / **Remote Backups** tabs, the server dropdown, **Connect**, **Disconnect**, **Forget**, **Restore**, **Snapshots**, and a **gear** at the far right |
+| **Top (desktop app)** | **Dashboard**, the **Local Backups** / **Remote Backups** tabs, the server dropdown, **Connect**, **Disconnect**, **Forget**, a three-segment **Backups / Restore / Snapshots** view switcher, and a **gear** at the far right |
 | **Below it (Task Scheduler)** | **New Backup**, **Delete Tasks**, **Refresh**, a **gear**, and the **notification bell**. Selecting a task adds **Run Now**, **Stop**, **Logs**, **Edit**, and **Delete** to the left of this row. |
+
+The **Backups / Restore / Snapshots** switcher stays greyed out until you are connected, and it only appears on the Remote Backups tab. On the Local Backups tab, that spot holds the **New Backup** button instead.
 
 > **Important:** Both rows have a gear icon and they open different things. The **top** gear opens the desktop app's Settings — saved servers, display, connection, and log retention. The **lower** gear, beside the refresh icon, opens [Remote Backup Settings](#remote-backup-settings) with the retry and status-refresh options.
 
@@ -1264,23 +1311,25 @@ The right-hand **Schedule Task** panel controls when the task runs.
 
 **Backup Frequency** — **hourly**, **daily**, **weekly**, or **monthly**.
 
-The fields shown depend on the frequency:
+All four fields are always on screen. The ones that do not apply to the frequency you picked are greyed out rather than hidden, so you can see at a glance which parts of the start time actually matter:
 
-| Frequency | Fields |
-|---|---|
-| **Hourly** | Start Hour (0–23), Start Minute (0–59) |
-| **Daily** | Start Month, Start Hour, Start Minute |
-| **Weekly** | Weekday (Sun–Sat), Start Hour, Start Minute |
-| **Monthly** | Start Day (1–31), Start Month, Start Hour, Start Minute |
+| Frequency | Editable fields | Greyed out |
+|---|---|---|
+| **Hourly** | Start Hour (0–23), Start Minute (0–59) | Start Day, Start Month |
+| **Daily** | Start Day (1–31), Start Month (1–12), Start Hour, Start Minute | — |
+| **Weekly** | Weekday (Sun–Sat), Start Hour, Start Minute | Start Month |
+| **Monthly** | Start Day (1–31), Start Month (1–12), Start Hour, Start Minute | — |
 
-A preview below the fields confirms your choice in plain language — for example *"Will run backup every Monday at 14:00."* — along with the exact first start date and time.
+On the weekly frequency, the **Start Day** number box is replaced by a **Weekday** dropdown. For daily and monthly schedules the day and month set the *first* run; the task repeats from there.
+
+A preview below the fields confirms your choice in plain language — for example *"Will run backup starting on August 27th at 11:00, every day at 11:00."* — above a **Start date/time** line giving the exact first run.
 
 An interactive month calendar highlights the days the task will run in green. Use the **Prev** and **Next** buttons to look ahead.
 
 New tasks default to **hourly**, starting at the top of the next hour.
 
 ![Schedule Task panel with calendar preview](images/remote-schedule-calendar.png)
-<!-- SCREENSHOT: The Schedule Task panel with Backup Frequency set to weekly, the Weekday / Start Hour / Start Minute fields filled in, the plain-English preview line ("Will run backup every Monday at 14:00.") and first-start date, and the month calendar below with the matching days highlighted green and the Prev / Next buttons visible. -->
+<!-- SCREENSHOT: The Schedule Task panel with Backup Frequency set to Daily, all four of Start Day / Start Month / Start Hour / Start Minute filled in and active, the Start date/time line and the plain-English preview below them, and the month calendar with the matching days highlighted green and the Prev / Next buttons visible. The Hourly variant, with Start Day and Start Month greyed out, is already visible in remote-create-task.png. -->
 
 > **Note:** If you pick a day that does not exist in a given month (for example the 31st in February), you will see *"Selected day is invalid for this month. Adjusted to last valid day."*
 
@@ -1372,13 +1421,13 @@ The right panel starts with *"Select an account on the left to manage it, or cli
 
 ### Supported Providers
 
-**Quick sign-in (OAuth)** — these link with a browser sign-in and require no keys:
+**Quick sign-in (OAuth)** — *"These work with a quick sign-in."* They link with a browser sign-in and require no keys:
 
 | Provider |
 |---|
 | **Dropbox** |
 | **Google Drive** |
-| **Google Cloud Storage** |
+| **Google Cloud** |
 
 **Advanced: more providers** — expand this section for providers that need credentials:
 
@@ -1681,7 +1730,7 @@ Start the restore. Progress is shown as *"Restoring…"* and then *"Restore Comp
 
 On the **Remote Backups** tab, click **Snapshots** to open the snapshot manager. This is where ZFS point-in-time copies live — including the hourly, daily, and weekly snapshots that Super Simple Setup schedules for you on every new server.
 
-The left panel lists your **Datasets**. Select one to see its snapshots. Each snapshot offers three actions:
+The left panel lists your **Datasets**. Select one to see its snapshots. A **New Snapshot** button at the top lets you take one on demand — useful right before a risky change — without waiting for the schedule. Each snapshot offers three actions:
 
 | Action | What it does |
 |---|---|
@@ -1692,7 +1741,7 @@ The left panel lists your **Datasets**. Select one to see its snapshots. Each sn
 Snapshots that serve as replication anchors are marked, and hovering over the marker shows which tasks depend on them.
 
 ![Snapshot manager](images/snapshots-manager.png)
-<!-- SCREENSHOT: The snapshot manager with the Datasets list on the left, one dataset selected, and its snapshots listed on the right with timestamps and the Browse files / Rollback / Delete icons. Include at least one snapshot showing the replication-anchor marker. -->
+<!-- SCREENSHOT: The snapshot manager with the Datasets list on the left, one dataset selected, the New Snapshot button in the header, and its snapshots listed on the right with timestamps and the Browse files / Rollback / Delete icons. Include at least one snapshot showing the replication-anchor marker. -->
 
 > **Warning:** **Rollback** discards every change made after the snapshot was taken. If you only need a few files, use **Browse files** instead.
 
@@ -1702,7 +1751,7 @@ Snapshots that serve as replication anchors are marked, and hovering over the ma
 
 ## 16. Automatic Updates
 
-The Storage Wizard updates itself. Shortly after startup it checks for a new release, and when one is found a notification appears in the app.
+The Storage Wizard checks for a new release shortly after startup, and when one is found a notification appears in the app. Nothing is downloaded or installed until you say so — the app will not download in the background on its own, and it will not install an update when you quit. Pre-release versions are never offered.
 
 ![Update notification](images/update-notification.png)
 <!-- SCREENSHOT: The Update Available notification showing the version line, the release notes panel, and the Dismiss / Download Update buttons. -->
@@ -1732,18 +1781,19 @@ To update the **server** components (Houston Broadcaster, Super Simple Setup, Ta
 
 ## 17. Viewing Logs
 
-Open **View Logs** from the menu, or **Logs** from Quick Actions. The page is titled **Log Viewer** — *"View logs from the local client app and connected servers."*
+Open **View Logs** from the menu, or **Logs** from Quick Actions. A **Log Viewer** window opens over whatever you were doing — *"View logs from the local client app and connected servers."* — so you never lose your place.
 
 Passwords, tokens, and other secrets are automatically redacted before anything is written to disk.
 
 ![Log viewer](images/log-viewer.png)
-<!-- SCREENSHOT: The Log Viewer on the Client Logs tab, showing the "Log Viewer" heading and subtitle, the Refresh icon and Back button, the Client Logs / Server Logs tab bar, and a mix of info, warning and error entries with timestamps. -->
+<!-- SCREENSHOT: The Log Viewer modal on the Client Logs tab, showing the "Log Viewer" heading and subtitle, the Refresh and Close (✕) icons in the header, the Client Logs / Server Logs tab bar, and a mix of info, warning and error entries with timestamps. -->
 
-Two tabs split the view:
+The viewer has two tabs, plus a third that only appears when you opened it from a specific backup task:
 
 | Tab | What it shows |
 |---|---|
-| **Client Logs** | This desktop app's own activity — discovery, SSH connections, backup scheduling, restores, and errors |
+| **Task Log** | The run history for the backup task you opened it from. If you opened it for several tasks at once, a dropdown lets you switch between them. This tab is hidden unless you arrived here from a task. |
+| **Client Logs** | This desktop app's own activity — discovery, SSH connections, backup scheduling, restores, and errors. A **Log Date** dropdown picks which day's file to read, with today's marked *(today)*. |
 | **Server Logs** | Log files pulled from a connected server |
 
 On the **Server Logs** tab, a connection bar appears above the output:
@@ -1757,7 +1807,7 @@ On the **Server Logs** tab, a connection bar appears above the output:
 ![Server logs tab](images/log-viewer-server.png)
 <!-- SCREENSHOT: The Log Viewer on the Server Logs tab, showing the Server dropdown, the Source dropdown expanded with its three options, and the Fetch Server Logs button. -->
 
-The **Refresh** icon in the header re-reads the current view, and **Back** returns you to where you came from.
+The **Refresh** icon in the header re-reads the current view, and the **✕** closes the viewer and returns you to what you were doing.
 
 For a specific backup task:
 
@@ -1822,7 +1872,10 @@ Yes. Select the task in the Local Backups list and click **Stop Run**, or use th
 Yes — use **Setup Multiple Servers** for Bulk Server Setup, and export a template so you can reuse the same configuration next time.
 
 **Does the app update itself?**
-Yes. It checks for updates shortly after launch, downloads them in the background, and installs on quit.
+It checks for updates shortly after launch and tells you when one is available, but it never downloads or installs anything without your say-so. You click **Download Update**, then **Install Now** (Linux) or **Restart & Install** (Windows and macOS). Nothing is installed when you quit the app.
+
+**Do I need a different macOS download for my Mac?**
+No. There is a single universal macOS build that runs natively on both Apple Silicon and Intel. The older `arm64` and `x64` downloads no longer exist. Choose the `.pkg` if you plan to use Local Backups — it installs the background backup service during installation, so the app never has to ask you for an administrator password later.
 
 ---
 
@@ -1840,8 +1893,8 @@ Yes. It checks for updates shortly after launch, downloads them in the backgroun
 | **Server Management keeps asking for the admin password** | That is expected for destructive changes. Confirm once and it stays unlocked for five minutes — the amber **Admin unlocked** badge in the header shows how long is left. |
 | **A server shows "Backup only" and its storage is blank** | It was added with **Connect for Backup Only**, so no admin credential is stored here. Backups still run. Open Server Management and click **Add Admin Credentials** to manage it. |
 | **Local backup fails with invalid credentials** | Re-check the Samba username and password. These are the User Name and Password you created during Super Simple Setup, not your computer's login. |
-| **Local backups never run on macOS** | Grant cron **Full Disk Access** in System Settings → Privacy & Security. |
-| **Local backups never run on Linux** | The first backup requires your admin password to install the schedule. Re-run the wizard and supply it when prompted. |
+| **Local backups never run on macOS** | Local Backups run from a background service, not cron. Open the backup's Summary screen — if it shows **Full Disk Access required**, click **Open Full Disk Access settings** and add `/Library/Application Support/45Drives/Houston/bin/StorageWizardBackup` to the list in System Settings → Privacy & Security. If you installed from the `.dmg`, also confirm you entered your administrator password when the first backup asked for it. |
+| **Local backups never run on Linux** | Linux schedules Local Backups with cron, and the first one needs your admin password to set up the server connection. Re-run the wizard and supply it when prompted. |
 | **Remote backup task fails** | Select the task and click **Logs**. Check that the destination path exists and that the remote user has write permission. |
 | **Cloud sign-in window never opens** | Allow pop-ups for the app and click **Authenticate with `<Provider>`** again. |
 | **WireShield says "Needs Attention"** | Read the reported reason. Most often the server cannot reach the pairing coordinator — check the server's internet access and DNS. |
