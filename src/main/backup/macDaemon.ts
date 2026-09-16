@@ -295,6 +295,105 @@ export function revealDaemonBinary(): void {
   }
 }
 
+/** Append-only trace of every priming attempt; the only window into a flow that must not throw. */
+export const MAC_TCC_LOG = path.join(MAC_SUPPORT_DIR, "tcc-prime.log");
+
+function tccLog(message: string): void {
+  console.log(`[tcc] ${message}`);
+  try {
+    fs.mkdirSync(MAC_SUPPORT_DIR, { recursive: true, mode: 0o700 });
+    fs.appendFileSync(MAC_TCC_LOG, `[${new Date().toISOString()}] ${message}\n`);
+  } catch {
+    /* logging must never be the thing that breaks task creation */
+  }
+}
+
+function describeError(err: any): string {
+  return `${err?.code ?? err?.name ?? "Error"}: ${err?.message ?? String(err)}`;
+}
+
+/**
+ * TCC will not present a prompt for a service whose usage-description key is missing from
+ * the running bundle's Info.plist — it denies silently. Under `yarn dev` the running
+ * bundle is Electron's own, which declares none of them, so no prompt can appear there no
+ * matter how correct the rest of this is. Logged so that case is obvious rather than
+ * looking like a code failure.
+ */
+const TCC_USAGE_KEYS = [
+  "NSNetworkVolumesUsageDescription",
+  "NSRemovableVolumesUsageDescription",
+  "NSDesktopFolderUsageDescription",
+  "NSDocumentsFolderUsageDescription",
+  "NSDownloadsFolderUsageDescription",
+];
+
+function logBundleUsageKeys(): void {
+  const plist = path.resolve(path.dirname(process.execPath), "..", "Info.plist");
+  try {
+    // Binary plists still carry the key names as ASCII, so a substring test is enough.
+    const raw = fs.readFileSync(plist, "latin1");
+    const present = TCC_USAGE_KEYS.filter((key) => raw.includes(key));
+    const bundleId = /CFBundleIdentifier[\s\S]{0,80}?([A-Za-z0-9.\-]+\.[A-Za-z0-9.\-]+)/.exec(raw)?.[1] ?? "?";
+    tccLog(`bundle=${plist} id=${bundleId} usageKeys=[${present.join(", ") || "NONE"}]`);
+    if (!present.includes("NSNetworkVolumesUsageDescription")) {
+      tccLog(
+        "WARNING: NSNetworkVolumesUsageDescription is absent from the running bundle — " +
+        "macOS will deny network-volume access silently and show no prompt. " +
+        "This is expected under `yarn dev`; test with a packaged build."
+      );
+    }
+  } catch (err) {
+    tccLog(`bundle=${plist} unreadable (${describeError(err)})`);
+  }
+}
+
+/**
+ * Read a directory and then open one real file inside it. The listing alone can be served
+ * from cache without a filesystem access, which is not enough to make TCC decide anything.
+ */
+async function probeRead(label: string, target: string): Promise<void> {
+  try {
+    const stat = await fs.promises.stat(target);
+    if (stat.isFile()) {
+      const handle = await fs.promises.open(target, "r");
+      await handle.read(Buffer.alloc(1), 0, 1, 0).finally(() => handle.close());
+      tccLog(`${label}: read file ${target} ok`);
+      return;
+    }
+
+    const entries = await fs.promises.readdir(target, { withFileTypes: true });
+    tccLog(`${label}: readdir ${target} ok (${entries.length} entries)`);
+
+    const file = entries.find((e) => e.isFile() && !e.name.startsWith("."));
+    if (!file) return;
+    const handle = await fs.promises.open(path.join(target, file.name), "r");
+    await handle.read(Buffer.alloc(1), 0, 1, 0).finally(() => handle.close());
+    tccLog(`${label}: read file ${file.name} ok`);
+  } catch (err) {
+    tccLog(`${label}: FAILED on ${target} (${describeError(err)})`);
+  }
+}
+
+/**
+ * A write is what a backup actually does, and it is the access TCC is most reliably
+ * asked about on a network volume. Removed again immediately.
+ */
+async function probeWrite(label: string, dir: string): Promise<void> {
+  const probe = path.join(dir, `.houston-tcc-probe-${process.pid}`);
+  try {
+    await fs.promises.writeFile(probe, "");
+    tccLog(`${label}: write probe ok at ${probe}`);
+  } catch (err) {
+    tccLog(`${label}: write probe FAILED at ${probe} (${describeError(err)})`);
+  } finally {
+    try {
+      await fs.promises.unlink(probe);
+    } catch {
+      /* nothing was created */
+    }
+  }
+}
+
 /**
  * Touch everything a task will need so TCC raises its prompts now, during task creation,
  * rather than at the first scheduled run. An unattended run has no GUI session, so TCC
@@ -304,7 +403,8 @@ export function revealDaemonBinary(): void {
  * grant, which macOS offers no way to request.
  *
  * Every step is best-effort: an unreachable server or a denied folder must not block task
- * creation, because the prompt having been shown is the whole point.
+ * creation, because the prompt having been shown is the whole point. Every step is also
+ * logged to MAC_TCC_LOG, because "best-effort" otherwise means "fails invisibly".
  *
  * Must stay off the main thread. TCC blocks the calling thread while it asks the user, and
  * the app can only draw that prompt if its run loop is still turning, so a synchronous
@@ -316,34 +416,43 @@ export async function primeTccAccess(
   username: string,
   sources: string[]
 ): Promise<void> {
+  tccLog(`--- prime start host=${host} share=${share} user=${username} sources=${JSON.stringify(sources)}`);
+  logBundleUsageKeys();
+
   for (const source of sources) {
-    try {
-      await fs.promises.readdir(source);
-    } catch {
-      /* denied, or gone since it was picked */
-    }
+    tccLog(`source ${source} tccProtected=${isTccProtectedPath(source)}`);
+    await probeRead("source", source);
   }
 
   let mountPoint = "";
   try {
     const script = getAssetSync("static", "mount_smb_mac.sh");
-    const { stdout } = await execFileAsync("/bin/bash", [script, host, share, username, "silent"], {
-      encoding: "utf8",
-      timeout: 60_000,
-    });
+    tccLog(`mount: running ${script}`);
+    const { stdout, stderr } = await execFileAsync(
+      "/bin/bash",
+      [script, host, share, username, "silent"],
+      { encoding: "utf8", timeout: 60_000 }
+    );
+    tccLog(`mount: stdout=${stdout.trim()}`);
+    if (stderr.trim()) tccLog(`mount: stderr=${stderr.trim()}`);
     mountPoint = JSON.parse(stdout).MountPoint ?? "";
-  } catch {
-    /* share unreachable, credentials not exported yet, or no JSON to read */
+  } catch (err: any) {
+    tccLog(
+      `mount: FAILED (${describeError(err)})` +
+      `${err?.stdout ? ` stdout=${String(err.stdout).trim()}` : ""}` +
+      `${err?.stderr ? ` stderr=${String(err.stderr).trim()}` : ""}`
+    );
   }
 
-  // Separate from the mount: the network-volume prompt is raised by reading the volume,
+  // Separate from the mount: the network-volume prompt is raised by touching the volume,
   // not by mounting it. Trust the mountpoint the script reported, since an empty share
   // looks unmounted to resolveMacShareRoot().
-  try {
-    await fs.promises.readdir(mountPoint || resolveMacShareRoot(share));
-  } catch {
-    /* not mounted */
-  }
+  const target = mountPoint || resolveMacShareRoot(share);
+  tccLog(`volume: probing ${target} (reported=${mountPoint || "none"})`);
+  await probeRead("volume", target);
+  await probeWrite("volume", target);
+
+  tccLog("--- prime end");
 }
 
 /**

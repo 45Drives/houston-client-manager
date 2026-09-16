@@ -35,6 +35,7 @@
             "NSDesktopFolderUsageDescription": "45Drives Storage Wizard needs access to your Desktop to back it up.",
             "NSDocumentsFolderUsageDescription": "45Drives Storage Wizard needs access to your Documents to back them up.",
             "NSDownloadsFolderUsageDescription": "45Drives Storage Wizard needs access to your Downloads to back them up.",
+            "NSNetworkVolumesUsageDescription": "45Drives Storage Wizard needs access to network volumes to copy your backups to the server share.",
             "NSRemovableVolumesUsageDescription": "45Drives Storage Wizard needs access to removable volumes to back them up.",
             "NSBonjourServices": [
                 "_houstonserver._tcp"
