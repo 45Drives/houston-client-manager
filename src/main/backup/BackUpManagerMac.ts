@@ -13,6 +13,7 @@ import {
   ensureBackupDaemon,
   ensureUserDirs,
   isDaemonInstalled,
+  primeTccAccess,
   releaseTaskLock,
   removeLegacyCronLines,
   taskLockHolder,
@@ -120,6 +121,9 @@ export class BackUpManagerMac implements BackUpManager {
     this.prepareRuntime(safeHost, safeShare, safeUser);
     this.writeTaskScript(task, safeUser);
 
+    // After the script exists, so a declined prompt still leaves a usable task.
+    primeTccAccess(safeHost, safeShare, safeUser, [task.source]);
+
     // Sync backup config to broadcaster API (best-effort, non-blocking)
     syncBackupConfig(safeHost, username, password, task, getClientId()).catch(() => { });
 
@@ -138,6 +142,7 @@ export class BackUpManagerMac implements BackUpManager {
     const safeUser = assertSafeUsername(username);
     const clientId = getClientId();
     const prepared = new Set<string>();
+    const sourcesByShare = new Map<string, { host: string; share: string; sources: string[] }>();
 
     for (let i = 0; i < total; i++) {
       const task = tasks[i];
@@ -154,9 +159,19 @@ export class BackUpManagerMac implements BackUpManager {
         this.prepareRuntime(task.host, task.share, safeUser);
       }
 
+      const group = sourcesByShare.get(key) ?? { host: task.host, share: task.share, sources: [] };
+      group.sources.push(task.source);
+      sourcesByShare.set(key, group);
+
       this.writeTaskScript(task, safeUser);
       syncBackupConfig(task.host, username, password, task, clientId).catch(() => { });
       onProgress?.(i + 1, total, `Scheduled task ${task.uuid}`);
+    }
+
+    // Once every script is on disk, so a declined prompt still leaves usable tasks.
+    for (const { host, share, sources } of sourcesByShare.values()) {
+      onProgress?.(total, total, 'Requesting macOS permissions');
+      primeTccAccess(host, share, safeUser, sources);
     }
   }
 

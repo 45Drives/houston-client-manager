@@ -22,14 +22,13 @@
 
       <div v-if="thisOs === 'mac'" class="p-2 text-sm bg-blue-500/30 rounded-md space-y-1">
         <p>
-          <strong>macOS will ask for permission the first time this backup runs.</strong>
-          You'll see one or more prompts from <span class="font-mono">StorageWizardBackup</span> — the
-          background service that copies your files — asking to access folders such as Desktop,
-          Documents, Downloads or a connected drive.
+          <strong>macOS will ask for permission when you click Next.</strong>
+          You'll see one or more prompts asking to access the backup share and folders such as
+          Desktop, Documents or Downloads.
         </p>
         <p>
-          Click <span class="font-semibold">Allow</span> on each one. macOS asks once per protected
-          folder, so you won't be prompted again for the same folders on later runs.
+          Click <span class="font-semibold">Allow</span> on each one. We ask now rather than at
+          your first scheduled backup, so nothing fails while you're away from the computer.
         </p>
       </div>
 
@@ -47,8 +46,9 @@
           Open Full Disk Access settings
         </button>
         <p class="text-xs opacity-80">
-          The service will be revealed in Finder — drag it into the list, or use the + button and
-          press ⌘⇧G to paste: <code>{{ fdaDaemonPath }}</code>
+          <strong>StorageWizardBackup</strong> is already in the list with its switch turned
+          <strong>off</strong> — turn it on. If it isn't listed, drag it in from the Finder window
+          that opens, or use the + button and press ⌘⇧G to paste: <code>{{ fdaDaemonPath }}</code>
         </p>
       </div>
 

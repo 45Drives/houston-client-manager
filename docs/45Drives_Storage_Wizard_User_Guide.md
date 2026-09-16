@@ -232,9 +232,11 @@ With the `.dmg`, the background service is not installed up front. The first tim
 
 ![macOS DMG install — drag the app into Applications](images/install-macos-dmg.png)
 <!-- SCREENSHOT: The mounted .dmg window showing the 45Drives Storage Wizard icon and the arrow pointing at the Applications folder alias. -->
-<!-- SCREENSHOT NEEDED (images/install-macos-pkg.png): The macOS Installer running the .pkg, on the Installation Type or authentication step, showing the 45Drives Storage Wizard name and the administrator password prompt. Add the image reference above this comment once captured. -->
 
-> **Important:** Local Backups on macOS run from a system background service, not from cron, so they keep running when you are signed out. That service is installed at `/Library/Application Support/45Drives/Houston/bin/StorageWizardBackup`. If you back up a protected folder — Desktop, Documents, Downloads, iCloud Drive, your Photos library, or an external volume under `/Volumes` — you must grant that file **Full Disk Access** under **System Settings → Privacy & Security → Full Disk Access**. The app detects this and walks you through it on the backup Summary screen.
+![macOS PKG install — the Installer running](images/install-macos-pkg.png)
+<!-- SCREENSHOT: The macOS Installer running the .pkg, on the Installation Type or authentication step, showing the 45Drives Storage Wizard name and the administrator password prompt. -->
+
+> **Important:** Local Backups on macOS run from a system background service, not from cron, so they keep running when you are signed out. That service is installed at `/Library/Application Support/45Drives/Houston/bin/StorageWizardBackup`. If you back up a protected folder — Desktop, Documents, Downloads, iCloud Drive, your Photos library, or an external volume under `/Volumes` — you must switch that file on under **System Settings → Privacy & Security → Full Disk Access**. macOS never prompts for Full Disk Access, so this toggle has to be turned on by hand; the app detects the situation and walks you through it on the backup Summary screen. See [What macOS Asks For](#what-macos-asks-for-macos-only).
 
 ### Linux
 
@@ -392,7 +394,8 @@ Whenever something is actually running, an extra **In Progress** section appears
 
 This means you can close the Backup Manager and still keep an eye on a long transfer from anywhere in the app.
 
-<!-- SCREENSHOT NEEDED (images/menu-in-progress.png): The same menu panel with a backup running, so the In Progress section is visible — at least one backup card with its progress bar and Stop Backup button, ideally alongside a restore card showing View Restore and Cancel. Add the image reference above this comment once captured. -->
+![Menu — In Progress section](images/menu-in-progress.png)
+<!-- SCREENSHOT: The menu panel with a backup running, so the In Progress section is visible — at least one backup card with its progress bar and Stop Backup button, ideally alongside a restore card showing View Restore and Cancel. -->
 
 ### Settings
 
@@ -1093,14 +1096,63 @@ The screen lists the **Backup Location** and every **Backup Task** with its sour
 
 ![Local backup — Summary](images/local-backup-03-summary.png)
 <!-- SCREENSHOT: The Summary step showing the Backup Location line and the scrollable list of task cards, each with Source, Frequency and Starts values. -->
-<!-- SCREENSHOT NEEDED (images/local-backup-03-summary-macos.png): The same Summary step captured on macOS, showing the first-run admin-password notice, the "macOS will ask for permission the first time this backup runs" box, and the amber "Full Disk Access required" box with its Open Full Disk Access settings button and the StorageWizardBackup path. Add the image reference above this comment once captured. -->
+
+![Local backup — Summary on macOS](images/local-backup-03-summary-macos.png)
+<!-- SCREENSHOT: The same Summary step captured on macOS, showing the first-run admin-password notice, the permission notice, and the amber "Full Disk Access required" box with its Open Full Disk Access settings button and the StorageWizardBackup path. -->
 
 Platform-specific notices appear here:
 
 - **Linux:** *"On Linux, if this is your first backup, you will be prompted for your admin password to set up the server connection."*
 - **macOS (`.dmg` installs, first backup only):** *"On macOS, the first backup installs a background service so your backups keep running when you're signed out. You'll be asked for your admin password once."* If you installed with the `.pkg`, this step already happened during installation and you will not be asked again.
-- **macOS (all installs):** *"macOS will ask for permission the first time this backup runs."* The prompts come from `StorageWizardBackup`, the background service. Click **Allow** on each one — macOS asks once per protected folder.
-- **macOS (protected folders only):** If a folder you chose is one macOS locks down — Desktop, Documents, Downloads, iCloud Drive, your Photos library, or an external volume under `/Volumes` — a **Full Disk Access required** box appears with an **Open Full Disk Access settings** button. Clicking it opens the right System Settings pane and reveals the service in Finder so you can drag it into the list. You can also use the **+** button and press **⌘⇧G** to paste the path shown on screen.
+- **macOS (all installs):** *"macOS will ask for permission when you click Next."*
+- **macOS (protected folders only):** A **Full Disk Access required** box appears if a folder you chose is one macOS locks down — Desktop, Documents, Downloads, iCloud Drive, your Photos library, or an external volume under `/Volumes`.
+
+The next section explains each of the macOS prompts in the order you will see them.
+
+### What macOS Asks For (macOS only)
+
+Three separate things happen on macOS, and they are easy to confuse because they all look like permission prompts. Only the last one has to be done by hand, and skipping it is the single most common reason scheduled backups silently stop working.
+
+#### 1. "Background Items Added"
+
+Right after the background service is installed — during the `.pkg` install, or at your first backup if you used the `.dmg` — macOS shows a notification in the corner of the screen.
+
+![macOS Background Items Added notification](images/local-backup-macos-background-items.png)
+<!-- SCREENSHOT: The macOS "Background Items Added" notification reading "Software from 'Protocase Incorporated' added items that can run in the background." -->
+
+It reads *"Software from 'Protocase Incorporated' added items that can run in the background."* **Protocase Incorporated is the correct name** — Protocase is 45Drives' parent company and the certificate the app is signed with, so the notification will not say 45Drives. Nothing is required of you; the notification is informational and disappears on its own. The item it refers to is the backup service, and you can see it listed under **System Settings → General → Login Items & Extensions**.
+
+#### 2. "Would like to access files on a network volume"
+
+When you click **Next** on the Summary step, the app deliberately reaches for the backup share and for each folder you chose. That makes macOS raise its permission prompts there and then, while you are sitting in front of the wizard.
+
+![macOS network volume permission prompt](images/local-backup-macos-access-volume.png)
+<!-- SCREENSHOT: The macOS TCC prompt reading "45Drives-Storage-Wizard.app would like to access files on a network volume." with Don't Allow and Allow buttons. -->
+
+Click **Allow**. Backups cannot write to the server without it. You may also see prompts for Desktop, Documents or Downloads if you selected folders there; click **Allow** on each.
+
+These are asked up front on purpose. If they were left until the first scheduled backup, that backup would run with nobody signed in, macOS would have no one to ask, and it would quietly refuse instead of prompting.
+
+This grant is recorded under **System Settings → Privacy & Security → Files and Folders**, *not* under Full Disk Access — allowing it does not tick anything in the Full Disk Access list, and that is expected rather than a failure.
+
+#### 3. Full Disk Access — the one you must turn on yourself
+
+This step is only needed when a backup source lives in a folder macOS protects: Desktop, Documents, Downloads, iCloud Drive, your Photos library, or an external volume under `/Volumes`. A backup of any other folder needs nothing here.
+
+**macOS provides no way for an application to ask for Full Disk Access.** There is no prompt, and no amount of clicking **Allow** elsewhere will grant it. It has to be switched on manually, once.
+
+![macOS Full Disk Access list](images/local-backup-macos-FDA.png)
+<!-- SCREENSHOT: System Settings → Privacy & Security → Full Disk Access with StorageWizardBackup visible in the list and its toggle switched on. -->
+
+`StorageWizardBackup` appears in the Full Disk Access list on its own, **with the toggle off**. The backup service checks its own permission each time it wakes, and that check is what makes macOS list it. Seeing the entry there does not mean it has been granted — you have to flick the switch.
+
+If a grant is needed, the **Congratulations** step at the end of the wizard says so and offers the same **Open Full Disk Access settings** button, so you are told before you leave the wizard rather than finding out from a failed backup.
+
+1. Click **Open Full Disk Access settings**. This opens the correct System Settings pane and reveals the service in Finder.
+2. Find **StorageWizardBackup** in the list and turn its toggle **on**.
+3. If it is not listed, drag it in from the Finder window that opened, or click **+** and press **⌘⇧G** to paste the path shown in the wizard: `/Library/Application Support/45Drives/Houston/bin/StorageWizardBackup`.
+
+> **Why this matters:** backups you run yourself from inside the app may succeed without this, because they inherit the app's own permissions. Scheduled backups do not — they run as a background service with no one signed in, macOS cannot display a prompt to anybody, and the copy fails with a permission error. If your source folders are protected ones, grant Full Disk Access before you rely on the schedule.
 
 ### Step 4: Congratulations
 
@@ -1877,6 +1929,12 @@ It checks for updates shortly after launch and tells you when one is available, 
 **Do I need a different macOS download for my Mac?**
 No. There is a single universal macOS build that runs natively on both Apple Silicon and Intel. The older `arm64` and `x64` downloads no longer exist. Choose the `.pkg` if you plan to use Local Backups — it installs the background backup service during installation, so the app never has to ask you for an administrator password later.
 
+**Why does macOS say "Protocase Incorporated" added a background item?**
+That is expected. Protocase is 45Drives' parent company and the identity the app is code-signed with, so macOS shows that name rather than 45Drives. The background item it refers to is the backup service that runs your scheduled Local Backups.
+
+**I clicked Allow on the macOS permission prompt, but Full Disk Access is still switched off. Did it fail?**
+No — they are two different permissions. The prompt that asks to *"access files on a network volume"* grants the app access to the backup share and is recorded under Privacy & Security → Files and Folders. Full Disk Access is a separate permission belonging to the background service, and macOS has no way to prompt for it at all. If you back up a protected folder, you must switch **StorageWizardBackup** on yourself in System Settings → Privacy & Security → Full Disk Access. The wizard tells you on the Congratulations step when this is needed.
+
 ---
 
 ## 19. Troubleshooting
@@ -1893,7 +1951,7 @@ No. There is a single universal macOS build that runs natively on both Apple Sil
 | **Server Management keeps asking for the admin password** | That is expected for destructive changes. Confirm once and it stays unlocked for five minutes — the amber **Admin unlocked** badge in the header shows how long is left. |
 | **A server shows "Backup only" and its storage is blank** | It was added with **Connect for Backup Only**, so no admin credential is stored here. Backups still run. Open Server Management and click **Add Admin Credentials** to manage it. |
 | **Local backup fails with invalid credentials** | Re-check the Samba username and password. These are the User Name and Password you created during Super Simple Setup, not your computer's login. |
-| **Local backups never run on macOS** | Local Backups run from a background service, not cron. Open the backup's Summary screen — if it shows **Full Disk Access required**, click **Open Full Disk Access settings** and add `/Library/Application Support/45Drives/Houston/bin/StorageWizardBackup` to the list in System Settings → Privacy & Security. If you installed from the `.dmg`, also confirm you entered your administrator password when the first backup asked for it. |
+| **Local backups never run on macOS** | Local Backups run from a background service, not cron. Open **System Settings → Privacy & Security → Full Disk Access** and check that **StorageWizardBackup** is present *and its toggle is on* — it lists itself with the toggle off, and macOS never prompts you to turn it on. If it is missing, open the backup's Summary screen and click **Open Full Disk Access settings**, then add `/Library/Application Support/45Drives/Houston/bin/StorageWizardBackup`. If you installed from the `.dmg`, also confirm you entered your administrator password when the first backup asked for it. |
 | **Local backups never run on Linux** | Linux schedules Local Backups with cron, and the first one needs your admin password to set up the server connection. Re-run the wizard and supply it when prompted. |
 | **Remote backup task fails** | Select the task and click **Logs**. Check that the destination path exists and that the remote user has write permission. |
 | **Cloud sign-in window never opens** | Allow pop-ups for the app and click **Authenticate with `<Provider>`** again. |

@@ -293,6 +293,50 @@ export function revealDaemonBinary(): void {
 }
 
 /**
+ * Touch everything a task will need so TCC raises its prompts now, during task creation,
+ * rather than at the first scheduled run. An unattended run has no GUI session, so TCC
+ * denies it silently instead of asking — a user who never saw a prompt would just find
+ * failed backups. Prompts raised here are attributed to the app and cover app-initiated
+ * runs only; the daemon is a separate executable and still needs its own Full Disk Access
+ * grant, which macOS offers no way to request.
+ *
+ * Every step is best-effort: an unreachable server or a denied folder must not block task
+ * creation, because the prompt having been shown is the whole point.
+ */
+export function primeTccAccess(
+  host: string,
+  share: string,
+  username: string,
+  sources: string[]
+): void {
+  for (const source of sources) {
+    try {
+      fs.readdirSync(source);
+    } catch {
+      /* denied, or gone since it was picked */
+    }
+  }
+
+  try {
+    const script = getAssetSync("static", "mount_smb_mac.sh");
+    execFileSync("/bin/bash", [script, host, share, username, "silent"], {
+      encoding: "utf8",
+      timeout: 60_000,
+    });
+  } catch {
+    /* share unreachable or credentials not exported yet */
+  }
+
+  // Separate from the mount: the network-volume prompt is raised by reading the volume,
+  // not by mounting it.
+  try {
+    fs.readdirSync(resolveMacShareRoot(share));
+  } catch {
+    /* not mounted */
+  }
+}
+
+/**
  * Drop the crontab lines written by the pre-daemon implementation. User-level, so no
  * prompt; safe to call on every schedule operation.
  */export function removeLegacyCronLines(): void {

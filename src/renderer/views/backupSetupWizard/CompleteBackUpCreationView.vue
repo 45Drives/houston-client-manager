@@ -35,6 +35,25 @@
             Backups require this computer and the backup server to be powered on at scheduled times.
           </p>
         </div>
+
+        <div v-if="needsFullDiskAccess" class="mt-4 w-full p-3 text-sm bg-yellow-500/40 rounded-md space-y-2">
+          <p>
+            <strong>One more step — turn on Full Disk Access.</strong>
+            You're backing up a folder macOS protects, so the background backup service needs
+            Full Disk Access or your scheduled backups will fail. macOS gives no way to ask for
+            this automatically, so it has to be switched on by hand. It only takes a moment and
+            you only do it once.
+          </p>
+          <button type="button" class="btn btn-secondary h-fit" @click="openFdaSettings">
+            Open Full Disk Access settings
+          </button>
+          <p class="text-xs opacity-80">
+            <strong>StorageWizardBackup</strong> is already in the list with its switch turned
+            <strong>off</strong> — turn it on. If it isn't listed, drag it in from the Finder window
+            that opens, or use the + button and press ⌘⇧G to paste:
+            <code>{{ fdaDaemonPath }}</code>
+          </p>
+        </div>
       </div>
 
     </div>
@@ -65,7 +84,7 @@ import { CardContainer, useEnterToAdvance } from "@45drives/houston-common-ui";
 import { ref, watch, inject, onActivated, onBeforeUnmount } from "vue";
 import { useWizardSteps} from "@45drives/houston-common-ui";
 import { EasySetupProgress, IPCRouter } from "@45drives/houston-common-lib";
-import { backUpSetupConfigKey, closeWizardModalKey } from "../../keys/injection-keys";
+import { backUpSetupConfigKey, closeWizardModalKey, thisOsInjectionKey } from "../../keys/injection-keys";
 import type { BackUpSetupConfig } from "@45drives/houston-common-lib";
 import { useHeader } from '../../composables/useHeader'
 import { useRouter } from 'vue-router'
@@ -79,12 +98,36 @@ const error = ref<string>();
 const completedSteps = ref<EasySetupProgress[]>([]);
 const backUpSetupConfig = inject(backUpSetupConfigKey);
 const closeWizardModal = inject(closeWizardModalKey, () => router.push({ name: 'backup-manage' }));
+const thisOs = inject(thisOsInjectionKey);
 
-watch(setupComplete, (value) => {
+const needsFullDiskAccess = ref(false);
+const fdaDaemonPath = ref('');
+
+const openFdaSettings = () => window.electron.macOpenFdaSettings();
+
+watch(setupComplete, async (value) => {
   if (value === "yes" && backUpSetupConfig) {
+    // Read before the task list is cleared below.
+    if (thisOs === 'mac') await checkFullDiskAccess(backUpSetupConfig.backUpTasks.map(t => t.source));
     backUpSetupConfig.backUpTasks = [];
   }
 });
+
+/**
+ * Scheduling has already primed the app's own TCC prompts, so by now the daemon has been
+ * installed and has reported whether it holds Full Disk Access. Only warn when a source
+ * actually sits in a protected location.
+ */
+async function checkFullDiskAccess(sources: string[]): Promise<void> {
+  for (const source of sources) {
+    const fda = await window.electron.macFdaStatus(source);
+    if (fda?.supported && fda.sourceNeedsAccess && fda.status !== 'granted') {
+      fdaDaemonPath.value = fda.daemonPath;
+      needsFullDiskAccess.value = true;
+      return;
+    }
+  }
+}
 
 function goToBackupWizard(): void {
 
