@@ -1,9 +1,9 @@
-import { dialog } from 'electron';
 import sudo from 'sudo-prompt';
 import { execFile } from 'child_process';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
+import { showMessageBoxOwnedByMain } from './dialogParent';
 
 const SUDO_OPTIONS = { name: '45Drives Storage Wizard' };
 
@@ -168,7 +168,7 @@ export async function ensureClientTools(
   }
 
   const pm = detectPackageManager()!;
-  const choice = await dialog.showMessageBox({
+  const choice = await showMessageBoxOwnedByMain({
     type: 'question',
     title: 'Install Required Tools',
     message: 'Missing backup tools',

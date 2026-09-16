@@ -98,6 +98,7 @@ import { installServerDepsRemotely } from './installServerDeps';
 import { getPin, rememberPin } from './certPins'
 import { getCredentialManager } from './credentialManager';
 import { getVaultCryptoStatus } from './vaultCrypto';
+import { showMessageBoxOwnedByMain, showOpenDialogOwnedByMain } from './dialogParent';
 import { assertSafeHost, assertSafeShare, assertSafeUsername } from './security';
 import { checkSSH, verifySshCredentials } from './setupSsh';
 import { disposeAllSSH } from './sshPool';
@@ -1171,7 +1172,7 @@ app.whenReady().then(() => {
 
     // known & changed → ask to update or block
     if (pinned && pinned.fingerprint !== presented) {
-      dialog.showMessageBox({
+      showMessageBoxOwnedByMain({
         type: 'warning',
         message: `Certificate changed for ${req.hostname}`,
         detail: `Pinned: ${pinned.fingerprint}\nPresented: ${presented}\n\nBlock unless you know the cert rotated.`,
@@ -1185,7 +1186,7 @@ app.whenReady().then(() => {
     }
 
     // first seen → TOFU prompt
-    dialog.showMessageBox({
+    showMessageBoxOwnedByMain({
       type: 'question',
       message: `Trust this server?`,
       detail: `Host: ${req.hostname}\nFingerprint: ${presented}`,
@@ -1278,7 +1279,7 @@ app.whenReady().then(() => {
 
   ipcMain.handle('dialog:openFolder', async (event) => {
     assertMainWindowSender(event);
-    const result = await dialog.showOpenDialog({
+    const result = await showOpenDialogOwnedByMain({
       properties: ['openDirectory'], // Opens folder selection dialog
     });
 
@@ -1287,7 +1288,7 @@ app.whenReady().then(() => {
 
   ipcMain.handle('dialog:openSshKey', async (event) => {
     assertMainWindowSender(event);
-    const result = await dialog.showOpenDialog({
+    const result = await showOpenDialogOwnedByMain({
       title: 'Select SSH Private Key',
       properties: ['openFile', 'showHiddenFiles'],
       filters: [
