@@ -39,14 +39,17 @@
         <div v-if="needsFullDiskAccess" class="mt-4 w-full p-3 text-sm bg-yellow-500/40 rounded-md space-y-2">
           <p>
             <strong>One more step — turn on Full Disk Access.</strong>
+            If you haven't already done this from the previous screen, do it now.
             You're backing up a folder macOS protects, so the background backup service needs
             Full Disk Access or your scheduled backups will fail. macOS gives no way to ask for
             this automatically, so it has to be switched on by hand. It only takes a moment and
             you only do it once.
           </p>
-          <button type="button" class="btn btn-secondary h-fit" @click="openFdaSettings">
-            Open Full Disk Access settings
-          </button>
+          <div class="flex justify-center">
+            <button type="button" class="btn btn-secondary h-fit" @click="openFdaSettings">
+              Open Full Disk Access settings
+            </button>
+          </div>
           <p class="text-xs opacity-80">
             <strong>StorageWizardBackup</strong> is already in the list with its switch turned
             <strong>off</strong> — turn it on. If it isn't listed, drag it in from the Finder window
