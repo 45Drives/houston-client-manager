@@ -77,14 +77,15 @@
 
     <!-- Buttons -->
     <template #footer>
-      <div v-if="!autoAdvancing" class="button-group-row w-full justify-between">
+      <!-- Always rendered, so a stalled auto-advance can never trap the user on this step. -->
+      <div class="button-group-row w-full justify-between">
 
         <button @click="proceedToPreviousStep" class="btn btn-secondary h-fit">
           Back
         </button>
 
-        <button :disabled="isButtonDisabled" @click="proceedToNextStep" class="btn btn-primary h-fit">
-          <template v-if="isValidating">Validating…</template>
+        <button :disabled="isButtonDisabled || autoAdvancing" @click="proceedToNextStep" class="btn btn-primary h-fit">
+          <template v-if="isValidating || autoAdvancing">Validating…</template>
           <template v-else>Next</template>
         </button>
 
@@ -97,7 +98,7 @@
 <script setup lang="ts">
 
 import { CardContainer } from '@45drives/houston-common-ui'
-import { ref, computed, inject, onMounted } from 'vue';
+import { ref, computed, inject, onMounted, onActivated } from 'vue';
 import { EyeIcon, EyeSlashIcon } from "@heroicons/vue/20/solid";
 import { LockClosedIcon, ServerIcon, ExclamationCircleIcon } from "@heroicons/vue/24/outline";
 import { useWizardSteps, useAutoFocus, useEnterToAdvance } from '@45drives/houston-common-ui';
@@ -131,6 +132,12 @@ const targetDisplay = computed(() => {
   if (displayHost && share) return `${displayHost}:${share}`;
   const [host, rest] = target.split(':');
   return rest ? `${host}:${rest.split('/')[0]}` : target;
+});
+
+// The wizard keeps steps alive, so a successful auto-advance would otherwise leave the
+// spinner showing — and the footer hidden — when the user comes back from Summary.
+onActivated(() => {
+  autoAdvancing.value = false;
 });
 
 // Try to auto-fill SMB credentials from the stored server entry

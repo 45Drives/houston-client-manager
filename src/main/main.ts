@@ -621,8 +621,10 @@ function createWindow() {
   ipcMain.handle('mac:openFdaSettings', (event) => {
     assertMainWindowSender(event);
     if (getOS() !== 'mac') return false;
-    openFullDiskAccessSettings();
+    // Finder first: whichever window opens last wins the foreground, and the user needs
+    // to land on the settings pane rather than on the binary it reveals.
     revealDaemonBinary();
+    setTimeout(openFullDiskAccessSettings, 600);
     return true;
   });
   
