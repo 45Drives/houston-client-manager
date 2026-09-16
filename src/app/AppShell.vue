@@ -96,6 +96,8 @@ useIpcActions(() => currentServer.value)
 
 // (optional) global notifications
 onMounted(() => {
+  window.electron.getOS().then((os) => { thisOS.value = os }).catch(() => { /* leave blank */ })
+
   // IPC → router navigation listener
   unregisterIpcListener = registerIpcActionListener({
     vueRouter: router,
