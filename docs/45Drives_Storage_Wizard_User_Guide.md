@@ -396,10 +396,10 @@ This means you can close the Backup Manager and still keep an eye on a long tran
 
 ### Settings
 
-The Settings modal is organised into five panels, grouped under **Servers**, **Client**, **Network**, and **System**:
+The Settings modal is organised into five panels, grouped under **Servers**, **Client**, **Network**, **Updates** and **System**:
 
 ![Settings modal](images/settings-modal.png)
-<!-- SCREENSHOT: The Settings modal open on the Servers > Saved section, with the left-hand nav showing all four groups (Servers, Client, Network, System) and their items, including System > Updates. -->
+<!-- SCREENSHOT: The Settings modal open on the Servers > Saved section, with the left-hand nav showing all five groups (Servers, Client, Network, Updates, System) and their items. -->
 
 **Servers → Saved**
 
