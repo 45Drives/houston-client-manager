@@ -1111,9 +1111,18 @@ The next section explains each of the macOS prompts in the order you will see th
 
 ### What macOS Asks For (macOS only)
 
-Three separate things happen on macOS, and they are easy to confuse because they all look like permission prompts. Only the last one has to be done by hand, and skipping it is the single most common reason scheduled backups silently stop working.
+Four separate things happen on macOS, and they are easy to confuse because they all look like permission prompts. Only the last one has to be done by hand, and skipping it is the single most common reason scheduled backups silently stop working.
 
-#### 1. "Background Items Added"
+#### 1. Your admin password
+
+The first time you create a Local Backup on a `.dmg` install, the app installs the background backup service, which needs administrator rights.
+
+![macOS admin password prompt](images/local-backup-macos-admin-password.png)
+<!-- SCREENSHOT: The macOS authentication dialog reading "osascript wants to make changes. Enter your password to allow this." over the wizard's Congratulations step. -->
+
+The dialog is titled **osascript** rather than 45Drives — that is macOS naming the helper the installer runs, and it is expected. Enter your password and click **OK**. This is asked once; later backups do not repeat it. If you installed with the `.pkg`, the service was installed by the installer and you will not see this at all.
+
+#### 2. "Background Items Added"
 
 Right after the background service is installed — during the `.pkg` install, or at your first backup if you used the `.dmg` — macOS shows a notification in the corner of the screen.
 
@@ -1122,7 +1131,7 @@ Right after the background service is installed — during the `.pkg` install, o
 
 It reads *"Software from 'Protocase Incorporated' added items that can run in the background."* **Protocase Incorporated is the correct name** — Protocase is 45Drives' parent company and the certificate the app is signed with, so the notification will not say 45Drives. Nothing is required of you; the notification is informational and disappears on its own. The item it refers to is the backup service, and you can see it listed under **System Settings → General → Login Items & Extensions**.
 
-#### 2. "Would like to access files on a network volume"
+#### 3. "Would like to access files on a network volume"
 
 When you click **Next** on the Summary step, the app deliberately reaches for the backup share and for each folder you chose. That makes macOS raise its permission prompts there and then, while you are sitting in front of the wizard.
 
@@ -1135,16 +1144,16 @@ These are asked up front on purpose. If they were left until the first scheduled
 
 This grant is recorded under **System Settings → Privacy & Security → Files and Folders**, *not* under Full Disk Access — allowing it does not tick anything in the Full Disk Access list, and that is expected rather than a failure.
 
-#### 3. Full Disk Access — the one you must turn on yourself
+#### 4. Full Disk Access — the one you must turn on yourself
 
 This step is only needed when a backup source lives in a folder macOS protects: Desktop, Documents, Downloads, iCloud Drive, your Photos library, or an external volume under `/Volumes`. A backup of any other folder needs nothing here.
 
 **macOS provides no way for an application to ask for Full Disk Access.** There is no prompt, and no amount of clicking **Allow** elsewhere will grant it. It has to be switched on manually, once.
 
 ![macOS Full Disk Access list](images/local-backup-macos-FDA.png)
-<!-- SCREENSHOT: System Settings → Privacy & Security → Full Disk Access with StorageWizardBackup visible in the list and its toggle switched on. -->
+<!-- SCREENSHOT: System Settings → Privacy & Security → Full Disk Access with StorageWizardBackup highlighted in the list and its toggle switched on — the state you are aiming for. -->
 
-`StorageWizardBackup` appears in the Full Disk Access list on its own, **with the toggle off**. The backup service checks its own permission each time it wakes, and that check is what makes macOS list it. Seeing the entry there does not mean it has been granted — you have to flick the switch.
+`StorageWizardBackup` appears in the Full Disk Access list on its own, **with the toggle off**. The backup service checks its own permission each time it wakes, and that check is what makes macOS list it. Seeing the entry there does not mean it has been granted — you have to flick the switch. The screenshot above shows the finished state, with the switch on.
 
 If a grant is needed, the **Congratulations** step at the end of the wizard says so and offers the same **Open Full Disk Access settings** button, so you are told before you leave the wizard rather than finding out from a failed backup.
 
@@ -1162,6 +1171,11 @@ All tasks are configured and your data is now protected by scheduled backups.
 
 ![Local backup — Congratulations](images/local-backup-04-complete.png)
 <!-- SCREENSHOT: The completion step showing the ticked progress steps, the "Complete! Your Backup Plan is Now Active." message, and the "Go to Dashboard" and "Go To Backup Manager" buttons. -->
+
+On macOS, if any folder you chose is one macOS protects and the backup service has not been granted Full Disk Access yet, this step also carries a **One more step — turn on Full Disk Access** notice with the same button described above. It is the last reminder you get before you leave the wizard, so deal with it now rather than discovering it from a backup that never ran.
+
+![Local backup — Congratulations on macOS](images/local-backup-04-complete-macos.png)
+<!-- SCREENSHOT: The same completion step on macOS with the amber "One more step — turn on Full Disk Access" panel, its Open Full Disk Access settings button, and the StorageWizardBackup path. -->
 
 > **Important:** Backups require both this computer and the backup server to be powered on at the scheduled times. A laptop that is asleep will not back up.
 
