@@ -29,3 +29,4 @@ scripts/release/RELEASE*
 docs/training/
 docs/*-plan.md
 docs/*_MIGRATION.md
+MACOS_TCC_PROMPT_INVESTIGATION.md
