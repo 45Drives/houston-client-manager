@@ -30,6 +30,12 @@ function resolveModuleSuffix(argv) {
 
 process.env.COCKPIT_MODULE_SUFFIX = resolveModuleSuffix(process.argv.slice(2));
 
+// Server packages below `minVersion` are upgraded in dev as well; pass
+// --skip-min-version to leave locally built server modules untouched.
+if (process.argv.includes('--skip-min-version')) {
+    process.env.SKIP_SERVER_MIN_VERSION = '1';
+}
+
 async function startRenderer() {
     viteServer = await Vite.createServer({
         configFile: Path.join(__dirname, '..', 'vite.config.js'),
@@ -130,6 +136,9 @@ async function start() {
     console.log(Chalk.cyan(`Cockpit modules: ${process.env.COCKPIT_MODULE_SUFFIX
         ? `"${process.env.COCKPIT_MODULE_SUFFIX}" builds`
         : 'production builds (use --test for -test builds)'}`));
+    console.log(Chalk.cyan(`Server min-version gate: ${process.env.SKIP_SERVER_MIN_VERSION === '1'
+        ? 'skipped (--skip-min-version)'
+        : 'enforced'}`));
 
     const devServer = await startRenderer();
     rendererPort = devServer.config.server.port;

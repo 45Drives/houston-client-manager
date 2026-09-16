@@ -108,6 +108,8 @@ RUNTIME_OVERRIDE_KEYS=(
   GH_TAG_MESSAGE
   GH_NOTES
   PARALLEL_BUILDS
+  LOCAL_CLEANUP_OLD
+  LOCAL_CLEANUP_KEEP
 )
 declare -A RUNTIME_OVERRIDES=()
 for _k in "${RUNTIME_OVERRIDE_KEYS[@]}"; do
@@ -857,7 +859,9 @@ run_mac_build() {
   done
 
   # ---------------------------------------------------------------------------
-  # Clean up old mac signing artifacts on remote hosts
+  # Clean up old mac artifacts on the ARM host.
+  # The Intel signer is pruned by release-mac-build.sh, which already has SSH
+  # credentials for it in scripts/.env.release.
   # ---------------------------------------------------------------------------
   MAC_CLEANUP_OLD="${MAC_CLEANUP_OLD:-1}"
   MAC_CLEANUP_KEEP="${MAC_CLEANUP_KEEP:-5}"
@@ -872,36 +876,13 @@ run_mac_build() {
       ssh_run "$h" "$u" "$pw" "$pt" "$cmd" || true
     }
 
-    # 1) ARM Mac: Mac-signed/ (synced-back signed artifacts)
+    # ARM Mac: Mac-signed/ (synced-back signed artifacts)
     MAC_ARM_SIGNED_BASE="${MAC_FETCH_DIR_TEMPLATE%%__BUNDLE_TAG__*}"
     MAC_ARM_SIGNED_BASE="${MAC_ARM_SIGNED_BASE%/}"
     if [[ -n "$MAC_ARM_SIGNED_BASE" ]]; then
       echo "Cleaning old artifacts on ARM Mac: $MAC_ARM_SIGNED_BASE"
       cleanup_old_dirs "$MAC_FETCH_HOST" "$MAC_FETCH_USER" "${MAC_FETCH_PASSWORD:-}" "$MAC_FETCH_PORT" \
         "$MAC_ARM_SIGNED_BASE" "$MAC_CLEANUP_GLOB" "$MAC_CLEANUP_KEEP"
-    fi
-
-    # 2) Intel Mac: SIGN_INBOX/<bundle_tag> dirs (unsigned .app bundles sent for signing)
-    if [[ -n "${MAC_SIGN_HOST:-}" && -n "${MAC_SIGN_USER:-}" ]]; then
-      MAC_SIGN_INBOX_DIR="${MAC_SIGN_INBOX:-}"
-      if [[ -z "$MAC_SIGN_INBOX_DIR" && -n "${MAC_SIGN_OUTPUT_DIR:-}" ]]; then
-        MAC_SIGN_INBOX_DIR="$(dirname "${MAC_SIGN_OUTPUT_DIR}")"
-      fi
-      MAC_SIGN_PORT="${MAC_SIGN_PORT:-22}"
-      MAC_SIGN_PASSWORD="${MAC_SIGN_PASSWORD:-}"
-
-      if [[ -n "$MAC_SIGN_INBOX_DIR" ]]; then
-        echo "Cleaning old unsigned bundles on Intel Mac: $MAC_SIGN_INBOX_DIR"
-        cleanup_old_dirs "$MAC_SIGN_HOST" "$MAC_SIGN_USER" "$MAC_SIGN_PASSWORD" "$MAC_SIGN_PORT" \
-          "$MAC_SIGN_INBOX_DIR" "$MAC_CLEANUP_GLOB" "$MAC_CLEANUP_KEEP"
-      fi
-
-      # 3) Intel Mac: SIGN_OUTPUT_DIR/ (signed .zip/.dmg output bundles)
-      if [[ -n "${MAC_SIGN_OUTPUT_DIR:-}" ]]; then
-        echo "Cleaning old signed output on Intel Mac: $MAC_SIGN_OUTPUT_DIR"
-        cleanup_old_dirs "$MAC_SIGN_HOST" "$MAC_SIGN_USER" "$MAC_SIGN_PASSWORD" "$MAC_SIGN_PORT" \
-          "$MAC_SIGN_OUTPUT_DIR" "$MAC_CLEANUP_GLOB" "$MAC_CLEANUP_KEEP"
-      fi
     fi
   fi
 }
@@ -1176,3 +1157,28 @@ fi
 echo "Release orchestration complete."
 echo "Collected assets under: $STAGING_DIR"
 echo "Final builds/release assets under: $RELEASE_BUILDS_DIR"
+
+# ---------------------------------------------------------------------------
+# Prune old local staging dirs. Each release is roughly 1.3 GB of installers.
+# ---------------------------------------------------------------------------
+LOCAL_CLEANUP_OLD="${LOCAL_CLEANUP_OLD:-0}"
+LOCAL_CLEANUP_KEEP="${LOCAL_CLEANUP_KEEP:-3}"
+
+if truthy "$LOCAL_CLEANUP_OLD" && [[ -d "$STAGING_DIR" ]]; then
+  STAGING_PARENT="$(cd "$(dirname "$STAGING_DIR")" && pwd)"
+  CURRENT_STAGING="$(basename "$STAGING_DIR")"
+  # Never prune outside the repo, and never treat the repo root as a staging parent.
+  if [[ "$STAGING_PARENT" == "${ROOT_DIR}/"* ]]; then
+    keep_others=$(( LOCAL_CLEANUP_KEEP > 0 ? LOCAL_CLEANUP_KEEP - 1 : 0 ))
+    echo "Pruning old staging dirs in ${STAGING_PARENT} (keeping ${LOCAL_CLEANUP_KEEP})"
+    kept=0
+    while IFS= read -r d; do
+      [[ -n "$d" && "$d" != "$CURRENT_STAGING" ]] || continue
+      kept=$(( kept + 1 ))
+      if (( kept > keep_others )); then
+        echo "Removing old staging dir: ${STAGING_PARENT}/${d}"
+        rm -rf -- "${STAGING_PARENT:?}/${d}"
+      fi
+    done < <(cd "$STAGING_PARENT" && ls -1dt -- */ 2>/dev/null | sed 's#/$##')
+  fi
+fi

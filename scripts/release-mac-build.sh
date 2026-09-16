@@ -218,6 +218,25 @@ if [[ "$_sign_git_ok" -ne 1 ]]; then
 fi
 
 echo "Trigger signing/notarization on Intel..."
+
+# Prune before signing so the notarization step is not the thing that runs out of disk.
+SIGN_CLEANUP_OLD="${SIGN_CLEANUP_OLD:-1}"
+SIGN_CLEANUP_KEEP="${SIGN_CLEANUP_KEEP:-3}"
+SIGN_CLEANUP_GLOB="${SIGN_CLEANUP_GLOB:-mac-*}"
+
+cleanup_intel_dirs() {
+  local dir="${1%/}"
+  [[ -n "$dir" ]] || return 0
+  local cmd="cd '${dir}' 2>/dev/null || exit 0; ls -1dt ${SIGN_CLEANUP_GLOB} 2>/dev/null | awk 'NR>${SIGN_CLEANUP_KEEP} {print}' | while IFS= read -r d; do echo \"Removing old bundle: ${dir}/\$d\"; rm -rf -- \"\$d\"; done"
+  "${SSH[@]}" "${SIGN_USER}@${SIGN_HOST}" "bash -lc $(printf '%q' "$cmd")" || true
+}
+
+if truthy "$SIGN_CLEANUP_OLD"; then
+  echo "Cleaning old bundles on Intel Mac (keeping ${SIGN_CLEANUP_KEEP})..."
+  cleanup_intel_dirs "$SIGN_INBOX"
+  cleanup_intel_dirs "${SIGN_OUTPUT_DIR:-}"
+fi
+
 SIGN_CMD="BUILD_MAC_PKG=$(printf '%q' "${BUILD_MAC_PKG:-1}") \"${SIGN_INBOX}/scripts/sign-mac-on-intel.sh\" \"$BUNDLE_TAG\""
 "${SSH[@]}" "${SIGN_USER}@${SIGN_HOST}" \
   "bash -lc $(printf '%q' "$SIGN_CMD")"

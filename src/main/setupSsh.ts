@@ -1,6 +1,6 @@
 import path from "path"
 import fs from "fs";
-import { getAsset, isDev } from "./utils";
+import { getAsset } from "./utils";
 import { getAgentSocket, getKeyDir, ensureKeyPair } from "./crossPlatformSsh";
 import { NodeSSH } from 'node-ssh';
 import type { CipherAlgorithm } from 'ssh2';
@@ -598,9 +598,10 @@ echo "__VERSIONS__ $installed_versions"
     if (version) houstonVersions[entry.slice(0, eq)] = version;
   }
 
-  // `yarn dev` runs against locally built server modules whose versions are
-  // often behind the released minimums, so the gate is skipped there.
-  const houstonBelowMinimum = isDev()
+  // The gate is enforced in dev too. Set SKIP_SERVER_MIN_VERSION=1 (or run
+  // `yarn dev --skip-min-version`) when testing against locally built server
+  // modules whose versions are behind the released minimums.
+  const houstonBelowMinimum = process.env.SKIP_SERVER_MIN_VERSION === '1'
     ? []
     : Object.keys(houstonVersions).filter((name) => isBelowMinimum(name, houstonVersions[name]));
 
