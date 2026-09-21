@@ -385,7 +385,7 @@ conditional_yarn_install() {
     echo "Dependencies unchanged, skipping yarn install."
   else
     echo "Running yarn install..."
-    yarn install --frozen-lockfile
+    yarn install --immutable
     printf '%s' "$lock_hash" > "$hash_cache"
   fi
 }

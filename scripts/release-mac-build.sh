@@ -159,7 +159,7 @@ if ! truthy "${MAC_SKIP_BUILD:-0}"; then
     echo "Dependencies unchanged, skipping yarn install (macOS)."
   else
     echo "Running yarn install (macOS)..."
-    yarn install --frozen-lockfile
+    yarn install --immutable
     printf '%s' "$LOCK_HASH" > "$HASH_CACHE"
   fi
   if [[ "${MAC_BUILD_KIND}" == "universal" ]]; then
