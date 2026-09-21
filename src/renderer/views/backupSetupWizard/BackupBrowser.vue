@@ -74,18 +74,40 @@
 
                 <!-- File list -->
                 <div v-else class="flex-1 overflow-y-auto">
-                    <div v-for="(file, index) in selectedBackup.files" :key="index"
-                        class="flex items-center gap-3 px-3 py-1.5 border-b border-neutral-100 dark:border-neutral-700/50 cursor-pointer transition-colors border-l-2"
-                        :class="[
-                            file?.selected ? 'bg-slate-600/5 dark:bg-slate-400/5 border-l-slate-600 dark:border-l-slate-400' : 'border-l-transparent hover:bg-neutral-50 dark:hover:bg-neutral-700/30',
-                            focusedFile === file ? 'ring-1 ring-inset ring-slate-500' : ''
-                        ]"
-                        @click="onFileClick(file)">
-                        <input type="checkbox" v-model="file.selected" class="shrink-0" @click.stop />
-                        <DocumentIcon class="w-4 h-4 text-muted shrink-0" />
-                        <span class="text-sm text-default truncate" :title="file.path">{{ file.path }}</span>
-                        <span v-if="file.size != null" class="ml-auto text-xs text-muted shrink-0">{{ formatFileSize(file.size) }}</span>
-                    </div>
+                    <template v-for="node in fileTree" :key="node.key">
+                        <!-- Folder row -->
+                        <div v-if="node.type === 'folder'"
+                            class="flex items-center gap-2 px-3 py-1.5 border-b border-neutral-100 dark:border-neutral-700/50 cursor-pointer transition-colors hover:bg-neutral-50 dark:hover:bg-neutral-700/30"
+                            :style="{ paddingLeft: `${node.depth * 20 + 12}px` }"
+                            @click="toggleFolder(node.key)">
+                            <input type="checkbox" class="shrink-0"
+                                :checked="node.fileCount > 0 && node.selectedCount === node.fileCount"
+                                :ref="(el) => setFolderCheckboxRef(el, node)"
+                                @click.stop="toggleFolderSelection(node)" />
+                            <ChevronRightIcon v-if="collapsedFolders.has(node.key)" class="w-3.5 h-3.5 text-muted shrink-0" />
+                            <ChevronDownIcon v-else class="w-3.5 h-3.5 text-muted shrink-0" />
+                            <FolderIcon class="w-4 h-4 text-primary shrink-0" />
+                            <span class="text-sm text-default truncate font-medium" :title="node.name">{{ node.name }}</span>
+                            <span class="ml-auto text-xs text-muted shrink-0">
+                                {{ node.selectedCount > 0 ? `${node.selectedCount}/` : '' }}{{ node.fileCount }} file{{ node.fileCount === 1 ? '' : 's' }}
+                            </span>
+                        </div>
+
+                        <!-- File row -->
+                        <div v-else
+                            class="flex items-center gap-3 px-3 py-1.5 border-b border-neutral-100 dark:border-neutral-700/50 cursor-pointer transition-colors border-l-2"
+                            :style="{ paddingLeft: `${node.depth * 20 + 12}px` }"
+                            :class="[
+                                node.file?.selected ? 'bg-slate-600/5 dark:bg-slate-400/5 border-l-slate-600 dark:border-l-slate-400' : 'border-l-transparent hover:bg-neutral-50 dark:hover:bg-neutral-700/30',
+                                focusedFile === node.file ? 'ring-1 ring-inset ring-slate-500' : ''
+                            ]"
+                            @click="onFileClick(node.file)">
+                            <input type="checkbox" v-model="node.file.selected" class="shrink-0" @click.stop />
+                            <DocumentIcon class="w-4 h-4 text-muted shrink-0" />
+                            <span class="text-sm text-default truncate" :title="node.file.path">{{ node.name }}</span>
+                            <span v-if="node.file.size != null" class="ml-auto text-xs text-muted shrink-0">{{ formatFileSize(node.file.size) }}</span>
+                        </div>
+                    </template>
                 </div>
             </div>
 
@@ -281,7 +303,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onUnmounted, onMounted, watch } from 'vue'
+import { ref, reactive, computed, onUnmounted, onMounted, watch } from 'vue'
 import { confirm, useEnterToAdvance } from '@45drives/houston-common-ui'
 import { IPCRouter, type BackupEntry, type FileEntry, type BackUpTask } from '@45drives/houston-common-lib'
 import { useRouter } from 'vue-router'
@@ -289,7 +311,7 @@ import { useHeader } from '../../composables/useHeader'
 import {
     ArrowLeftIcon, FolderOpenIcon, TrashIcon, ArrowDownTrayIcon,
     MagnifyingGlassIcon, DocumentIcon, DocumentMagnifyingGlassIcon,
-    InformationCircleIcon
+    InformationCircleIcon, FolderIcon, ChevronRightIcon, ChevronDownIcon
 } from '@heroicons/vue/24/outline'
 import { useOnboarding } from '../../composables/useOnboarding'
 import { useRestoreProgress } from '../../composables/useRestoreProgress'
@@ -616,6 +638,128 @@ function selectAll() {
 function deselectAll() {
     selectedBackup.value?.files.forEach(f => (f.selected = false))
 }
+
+// ── File tree (groups flat file paths into folders/files for display) ──────
+interface TreeFolderNode {
+    type: 'folder'
+    key: string
+    name: string
+    depth: number
+    fileCount: number
+    selectedCount: number
+}
+interface TreeFileNode {
+    type: 'file'
+    key: string
+    name: string
+    depth: number
+    file: RichFileEntry
+}
+type TreeNode = TreeFolderNode | TreeFileNode
+
+const collapsedFolders = reactive(new Set<string>())
+
+function toggleFolder(key: string) {
+    if (collapsedFolders.has(key)) collapsedFolders.delete(key)
+    else collapsedFolders.add(key)
+}
+
+function setFolderCheckboxRef(el: Element | null, node: TreeFolderNode) {
+    if (el instanceof HTMLInputElement) {
+        el.indeterminate = node.selectedCount > 0 && node.selectedCount < node.fileCount
+    }
+}
+
+function toggleFolderSelection(node: TreeFolderNode) {
+    const shouldSelect = node.selectedCount < node.fileCount
+    selectedBackup.value?.files.forEach(f => {
+        if (f.path === node.key || f.path.startsWith(`${node.key}/`)) f.selected = shouldSelect
+    })
+}
+
+const fileTree = computed<TreeNode[]>(() => {
+    const files = selectedBackup.value?.files ?? []
+    if (!files.length) return []
+
+    interface FolderAgg { name: string; path: string; depth: number; files: RichFileEntry[]; childFolders: Set<string> }
+    const folderMap = new Map<string, FolderAgg>()
+    const rootFolderPaths = new Set<string>()
+    const rootFiles: RichFileEntry[] = []
+
+    function ensureFolder(path: string, name: string, depth: number): FolderAgg {
+        let agg = folderMap.get(path)
+        if (!agg) {
+            agg = { name, path, depth, files: [], childFolders: new Set() }
+            folderMap.set(path, agg)
+        }
+        return agg
+    }
+
+    for (const file of files) {
+        const parts = file.path.split('/').filter(Boolean)
+        if (parts.length <= 1) {
+            rootFiles.push(file)
+            continue
+        }
+        let currentPath = ''
+        for (let i = 0; i < parts.length - 1; i++) {
+            const parentPath = currentPath
+            currentPath = currentPath ? `${currentPath}/${parts[i]}` : parts[i]
+            ensureFolder(currentPath, parts[i], i)
+            if (parentPath === '') rootFolderPaths.add(currentPath)
+            else folderMap.get(parentPath)!.childFolders.add(currentPath)
+        }
+        folderMap.get(currentPath)!.files.push(file)
+    }
+
+    const countCache = new Map<string, { total: number; selected: number }>()
+    function countFolder(path: string): { total: number; selected: number } {
+        const cached = countCache.get(path)
+        if (cached) return cached
+        const agg = folderMap.get(path)!
+        let total = agg.files.length
+        let selected = agg.files.filter(f => f.selected).length
+        for (const childPath of agg.childFolders) {
+            const c = countFolder(childPath)
+            total += c.total
+            selected += c.selected
+        }
+        const result = { total, selected }
+        countCache.set(path, result)
+        return result
+    }
+
+    const rows: TreeNode[] = []
+
+    function pushFolder(path: string) {
+        const agg = folderMap.get(path)!
+        const counts = countFolder(path)
+        rows.push({
+            type: 'folder',
+            key: path,
+            name: agg.name,
+            depth: agg.depth,
+            fileCount: counts.total,
+            selectedCount: counts.selected,
+        })
+        if (collapsedFolders.has(path)) return
+        const childFolders = [...agg.childFolders].sort((a, b) => folderMap.get(a)!.name.localeCompare(folderMap.get(b)!.name))
+        for (const childPath of childFolders) pushFolder(childPath)
+        const sortedFiles = [...agg.files].sort((a, b) => a.path.localeCompare(b.path))
+        for (const file of sortedFiles) {
+            const name = file.path.split('/').filter(Boolean).pop() ?? file.path
+            rows.push({ type: 'file', key: file.rawPath, name, depth: agg.depth + 1, file })
+        }
+    }
+
+    const sortedRootFolders = [...rootFolderPaths].sort((a, b) => folderMap.get(a)!.name.localeCompare(folderMap.get(b)!.name))
+    for (const path of sortedRootFolders) pushFolder(path)
+
+    const sortedRootFiles = [...rootFiles].sort((a, b) => a.path.localeCompare(b.path))
+    for (const file of sortedRootFiles) rows.push({ type: 'file', key: file.rawPath, name: file.path, depth: 0, file })
+
+    return rows
+})
 
 const isConfirmOpen = ref(false)
 
