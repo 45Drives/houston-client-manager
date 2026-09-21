@@ -63,7 +63,11 @@ describe('vaultCrypto', () => {
     const vc = await freshImport();
     vc.encryptSecret('hunter2');
 
-    const mode = fs.statSync(path.join(tmpDir, 'vault.key')).mode & 0o777;
+    const keyPath = path.join(tmpDir, 'vault.key');
+    expect(fs.existsSync(keyPath)).toBe(true);
+    // Windows NTFS does not honor POSIX 0600 via fs.chmod/writeFile mode.
+    if (process.platform === 'win32') return;
+    const mode = fs.statSync(keyPath).mode & 0o777;
     expect(mode).toBe(0o600);
   });
 
