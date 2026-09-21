@@ -598,7 +598,13 @@ export async function handleBackupMessage(message: any, ctx: IPCHandlerContext):
         try {
           const result = await backupManager.cancelNow(task);
           ctx.jsonLogger.info({ event: 'cancelBackUpTaskNow', taskUuid: uuid, ...result });
-          await ensureCancelledEndEvent(task);
+          if (result.cancelled) {
+            await ensureCancelledEndEvent(task);
+          } else {
+            // Nothing was running, so the newest terminal record belongs to an earlier
+            // run — appending `cancelled` here would overwrite its real outcome.
+            cancelledUuids.delete(uuid);
+          }
           clearTaskProgress(uuid);
           // Notifications are a user preference, so the progress store is told separately.
           router.send('renderer', 'action', JSON.stringify({ type: 'backupRunEnded', uuid }));

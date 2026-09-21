@@ -10,6 +10,12 @@ export function useServerDiscovery() {
   })
 
   let searchTimer: ReturnType<typeof setTimeout> | null = null
+  let fallbackTimer: ReturnType<typeof setTimeout> | null = null
+
+  function scheduleFallbackScan() {
+    if (fallbackTimer) clearTimeout(fallbackTimer)
+    fallbackTimer = setTimeout(runFallbackScanOnce, 3000)
+  }
 
   // Discovery keeps probing in the background, so don't claim it finished the
   // moment the fallback scan returns — that reads as "no servers" far too early.
@@ -80,18 +86,21 @@ export function useServerDiscovery() {
     window.electron?.ipcRenderer.invoke('discovery:setEnabled', false).then(() => {
       window.electron?.ipcRenderer.invoke('discovery:setEnabled', true)
     })
-    setTimeout(runFallbackScanOnce, 3000)
+    scheduleFallbackScan()
   }
 
   onMounted(() => {
     beginSearch()
     window.electron?.ipcRenderer.on('discovered-servers', onDiscovered)
     window.electron?.ipcRenderer.invoke('discovery:setEnabled', true)
-    setTimeout(runFallbackScanOnce, 3000)
+    scheduleFallbackScan()
   })
 
   onBeforeUnmount(() => {
     if (searchTimer) clearTimeout(searchTimer)
+    // A pending scan sweeps the whole subnet; let it fire for a view that is gone
+    // and rapid navigation stacks concurrent sweeps.
+    if (fallbackTimer) clearTimeout(fallbackTimer)
     window.electron?.ipcRenderer.removeListener?.('discovered-servers', onDiscovered)
     window.electron?.ipcRenderer.invoke('discovery:setEnabled', false)
   })

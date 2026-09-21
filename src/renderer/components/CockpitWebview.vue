@@ -214,13 +214,6 @@ const currentUrl = computed(() => {
 // Only show the webview when we have a real URL
 const ready = computed(() => currentUrl.value !== 'about:blank')
 
-webview.value?.addEventListener('console-message', (e: any) => {
-    const msg = `[webview:${e.level}] ${e.message}`
-    if (e.level >= 3) console.error(msg)
-    else if (e.level === 2) console.warn(msg)
-    else console.log(msg)
-})
-
 // Attach webview event listeners when the element appears in the DOM.
 // The webview uses v-if so it may not exist at onMounted time.
 watch(webview, (wv) => {
@@ -291,7 +284,10 @@ watch(webview, (wv) => {
             if (window.__oauthRelayInstalled) return;
             window.__oauthRelayInstalled = true;
             window.addEventListener('message', function(e) {
-              if (e.data && e.data.type === '45d-oauth-request' && e.data.url) {
+              // Only Cockpit's own frames may drive the relay; it reaches privileged IPC.
+              if (e.origin !== window.location.origin) return;
+              if (e.data && e.data.type === '45d-oauth-request' && typeof e.data.url === 'string') {
+                window.__oauthSource = e.source;
                 console.log('__45D_OAUTH_REQUEST__:' + e.data.url);
               }
               if (e.data && e.data.type === '45d-client-log' && e.data.entry) {
@@ -333,17 +329,14 @@ watch(webview, (wv) => {
                 const result = await window.electron?.ipcRenderer.invoke('oauth:open', url)
                 if (result?.success && result.token) {
                     const envelope = JSON.stringify({ type: '45d-oauth-response', ...result.token })
+                    // Delivered to the frame that asked, at its own origin — a broadcast
+                    // with '*' would hand the token to every embedded third-party frame.
                     wv.executeJavaScript(`
                         (function() {
                             var data = ${envelope};
-                            function broadcast(win, d) {
-                                for (var i = 0; i < win.frames.length; i++) {
-                                    try { win.frames[i].postMessage(d, '*'); } catch(e) {}
-                                    try { broadcast(win.frames[i], d); } catch(e) {}
-                                }
-                            }
-                            window.postMessage(data, '*');
-                            broadcast(window, data);
+                            var target = window.__oauthSource || window;
+                            window.__oauthSource = null;
+                            try { target.postMessage(data, window.location.origin); } catch(e) {}
                         })();
                     `)
                 }
@@ -359,6 +352,19 @@ watch(webview, (wv) => {
     })
 })
 
+// Named so they can be detached individually — removeAllListeners would also drop
+// handlers belonging to another instance of this component.
+const onClientIdent = (_e: unknown, x: any) => {
+    if (!clientId.value) clientId.value = x?.installId || ''
+}
+const onClientIp = (_e: unknown, ipVal: string) => { clientIp.value = ipVal || '' }
+const onStoreManualCreds = (_e: unknown, creds: { ip: string; username: string; password: string }) => {
+    if (currentServer.value?.ip === creds.ip) {
+        disconnected.value = false
+        manualCreds.value = creds
+    }
+}
+
 onMounted(() => {
     // Hydrate credentials from the shared store (set before navigation)
     const ip = currentServer.value?.ip
@@ -369,18 +375,18 @@ onMounted(() => {
         }
     }
 
-    window.electron?.ipcRenderer.on('client-ident', (_e, x) => {
-        if (!clientId.value) clientId.value = x?.installId || ''
-    })
-    window.electron?.ipcRenderer.on('client-ip', (_e, ipVal: string) => { clientIp.value = ipVal || '' })
+    window.electron?.ipcRenderer.on('client-ident', onClientIdent)
+    window.electron?.ipcRenderer.on('client-ip', onClientIp)
+    window.electron?.ipcRenderer.on('store-manual-creds', onStoreManualCreds)
 
     window.electron?.ipcRenderer.send('renderer-ready', {})  // send once
 })
 
 onBeforeUnmount(() => {
     clearRetryTimers()
-    window.electron?.ipcRenderer.removeAllListeners?.('store-manual-creds')
-    window.electron?.ipcRenderer.removeAllListeners?.('client-ip')
+    window.electron?.ipcRenderer.removeListener?.('client-ident', onClientIdent)
+    window.electron?.ipcRenderer.removeListener?.('client-ip', onClientIp)
+    window.electron?.ipcRenderer.removeListener?.('store-manual-creds', onStoreManualCreds)
 })
 
 const { loginIntoCockpit, injectChromeCSS } = useHoustonWebview()
@@ -452,13 +458,6 @@ watch(currentUrl, (url) => {
     resetConnectionState()
     loadingWebview.value = url !== 'about:blank'
 }, { immediate: true })
-
-window.electron?.ipcRenderer.on('store-manual-creds', (_e, creds: { ip: string; username: string; password: string }) => {
-    if (currentServer.value?.ip === creds.ip) {
-        disconnected.value = false;
-        manualCreds.value = creds;
-    }
-});
 
 // When currentServer changes, check the shared credential store
 watch(() => currentServer.value?.ip, (ip) => {

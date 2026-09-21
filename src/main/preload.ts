@@ -137,6 +137,27 @@ function assertAllowed(channel: string, set: Set<string>) {
   }
 }
 
+// `on`/`once` register a wrapper rather than the caller's function, so removeListener
+// has to look the wrapper up again or every renderer listener stays attached forever.
+const wrappers = new Map<string, WeakMap<Function, (...args: any[]) => void>>();
+
+function wrapperFor(
+  channel: string,
+  listener: (event: IpcRendererEvent, ...args: any[]) => void,
+) {
+  let perChannel = wrappers.get(channel);
+  if (!perChannel) {
+    perChannel = new WeakMap();
+    wrappers.set(channel, perChannel);
+  }
+  const existing = perChannel.get(listener);
+  if (existing) return existing;
+
+  const wrapper = (event: IpcRendererEvent, ...args: any[]) => listener(event, ...args);
+  perChannel.set(listener, wrapper);
+  return wrapper;
+}
+
 contextBridge.exposeInMainWorld('electron', {
   ipcRenderer: {
     send: (channel: string, data: any) => {
@@ -145,7 +166,7 @@ contextBridge.exposeInMainWorld('electron', {
     },
     on: (channel: string, listener: (event: IpcRendererEvent, ...args: any[]) => void) =>
       (assertAllowed(channel, RECEIVE_CHANNELS),
-      ipcRenderer.on(channel, (_event, ...args) => listener(_event, ...args))),
+      ipcRenderer.on(channel, wrapperFor(channel, listener))),
     invoke: (channel: string, ...args: any[]) => {
       assertAllowed(channel, INVOKE_CHANNELS);
       return ipcRenderer.invoke(channel, ...args);
@@ -156,7 +177,7 @@ contextBridge.exposeInMainWorld('electron', {
 
     removeListener: (channel: string, listener: (...args: any[]) => void) => {
       assertAllowed(channel, RECEIVE_CHANNELS);
-      ipcRenderer.removeListener(channel, listener);
+      ipcRenderer.removeListener(channel, wrapperFor(channel, listener));
     },
     removeAllListeners: (channel: string) => {
       assertAllowed(channel, RECEIVE_CHANNELS);

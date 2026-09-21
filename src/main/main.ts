@@ -111,7 +111,8 @@ import { registerTopologyHandlers } from './ipc/topologyHandlers';
 import { registerBulkSetupHandlers } from './ipc/bulkSetupHandlers';
 import { registerServerManageHandlers } from './ipc/serverManageHandlers';
 import { registerWireShieldHandlers } from './ipc/wireShieldHandlers';
-import { setJsonLogger } from './logging';
+import { setJsonLogger, logEvent } from './logging';
+import { randomBytes } from 'crypto';
 import type { IPCHandlerContext } from './ipc/types';
 
 let discoveredServers: Server[] = [];
@@ -157,15 +158,56 @@ ipcMain.handle('get-client-ident', async () => ({ installId }))
 
 // OAuth: open system browser + local loopback server to receive token.
 // Google blocks embedded Chromium browsers, so we must use the real browser.
-ipcMain.handle('oauth:open', async (_event, url: string) => {
+const OAUTH_ALLOWED_HOSTS = new Set(['cloud-sync.45d.io']);
+
+ipcMain.handle('oauth:open', async (event, url: string) => {
+  assertMainWindowSender(event);
+
+  // The request originates in an embedded Cockpit page, so the URL is not trusted:
+  // shell.openExternal will hand any scheme to the OS.
+  let target: URL;
+  try {
+    target = new URL(String(url));
+  } catch {
+    return { success: false, error: 'Invalid OAuth URL' };
+  }
+  if (target.protocol !== 'https:' || !OAUTH_ALLOWED_HOSTS.has(target.hostname)) {
+    logEvent('oauth:open.rejected', { protocol: target.protocol, host: target.hostname }, 'warn');
+    return { success: false, error: 'Unsupported OAuth provider' };
+  }
+
+  const nonce = randomBytes(32).toString('hex');
+
   return new Promise<any>((resolve) => {
+    let settled = false;
+    let timer: NodeJS.Timeout | null = null;
+
+    const finish = (result: any) => {
+      if (settled) return;
+      settled = true;
+      if (timer) clearTimeout(timer);
+      srv.close();
+      resolve(result);
+    };
+
     const srv = http.createServer((req, res) => {
-      if (!req.url?.startsWith('/oauth/callback')) {
+      const requested = new URL(req.url ?? '/', 'http://127.0.0.1');
+      if (requested.pathname !== '/oauth/callback') {
         res.writeHead(404);
         res.end();
         return;
       }
-      const params = new URL(req.url, 'http://127.0.0.1').searchParams;
+
+      const params = requested.searchParams;
+      // Any local process can reach the loopback port. Only the browser we launched
+      // carries the nonce, so a racing caller cannot inject its own tokens.
+      if (params.get('state') !== nonce) {
+        logEvent('oauth:callback.state-mismatch', {}, 'warn');
+        res.writeHead(400, { 'Content-Type': 'text/plain' });
+        res.end('Invalid OAuth state');
+        return;
+      }
+
       const token = {
         service: params.get('service') || '',
         accessToken: params.get('accessToken') || '',
@@ -182,27 +224,35 @@ ipcMain.handle('oauth:open', async (_event, url: string) => {
         <script>setTimeout(function(){ window.close(); }, 1000);</script>
       </body></html>`);
 
-      srv.close();
       if (token.accessToken && token.refreshToken) {
-        resolve({ success: true, token });
+        finish({ success: true, token });
       } else {
-        resolve({ success: false });
+        finish({ success: false, error: 'Authentication did not return a token' });
       }
     });
 
-    // Listen on a random available port on loopback
-    srv.listen(0, '127.0.0.1', () => {
-      const port = (srv.address() as any).port;
-      const separator = url.includes('?') ? '&' : '?';
-      const oauthUrl = `${url}${separator}loopback_port=${port}`;
-      shell.openExternal(oauthUrl);
+    srv.on('error', (err) => {
+      logEvent('oauth:listener.error', { error: String(err) }, 'error');
+      finish({ success: false, error: 'Could not start the sign-in listener' });
     });
 
-    // Timeout after 5 minutes if user never completes auth
-    setTimeout(() => {
-      srv.close();
-      resolve({ success: false });
-    }, 5 * 60 * 1000);
+    // Listen on a random available port on loopback
+    srv.listen(0, '127.0.0.1', async () => {
+      const port = (srv.address() as any).port;
+      target.searchParams.set('loopback_port', String(port));
+      target.searchParams.set('nonce', nonce);
+
+      try {
+        await shell.openExternal(target.toString());
+      } catch (err) {
+        logEvent('oauth:open.browser-failed', { error: String(err) }, 'error');
+        finish({ success: false, error: 'Could not open your browser' });
+        return;
+      }
+
+      // Give up if the user never completes auth.
+      timer = setTimeout(() => finish({ success: false, error: 'Sign-in timed out' }), 5 * 60 * 1000);
+    });
   });
 });
 
@@ -353,7 +403,16 @@ function createWindow() {
     return { action: 'deny' }; // Prevent Electron from opening a new window
   });
 
+  let fallbackScanInFlight: Promise<Server[]> | null = null;
+
   async function doFallbackScan(): Promise<Server[]> {
+    // A sweep opens hundreds of sockets; overlapping sweeps exhaust file descriptors.
+    if (fallbackScanInFlight) return fallbackScanInFlight;
+    fallbackScanInFlight = runFallbackScan().finally(() => { fallbackScanInFlight = null; });
+    return fallbackScanInFlight;
+  }
+
+  async function runFallbackScan(): Promise<Server[]> {
     const iface = getLocalInterface();
     if (!iface) {
       console.debug('[discovery] no usable local interface for fallback scan');

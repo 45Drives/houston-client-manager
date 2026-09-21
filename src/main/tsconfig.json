@@ -7,6 +7,10 @@
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "outDir": "../../build/main",
+    // Pinned to the repo root because the main process also compiles src/shared and
+    // houston-common. Left inferred, adding or dropping one of those imports shifts the
+    // common source directory and silently moves main.js away from package.json "main".
+    "rootDir": "../..",
     "allowJs": true,
     "noImplicitAny": false,
   },

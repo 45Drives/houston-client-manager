@@ -136,15 +136,18 @@ export default async function restoreBackups(
 
   // 3) Tell the UI which folders were restored
   try {
-    const restoredFolders = Array.from(
-      new Set(files.map((f: string) => {
-        const idx = f.indexOf('/');
-        const abs = idx >= 0 ? f.slice(idx) : f;
-        return path.dirname(abs);
-      }))
-    ).map(f => normalizeRestorePath(
-      os === "win" ? fixWinPath(f) : f
-    ));
+    const restoredFolders = collapseRestoreFolders(
+      Array.from(
+        new Set(files.map((f: string) => {
+          const idx = f.indexOf('/');
+          const abs = idx >= 0 ? f.slice(idx) : f;
+          return path.dirname(abs);
+        }))
+      ).map(f => normalizeRestorePath(
+        os === "win" ? fixWinPath(f) : f
+      )),
+      os === "win" ? "\\" : "/"
+    );
 
     console.debug(" Restored folders:", restoredFolders);
 
@@ -261,8 +264,50 @@ async function copyFileWithProgress(
 }
 
 
-function normalizeRestorePath(relPath: string): string {
-  const platform = getOS();
+/** Most the UI should ever open at once; beyond this the folders are rolled up to a shared parent. */
+const MAX_RESTORE_FOLDERS = 5;
+
+/**
+ * A restore of one backup can touch hundreds of directories, and the UI offers to open
+ * every folder it is handed. Reduce the list to the few top-level folders that contain
+ * everything, so "Open Folder" opens a handful of windows rather than one per directory.
+ */
+function collapseRestoreFolders(folders: string[], sep: string): string[] {
+  const unique = Array.from(new Set(folders.filter(Boolean))).sort();
+
+  const tops: string[] = [];
+  for (const folder of unique) {
+    const covered = tops.some(t => folder === t || folder.startsWith(t.endsWith(sep) ? t : t + sep));
+    if (!covered) tops.push(folder);
+  }
+  if (tops.length <= MAX_RESTORE_FOLDERS) return tops;
+
+  // Still too many: collapse each storage root (drive letter, or `/`) to its common ancestor.
+  const groups = new Map<string, string[][]>();
+  for (const top of tops) {
+    const parts = top.split(/[\\/]+/);
+    const root = parts[0];
+    const group = groups.get(root) ?? [];
+    group.push(parts);
+    groups.set(root, group);
+  }
+
+  const collapsed: string[] = [];
+  for (const [root, group] of groups) {
+    let common = group[0];
+    for (const parts of group.slice(1)) {
+      let i = 0;
+      while (i < common.length && i < parts.length && common[i] === parts[i]) i++;
+      common = common.slice(0, i);
+    }
+    const joined = common.join(sep);
+    // `['']` (POSIX root) and `['C:']` (Windows root) both need the separator back.
+    collapsed.push(joined === root ? root + sep : joined);
+  }
+  return collapsed.slice(0, MAX_RESTORE_FOLDERS);
+}
+
+function normalizeRestorePath(relPath: string): string {  const platform = getOS();
 
   if (platform === 'win') {
     // For Windows we already pre-normalize with fixWinPath

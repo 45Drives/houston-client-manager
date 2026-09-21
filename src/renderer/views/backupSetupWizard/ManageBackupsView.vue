@@ -143,7 +143,9 @@
         </div>
 
         <!-- REMOTE tab content -->
-        <div v-else-if="activeTab === 'remote'" class="flex-1 min-h-0 bg-well rounded-lg border border-default overflow-hidden">
+        <!-- v-show, not v-if: tearing the Cockpit <webview> guest down and re-attaching it on
+             every tab toggle destabilises Electron and forces a fresh Cockpit login each time. -->
+        <div v-show="activeTab === 'remote'" class="flex-1 min-h-0 bg-well rounded-lg border border-default overflow-hidden">
             <!-- Restore view (toggled via Restore button) -->
             <RestoreBrowser v-if="remoteView === 'restore' && restoreConnected && restoreUsername"
                 :serverIp="selectedIp" :username="restoreUsername" />

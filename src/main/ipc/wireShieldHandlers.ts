@@ -23,17 +23,19 @@ const API_ENV = '/etc/wireshield/api.env';
 // tiers, which is enough concurrent pre-auth handshakes to trip sshd's
 // MaxStartups and leave every request timing out.
 
+/**
+ * Returns a leased pooled connection. The caller owns the lease and must call
+ * `dispose()` when finished — releasing it here would drop the lease count to zero
+ * while the operation is still running, so the pool's idle timer could close the
+ * socket mid-command and its per-connection channel limit would never apply.
+ */
 async function getPooledSSH(host: string, username: string, password?: string): Promise<NodeSSH> {
   const stored = !password ? getCredentialManager().getForHost(host) : null;
   const auth: SshAuth = stored?.sshKeyPath
     ? { username, method: 'key', privateKeyPath: stored.sshKeyPath, passphrase: stored.sshPassphrase || undefined }
     : { username, method: 'password', password: password || '' };
 
-  const ssh = await acquireSSH(host, auth);
-  // Callers here don't own the connection; hand the lease straight back so the
-  // pool's idle timer governs its lifetime, as the private pool used to.
-  ssh.dispose();
-  return ssh;
+  return acquireSSH(host, auth);
 }
 
 function poolKey(host: string, username: string): string {
@@ -213,8 +215,9 @@ export function registerWireShieldHandlers(ctx: WireShieldContext) {
     const safeHost = assertSafeHost(host);
     jsonLogger.info({ event: 'WireShield:status', host: safeHost });
 
+    let lease: NodeSSH | null = null;
     try {
-      const ssh = await getPooledSSH(safeHost, username, password);
+      const ssh = lease = await getPooledSSH(safeHost, username, password);
       const installed = await ssh.execCommand(`test -x ${WIRESHIELD_CLI}`);
       if (installed.code !== 0) {
         return { success: true, data: { installed: false, configured: false, interfaces: [] } as WireShieldStatus };
@@ -229,6 +232,8 @@ export function registerWireShieldHandlers(ctx: WireShieldContext) {
       disposePoolEntry(poolKey(safeHost, username)); // drop broken connection
       jsonLogger.error({ event: 'WireShield:status_error', host: safeHost, error: String(e) });
       return { success: false, error: e?.message };
+    } finally {
+      lease?.dispose();
     }
   });
 
@@ -239,8 +244,9 @@ export function registerWireShieldHandlers(ctx: WireShieldContext) {
     const safeHost = assertSafeHost(host);
     jsonLogger.info({ event: 'WireShield:initiate', host: safeHost, name });
 
+    let lease: NodeSSH | null = null;
     try {
-      const ssh = await getPooledSSH(safeHost, username, password);
+      const ssh = lease = await getPooledSSH(safeHost, username, password);
 
       let cli = `sudo ${WIRESHIELD_CLI} create --json --no-wait`;
       if (name) cli += ` --name ${shellQuote(name)}`;
@@ -265,6 +271,8 @@ export function registerWireShieldHandlers(ctx: WireShieldContext) {
       disposePoolEntry(poolKey(safeHost, username));
       jsonLogger.error({ event: 'WireShield:initiate_error', host: safeHost, error: String(e) });
       return { success: false, error: e?.message };
+    } finally {
+      lease?.dispose();
     }
   });
 
@@ -279,8 +287,9 @@ export function registerWireShieldHandlers(ctx: WireShieldContext) {
       return { success: false, error: 'Invalid pairing code' };
     }
 
+    let lease: NodeSSH | null = null;
     try {
-      const ssh = await getPooledSSH(safeHost, username, password);
+      const ssh = lease = await getPooledSSH(safeHost, username, password);
 
       let cli = `sudo ${WIRESHIELD_CLI} join ${shellQuote(code.toUpperCase())} --json`;
       if (name) cli += ` --name ${shellQuote(name)}`;
@@ -305,6 +314,8 @@ export function registerWireShieldHandlers(ctx: WireShieldContext) {
       disposePoolEntry(poolKey(safeHost, username));
       jsonLogger.error({ event: 'WireShield:join_error', host: safeHost, error: String(e) });
       return { success: false, error: e?.message };
+    } finally {
+      lease?.dispose();
     }
   });
 
@@ -314,8 +325,9 @@ export function registerWireShieldHandlers(ctx: WireShieldContext) {
   }) => {
     const safeHost = assertSafeHost(host);
 
+    let lease: NodeSSH | null = null;
     try {
-      const ssh = await getPooledSSH(safeHost, username, password);
+      const ssh = lease = await getPooledSSH(safeHost, username, password);
 
       // WireShield finishes the initiator side itself while reporting status,
       // so a completed session already carries the finished tunnel details.
@@ -345,6 +357,8 @@ export function registerWireShieldHandlers(ctx: WireShieldContext) {
     } catch (e: any) {
       disposePoolEntry(poolKey(safeHost, username));
       return { success: false, error: e?.message };
+    } finally {
+      lease?.dispose();
     }
   });
 
@@ -359,8 +373,9 @@ export function registerWireShieldHandlers(ctx: WireShieldContext) {
       return { success: false, error: 'Invalid interface name' };
     }
 
+    let lease: NodeSSH | null = null;
     try {
-      const ssh = await getPooledSSH(safeHost, username, password);
+      const ssh = lease = await getPooledSSH(safeHost, username, password);
       const networkId = await resolveNetworkId(ssh, iface);
       await apiCall(ssh, 'DELETE', `/networks/${encodeURIComponent(networkId)}`);
 
@@ -370,6 +385,8 @@ export function registerWireShieldHandlers(ctx: WireShieldContext) {
       disposePoolEntry(poolKey(safeHost, username));
       jsonLogger.error({ event: 'WireShield:teardown_error', host: safeHost, error: String(e) });
       return { success: false, error: e?.message };
+    } finally {
+      lease?.dispose();
     }
   });
 
@@ -379,8 +396,9 @@ export function registerWireShieldHandlers(ctx: WireShieldContext) {
   }) => {
     const safeHost = assertSafeHost(host);
 
+    let lease: NodeSSH | null = null;
     try {
-      const ssh = await getPooledSSH(safeHost, username, password);
+      const ssh = lease = await getPooledSSH(safeHost, username, password);
       const tunnels = await fetchTunnels(ssh);
       const relevant = iface ? tunnels.filter((t) => t.name === iface) : tunnels;
 
@@ -412,6 +430,8 @@ export function registerWireShieldHandlers(ctx: WireShieldContext) {
     } catch (e: any) {
       disposePoolEntry(poolKey(safeHost, username));
       return { success: false, error: e?.message };
+    } finally {
+      lease?.dispose();
     }
   });
 
@@ -421,8 +441,9 @@ export function registerWireShieldHandlers(ctx: WireShieldContext) {
   }) => {
     const safeHost = assertSafeHost(host);
 
+    let lease: NodeSSH | null = null;
     try {
-      const ssh = await getPooledSSH(safeHost, username, password);
+      const ssh = lease = await getPooledSSH(safeHost, username, password);
       const query = port ? `?listen_port=${Number(port)}` : '';
       const check = await apiCall(ssh, 'GET', `/pairing/preflight${query}`);
 
@@ -443,6 +464,8 @@ export function registerWireShieldHandlers(ctx: WireShieldContext) {
     } catch (e: any) {
       disposePoolEntry(poolKey(safeHost, username));
       return { success: false, error: e?.message };
+    } finally {
+      lease?.dispose();
     }
   });
 
@@ -457,8 +480,9 @@ export function registerWireShieldHandlers(ctx: WireShieldContext) {
       return { success: false, error: 'Invalid interface name' };
     }
 
+    let lease: NodeSSH | null = null;
     try {
-      const ssh = await getPooledSSH(safeHost, username, password);
+      const ssh = lease = await getPooledSSH(safeHost, username, password);
       const networkId = await resolveNetworkId(ssh, iface);
       const data = await apiCall(ssh, 'POST', `/pairing/connections/${encodeURIComponent(networkId)}/restart`);
 
@@ -468,6 +492,8 @@ export function registerWireShieldHandlers(ctx: WireShieldContext) {
       disposePoolEntry(poolKey(safeHost, username));
       jsonLogger.error({ event: 'WireShield:restart_error', host: safeHost, error: String(e) });
       return { success: false, error: e?.message };
+    } finally {
+      lease?.dispose();
     }
   });
 
@@ -486,8 +512,9 @@ export function registerWireShieldHandlers(ctx: WireShieldContext) {
       return { success: false, error: 'A 44-character WireGuard public key is required' };
     }
 
+    let lease: NodeSSH | null = null;
     try {
-      const ssh = await getPooledSSH(safeHost, username, password);
+      const ssh = lease = await getPooledSSH(safeHost, username, password);
       const networkId = await resolveNetworkId(ssh, iface);
       // WireShield allocates the tunnel IP and AllowedIPs itself, so only the
       // identity of the peer is caller-supplied.
@@ -505,6 +532,8 @@ export function registerWireShieldHandlers(ctx: WireShieldContext) {
       disposePoolEntry(poolKey(safeHost, username));
       jsonLogger.error({ event: 'WireShield:addPeer_error', host: safeHost, error: String(e) });
       return { success: false, error: e?.message };
+    } finally {
+      lease?.dispose();
     }
   });
 
@@ -523,8 +552,9 @@ export function registerWireShieldHandlers(ctx: WireShieldContext) {
       return { success: false, error: 'WireShield negotiates peer endpoints and keepalive automatically; only Allowed IPs can be overridden' };
     }
 
+    let lease: NodeSSH | null = null;
     try {
-      const ssh = await getPooledSSH(safeHost, username, password);
+      const ssh = lease = await getPooledSSH(safeHost, username, password);
       const networkId = await resolveNetworkId(ssh, iface);
       const peerId = await resolvePeerId(ssh, networkId, pubkey);
       const data = await apiCall(ssh, 'PUT', `/peers/${encodeURIComponent(peerId)}/allowed-ips`, {
@@ -537,6 +567,8 @@ export function registerWireShieldHandlers(ctx: WireShieldContext) {
       disposePoolEntry(poolKey(safeHost, username));
       jsonLogger.error({ event: 'WireShield:editPeer_error', host: safeHost, error: String(e) });
       return { success: false, error: e?.message };
+    } finally {
+      lease?.dispose();
     }
   });
 
@@ -551,8 +583,9 @@ export function registerWireShieldHandlers(ctx: WireShieldContext) {
       return { success: false, error: 'Invalid interface name' };
     }
 
+    let lease: NodeSSH | null = null;
     try {
-      const ssh = await getPooledSSH(safeHost, username, password);
+      const ssh = lease = await getPooledSSH(safeHost, username, password);
       const networkId = await resolveNetworkId(ssh, iface);
       const peerId = await resolvePeerId(ssh, networkId, pubkey);
       await apiCall(
@@ -567,6 +600,8 @@ export function registerWireShieldHandlers(ctx: WireShieldContext) {
       disposePoolEntry(poolKey(safeHost, username));
       jsonLogger.error({ event: 'WireShield:removePeer_error', host: safeHost, error: String(e) });
       return { success: false, error: e?.message };
+    } finally {
+      lease?.dispose();
     }
   });
 }

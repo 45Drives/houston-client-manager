@@ -287,20 +287,28 @@ export async function verifySshCredentials(
       : buildSshConnectOptions(host, { username, password, method: 'password' });
     await ssh.connect(connectOpts);
 
-    // Check if user has admin privileges (root or wheel/sudo group)
+    // Membership in wheel/sudo does not prove sudoers actually grants anything, so
+    // test the capability first and only fall back to group membership when sudo
+    // declines because it would prompt (which an admin can still satisfy later).
     let isAdmin = false;
     try {
       const uidResult = await ssh.execCommand('id -u');
       if (uidResult.stdout.trim() === '0') {
         isAdmin = true;
       } else {
-        const groupsResult = await ssh.execCommand('id -Gn');
-        const groups = groupsResult.stdout.trim().split(/\s+/);
-        isAdmin = groups.includes('wheel') || groups.includes('sudo');
+        const sudoResult = await ssh.execCommand('sudo -n true');
+        if (sudoResult.code === 0) {
+          isAdmin = true;
+        } else {
+          const groupsResult = await ssh.execCommand('id -Gn');
+          const groups = groupsResult.stdout.trim().split(/\s+/);
+          isAdmin = groups.includes('wheel') || groups.includes('sudo');
+        }
       }
     } catch {
-      // If we can't determine privileges, allow proceeding (fail open for the check)
-      isAdmin = true;
+      // Fail closed: an account we could not evaluate is treated as unprivileged
+      // rather than waved through into a setup that needs root.
+      isAdmin = false;
     }
 
     return { success: true, isAdmin };

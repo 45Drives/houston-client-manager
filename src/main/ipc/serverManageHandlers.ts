@@ -112,6 +112,9 @@ async function cmd(ssh: NodeSSH, command: string): Promise<string> {
   return result.stdout.trim();
 }
 
+/** Raised when the password is valid but the account cannot administer the server. */
+class AdminCapabilityError extends Error {}
+
 /**
  * Password-only connect for destructive work. Deliberately does NOT use
  * connectWithFallback: that tries the SSH agent and the app-managed key first,
@@ -120,10 +123,30 @@ async function cmd(ssh: NodeSSH, command: string): Promise<string> {
 async function connectAsAdmin(host: string, username: string, adminPassword: string): Promise<NodeSSH> {
   const ssh = new NodeSSH();
   await ssh.connect(buildSshConnectOptions(host, { username, method: 'password', password: adminPassword }));
+
+  // Authenticating is not the same as being an administrator. Without this the gate
+  // accepts any account on the box and the caller only finds out when sudo refuses
+  // halfway through a multi-step change.
+  try {
+    const uid = await ssh.execCommand('id -u');
+    if (uid.stdout.trim() !== '0') {
+      const sudo = await ssh.execCommand('sudo -n true');
+      if (sudo.code !== 0) {
+        throw new AdminCapabilityError(
+          `${username} signed in to ${host} but does not have administrator (sudo) access.`,
+        );
+      }
+    }
+  } catch (e) {
+    ssh.dispose();
+    throw e;
+  }
+
   return ssh;
 }
 
 function adminAuthFailureMessage(host: string, username: string, err: any): string {
+  if (err instanceof AdminCapabilityError) return err.message;
   const raw = String(err?.message || err);
   if (/All configured authentication methods failed/i.test(raw)) {
     return `${host} rejected the password for ${username}. If password login is disabled for this account, `
@@ -137,8 +160,29 @@ async function sudoCmd(ssh: NodeSSH, command: string): Promise<{ code: number | 
   return { code: result.code, stdout: result.stdout.trim(), stderr: result.stderr.trim() };
 }
 
+/**
+ * Hands a secret to a command over stdin. Building an `echo … | cmd` pipeline instead
+ * would let Bash re-parse the secret, so an apostrophe in a password ends the quoted
+ * string. `-n` because sudo would otherwise swallow the payload as its own prompt.
+ */
+async function sudoCmdWithStdin(
+  ssh: NodeSSH,
+  command: string,
+  stdin: string,
+): Promise<{ code: number | null; stdout: string; stderr: string }> {
+  const result = await ssh.execCommand(`sudo -n ${command} 2>&1`, { stdin });
+  return { code: result.code, stdout: result.stdout.trim(), stderr: result.stderr.trim() };
+}
+
 function shellQuote(s: string): string {
   return `'${s.replace(/'/g, "'\\''")}'`;
+}
+
+const SAFE_UNIX_NAME = /^[a-z_][a-z0-9_-]*\$?$/;
+
+/** chpasswd and smbpasswd read stdin line by line, so a newline would forge an extra record. */
+function hasControlChars(s: string): boolean {
+  return /[\r\n\0]/.test(s);
 }
 
 // ── Samba config location ──────────────────────────────────────────────────
@@ -758,11 +802,13 @@ async function executeManageAction(
       let r = await sudoCmd(ssh, `useradd --create-home ${shellFlag} ${shellQuote(newUser)}`);
       if (r.code !== 0 && r.code !== null) return { success: false, error: r.stdout || r.stderr };
       if (newPass) {
-        r = await sudoCmd(ssh, `bash -c ${shellQuote(`echo '${newUser}:${newPass}' | chpasswd`)}`);
+        if (hasControlChars(newPass)) return { success: false, error: 'Password cannot contain line breaks' };
+        r = await sudoCmdWithStdin(ssh, 'chpasswd', `${newUser}:${newPass}\n`);
         if (r.code !== 0 && r.code !== null) return { success: false, error: `User created but password failed: ${r.stdout}` };
       }
       if (groups?.length) {
-        r = await sudoCmd(ssh, `usermod -aG ${groups.join(',')} ${shellQuote(newUser)}`);
+        if (!groups.every(g => SAFE_UNIX_NAME.test(g))) return { success: false, error: 'Invalid group name' };
+        r = await sudoCmd(ssh, `usermod -aG ${shellQuote(groups.join(','))} ${shellQuote(newUser)}`);
         if (r.code !== 0 && r.code !== null) return { success: false, error: `User created but group assignment failed: ${r.stdout}` };
       }
       return { success: true };
@@ -771,7 +817,9 @@ async function executeManageAction(
     case 'user:set-password': {
       const { username: targetUser, password: targetPass } = params as { username: string; password: string };
       if (!targetUser || !targetPass) return { success: false, error: 'Username and password required' };
-      const r = await sudoCmd(ssh, `bash -c ${shellQuote(`echo '${targetUser}:${targetPass}' | chpasswd`)}`);
+      if (!SAFE_UNIX_NAME.test(targetUser)) return { success: false, error: 'Invalid username' };
+      if (hasControlChars(targetPass)) return { success: false, error: 'Password cannot contain line breaks' };
+      const r = await sudoCmdWithStdin(ssh, 'chpasswd', `${targetUser}:${targetPass}\n`);
       if (r.code !== 0 && r.code !== null) return { success: false, error: r.stdout || r.stderr };
       return { success: true };
     }
@@ -779,7 +827,8 @@ async function executeManageAction(
     case 'user:set-groups': {
       const { username: targetUser, groups } = params as { username: string; groups: string[] };
       if (!targetUser || !groups) return { success: false, error: 'Username and groups required' };
-      const r = await sudoCmd(ssh, `usermod -G ${groups.join(',')} ${shellQuote(targetUser)}`);
+      if (!groups.every(g => SAFE_UNIX_NAME.test(g))) return { success: false, error: 'Invalid group name' };
+      const r = await sudoCmd(ssh, `usermod -G ${shellQuote(groups.join(','))} ${shellQuote(targetUser)}`);
       if (r.code !== 0 && r.code !== null) return { success: false, error: r.stdout || r.stderr };
       return { success: true };
     }
@@ -835,7 +884,10 @@ async function executeManageAction(
     case 'samba:set-user-password': {
       const { username: smbUser, password: smbPass } = params as { username: string; password: string };
       if (!smbUser || !smbPass) return { success: false, error: 'Username and password required' };
-      const r = await sudoCmd(ssh, `bash -c ${shellQuote(`(echo '${smbPass}'; echo '${smbPass}') | smbpasswd -s -a '${smbUser}'`)}`);
+      if (!SAFE_UNIX_NAME.test(smbUser)) return { success: false, error: 'Invalid username' };
+      if (hasControlChars(smbPass)) return { success: false, error: 'Password cannot contain line breaks' };
+      // smbpasswd -s reads the new password twice from stdin.
+      const r = await sudoCmdWithStdin(ssh, `smbpasswd -s -a ${shellQuote(smbUser)}`, `${smbPass}\n${smbPass}\n`);
       if (r.code !== 0 && r.code !== null) return { success: false, error: r.stdout || r.stderr };
       return { success: true };
     }
