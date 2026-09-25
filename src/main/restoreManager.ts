@@ -10,6 +10,7 @@ import { assertSafeHost, assertSafeUsername, shellQuote } from './security';
 import { loadSettings } from './settingsStore';
 import { getMountSmbScript } from './utils';
 import { getCredentialManager } from './credentialManager';
+import { logEvent, errMsg } from './logging';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -882,6 +883,52 @@ async function pickStagingDir(ssh: NodeSSH, operationId: string): Promise<string
   return `/tmp/houston-restore-staging/${operationId}`;
 }
 
+/** Minutes after which an untouched staging dir is considered abandoned, not just slow. */
+const STALE_STAGING_MINUTES = 24 * 60;
+
+/**
+ * Remove a server-side staging dir and log the outcome. Never throws — cleanup
+ * is best-effort and must not turn a completed restore into a reported failure.
+ */
+async function cleanupStagingDir(ssh: NodeSSH, stagingDir: string, context: Record<string, unknown>): Promise<void> {
+  try {
+    assertCommandSuccess(await ssh.execCommand(`rm -rf ${shellQuote(stagingDir)}`), 'staging cleanup');
+    logEvent('restore.stagingCleanup', { stagingDir, ...context });
+  } catch (err) {
+    logEvent('restore.stagingCleanup.failed', { stagingDir, ...context, error: errMsg(err) }, 'warn');
+  }
+}
+
+/**
+ * Remove staging dirs left behind by restores that never reached their own
+ * cleanup step (app crash/force-quit, dropped SSH session, server reboot).
+ * Only removes dirs older than STALE_STAGING_MINUTES so an in-flight restore
+ * from another operation is never touched. Runs before every client-pull
+ * restore since that's the only point a live SSH session to this server is
+ * already open.
+ */
+async function sweepStaleStagingDirs(ssh: NodeSSH): Promise<void> {
+  try {
+    const poolsResult = await ssh.execCommand(`zfs list -H -o mountpoint -t filesystem -d 0 2>/dev/null`);
+    const roots = poolsResult.stdout.split('\n').map(l => l.trim()).filter(l => l.startsWith('/'));
+    roots.push('/tmp');
+
+    for (const root of roots) {
+      const stagingRoot = `${root}/.houston-restore-staging`;
+      const findResult = await ssh.execCommand(
+        `find ${shellQuote(stagingRoot)} -mindepth 1 -maxdepth 1 -type d -mmin +${STALE_STAGING_MINUTES} 2>/dev/null`,
+      );
+      const staleDirs = findResult.stdout.split('\n').map(l => l.trim()).filter(Boolean);
+      for (const dir of staleDirs) {
+        await cleanupStagingDir(ssh, dir, { reason: 'stale-sweep' });
+      }
+    }
+  } catch (err) {
+    // Housekeeping only — a sweep failure must never block the restore itself.
+    logEvent('restore.staleStagingSweep.failed', { error: errMsg(err) }, 'warn');
+  }
+}
+
 /**
  * Restore files from an rclone remote or server path to the server.
  */
@@ -961,6 +1008,7 @@ export async function restoreToClient(
 
   let stagingDir = '';
   try {
+    await sweepStaleStagingDirs(ssh);
     stagingDir = await pickStagingDir(ssh, opId);
 
     // Stage 1: Copy files to server staging dir
@@ -1004,8 +1052,7 @@ export async function restoreToClient(
     const error = err instanceof Error ? err.message : String(err);
     return settleRestoreError(opId, error, onProgress);
   } finally {
-    // Cleanup staging dir
-    if (stagingDir) await ssh.execCommand(`rm -rf ${shellQuote(stagingDir)}`).catch(() => {});
+    if (stagingDir) await cleanupStagingDir(ssh, stagingDir, { operationId: opId });
     ssh.dispose();
   }
 }
@@ -1090,6 +1137,7 @@ export async function restoreS2SToClient(
 
   let stagingDir = '';
   try {
+    await sweepStaleStagingDirs(ssh);
     stagingDir = await pickStagingDir(ssh, opId);
 
     // Stage 1: rsync from remote host to server staging dir
@@ -1125,8 +1173,7 @@ export async function restoreS2SToClient(
     const error = err instanceof Error ? err.message : String(err);
     return settleRestoreError(opId, error, onProgress);
   } finally {
-    // Cleanup staging dir
-    if (stagingDir) await ssh.execCommand(`rm -rf ${shellQuote(stagingDir)}`).catch(() => {});
+    if (stagingDir) await cleanupStagingDir(ssh, stagingDir, { operationId: opId });
     ssh.dispose();
   }
 }
@@ -1412,7 +1459,7 @@ function downloadViaRobocopy(
           });
 
           // Clean up server-side SMB staging
-          await ssh.execCommand(`rm -rf ${shellQuote(smbStagingDir)}`).catch(() => {});
+          await cleanupStagingDir(ssh, smbStagingDir, { operationId });
 
           // robocopy reports success when it copies nothing, so confirm files actually landed.
           if (rc.success && stagedCount > 0 && (await countLocalFiles(localDestPath)) === 0) {
