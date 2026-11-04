@@ -134,7 +134,8 @@ afterEach(() => {
   fs.rmSync(fixture, { recursive: true, force: true });
 });
 
-describe('remote filesystem validation', () => {
+// These suites execute the Linux server program locally, not through SSH.
+describe.skipIf(originalPlatform !== 'linux')('remote filesystem validation', () => {
   it.each(['relative/path', '', 'C:\\Downloads'])('rejects non-absolute server path %s', (destination) => {
     const result = runStorage('prepare', destination);
     expect(result.status).toBe(1);
@@ -247,7 +248,7 @@ const host = 'server.example';
 const user = 'testuser';
 const remote = ['backup.example', 22, 'backupuser'] as const;
 
-describe('main-process restore enforcement', () => {
+describe.skipIf(originalPlatform !== 'linux')('main-process restore enforcement', () => {
   const customRestores = [
     ['cloud', (dest: string) => restoreToServer(host, user, 'cloud:', '/backup', dest, undefined, undefined, undefined, true)],
     ['original-location', (dest: string) => restoreToServer(host, user, 'server', '/original', dest, undefined, undefined, undefined, true)],

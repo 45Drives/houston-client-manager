@@ -106,6 +106,8 @@ yarn dev      # run the app in development
 yarn test     # unit tests
 ```
 
+Restore SSH protocol tests run on every client platform without local Python or shell tools. The Linux server filesystem harness in [restoreStorage.test.ts](src/main/restoreStorage.test.ts) runs only on Linux and requires `python3` and `/bin/sh`; it is explicitly skipped on Windows and macOS.
+
 Packaging is driven by `electron-builder.json`. Release artifacts are named `${productName}-${version}-${os}-${arch}.${ext}` and published to GitHub releases, which is also the source for in-app automatic updates.
 
 ### References
