@@ -214,19 +214,36 @@
 
                     <!-- Restore bar (shown when files selected) -->
                     <div v-if="snap.selectedFiles.value.length > 0"
-                        class="px-3 py-2 border-t border-neutral-200 dark:border-neutral-700 flex items-center gap-3 shrink-0 bg-neutral-50 dark:bg-neutral-850">
+                        class="px-3 py-2 border-t border-neutral-200 dark:border-neutral-700 flex flex-wrap items-center gap-3 shrink-0 bg-neutral-50 dark:bg-neutral-850">
                         <span class="text-sm text-default">
                             {{ snap.selectedFiles.value.length }} file{{ snap.selectedFiles.value.length !== 1 ? 's' : '' }} selected
                         </span>
                         <div class="flex-1" />
-                        <input v-model="restoreDestPath" type="text" placeholder="Restore to path (e.g. /data/restored)"
+                        <input v-model="restoreDestPath" type="text" placeholder="Choose a mounted ZFS destination"
+                            list="snapshot-restore-destinations" :disabled="snap.operating.value"
                             class="input-textlike border border-default rounded px-2 py-1 text-sm w-64" />
+                        <datalist id="snapshot-restore-destinations">
+                            <option v-for="destination in restoreDestinations" :key="destination" :value="destination" />
+                        </datalist>
                         <button class="btn btn-sm btn-primary h-fit"
                             :disabled="snap.operating.value || !restoreDestPath.trim()"
                             @click="doRestoreFiles">
                             <ArrowDownTrayIcon class="w-4 h-4 mr-1 inline" />
                             Restore
                         </button>
+                        <label class="flex items-center gap-2 text-xs text-muted">
+                            <input type="checkbox" v-model="allowNonZfs" :disabled="snap.operating.value" />
+                            Allow a custom path outside ZFS storage
+                        </label>
+                        <p v-if="allowNonZfs" class="w-full text-xs text-amber-600 dark:text-amber-400">
+                            Warning: a custom destination may fill the server's boot drive and make it unusable.
+                            Check the destination's filesystem and free space before restoring.
+                        </p>
+                        <p v-if="restoreStorageError" class="w-full text-xs text-danger">
+                            {{ restoreStorageError }}
+                            <button class="underline ml-1" :disabled="snap.operating.value"
+                                @click="loadRestoreDestinations()">Retry storage discovery</button>
+                        </p>
                     </div>
                 </template>
             </div>
@@ -450,6 +467,34 @@ const deleteAnchorConfirmed = ref(false);
 /** Populated when the main process refuses the destroy after its own re-check. */
 const deleteServerBlock = ref<{ kind: 'anchor' | 'anchor_unknown'; reason?: string } | null>(null);
 const restoreDestPath = ref('');
+const allowNonZfs = ref(false);
+const restoreDestinations = ref<string[]>([]);
+const restoreStorageError = ref('');
+
+async function loadRestoreDestinations() {
+    const host = props.serverIp;
+    const username = props.username;
+    restoreDestinations.value = [];
+    restoreStorageError.value = '';
+    try {
+        const destinations: Array<{ mountpoint: string }> = await window.electron.ipcRenderer.invoke('restore:list-destinations', {
+            serverIp: host, username,
+        });
+        if (host !== props.serverIp || username !== props.username) return;
+        restoreDestinations.value = destinations.map(d => `${d.mountpoint}/restored`);
+        if (!restoreDestPath.value) restoreDestPath.value = restoreDestinations.value[0] || '';
+    } catch (error: unknown) {
+        if (host !== props.serverIp || username !== props.username) return;
+        restoreStorageError.value = error instanceof Error ? error.message : 'Failed to discover mounted ZFS storage.';
+    }
+}
+
+watch(() => [props.serverIp, props.username], () => {
+    allowNonZfs.value = false;
+    restoreDestPath.value = '';
+    if (props.serverIp) loadRestoreDestinations();
+}, { immediate: true });
+
 const snapSortAsc = ref(false); // false = newest first (descending), true = oldest first (ascending)
 
 /** Anchor info for the snapshot being deleted (if any) */
@@ -601,7 +646,7 @@ async function doDelete() {
 async function doRestoreFiles() {
     const dest = restoreDestPath.value.trim();
     if (!dest) return;
-    const result = await snap.restoreFiles(dest);
+    const result = await snap.restoreFiles(dest, allowNonZfs.value);
     if (result.success) {
         pushNotification(new Notification('Files Restored', `${result.filesRestored ?? 0} file(s) restored to ${dest}.`, 'success', 8000));
         snap.deselectAll();

@@ -47,6 +47,12 @@ export interface ZfsDataset {
   available: string;
 }
 
+export interface RestoreDestination {
+  name: string;
+  mountpoint: string;
+  available: number;
+}
+
 export interface ZfsSnapshot {
   name: string;
   dataset: string;
@@ -312,6 +318,7 @@ export function useRestore(serverIp: () => string, username: () => string) {
   async function startRestore(opts: {
     destPath: string;
     target: 'server' | 'client';
+    allowNonZfs?: boolean;
   }) {
     restoring.value = true;
     error.value = null;
@@ -373,6 +380,7 @@ export function useRestore(serverIp: () => string, username: () => string) {
         sourcePath,
         destPath: opts.destPath,
         target: opts.target,
+        allowNonZfs: opts.target === 'server' && opts.allowNonZfs === true,
         s2sTask,
         selectedFiles: selected,
         operationId,
@@ -494,43 +502,34 @@ export function useRestore(serverIp: () => string, username: () => string) {
 
   // ── Destination path helpers ────────────────────────────────────────────
 
-  const destSuggestions = ref<string[]>([]);
-  let _suggestTimer: ReturnType<typeof setTimeout> | null = null;
+  const restoreDestinations = ref<RestoreDestination[]>([]);
+  const destinationError = ref<string | null>(null);
+  const destSuggestions = computed(() => restoreDestinations.value.map(d => `${d.mountpoint}/restored`));
 
-  function fetchDirSuggestions(inputPath: string) {
-    if (_suggestTimer) clearTimeout(_suggestTimer);
-    _suggestTimer = setTimeout(async () => {
-      if (!inputPath || inputPath.length < 2 || !inputPath.startsWith('/')) {
-        destSuggestions.value = [];
-        return;
+  async function loadRestoreDestinations() {
+    const host = serverIp();
+    const user = username();
+    restoreDestinations.value = [];
+    destinationError.value = null;
+    try {
+      const destinations: RestoreDestination[] = await window.electron.ipcRenderer.invoke('restore:list-destinations', {
+        serverIp: host, username: user,
+      });
+      if (serverIp() === host && username() === user) restoreDestinations.value = destinations;
+    } catch (e: unknown) {
+      if (serverIp() === host && username() === user) {
+        destinationError.value = e instanceof Error ? e.message : 'Failed to discover mounted ZFS storage. Mount a ZFS data dataset and retry.';
       }
-
-      const lastSlash = inputPath.lastIndexOf('/');
-      const parentDir = lastSlash > 0 ? inputPath.substring(0, lastSlash) : '/';
-      const prefix = inputPath.substring(lastSlash + 1).toLowerCase();
-
-      try {
-        const entries: ServerFileEntry[] = await window.electron.ipcRenderer.invoke('restore:browse-server', {
-          serverIp: serverIp(),
-          username: username(),
-          serverPath: parentDir,
-        });
-
-        destSuggestions.value = entries
-          .filter(e => e.isDir && (prefix === '' || e.name.toLowerCase().startsWith(prefix)))
-          .map(e => `${parentDir === '/' ? '' : parentDir}/${e.name}`);
-      } catch {
-        destSuggestions.value = [];
-      }
-    }, 300);
+    }
   }
 
-  async function createDirectory(dirPath: string): Promise<{ success: boolean; error?: string }> {
+  async function createDirectory(dirPath: string, allowNonZfs = false): Promise<{ success: boolean; error?: string }> {
     try {
       return await window.electron.ipcRenderer.invoke('restore:mkdir', {
         serverIp: serverIp(),
         username: username(),
         dirPath,
+        allowNonZfs,
       });
     } catch (e: any) {
       return { success: false, error: e?.message ?? 'Failed to create directory' };
@@ -609,7 +608,9 @@ export function useRestore(serverIp: () => string, username: () => string) {
 
     // Destination helpers
     destSuggestions,
-    fetchDirSuggestions,
+    restoreDestinations,
+    destinationError,
+    loadRestoreDestinations,
     createDirectory,
     createZfsDataset,
   };

@@ -353,7 +353,7 @@ export function useSnapshotManager(serverIp: () => string, username: () => strin
 
   // ── File restore ───────────────────────────────────────────────────────
 
-  async function restoreFiles(destPath: string): Promise<SnapshotRestoreResult> {
+  async function restoreFiles(destPath: string, allowNonZfs = false): Promise<SnapshotRestoreResult> {
     if (!selectedSnapshot.value) {
       return { success: false, error: 'No snapshot selected' };
     }
@@ -374,6 +374,7 @@ export function useSnapshotManager(serverIp: () => string, username: () => strin
           snapName: selectedSnapshot.value!.snapName,
           filePaths: selected.map(f => f.path),
           destPath,
+          allowNonZfs,
         }),
       );
       if (!result.success) {

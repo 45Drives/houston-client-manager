@@ -12,6 +12,7 @@ import {
   createServerDirectory,
   createZfsDatasetOnServer,
   listZfsDatasets,
+  listRestoreDestinations,
   listZfsSnapshots,
   rollbackSnapshot,
   createZfsSnapshot,
@@ -93,6 +94,19 @@ export function registerRestoreHandlers(ctx: IPCHandlerContext) {
   // ── Server file browsing ───────────────────────────────────────────────
 
   ipcMain.handle(
+    'restore:list-destinations',
+    async (_event, { serverIp, username }: { serverIp: string; username: string }) => {
+      try {
+        return await listRestoreDestinations(serverIp, username);
+      } catch (err) {
+        const error = err instanceof Error ? err.message : String(err);
+        ctx.jsonLogger.error({ event: 'restore:list-destinations.failed', serverIp, error });
+        throw err;
+      }
+    },
+  );
+
+  ipcMain.handle(
     'restore:browse-server',
     async (_event, { serverIp, username, serverPath }: {
       serverIp: string; username: string; serverPath: string;
@@ -160,6 +174,7 @@ export function registerRestoreHandlers(ctx: IPCHandlerContext) {
       s2sTask?: { remoteHost: string; remotePort: number; remoteUser: string };
       selectedFiles?: string[];
       operationId?: string;
+      allowNonZfs?: boolean;
     }) => {
       // The renderer may mint the id so it can show the operation before the first
       // progress event lands; anything else is not trusted into a shell pattern.
@@ -179,6 +194,7 @@ export function registerRestoreHandlers(ctx: IPCHandlerContext) {
         target: opts.target,
         fileCount: fileCount || 'all',
         isS2S: !!opts.s2sTask,
+        allowNonZfs: opts.target === 'server' && opts.allowNonZfs === true,
       });
 
       let result: any;
@@ -198,6 +214,7 @@ export function registerRestoreHandlers(ctx: IPCHandlerContext) {
             onProgress,
             operationId,
             opts.selectedFiles,
+            opts.allowNonZfs === true,
           );
         } else {
           result = await restoreS2SToClient(
@@ -223,6 +240,7 @@ export function registerRestoreHandlers(ctx: IPCHandlerContext) {
           onProgress,
           operationId,
           opts.selectedFiles,
+          opts.allowNonZfs === true,
         );
       } else {
         result = await restoreToClient(
@@ -324,11 +342,11 @@ export function registerRestoreHandlers(ctx: IPCHandlerContext) {
 
   ipcMain.handle(
     'restore:mkdir',
-    async (_event, { serverIp, username, dirPath }: {
-      serverIp: string; username: string; dirPath: string;
+    async (_event, { serverIp, username, dirPath, allowNonZfs }: {
+      serverIp: string; username: string; dirPath: string; allowNonZfs?: boolean;
     }) => {
       ctx.jsonLogger.info({ event: 'restore:mkdir', serverIp, dirPath });
-      const result = await createServerDirectory(serverIp, username, dirPath);
+      const result = await createServerDirectory(serverIp, username, dirPath, allowNonZfs === true);
       ctx.jsonLogger[result?.success ? 'info' : 'error']({ event: 'restore:mkdir.done', serverIp, dirPath, success: result?.success, error: result?.error });
       return result;
     },
@@ -459,12 +477,12 @@ export function registerRestoreHandlers(ctx: IPCHandlerContext) {
 
   ipcMain.handle(
     'snapshot:restore-files',
-    async (_event, { serverIp, username, dataset, snapName, filePaths, destPath }: {
+    async (_event, { serverIp, username, dataset, snapName, filePaths, destPath, allowNonZfs }: {
       serverIp: string; username: string; dataset: string; snapName: string;
-      filePaths: string[]; destPath: string;
+      filePaths: string[]; destPath: string; allowNonZfs?: boolean;
     }) => {
       ctx.jsonLogger.info({ event: 'snapshot:restore-files', serverIp, dataset, snapName, fileCount: filePaths.length, destPath });
-      const result = await restoreFromSnapshot(serverIp, username, dataset, snapName, filePaths, destPath);
+      const result = await restoreFromSnapshot(serverIp, username, dataset, snapName, filePaths, destPath, allowNonZfs === true);
       ctx.jsonLogger[result?.success ? 'info' : 'error']({ event: 'snapshot:restore-files.done', serverIp, dataset, snapName, fileCount: filePaths.length, destPath, success: result?.success, error: result?.error });
       return result;
     },

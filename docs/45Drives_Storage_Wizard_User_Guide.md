@@ -1781,10 +1781,16 @@ The right panel is **Restore Destination**:
 
 | Option | Details |
 |---|---|
-| **Restore to Server** | Puts the files back on the server. Tick **Restore to original path** to use the location they came from, or type a **Server destination path** such as `/data/restored`. Optionally tick **Create folder if it doesn't exist** and **Create as ZFS dataset** (which asks for a **Parent dataset**, for example `tank/data`). |
+| **Restore to Server** | Defaults to mounted ZFS data storage. Choose a discovered **Server destination path** or enter an absolute path within a mounted ZFS dataset. Tick **Restore to original path** to use the location they came from. To use a non-ZFS location, explicitly tick **Allow a custom path outside ZFS storage** and heed the boot-drive warning. Optionally tick **Create folder if it doesn't exist** and **Create as ZFS dataset** (which asks for a **Parent dataset**, for example `tank/data`). |
 | **Download to this Computer** | Saves the files locally. Click **Browse** to choose a **Download to** folder. |
 
 ![Restore Destination panel](images/restore-destination-panel.png)
+
+Server-side restores (cloud, server-to-server, and snapshot) and folder creation require mounted, writable ZFS data storage by default. Symlinks are resolved before checking the actual filesystem; a configured but unmounted dataset directory is not sufficient. The **Allow a custom path outside ZFS storage** option permits an explicitly selected final destination on another filesystem, including original-location restores. Such a destination can fill the server's boot drive and make the server unusable; check its backing filesystem and free space first. Paths must still be absolute and writable.
+
+Automatic server-side staging and restore dataset creation remain ZFS-only regardless of the custom-path option. Staging never falls back to `/tmp` or the OS disk. If storage discovery or validation fails, mount the ZFS dataset, check permissions, and retry, or deliberately enable the custom-path option for a final destination only. Existing restore data is not moved or deleted by these checks.
+
+Downloads to this computer may use any local folder; only their server-side staging (including a Windows SMB share's staging directory) must be on ZFS.
 <!-- SCREENSHOT: The Restore Destination panel with "Restore to Server" selected, the "Restore to original path" checkbox unticked so the Server destination path field is visible, and the "Create folder if it doesn't exist" and "Create as ZFS dataset" options shown with the Parent dataset field. -->
 
 Start the restore. Progress is shown as *"Restoring…"* and then *"Restore Complete"*. A **Cancel** button is available while it runs; a cancelled restore is reported as cancelled rather than complete, and any failure is reported with the error.

@@ -171,6 +171,14 @@
 
                         <!-- Server destination path with autocomplete -->
                         <div v-if="restoreTarget === 'server'" class="mt-3">
+                            <label class="flex items-center gap-2 mb-2">
+                                <input type="checkbox" v-model="allowNonZfs" :disabled="restoreLocked" />
+                                <span class="text-xs text-muted">Allow a custom path outside ZFS storage</span>
+                            </label>
+                            <p v-if="allowNonZfs" class="mb-2 text-xs text-amber-600 dark:text-amber-400">
+                                Warning: a custom destination may fill the server's boot drive and make it unusable.
+                                Check the destination's filesystem and free space before restoring.
+                            </p>
                             <label v-if="restore.originalLocalPath.value" class="flex items-center gap-2 mb-2"
                                 :class="restoreLocked ? 'cursor-not-allowed' : 'cursor-pointer'">
                                 <input type="checkbox" v-model="restoreToOriginalPath" :disabled="restoreLocked" />
@@ -187,7 +195,7 @@
 
                             <template v-else>
                                 <label class="text-xs text-muted mb-1 block">Server destination path</label>
-                                <input v-model="destPath" type="text" placeholder="/data/restored"
+                                <input v-model="destPath" type="text" placeholder="Choose a mounted ZFS destination"
                                     list="dest-path-suggestions"
                                     :disabled="restoreLocked"
                                     class="input-textlike w-full border border-default rounded px-2 py-1 text-sm"
@@ -195,6 +203,9 @@
                                 <datalist id="dest-path-suggestions">
                                     <option v-for="s in restore.destSuggestions.value" :key="s" :value="s" />
                                 </datalist>
+                                <p class="mt-1 text-xs text-muted">
+                                    Mounted ZFS destinations are suggested by default. Other paths require the custom-path option.
+                                </p>
 
                                 <!-- Create options -->
                                 <div class="mt-2 space-y-1.5">
@@ -217,6 +228,11 @@
                         </div>
 
                         <!-- Client destination -->
+                        <div v-if="restore.destinationError.value" class="mt-2 text-xs text-danger">
+                            {{ restore.destinationError.value }}
+                            <button class="underline ml-1" :disabled="restoreLocked"
+                                @click="restore.loadRestoreDestinations()">Retry storage discovery</button>
+                        </div>
                         <div v-if="restoreTarget === 'client'" class="mt-3 space-y-2">
                             <label class="text-xs text-muted mb-1 block">Download to</label>
                             <div class="flex items-center gap-2">
@@ -227,7 +243,7 @@
                                     @click="pickLocalFolder">Browse</button>
                             </div>
                             <div class="text-xs text-muted">
-                                Files will be staged on the server's SMB share, then downloaded to your machine.
+                                Files are staged on mounted ZFS storage, then downloaded to your machine.
                             </div>
                         </div>
                         </div>
@@ -425,8 +441,7 @@ onMounted(() => {
 const selectedRemote = ref('');
 const selectedTaskName = ref('');
 const restoreTarget = ref<'server' | 'client'>('server');
-const DEFAULT_SERVER_DEST = '/data/restored';
-const destPath = ref(DEFAULT_SERVER_DEST);
+const destPath = ref('');
 const destPathTouched = ref(false);
 const focusedFile = ref<RemoteFileEntry | ServerFileEntry | null>(null);
 const sortDir = ref<'asc' | 'desc'>('asc');
@@ -434,6 +449,7 @@ const createDirOnRestore = ref(true);
 const createZfsDataset = ref(false);
 const zfsParentDataset = ref('');
 const restoreToOriginalPath = ref(false);
+const allowNonZfs = ref(false);
 
 // ── Confirmation dialog state ────────────────────────────────────────────
 
@@ -462,15 +478,21 @@ function showConfirm(opts: { title: string; message: string; confirmLabel?: stri
 
 // ── Init: load remotes when component mounts with valid server ───────────
 
-watch(() => props.serverIp, async (ip) => {
+watch(() => [props.serverIp, props.username], async ([ip]) => {
     if (!ip) return;
     restore.resetBrowse();
     selectedRemote.value = '';
     selectedTaskName.value = '';
+    destPathTouched.value = false;
+    destPath.value = '';
+    allowNonZfs.value = false;
+    const discovery = restore.loadRestoreDestinations();
     if (restore.sourceType.value === 'cloud') {
-        await restore.loadRemotes();
+        await Promise.all([discovery, restore.loadRemotes()]);
     } else if (restore.sourceType.value === 's2s') {
-        await restore.loadS2STasks();
+        await Promise.all([discovery, restore.loadS2STasks()]);
+    } else {
+        await discovery;
     }
 }, { immediate: true });
 
@@ -521,7 +543,6 @@ function onFileDblClick(file: RemoteFileEntry | ServerFileEntry) {
 
 function onDestPathInput() {
     destPathTouched.value = true;
-    restore.fetchDirSuggestions(destPath.value);
 }
 
 function applyDefaultDest() {
@@ -529,19 +550,19 @@ function applyDefaultDest() {
         destPath.value = '';
         return;
     }
-    destPath.value = restore.originalLocalPath.value || DEFAULT_SERVER_DEST;
+    destPath.value = restore.destSuggestions.value[0] || '';
 }
 
 // Server and client targets use different path spaces, so don't carry a value across
 watch(restoreTarget, () => {
+    allowNonZfs.value = false;
     destPathTouched.value = false;
     applyDefaultDest();
 });
 
-// Follow the backed-up source path as the user picks a task / navigates folders
-watch(() => restore.originalLocalPath.value, () => {
+watch(() => restore.destSuggestions.value, () => {
     if (!destPathTouched.value) applyDefaultDest();
-}, { immediate: true });
+});
 
 function toggleSort() {
     sortDir.value = sortDir.value === 'asc' ? 'desc' : 'asc';
@@ -611,7 +632,7 @@ async function onRestoreClick() {
     }
     // Create directory if requested (and not creating a ZFS dataset, which handles its own mountpoint)
     else if (restoreTarget.value === 'server' && !targetsOriginal && createDirOnRestore.value) {
-        const result = await restore.createDirectory(effectiveDest);
+        const result = await restore.createDirectory(effectiveDest, allowNonZfs.value);
         if (!result.success) {
             restore.error.value = `Failed to create directory: ${result.error}`;
             return;
@@ -622,6 +643,7 @@ async function onRestoreClick() {
     await restore.startRestore({
         destPath: effectiveDest,
         target: restoreTarget.value,
+        allowNonZfs: restoreTarget.value === 'server' && allowNonZfs.value,
     });
 }
 

@@ -11,6 +11,12 @@ import { loadSettings } from './settingsStore';
 import { getMountSmbScript } from './utils';
 import { getCredentialManager } from './credentialManager';
 import { logEvent, errMsg } from './logging';
+import {
+  listMountedRestoreDestinations,
+  prepareServerRestoreDirectory,
+  serverRestoreCommand,
+  validateServerRestoreDestination,
+} from './restoreStorage';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -862,25 +868,18 @@ function cancellableRemoteCommand(opId: string, cmd: string): string {
 // ── Restore operations ───────────────────────────────────────────────────────
 
 /**
- * Find the best staging directory on the server — a ZFS pool mountpoint with
- * the most available space.  Falls back to /tmp if no pools are found.
+ * Find staging on live ZFS data storage. Never fall back to OS storage.
  *
  * Returns the full staging path (e.g. /tank/.houston-restore-staging/<opId>).
  */
 async function pickStagingDir(ssh: NodeSSH, operationId: string): Promise<string> {
-  // Try to find a ZFS pool with the most free space
-  const result = await ssh.execCommand(
-    `zfs list -H -o mountpoint,avail -t filesystem -d 0 2>/dev/null | sort -t$'\\t' -k2 -h | tail -1`,
-  );
-  const line = result.stdout.trim();
-  if (line) {
-    const mountpoint = line.split(/\s+/)[0];
-    if (mountpoint && mountpoint.startsWith('/')) {
-      return `${mountpoint}/.houston-restore-staging/${operationId}`;
-    }
+  if (!/^[A-Za-z0-9_-]+$/.test(operationId)) {
+    throw new Error('Invalid restore operation ID for server staging.');
   }
-  // Fallback to /tmp
-  return `/tmp/houston-restore-staging/${operationId}`;
+  const [destination] = await listMountedRestoreDestinations(ssh);
+  return prepareServerRestoreDirectory(
+    ssh, `${destination.mountpoint}/.houston-restore-staging/${operationId}`,
+  );
 }
 
 /** Minutes after which an untouched staging dir is considered abandoned, not just slow. */
@@ -909,12 +908,10 @@ async function cleanupStagingDir(ssh: NodeSSH, stagingDir: string, context: Reco
  */
 async function sweepStaleStagingDirs(ssh: NodeSSH): Promise<void> {
   try {
-    const poolsResult = await ssh.execCommand(`zfs list -H -o mountpoint -t filesystem -d 0 2>/dev/null`);
-    const roots = poolsResult.stdout.split('\n').map(l => l.trim()).filter(l => l.startsWith('/'));
-    roots.push('/tmp');
+    const destinations = await listMountedRestoreDestinations(ssh);
 
-    for (const root of roots) {
-      const stagingRoot = `${root}/.houston-restore-staging`;
+    for (const { mountpoint } of destinations) {
+      const stagingRoot = await validateServerRestoreDestination(ssh, `${mountpoint}/.houston-restore-staging`);
       const findResult = await ssh.execCommand(
         `find ${shellQuote(stagingRoot)} -mindepth 1 -maxdepth 1 -type d -mmin +${STALE_STAGING_MINUTES} 2>/dev/null`,
       );
@@ -941,6 +938,7 @@ export async function restoreToServer(
   onProgress?: RestoreProgressCallback,
   operationId?: string,
   selectedFiles?: string[],
+  allowNonZfs = false,
 ): Promise<RestoreResult> {
   const opId = operationId ?? crypto.randomUUID();
   const ssh = await connectSSH(serverIp, username);
@@ -948,23 +946,20 @@ export async function restoreToServer(
   try {
     onProgress?.({ operationId: opId, phase: 'downloading', message: `Restoring to ${destPath}...` });
 
-    // Ensure destination exists
-    await ssh.execCommand(`mkdir -p ${shellQuote(destPath)}`);
-
     let cmd: string;
 
     if (source === 'server') {
       const filter = buildRsyncFileFilter(selectedFiles);
-      cmd = `rsync -a --info=progress2 ${filter} ${shellQuote(sourcePath + '/')} ${shellQuote(destPath + '/')} 2>&1`;
+      cmd = `exec rsync -a --info=progress2 ${filter} ${shellQuote(sourcePath + '/')} ./ 2>&1`;
     } else {
       // Ensure sourcePath has at least a root slash for rclone
       const safePath = sourcePath === '/' ? '' : sourcePath;
       const fullSource = `${source}${safePath}`;
       const filter = buildRcloneFilterFlags(selectedFiles);
-      cmd = `rclone copy --progress ${filter} ${shellQuote(fullSource)} ${shellQuote(destPath)} 2>&1`;
+      cmd = `exec rclone copy --progress ${filter} ${shellQuote(fullSource)} . 2>&1`;
     }
 
-    const result = await ssh.execCommand(cancellableRemoteCommand(opId, cmd), {
+    const result = await ssh.execCommand(cancellableRemoteCommand(opId, serverRestoreCommand(destPath, cmd, false, allowNonZfs)), {
       onStdout: (chunk) => {
         const text = chunk.toString();
         if (source === 'server') {
@@ -975,8 +970,9 @@ export async function restoreToServer(
       },
     });
 
-    if (result.code !== 0 && result.code !== null) {
-      const error = (result.stderr || result.stdout || '').trim();
+    if (result.code !== 0) {
+      const error = (result.stderr || result.stdout || '').trim() ||
+        'Restore command was interrupted. Check SSH connectivity and mounted ZFS storage, then retry.';
       return settleRestoreError(opId, error, onProgress);
     }
 
@@ -1012,21 +1008,20 @@ export async function restoreToClient(
     stagingDir = await pickStagingDir(ssh, opId);
 
     // Stage 1: Copy files to server staging dir
-    await ssh.execCommand(`mkdir -p ${shellQuote(stagingDir)}`);
     onProgress?.({ operationId: opId, phase: 'staging', message: `Staging files on server...` });
 
     let cmd: string;
     if (source === 'server') {
       const filter = buildRsyncFileFilter(selectedFiles);
-      cmd = `rsync -a --info=progress2 ${filter} ${shellQuote(sourcePath + '/')} ${shellQuote(stagingDir + '/')} 2>&1`;
+      cmd = `exec rsync -a --info=progress2 ${filter} ${shellQuote(sourcePath + '/')} ./ 2>&1`;
     } else {
       const safePath = sourcePath === '/' ? '' : sourcePath;
       const fullSource = `${source}${safePath}`;
       const filter = buildRcloneFilterFlags(selectedFiles);
-      cmd = `rclone copy --progress ${filter} ${shellQuote(fullSource)} ${shellQuote(stagingDir)} 2>&1`;
+      cmd = `exec rclone copy --progress ${filter} ${shellQuote(fullSource)} . 2>&1`;
     }
 
-    const stageResult = await ssh.execCommand(cancellableRemoteCommand(opId, cmd), {
+    const stageResult = await ssh.execCommand(cancellableRemoteCommand(opId, serverRestoreCommand(stagingDir, cmd)), {
       onStdout: (chunk) => {
         const text = chunk.toString();
         if (source === 'server') {
@@ -1037,8 +1032,9 @@ export async function restoreToClient(
       },
     });
 
-    if (stageResult.code !== 0 && stageResult.code !== null) {
-      const error = (stageResult.stderr || stageResult.stdout || '').trim();
+    if (stageResult.code !== 0) {
+      const error = (stageResult.stderr || stageResult.stdout || '').trim() ||
+        'Restore staging was interrupted. Check SSH connectivity and mounted ZFS storage, then retry.';
       return settleRestoreError(opId, error, onProgress);
     }
 
@@ -1074,6 +1070,7 @@ export async function restoreFromS2S(
   onProgress?: RestoreProgressCallback,
   operationId?: string,
   selectedFiles?: string[],
+  allowNonZfs = false,
 ): Promise<RestoreResult> {
   const opId = operationId ?? crypto.randomUUID();
   const safeRemoteHost = assertSafeHost(remoteHost);
@@ -1083,9 +1080,6 @@ export async function restoreFromS2S(
   try {
     onProgress?.({ operationId: opId, phase: 'downloading', message: `Restoring from ${safeRemoteUser}@${safeRemoteHost}:${sourcePath} to ${destPath}...` });
 
-    // Ensure destination exists
-    await ssh.execCommand(`mkdir -p ${shellQuote(destPath)}`);
-
     // rsync from remote host via SSH hop
     const sshCmd = `ssh -p ${String(remotePort)} -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new`;
     const sourceSpec = `${safeRemoteUser}@${safeRemoteHost}:${sourcePath}${sourcePath.endsWith('/') ? '' : '/'}`;
@@ -1094,15 +1088,16 @@ export async function restoreFromS2S(
     const result = await ssh.execCommand(
       cancellableRemoteCommand(
         opId,
-        `rsync -a -s --info=progress2 ${filter} -e ${shellQuote(sshCmd)} ${shellQuote(sourceSpec)} ${shellQuote(destPath + '/')} 2>&1`,
+        serverRestoreCommand(destPath, `exec rsync -a -s --info=progress2 ${filter} -e ${shellQuote(sshCmd)} ${shellQuote(sourceSpec)} ./ 2>&1`, false, allowNonZfs),
       ),
       {
         onStdout: (chunk) => parseRsyncProgress(chunk.toString(), opId, onProgress),
       },
     );
 
-    if (result.code !== 0 && result.code !== null) {
-      const error = (result.stderr || result.stdout || '').trim();
+    if (result.code !== 0) {
+      const error = (result.stderr || result.stdout || '').trim() ||
+        'Restore command was interrupted. Check SSH connectivity and mounted ZFS storage, then retry.';
       return settleRestoreError(opId, error, onProgress);
     }
 
@@ -1141,7 +1136,6 @@ export async function restoreS2SToClient(
     stagingDir = await pickStagingDir(ssh, opId);
 
     // Stage 1: rsync from remote host to server staging dir
-    await ssh.execCommand(`mkdir -p ${shellQuote(stagingDir)}`);
     onProgress?.({ operationId: opId, phase: 'staging', message: `Staging files from ${safeRemoteUser}@${safeRemoteHost}:${sourcePath}...` });
 
     const sshCmd = `ssh -p ${String(remotePort)} -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new`;
@@ -1151,15 +1145,16 @@ export async function restoreS2SToClient(
     const stageResult = await ssh.execCommand(
       cancellableRemoteCommand(
         opId,
-        `rsync -a -s --info=progress2 ${filter} -e ${shellQuote(sshCmd)} ${shellQuote(sourceSpec)} ${shellQuote(stagingDir + '/')} 2>&1`,
+        serverRestoreCommand(stagingDir, `exec rsync -a -s --info=progress2 ${filter} -e ${shellQuote(sshCmd)} ${shellQuote(sourceSpec)} ./ 2>&1`),
       ),
       {
         onStdout: (chunk) => parseRsyncProgress(chunk.toString(), opId, onProgress),
       },
     );
 
-    if (stageResult.code !== 0 && stageResult.code !== null) {
-      const error = (stageResult.stderr || stageResult.stdout || '').trim();
+    if (stageResult.code !== 0) {
+      const error = (stageResult.stderr || stageResult.stdout || '').trim() ||
+        'Restore staging was interrupted. Check SSH connectivity and mounted ZFS storage, then retry.';
       return settleRestoreError(opId, error, onProgress);
     }
 
@@ -1374,15 +1369,6 @@ function downloadViaRobocopy(
         }
         driveLetter = driveMatch[1];
 
-        // The staging dir on the server is at serverPath (e.g. /tmp/houston-restore-staging/uuid)
-        // On the SMB share it appears as drive_letter:\tmp\houston-restore-staging\uuid
-        // But the staging dir is NOT on the SMB share — it's on /tmp.
-        // We need to first move files from /tmp staging to the SMB share, then robocopy locally.
-
-        // Actually: the server staging dir is at /tmp, which isn't on the SMB share.
-        // We need the server to move files from /tmp to the SMB share first.
-        // Let's rsync server-side: /tmp/staging → SMB share staging area, then robocopy from mounted share.
-
         // SSH must use the server login account, not the SMB share account.
         const ssh = await connectSSH(host, username);
         const smbMountPath = credential.share; // The share name on the server
@@ -1399,13 +1385,12 @@ function downloadViaRobocopy(
             return;
           }
 
-          // Copy from /tmp staging to the SMB share on the server
+          // SMB staging is server-side too, so it must also be on mounted ZFS.
           const smbStagingDir = `${shareMountPath}/.houston-restore-staging/${operationId}`;
-          await ssh.execCommand(`mkdir -p ${shellQuote(smbStagingDir)}`);
           const copyResult = await ssh.execCommand(
-            `rsync -a ${shellQuote(serverPath + '/')} ${shellQuote(smbStagingDir + '/')} 2>&1`,
+            serverRestoreCommand(smbStagingDir, `rsync -a ${shellQuote(serverPath + '/')} ./ 2>&1`),
           );
-          if (copyResult.code !== 0 && copyResult.code !== null) {
+          if (copyResult.code !== 0) {
             resolve({ success: false, error: `Failed to copy to SMB staging: ${(copyResult.stderr || copyResult.stdout || '').trim()}` });
             return;
           }
@@ -1500,14 +1485,14 @@ export async function createServerDirectory(
   serverIp: string,
   username: string,
   dirPath: string,
+  allowNonZfs = false,
 ): Promise<{ success: boolean; error?: string }> {
   const ssh = await connectSSH(serverIp, username);
   try {
-    const result = await ssh.execCommand(`mkdir -p ${shellQuote(dirPath)} 2>&1`);
-    if (result.code !== 0 && result.code !== null) {
-      return { success: false, error: (result.stderr || result.stdout || '').trim() };
-    }
+    await prepareServerRestoreDirectory(ssh, dirPath, allowNonZfs);
     return { success: true };
+  } catch (err) {
+    return { success: false, error: errMsg(err) };
   } finally {
     ssh.dispose();
   }
@@ -1528,23 +1513,40 @@ export async function createZfsDatasetOnServer(
       return { success: false, error: 'Dataset name contains invalid characters' };
     }
 
-    let cmd = `sudo zfs create`;
-    if (mountpoint) {
-      cmd += ` -o mountpoint=${shellQuote(mountpoint)}`;
+    if (!mountpoint) {
+      const parent = datasetName.substring(0, datasetName.lastIndexOf('/'));
+      if (!parent || parent === datasetName) {
+        throw new Error('Choose an existing mounted ZFS parent dataset for the restore.');
+      }
+      const result = await ssh.execCommand(`zfs get -H -o value mountpoint ${shellQuote(parent)}`);
+      mountpoint = `${assertCommandSuccess(result, 'get parent mountpoint').trim()}/${datasetName.split('/').pop()}`;
     }
-    cmd += ` ${shellQuote(datasetName)} 2>&1`;
+    mountpoint = await validateServerRestoreDestination(ssh, mountpoint);
+    const cmd = `sudo zfs create -o mountpoint=${shellQuote(mountpoint)} ${shellQuote(datasetName)} 2>&1`;
 
     const result = await ssh.execCommand(cmd);
-    if (result.code !== 0 && result.code !== null) {
+    if (result.code !== 0) {
       return { success: false, error: (result.stderr || result.stdout || '').trim() };
     }
+    await validateServerRestoreDestination(ssh, mountpoint);
     return { success: true };
+  } catch (err) {
+    return { success: false, error: errMsg(err) };
   } finally {
     ssh.dispose();
   }
 }
 
 // ── Snapshot operations ──────────────────────────────────────────────────────
+
+export async function listRestoreDestinations(serverIp: string, username: string) {
+  const ssh = await connectSSH(serverIp, username);
+  try {
+    return await listMountedRestoreDestinations(ssh);
+  } finally {
+    ssh.dispose();
+  }
+}
 
 /**
  * List ZFS datasets on a server.
@@ -1800,6 +1802,7 @@ export async function restoreFromSnapshot(
   snapName: string,
   filePaths: string[],
   destPath: string,
+  allowNonZfs = false,
 ): Promise<SnapshotRestoreResult> {
   const ssh = await connectSSH(serverIp, username);
   try {
@@ -1818,9 +1821,6 @@ export async function restoreFromSnapshot(
 
     const snapRoot = `${mountpoint}/.zfs/snapshot/${snapName}`;
 
-    // Ensure destination exists
-    await ssh.execCommand(`sudo mkdir -p ${shellQuote(destPath)}`);
-
     // Use rsync to copy selected files, preserving relative paths
     // Build a file list for rsync --files-from
     const relPaths = filePaths.map(fp => {
@@ -1831,24 +1831,24 @@ export async function restoreFromSnapshot(
       return fp.replace(/^\//, '');
     });
 
-    // Write file list to a temp file on the server
-    const tmpFile = `/tmp/houston-snap-restore-${Date.now()}`;
-    const fileListContent = relPaths.join('\n');
-    await ssh.execCommand(`cat > ${shellQuote(tmpFile)} << 'HOUSTON_EOF'\n${fileListContent}\nHOUSTON_EOF`);
-
+    if (relPaths.some(p => p.split('/').includes('..') || /[\r\n\0]/.test(p))) {
+      throw new Error('Invalid snapshot restore file path.');
+    }
+    // Stream the file list: no restore payload or staging files belong in /tmp.
     const result = await ssh.execCommand(
-      `sudo rsync -a --files-from=${shellQuote(tmpFile)} ${shellQuote(snapRoot + '/')} ${shellQuote(destPath + '/')} 2>&1`
+      serverRestoreCommand(destPath,
+        `printf '%s\\n' ${relPaths.map(shellQuote).join(' ')} | rsync -a --files-from=- ${shellQuote(snapRoot + '/')} ./ 2>&1`,
+        true, allowNonZfs),
     );
 
-    // Clean up temp file
-    await ssh.execCommand(`rm -f ${shellQuote(tmpFile)}`);
-
-    if (result.code !== 0 && result.code !== null) {
+    if (result.code !== 0) {
       const error = (result.stderr || result.stdout || '').trim();
       return { success: false, error };
     }
 
     return { success: true, filesRestored: relPaths.length };
+  } catch (err) {
+    return { success: false, error: errMsg(err) };
   } finally {
     ssh.dispose();
   }

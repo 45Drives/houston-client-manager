@@ -89,6 +89,7 @@ const INVOKE_CHANNELS = new Set([
   'bulk-setup:cancel',
   // Restore operations
   'restore:list-remotes',
+  'restore:list-destinations',
   'restore:browse-remote',
   'restore:browse-server',
   'restore:list-s2s-tasks',
