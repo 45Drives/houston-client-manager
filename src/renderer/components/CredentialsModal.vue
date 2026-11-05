@@ -2,6 +2,7 @@
     <Modal :show="show" @clickOutside="cancel">
         <div class="w-full max-w-md mx-auto bg-default p-4 rounded-xl shadow">
             <h2 class="text-xl font-semibold mb-4">Server Login Required</h2>
+            <p v-if="message" class="text-sm text-muted mb-2">{{ message }}</p>
 
             <div class="flex flex-col gap-4 mt-4 text-default">
                 <div class="grid relative grid-cols-[200px_1fr] items-center">
@@ -25,7 +26,7 @@
             </div>
 
             <!-- Advanced: SSH Key Auth -->
-            <details class="text-xs mt-4">
+            <details v-if="allowSshKey" class="text-xs mt-4">
                 <summary class="cursor-pointer text-muted hover:text-default select-none font-medium">Advanced: Use SSH Key</summary>
                 <div class="mt-2 space-y-2 pl-2 border-l-2 border-neutral-200 dark:border-neutral-700">
                     <label class="flex items-center gap-2 cursor-pointer">
@@ -73,6 +74,12 @@ export interface CredentialsResult {
     sshPassphrase?: string;
 }
 
+const props = withDefaults(defineProps<{
+    /** Offer SSH key sign-in. Off for logins that only accept a password (e.g. the broadcaster API). */
+    allowSshKey?: boolean;
+    message?: string;
+}>(), { allowSshKey: true, message: '' });
+
 const show = ref(false);
 const username = ref('');
 const password = ref('');
@@ -86,7 +93,7 @@ const togglePassword = () => {
 
 const canConfirm = computed(() => {
     if (!username.value) return false;
-    if (authMethod.value === 'key') return !!sshKeyPath.value;
+    if (props.allowSshKey && authMethod.value === 'key') return !!sshKeyPath.value;
     return !!password.value;
 });
 

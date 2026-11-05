@@ -26,7 +26,7 @@ function baseUrl(host: string): string {
 }
 
 /** Authenticate with the broadcaster and return a JWT */
-async function getToken(host: string, username: string, password: string): Promise<string | null> {
+export async function getToken(host: string, username: string, password: string): Promise<string | null> {
   try {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), LOGIN_TIMEOUT_MS);

@@ -1876,6 +1876,8 @@ On the **Server Logs** tab, a connection bar appears above the output:
 | **Source** | Choose *All server logs*, *setup-module.log*, or *easysetup-\*.log* |
 | **Fetch Server Logs** | Retrieves the logs. Reads **Fetching…** while it works. |
 
+If a **Server Login Required** window appears when fetching server logs, enter the username and password of an administrator account on the selected server. The app reuses credentials already available for that server in the current session where possible; you may be prompted again if the sign-in expires.
+
 ![Server logs tab](images/log-viewer-server.png)
 <!-- SCREENSHOT: The Log Viewer on the Server Logs tab, showing the Server dropdown, the Source dropdown expanded with its three options, and the Fetch Server Logs button. -->
 

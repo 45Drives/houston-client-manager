@@ -215,6 +215,8 @@
         </div>
       </div>
     </transition>
+    <!-- Above this modal (z-[100]); the shared Modal sits at z-10. -->
+    <CredentialsModal ref="credsModalRef" :allow-ssh-key="false" :message="loginMessage" style="z-index: 110" />
   </teleport>
 </template>
 
@@ -222,6 +224,8 @@
 import { computed, inject, ref, watch } from 'vue'
 import { XMarkIcon, ArrowPathIcon } from '@heroicons/vue/24/outline'
 import { useLogModal } from '../composables/useLogModal'
+import CredentialsModal from './CredentialsModal.vue'
+import { readServerLogs } from '../composables/useServerLogs'
 import { discoveryStateInjectionKey } from '../keys/injection-keys'
 import type { DiscoveryState } from '../types'
 
@@ -482,11 +486,20 @@ async function fetchClientLogs() {
   finally { loading.value = false }
 }
 
+const credsModalRef = ref<InstanceType<typeof CredentialsModal> | null>(null)
+const loginMessage = ref('')
+
+async function askForServerLogin(message: string) {
+  loginMessage.value = message
+  const creds = await credsModalRef.value?.open()
+  return creds ? { username: creds.username, password: creds.password } : null
+}
+
 async function fetchServerLogs() {
   if (!serverIp.value) return
   serverLoading.value = true; serverError.value = null
   try {
-    const res = await window.electron?.ipcRenderer.invoke('logs:read-server', { ip: serverIp.value, source: serverSource.value, limit: 2000 })
+    const res = await readServerLogs({ ip: serverIp.value, source: serverSource.value, limit: 2000 }, askForServerLogin)
     if (!res?.ok) throw new Error(res?.error || 'Unable to read server logs')
     serverEntries.value = Array.isArray(res.entries) ? res.entries : []
     serverMeta.value = { file: serverIp.value, logDir: Array.isArray(res.files) ? res.files.join(', ') : '' }

@@ -1,8 +1,12 @@
 import { app, ipcMain } from 'electron';
 import path from 'path';
 import fs from 'fs';
+import { getToken } from '../backup/broadcasterApi';
 
 const LOG_FILE_PREFIX = '45drives-storage-wizard-';
+
+// Broadcaster tokens for reading server logs, per server, in memory only. Never written to disk.
+const serverLogTokens = new Map<string, string>();
 
 interface ParsedLogEntry {
   id: string;
@@ -457,7 +461,7 @@ export function registerLogHandlers(
     'logs:read-server',
     async (
       event,
-      opts?: { ip?: string; source?: string; limit?: number },
+      opts?: { ip?: string; source?: string; limit?: number; username?: string; password?: string },
     ) => {
       assertMainWindowSender(event);
 
@@ -470,6 +474,19 @@ export function registerLogHandlers(
       const limit = Math.min(Math.max(opts?.limit ?? 500, 1), 5000);
 
       try {
+        // Server logs need an administrator login on current broadcasters; older ones answer without one.
+        if (opts?.username && opts?.password) {
+          const token = await getToken(ip, opts.username, opts.password);
+          if (!token) {
+            return {
+              ok: false, needsLogin: true, entries: [], files: [],
+              error: 'Sign-in failed. Check the username and password of an administrator account on the server.',
+            };
+          }
+          serverLogTokens.set(ip, token);
+        }
+        const token = serverLogTokens.get(ip);
+
         const url = `http://${ip}:9095/logs?source=${encodeURIComponent(source)}&limit=${limit}`;
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), 10_000);
@@ -478,8 +495,19 @@ export function registerLogHandlers(
           method: 'GET',
           cache: 'no-store',
           signal: controller.signal,
+          headers: token ? { Authorization: `Bearer ${token}` } : undefined,
         });
         clearTimeout(timeout);
+
+        if (resp.status === 401 || resp.status === 403) {
+          serverLogTokens.delete(ip);
+          return {
+            ok: false, needsLogin: true, entries: [], files: [],
+            error: resp.status === 401
+              ? 'Sign in to the server to read its logs.'
+              : 'Server logs need an administrator account on the server.',
+          };
+        }
 
         if (!resp.ok) {
           return {

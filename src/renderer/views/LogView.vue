@@ -193,6 +193,7 @@
         </div>
       </CardContainer>
     </div>
+    <CredentialsModal ref="credsModalRef" :allow-ssh-key="false" :message="loginMessage" />
   </div>
 </template>
 
@@ -204,6 +205,8 @@ import { useHeader } from "../composables/useHeader";
 import { discoveryStateInjectionKey } from "../keys/injection-keys";
 import type { DiscoveryState } from "../types";
 import { ArrowPathIcon } from '@heroicons/vue/24/outline';
+import CredentialsModal from "../components/CredentialsModal.vue";
+import { readServerLogs } from "../composables/useServerLogs";
 useHeader("Log Viewer");
 
 const router = useRouter();
@@ -453,16 +456,24 @@ async function fetchClientLogs() {
 
 // ─── Server log fetching (via IPC → main process → broadcaster API) ──
 
+const credsModalRef = ref<InstanceType<typeof CredentialsModal> | null>(null);
+const loginMessage = ref("");
+
+async function askForServerLogin(message: string) {
+  loginMessage.value = message;
+  const creds = await credsModalRef.value?.open();
+  return creds ? { username: creds.username, password: creds.password } : null;
+}
+
 async function fetchServerLogs() {
   if (!serverIp.value) return;
   serverLoading.value = true;
   serverError.value = null;
   try {
-    const res = await window.electron?.ipcRenderer.invoke("logs:read-server", {
-      ip: serverIp.value,
-      source: serverSource.value,
-      limit: 600,
-    });
+    const res = await readServerLogs(
+      { ip: serverIp.value, source: serverSource.value, limit: 600 },
+      askForServerLogin,
+    );
     if (!res?.ok) {
       throw new Error(res?.error || "Unable to read server logs");
     }
