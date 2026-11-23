@@ -34,7 +34,7 @@ const WIN_PASS_ENV = 'HOUSTON_WIN_ACCOUNT_PASSWORD';
 
 /* buildActionBat only runs when a task is scheduled, so fixes to the generated
  * script never reach tasks that already exist. Bump on every script change. */
-const ACTION_BAT_VERSION = 5;
+const ACTION_BAT_VERSION = 6;
 
 /* Task Scheduler reports a task it was told to stop as 0x41306 ("task terminated"). It is
  * an error code, but not a backup failure, so it is mapped separately below. */

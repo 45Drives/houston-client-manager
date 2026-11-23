@@ -20,7 +20,7 @@ const SCRIPT_DIR = path.join(os.homedir(), ".local", "share", "houston-backups")
 const LOG_DIR = path.join(app.getPath('userData'), 'logs');
 
 // Bump whenever the generated script changes so existing tasks are rewritten on their next run.
-const TASK_SCRIPT_VERSION = 3;
+const TASK_SCRIPT_VERSION = 4;
 
 export class BackUpManagerLin implements BackUpManager {
   protected pkexec: string = "pkexec";

@@ -28,7 +28,7 @@ import { cancelUnixRun, trackRun, untrackRun } from './runRegistry';
  * when their stamp falls behind, so a script fix reaches tasks created before it shipped.
  * The Windows ACTION_BAT_VERSION exists for the same reason.
  */
-const TASK_SCRIPT_VERSION = 8;
+const TASK_SCRIPT_VERSION = 9;
 
 const LEGACY_SCRIPT_DIR = "/Library/Application Support/Houston/scripts";
 

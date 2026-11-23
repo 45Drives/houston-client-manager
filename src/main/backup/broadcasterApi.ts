@@ -27,9 +27,9 @@ function baseUrl(host: string): string {
 
 /** Authenticate with the broadcaster and return a JWT */
 export async function getToken(host: string, username: string, password: string): Promise<string | null> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), LOGIN_TIMEOUT_MS);
   try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), LOGIN_TIMEOUT_MS);
     const res = await fetch(`${baseUrl(host)}/api/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -38,12 +38,21 @@ export async function getToken(host: string, username: string, password: string)
       body: JSON.stringify({ username, password, clientId: getClientId() }),
       signal: controller.signal,
     });
-    clearTimeout(timer);
-    if (!res.ok) return null;
+    if (!res.ok) {
+      console.warn(`[broadcasterApi] Authentication rejected (HTTP ${res.status})`);
+      return null;
+    }
     const data = await res.json();
-    return data.token || null;
+    if (typeof data?.token !== 'string' || !data.token) {
+      console.warn('[broadcasterApi] Authentication response contained no token');
+      return null;
+    }
+    return data.token;
   } catch {
+    console.warn('[broadcasterApi] Authentication request failed');
     return null;
+  } finally {
+    clearTimeout(timer);
   }
 }
 
@@ -88,6 +97,7 @@ export async function syncBackupConfig(
       signal: controller.signal,
     });
     clearTimeout(timer);
+    if (!res.ok) console.warn(`[broadcasterApi] Backup config sync rejected (HTTP ${res.status}); existing records may require staff ownership assignment`);
     return res.ok;
   } catch (err: any) {
     console.warn('[broadcasterApi] syncBackupConfig failed:', err?.message || err);
@@ -114,8 +124,10 @@ export async function removeBackupConfig(
       signal: controller.signal,
     });
     clearTimeout(timer);
+    if (!res.ok) console.warn(`[broadcasterApi] Backup config removal rejected (HTTP ${res.status})`);
     return res.ok;
   } catch {
+    console.warn('[broadcasterApi] Backup config removal failed');
     return false;
   }
 }
@@ -158,20 +170,68 @@ export async function reportAuditEvent(
       signal: controller.signal,
     });
     clearTimeout(timer);
+    if (!res.ok) console.warn(`[broadcasterApi] Privileged audit report rejected (HTTP ${res.status})`);
     return res.ok;
   } catch {
+    console.warn('[broadcasterApi] Privileged audit reporting failed');
     return false;
   }
 }
 
+function bashJsonBody(fields: Record<string, string>): string[] {
+  return [
+    `{`,
+    ...Object.entries(fields).map(([key, value], index) =>
+      `  printf '${index ? ',' : '{'}"${key}":'; _EVT_JSON_STRING "${value}"`),
+    `  printf '}'`,
+    `} |`,
+  ];
+}
+
+function bashEventRequests(port: number): string[] {
+  return [
+    `  _EVT_JSON_STRING() {`,
+    `    local _JSON_VALUE="$1" _JSON_CHAR _JSON_CODE`,
+    `    printf '"'`,
+    `    while [[ -n "$_JSON_VALUE" ]]; do`,
+    `      _JSON_CHAR="\${_JSON_VALUE:0:1}"; _JSON_VALUE="\${_JSON_VALUE:1}"`,
+    `      case "$_JSON_CHAR" in`,
+    `        '"') printf '\\\\"' ;;`,
+    `        '\\') printf '\\\\\\\\' ;;`,
+    `        *) printf -v _JSON_CODE '%d' "'$_JSON_CHAR"`,
+    `           if (( _JSON_CODE < 32 )); then printf '\\\\u%04x' "$_JSON_CODE"; else printf '%s' "$_JSON_CHAR"; fi ;;`,
+    `      esac`,
+    `    done`,
+    `    printf '"'`,
+    `  }`,
+    `  if command -v curl >/dev/null 2>&1 && [[ -n "$_EVT_PASS" ]] && [[ -n "\${INSTALL_ID:-}" ]]; then`,
+    `    _TOKEN="$(`,
+    ...bashJsonBody({ username: '$_EVT_USER', password: '$_EVT_PASS', clientId: '$INSTALL_ID' }),
+    `      curl -sf --connect-timeout 5 --max-time 10 -X POST "http://$_EVT_HOST:${port}/api/login" \\`,
+    `        -H 'Content-Type: application/json' --data-binary @- 2>/dev/null \\`,
+    `      | sed -n 's/.*"token":"\\([^"]*\\)".*/\\1/p' || true)"`,
+    `    if [[ -n "$_TOKEN" ]]; then`,
+    ...bashJsonBody({
+      backup_uuid: '$_EVT_UUID', client_id: '$INSTALL_ID', event_type: '$_EVT_TYPE',
+      status: '${_BCAST_STATUS:-}', error: '${_BCAST_ERROR:-}',
+    }),
+    `      curl -sf --connect-timeout 5 --max-time 10 -X POST "http://$_EVT_HOST:${port}/api/storage-wizard/backup-events" \\`,
+    `        -H 'Content-Type: application/json' --header @/dev/fd/3 \\`,
+    `        --data-binary @- 3< <(printf 'Authorization: Bearer %s\\n' "$_TOKEN") \\`,
+    `        >/dev/null 2>&1 || echo '[broadcasterApi] Backup event reporting failed' >&2`,
+    `    else`,
+    `      echo '[broadcasterApi] Backup event authentication failed' >&2`,
+    `    fi`,
+    `  else`,
+    `    echo '[broadcasterApi] Backup reporting requires curl, credentials and a client installation ID' >&2`,
+    `  fi`,
+  ];
+}
+
 /**
- * Generate a bash snippet that POSTs a backup event to the broadcaster API.
- * Used inside generated cron scripts (Linux/Mac).
- * Authenticates with credentials from the .cred file, then POSTs the event.
- * All calls are best-effort (|| true) so backup never fails due to API issues.
- *
- * Expects these variables to be defined in the parent script:
- *   SMB_USER, CRED_FILE, INSTALL_ID, _BCAST_STATUS (for 'end'), _BCAST_ERROR (for 'end')
+ * Best-effort Linux/macOS event reporting using the parent's SMB_USER, CRED_FILE,
+ * INSTALL_ID, _BCAST_STATUS and _BCAST_ERROR. Secrets travel through descriptors,
+ * not curl arguments.
  */
 export function bashEventSnippet(host: string, eventType: 'start' | 'end' | 'error', uuid: string): string {
   const port = BROADCASTER_PORT;
@@ -187,19 +247,7 @@ export function bashEventSnippet(host: string, eventType: 'start' | 'end' | 'err
     `  if [[ -n "\${CRED_FILE:-}" ]] && [[ -f "$CRED_FILE" ]]; then`,
     `    _EVT_PASS="$(grep '^password=' "$CRED_FILE" 2>/dev/null | head -1 | cut -d= -f2-)"`,
     `  fi`,
-    `  if command -v curl >/dev/null 2>&1 && [[ -n "$_EVT_PASS" ]]; then`,
-    `    _TOKEN="$(curl -sf --connect-timeout 5 -X POST "http://$_EVT_HOST:${port}/api/login" \\`,
-    `      -H 'Content-Type: application/json' \\`,
-    `      -d "{\\"username\\":\\"$_EVT_USER\\",\\"password\\":\\"$_EVT_PASS\\"}" 2>/dev/null \\`,
-    `      | sed -n 's/.*"token":"\\([^"]*\\)".*/\\1/p' || true)"`,
-    `    if [[ -n "$_TOKEN" ]]; then`,
-    `      curl -sf --connect-timeout 5 -X POST "http://$_EVT_HOST:${port}/api/storage-wizard/backup-events" \\`,
-    `        -H 'Content-Type: application/json' \\`,
-    `        -H "Authorization: Bearer $_TOKEN" \\`,
-    `        -d "{\\"backup_uuid\\":\\"$_EVT_UUID\\",\\"client_id\\":\\"$INSTALL_ID\\",\\"event_type\\":\\"$_EVT_TYPE\\",\\"status\\":\\"\${_BCAST_STATUS:-}\\",\\"error\\":\\"\${_BCAST_ERROR:-}\\"}" \\`,
-    `        >/dev/null 2>&1 || true`,
-    `    fi`,
-    `  fi`,
+    ...bashEventRequests(port),
     `) || true`,
   ];
   return lines.join('\n');
@@ -219,7 +267,7 @@ export function batchEventSnippet(host: string, eventType: 'start' | 'end' | 'er
     `try {`,
     `$cred = @{};`,
     `Get-Content '%CRED_FILE%' -ErrorAction SilentlyContinue | ForEach-Object { $k,$v = $_ -split '=',2; $cred[$k]=$v };`,
-    `$body = @{username=$cred['username']; password=$cred['password']} | ConvertTo-Json;`,
+    `$body = @{username=$cred['username']; password=$cred['password']; clientId='!INSTALL_ID!'} | ConvertTo-Json;`,
     `$login = Invoke-RestMethod -Uri 'http://${host}:${port}/api/login' -Method POST -ContentType 'application/json' -Body $body -TimeoutSec 5;`,
     `if ($login.token) {`,
     `$evt = @{backup_uuid='${uuid}'; client_id='!INSTALL_ID!'; event_type='${eventType}'; status='!BACKUP_STATUS!'; error='!BACKUP_ERROR!'} | ConvertTo-Json;`,
@@ -250,19 +298,7 @@ export function bashEventSnippetMac(host: string, eventType: 'start' | 'end' | '
     `  _EVT_TYPE=${JSON.stringify(eventType)}`,
     `  _EVT_USER="$SMB_USER"`,
     `  _EVT_PASS="$(security find-generic-password -s ${JSON.stringify(keychainService)} -a ${JSON.stringify(keychainUser)} -w 2>/dev/null || true)"`,
-    `  if command -v curl >/dev/null 2>&1 && [[ -n "$_EVT_PASS" ]]; then`,
-    `    _TOKEN="$(curl -sf --connect-timeout 5 -X POST "http://$_EVT_HOST:${port}/api/login" \\`,
-    `      -H 'Content-Type: application/json' \\`,
-    `      -d "{\\"username\\":\\"$_EVT_USER\\",\\"password\\":\\"$_EVT_PASS\\"}" 2>/dev/null \\`,
-    `      | sed -n 's/.*"token":"\\([^"]*\\)".*/\\1/p' || true)"`,
-    `    if [[ -n "$_TOKEN" ]]; then`,
-    `      curl -sf --connect-timeout 5 -X POST "http://$_EVT_HOST:${port}/api/storage-wizard/backup-events" \\`,
-    `        -H 'Content-Type: application/json' \\`,
-    `        -H "Authorization: Bearer $_TOKEN" \\`,
-    `        -d "{\\"backup_uuid\\":\\"$_EVT_UUID\\",\\"client_id\\":\\"$INSTALL_ID\\",\\"event_type\\":\\"$_EVT_TYPE\\",\\"status\\":\\"\${_BCAST_STATUS:-}\\",\\"error\\":\\"\${_BCAST_ERROR:-}\\"}" \\`,
-    `        >/dev/null 2>&1 || true`,
-    `    fi`,
-    `  fi`,
+    ...bashEventRequests(port),
     `) || true`,
   ];
   return lines.join('\n');
