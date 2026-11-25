@@ -7,15 +7,49 @@ import path from 'node:path';
 
 vi.mock('electron', () => ({ app: { getPath: () => '/unused' } }));
 vi.mock('@45drives/houston-common-lib', () => ({}));
-import { bashEventSnippet, bashEventSnippetMac, batchEventSnippet } from './broadcasterApi';
+import {
+  bashEventSnippet, bashEventSnippetMac, batchEventSnippet,
+  getToken, removeBackupConfig, reportAuditEvent,
+} from './broadcasterApi';
 
 const directories: string[] = [];
 
 afterEach(() => {
+  vi.unstubAllGlobals();
   for (const directory of directories.splice(0)) {
     for (const filename of fs.readdirSync(directory)) fs.unlinkSync(path.join(directory, filename));
     fs.rmdirSync(directory);
   }
+});
+
+describe('broadcaster login intent', () => {
+  it('keeps backup logins unchanged and identifies interactive staff logins', async () => {
+    const fetch = vi.fn().mockImplementation(async () => new Response(JSON.stringify({ token: 'fixture-token' })));
+    vi.stubGlobal('fetch', fetch);
+
+    await expect(getToken('192.0.2.1', 'alice', 'test-password')).resolves.toBe('fixture-token');
+    await expect(getToken('192.0.2.1', 'alice', 'test-password', 'staff')).resolves.toBe('fixture-token');
+    expect(JSON.parse(fetch.mock.calls[0][1].body)).toEqual({
+      username: 'alice', password: 'test-password', clientId: '',
+    });
+    expect(JSON.parse(fetch.mock.calls[1][1].body)).toEqual({
+      username: 'alice', password: 'test-password', clientId: '', loginIntent: 'staff',
+    });
+  });
+
+  it('uses the staff intent for audit reporting but not backup configuration removal', async () => {
+    const fetch = vi.fn().mockImplementation(async (url: string) =>
+      new Response(url.endsWith('/api/login') ? JSON.stringify({ token: 'fixture-token' }) : '{}'));
+    vi.stubGlobal('fetch', fetch);
+
+    await expect(reportAuditEvent('192.0.2.1', 'alice', 'test-password', {
+      action: 'server:setup', outcome: 'success',
+    })).resolves.toBe(true);
+    await expect(removeBackupConfig('192.0.2.1', 'alice', 'test-password', 'backup-a')).resolves.toBe(true);
+    const logins = fetch.mock.calls.filter(([url]) => url.endsWith('/api/login'));
+    expect(JSON.parse(logins[0][1].body).loginIntent).toBe('staff');
+    expect(JSON.parse(logins[1][1].body)).not.toHaveProperty('loginIntent');
+  });
 });
 
 describe('scoped backup-event scripts', () => {

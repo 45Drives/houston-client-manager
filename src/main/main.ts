@@ -614,7 +614,7 @@ function createWindow() {
       const loginRes = await fetch(`http://${safeHost}:9095/api/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password, clientId: installId }),
+        body: JSON.stringify({ username, password, clientId: installId, loginIntent: 'staff' }),
         signal: AbortSignal.timeout(10000),
       });
       if (!loginRes.ok) {

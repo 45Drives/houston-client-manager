@@ -476,7 +476,7 @@ export function registerLogHandlers(
       try {
         // Server logs need an administrator login on current broadcasters; older ones answer without one.
         if (opts?.username && opts?.password) {
-          const token = await getToken(ip, opts.username, opts.password);
+          const token = await getToken(ip, opts.username, opts.password, 'staff');
           if (!token) {
             return {
               ok: false, needsLogin: true, entries: [], files: [],

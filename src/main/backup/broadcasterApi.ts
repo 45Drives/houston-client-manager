@@ -26,7 +26,9 @@ function baseUrl(host: string): string {
 }
 
 /** Authenticate with the broadcaster and return a JWT */
-export async function getToken(host: string, username: string, password: string): Promise<string | null> {
+export async function getToken(
+  host: string, username: string, password: string, intent: 'backup' | 'staff' = 'backup',
+): Promise<string | null> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), LOGIN_TIMEOUT_MS);
   try {
@@ -35,7 +37,10 @@ export async function getToken(host: string, username: string, password: string)
       headers: { 'Content-Type': 'application/json' },
       // Binds this install's ID into the token so the server can scope our
       // backup configs to us rather than trusting the request body.
-      body: JSON.stringify({ username, password, clientId: getClientId() }),
+      // The intent is only a request hint; server-side authentication is authoritative.
+      body: JSON.stringify({
+        username, password, clientId: getClientId(), ...(intent === 'staff' ? { loginIntent: 'staff' } : {}),
+      }),
       signal: controller.signal,
     });
     if (!res.ok) {
@@ -155,7 +160,7 @@ export async function reportAuditEvent(
   entry: AuditEntry
 ): Promise<boolean> {
   try {
-    const token = await getToken(host, username, password);
+    const token = await getToken(host, username, password, 'staff');
     if (!token) return false;
 
     const controller = new AbortController();
